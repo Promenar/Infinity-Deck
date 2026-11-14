@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.57.4-beta] - 2026-11-14
+
+- 首段听写定稿后发起本地实时整理，缩短首批草稿的调度等待。后续本地批次在停顿时处理。
+
 ## [0.57.3-beta] - 2026-11-14
 
 - 保存整理稿编辑后保留标题、说话人排版及有效的原音时间戳。

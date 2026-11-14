@@ -98,6 +98,7 @@ internal class RecordingController(
     private val microphone = Mutex()
     private val command = AtomicReference(CaptureCommand.Continue)
     private val serviceCommands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val liveDraftSignals = Channel<Unit>(Channel.CONFLATED)
     private val _state = MutableStateFlow(RecordingScreenState())
     val state = _state.asStateFlow()
     private var capture: Job? = null
@@ -105,12 +106,27 @@ internal class RecordingController(
     private var quiet = false
     private var cloudJobRunning = false
     private var organizingCloud = false
+    private var completingFirstLocalDraft = false
+    private var firstLocalDraftAttempted = false
     private val nextAttempt = mutableMapOf<String, Long>()
     private val unfinishedRollbacks = linkedSetOf<String>()
 
     init {
         io.launch {
             for (action in serviceCommands) action()
+        }
+        if (organizationEnabled) io.launch {
+            for (signal in liveDraftSignals) {
+                try {
+                    lock.withLock {
+                        if (_state.value.activeId != null) scheduleOrganization()
+                    }
+                } catch (failure: Exception) {
+                    if (failure is CancellationException) throw failure
+                    InfinityLogger.diagnostic("recording.scheduler_failed", mapOf("cause" to failure.javaClass.simpleName))
+                    report(R.string.recording_organize_failed)
+                }
+            }
         }
         io.launch {
             val restored = store.restore()
@@ -197,6 +213,7 @@ internal class RecordingController(
             recognition?.cancel()
             speakerJob?.cancel()
             quiet = false
+            if (!fromPause) firstLocalDraftAttempted = resume != null
             command.set(CaptureCommand.Continue)
             organize?.cancel()
             nextAttempt.remove(item.id)
@@ -223,7 +240,8 @@ internal class RecordingController(
                                     val segments = frame.segment?.let { current.segments + it } ?: current.segments
                                     save(current.copy(audioBytes = frame.bytes, segments = segments, checkpointText = frame.provisional))
                                 }
-                                if (quiet && !frame.quiet && !organizingCloud) organize?.cancel()
+                                val quietChanged = quiet != frame.quiet
+                                if (quiet && !frame.quiet && !organizingCloud && !completingFirstLocalDraft) organize?.cancel()
                                 quiet = frame.quiet
                                 val previous = _state.value
                                 val levels = if (frame.bytes - lastLevel >= 3_200) {
@@ -233,6 +251,9 @@ internal class RecordingController(
                                 _state.value = previous.copy(
                                     opening = false, partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000, levels = levels,
                                 )
+                                if (organizationEnabled && current.liveOrganization && (frame.segment != null || quietChanged)) {
+                                    liveDraftSignals.trySend(Unit)
+                                }
                             }
                         }
                     }
@@ -268,7 +289,10 @@ internal class RecordingController(
             _state.value = _state.value.copy(
                 activeId = item.id.takeIf { outcome == RecordingPhase.Paused }, opening = false, partial = "", durationMs = final.durationMs,
             )
-            if (outcome != RecordingPhase.Paused) store.clearCapture(item.id)
+            if (outcome != RecordingPhase.Paused) {
+                if (_state.value.organizingId == item.id) organize?.cancel()
+                store.clearCapture(item.id)
+            }
             if (outcome == RecordingPhase.Finished) {
                 nextAttempt.remove(item.id)
                 publish(item.id)
@@ -285,8 +309,9 @@ internal class RecordingController(
             lock.withLock {
                 if (command.get() == CaptureCommand.Discard) return@withLock
                 command.set(CaptureCommand.Finish)
-                if (capture?.isActive == true) return@withLock
                 val current = _state.value.activeId?.let(::session)
+                if (current != null && _state.value.organizingId == current.id) organize?.cancel()
+                if (capture?.isActive == true) return@withLock
                 if (current != null) {
                     try {
                         save(current.copy(phase = RecordingPhase.Finished))
@@ -924,28 +949,36 @@ internal class RecordingController(
         val foreground = isForeground()
         if (organize?.isCompleted == false) return
         if (command.get() == CaptureCommand.Discard) return
+        if (active != null && command.get() == CaptureCommand.Finish) return
         if (active == null && !foreground && !cloudJobRunning) return
+        fun route(candidate: RecordingSession) =
+            chooseRecordingRoute(candidate.mode, cloud?.key, candidate.cloudConsent, local != null, candidate.fallback)
         val item = _state.value.sessions.firstOrNull { candidate ->
             if (candidate.captureRollbackPending || SystemClock.elapsedRealtime() < (nextAttempt[candidate.id] ?: 0L) ||
                 active != null && candidate.id != active || candidate.id == _state.value.recognizingId ||
                 candidate.id == _state.value.speakerAnalysisId) return@firstOrNull false
-            val ready = if (active == candidate.id) {
-                val remote = chooseRecordingRoute(candidate.mode, cloud?.key, candidate.cloudConsent, local != null, candidate.fallback) == RecordingRoute.Cloud
-                (quiet || remote) && candidate.liveOrganization && candidate.draftCursor < candidate.segments.size
-            } else candidate.needsFinalSummary() && (!candidate.distinguishSpeakers ||
+            val selectedRoute = route(candidate)
+            if (active == candidate.id) {
+                return@firstOrNull nextLiveRecordingDraft(candidate, selectedRoute, quiet, !firstLocalDraftAttempted) != null
+            }
+            val ready = candidate.needsFinalSummary() && (!candidate.distinguishSpeakers ||
                 speakerModels.state.value != RecordingAsrModelState.Installed ||
                 candidate.speakerAnalyzedBytes == candidate.audioBytes || speakerAnalysisFailures[candidate.id] == candidate.audioBytes)
-            ready && chooseRecordingRoute(candidate.mode, cloud?.key, candidate.cloudConsent, local != null, candidate.fallback) in
-                (if (active != null || foreground) setOf(RecordingRoute.Cloud, RecordingRoute.Local) else setOf(RecordingRoute.Cloud))
+            ready && (selectedRoute == RecordingRoute.Cloud || foreground && selectedRoute == RecordingRoute.Local)
         } ?: return
         val live = active == item.id
-        val useCloud = item.mode == RecordingMode.Auto && cloud != null
+        val selectedRoute = route(item)
+        val useCloud = selectedRoute == RecordingRoute.Cloud
         val selectedCloud = cloud.takeIf { useCloud }
-        val range = if (live) nextRecordingBatch(item.segments, item.draftCursor, if (useCloud) 1000 else 300) else null
+        val range = if (live) requireNotNull(nextLiveRecordingDraft(item, selectedRoute, quiet, !firstLocalDraftAttempted)) else null
         organizingCloud = useCloud
+        // 仅允许首批本地草稿在语音恢复时继续，后续本地批次仍向实时听写让出资源。
+        completingFirstLocalDraft = range?.first == 0 && selectedRoute == RecordingRoute.Local && !firstLocalDraftAttempted
+        if (completingFirstLocalDraft) firstLocalDraftAttempted = true
         _state.value = _state.value.copy(organizingId = item.id)
         val hotwords = effective(item)
         val started = SystemClock.elapsedRealtime()
+        val audioAtStart = maxOf(_state.value.durationMs, item.durationMs)
         val glossary = recordingHotwordGlossary(hotwords)
         val fingerprint = if (live) null else item.summaryFingerprint(glossary, selectedCloud?.key ?: local?.modelPath.orEmpty())
         val progress = fingerprint?.let { key -> item.summaryProgress?.takeIf { it.fingerprint == key }
@@ -959,9 +992,19 @@ internal class RecordingController(
         @OptIn(DelicateCoroutinesApi::class)
         val launched = io.launch(start = CoroutineStart.ATOMIC) {
             try {
+                if (range?.first == 0) {
+                    InfinityLogger.diagnostic("recording.draft_start", mapOf(
+                        "start_audio_ms" to audioAtStart, "segment_end_ms" to item.segments[range.last].endMs,
+                        "remote" to useCloud, "segments" to (range.last + 1),
+                    ))
+                }
                 var batch: RecordingSummaryProgress? = null
+                var firstOutput = 0L
+                val inferenceStarted = SystemClock.elapsedRealtime()
                 val result = withTimeoutOrNull(if (live) 30_000 else 75_000) {
-                    if (range != null) model.organize(item, range, selectedCloud, local?.modelName, glossary)
+                    if (range != null) model.organize(item, range, selectedCloud, local?.modelName, glossary) {
+                        firstOutput = SystemClock.elapsedRealtime() - inferenceStarted
+                    }
                     else if (requireNotNull(progress).cursor < item.segments.size) {
                         batch = model.summarizeBatch(item, progress, selectedCloud, local?.modelName, glossary)
                         ""
@@ -970,6 +1013,7 @@ internal class RecordingController(
                         ""
                     } else renderRecordingSummary(item, progress.overview, progress.points, progress.actions)
                 } ?: throw java.util.concurrent.TimeoutException()
+                val inferenceFinished = SystemClock.elapsedRealtime()
                 lock.withLock {
                     val current = session(item.id) ?: return@withLock
                     if (command.get() == CaptureCommand.Discard || current.mode != item.mode ||
@@ -977,13 +1021,18 @@ internal class RecordingController(
                         current.distinguishSpeakers != item.distinguishSpeakers || current.speakers != item.speakers ||
                         effective(current) != hotwords) return@withLock
                     if (range != null) {
-                        if (_state.value.activeId != current.id || !current.liveOrganization ||
+                        if (command.get() == CaptureCommand.Finish || _state.value.activeId != current.id || !current.liveOrganization ||
                             current.draftCursor != range.first || current.segments.size <= range.last ||
                             range.any { current.segments[it] != item.segments[it] }) return@withLock
                         save(current.copy(draftBatches = current.draftBatches + RecordingDraftBatch(range.first, range.last + 1, result)))
                         InfinityLogger.diagnostic("recording.draft_batch", mapOf(
                             "latency_ms" to (SystemClock.elapsedRealtime() - started),
                             "lag_ms" to (_state.value.durationMs - item.segments[range.last].endMs).coerceAtLeast(0),
+                            "start_audio_ms" to audioAtStart,
+                            "segment_end_ms" to item.segments[range.last].endMs,
+                            "first_output_ms" to firstOutput,
+                            "inference_ms" to (inferenceFinished - inferenceStarted),
+                            "commit_ms" to (SystemClock.elapsedRealtime() - inferenceFinished),
                             "segments" to (range.last - range.first + 1),
                         ))
                     } else {
@@ -1017,6 +1066,7 @@ internal class RecordingController(
                 withContext(NonCancellable) {
                     lock.withLock {
                         organizingCloud = false
+                        completingFirstLocalDraft = false
                         _state.value = _state.value.copy(organizingId = null)
                     }
                 }

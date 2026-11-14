@@ -101,6 +101,22 @@ internal fun nextRecordingBatch(
     return from until end
 }
 
+internal fun nextLiveRecordingDraft(
+    session: RecordingSession, route: RecordingRoute, quiet: Boolean, allowLocalOverlap: Boolean,
+): IntRange? {
+    val from = session.draftCursor
+    if (!session.liveOrganization || from >= session.segments.size) return null
+    return when (route) {
+        RecordingRoute.Local -> when {
+            from == 0 && (quiet || allowLocalOverlap) -> 0..0
+            quiet -> nextRecordingBatch(session.segments, from, 300)
+            else -> null
+        }
+        RecordingRoute.Cloud -> nextRecordingBatch(session.segments, from, 1000)
+        else -> null
+    }
+}
+
 internal fun recordingContext(segments: List<RecordingSegment>, before: Int, budget: Int): String =
     segments.subList(0, before).asReversed().asSequence().map { it.text }
         .scan("" to 0) { (_, size), text -> text to size + text.length + 1 }

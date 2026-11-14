@@ -30,6 +30,22 @@ class RecordingPolicyTest {
         assertEquals("abc\na", recordingFollowing(segments, 2, 5))
     }
 
+    @Test fun firstLocalDraftStartsAtTheFirstConfirmedSegmentWithoutWaitingForSilence() {
+        val segments = List(4) { RecordingSegment(it * 1000L, (it + 1) * 1000L, "beta") }
+        val recording = RecordingSession(id = "test", createdAt = 0, title = "对测", segments = segments)
+        assertNull(nextLiveRecordingDraft(recording.copy(segments = emptyList()), RecordingRoute.Local, quiet = false, allowLocalOverlap = true))
+        assertNull(nextLiveRecordingDraft(recording.copy(liveOrganization = false), RecordingRoute.Local, quiet = true, allowLocalOverlap = true))
+        assertNull(nextLiveRecordingDraft(recording, RecordingRoute.Consent, quiet = true, allowLocalOverlap = true))
+        assertEquals(0..0, nextLiveRecordingDraft(recording, RecordingRoute.Local, quiet = false, allowLocalOverlap = true))
+        assertNull(nextLiveRecordingDraft(recording, RecordingRoute.Local, quiet = false, allowLocalOverlap = false))
+        assertEquals(0..0, nextLiveRecordingDraft(recording, RecordingRoute.Local, quiet = true, allowLocalOverlap = false))
+        assertEquals(0..3, nextLiveRecordingDraft(recording, RecordingRoute.Cloud, quiet = false, allowLocalOverlap = false))
+
+        val next = recording.copy(draftBatches = listOf(RecordingDraftBatch(0, 1, "beta")))
+        assertNull(nextLiveRecordingDraft(next, RecordingRoute.Local, quiet = false, allowLocalOverlap = true))
+        assertEquals(1..3, nextLiveRecordingDraft(next, RecordingRoute.Local, quiet = true, allowLocalOverlap = false))
+    }
+
     @Test fun relatedContextFindsTechnicalTermsBeyondAdjacentSegments() {
         val segments = listOf("Infinity Deck 的入口", "天气", "会议时间", "还有一个事项", "Deck 设置")
             .mapIndexed { index, text -> RecordingSegment(index * 1000L, (index + 1) * 1000L, text) }
