@@ -269,7 +269,9 @@ private fun RecordingScreen(
         onReturnActive = { selected = state.activeId; organized = false },
         editor = if (!editing || current == null) null else RecordingInlineEditor(editorText, { editorText = it },
             onSave = {
-                controller.updateDraft(current.id, current.title, current.hotwords, current.useHotwordLibrary, editorText)
+                if (editorText != current.organized) {
+                    controller.updateDraft(current.id, current.title, current.hotwords, current.useHotwordLibrary, editorText)
+                }
                 editing = false
             },
             onCancel = {

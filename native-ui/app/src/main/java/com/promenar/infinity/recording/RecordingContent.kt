@@ -811,6 +811,7 @@ private fun RecordingOrganizedList(
     }
     val list = key(current.id, current.distinguishSpeakers) { rememberLazyListState() }
     val blocks = remember(current.organized) { current.organized.split("\n\n").filter(String::isNotBlank) }
+    val segmentStarts = remember(current.segments) { current.segments.mapTo(hashSetOf(), RecordingSegment::startMs) }
     LazyColumn(state = list, modifier = modifier, contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (leading != null) item(key = "recording_header") { RecordingLeading(leading) }
@@ -846,15 +847,16 @@ private fun RecordingOrganizedList(
             if (current.organized.isNotBlank()) {
                 itemsIndexed(blocks) { _, block ->
                     val link = recordingSeekLink
-                    val times = if (current.manualEdit) emptyList() else link.findAll(block).mapNotNull { it.groupValues[2].toLongOrNull() }.toList()
+                    val times = link.findAll(block).mapNotNull { it.groupValues[2].toLongOrNull() }
+                        .filter { it in segmentStarts }.toList()
                     when {
                         times.isNotEmpty() && link.replace(block, "").isBlank() -> FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             times.forEach { ms -> TextButton(onClick = { onPlay(ms) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
                                 Text(recordingTimestamp(ms), style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace), maxLines = 1)
                             } }
                         }
-                        !current.manualEdit && block.startsWith("### ") -> Text(block.removePrefix("### "), style = InfinityTypography.titleSmall)
-                        !current.manualEdit && block.startsWith("**") && block.endsWith("**") -> Text(block.removeSurrounding("**"),
+                        block.startsWith("### ") -> Text(block.removePrefix("### "), style = InfinityTypography.titleSmall)
+                        block.startsWith("**") && block.endsWith("**") -> Text(block.removeSurrounding("**"),
                             color = MaterialTheme.colorScheme.primary, style = InfinityTypography.labelLarge)
                         else -> Text(block, style = InfinityTypography.bodyLarge.forReading())
                     }

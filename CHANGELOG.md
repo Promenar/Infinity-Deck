@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.57.3-beta] - 2026-11-14
+
+- 保存整理稿编辑后保留标题、说话人排版及有效的原音时间戳。
+
 ## [0.57.2-beta] - 2026-11-14
 
 - 以目标语言引导本地整理模型，减少中英混合录音生成英文成稿时的格式与语言错误。
