@@ -32,7 +32,7 @@ internal data class CaptureFrame(
 
 internal data class RecordingCaptureStep(val frame: CaptureFrame, val reset: Boolean)
 
-internal class RecordingSegmentation(initialBytes: Long) {
+internal class RecordingSegmentation(private val initialBytes: Long) {
     var bytes = initialBytes
         private set
     private var segmentStart = initialBytes / 32
@@ -44,7 +44,7 @@ internal class RecordingSegmentation(initialBytes: Long) {
         pcm: ShortArray,
         rawText: String,
         endpoint: Boolean,
-        finalizeSegment: (() -> String)? = null,
+        decodedMs: Long? = null,
     ): RecordingCaptureStep {
         var energy = 0.0
         for (sample in pcm) {
@@ -57,12 +57,14 @@ internal class RecordingSegmentation(initialBytes: Long) {
             lastVoice = bytes
         }
         val end = endpoint || bytes / 32 - segmentStart >= RecordingCapturePolicy.FORCE_SEGMENT_MS
-        val finalText = if (end) finalizeSegment?.invoke()?.takeIf(String::isNotBlank) else null
-        val text = normalizeRecordingText(finalText ?: rawText)
-        val segment = if (end && text.isNotEmpty()) segment(text) else null
+        val text = normalizeRecordingText(rawText)
+        val endMs = if (end && decodedMs != null) {
+            (initialBytes / 32 + decodedMs).coerceIn(segmentStart, bytes / 32)
+        } else bytes / 32
+        val segment = if (end && text.isNotEmpty()) segment(text, endMs) else null
         if (end) {
-            segmentStart = bytes / 32
-            speechAt = null
+            segmentStart = endMs
+            speechAt = endMs.takeIf { lastVoice > endMs * 32 }
         }
         val checkpoint = segment != null || bytes - lastCheckpoint >=
             RecordingCapturePolicy.SAMPLE_RATE * 2L * RecordingCapturePolicy.CHECKPOINT_SECONDS
@@ -81,6 +83,9 @@ internal class RecordingSegmentation(initialBytes: Long) {
         return CaptureFrame(bytes, "", null, tail, quiet = true, checkpoint = true, level = 0f)
     }
 
-    private fun segment(text: String) =
-        RecordingSegment((speechAt ?: segmentStart).coerceAtLeast(segmentStart), bytes / 32, text)
+    private fun segment(text: String, endMs: Long = bytes / 32): RecordingSegment {
+        // 能量检测读取的是落盘进度，起声点可能位于本段尚未解码的尾部。
+        val start = speechAt?.takeIf { it < endMs } ?: segmentStart
+        return RecordingSegment(start, endMs, text)
+    }
 }

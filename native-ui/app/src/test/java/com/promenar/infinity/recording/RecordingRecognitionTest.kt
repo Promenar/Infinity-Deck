@@ -48,21 +48,26 @@ class RecordingRecognitionTest {
         } finally { audio.delete() }
     }
 
-    @Test fun forcedBoundaryFinalizesTheTailWithoutMovingTheAudioTimestamp() = runBlocking {
+    @Test fun forcedBoundaryKeepsBufferedAudioForTheNextSegment() = runBlocking {
         val rate = RecordingCapturePolicy.SAMPLE_RATE
         val boundary = RecordingCapturePolicy.FORCE_SEGMENT_MS
         val audio = wav((boundary * rate / 1_000).toInt() + RecordingCapturePolicy.BLOCK_SAMPLES)
         try {
             val decoder = object : RecordingDecoder {
                 private var first = true
-                override fun accept(pcm: ShortArray) = RecordingRecognition(if (first) "断段前" else "断段后", false)
-                override fun finish() = if (first) "断段前最后几个字" else "断段后继续"
+                override fun accept(pcm: ShortArray) = RecordingRecognition(
+                    if (first) "断段前" else "断段前最后几个字", false, decodedMs = boundary - 480,
+                )
+                override fun finish(): String {
+                    assertFalse("强制分段不能结束音频流", first)
+                    return "断段前最后几个字继续"
+                }
                 override fun reset() { first = false }
             }
             val segments = recognizeRecordingWav(audio, decoder) {}
             assertEquals(listOf(
-                RecordingSegment(0, boundary, "断段前最后几个字"),
-                RecordingSegment(boundary, boundary + 40, "断段后继续"),
+                RecordingSegment(0, boundary - 480, "断段前"),
+                RecordingSegment(boundary - 480, boundary + 40, "断段前最后几个字继续"),
             ), segments)
         } finally { audio.delete() }
     }

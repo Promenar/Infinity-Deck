@@ -20,6 +20,9 @@ internal fun interface RecordingDecoderFactory {
     fun create(request: RecordingDecoderRequest): RecordingDecoder
 }
 
+// 已校验的 X-ASR encoder 按 48 个 10 ms 特征帧推进一次。Sherpa JNI 没有暴露已处理帧数。
+private const val X_ASR_DECODE_STEP_MS = 480L
+
 internal object EmptyRecordingDecoder : RecordingDecoder {
     override fun accept(pcm: ShortArray) = RecordingRecognition("", false)
     override fun reset() = Unit
@@ -58,6 +61,8 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
         private var text = ""
         private val tail = FloatArray(rate * RecordingCapturePolicy.TAIL_SILENCE_SECONDS)
         private var hasAudio = false
+        private var inputFinished = false
+        private var decodedMs = 0L
 
         override fun accept(pcm: ShortArray): RecordingRecognition {
             hasAudio = true
@@ -65,25 +70,35 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
             var decoded = false
             while (recognizer.isReady(stream)) {
                 recognizer.decode(stream)
+                decodedMs += X_ASR_DECODE_STEP_MS
                 decoded = true
             }
             if (decoded) text = recognizer.getResult(stream).text
-            return RecordingRecognition(text, decoded && recognizer.isEndpoint(stream))
+            return RecordingRecognition(text, decoded && recognizer.isEndpoint(stream), decodedMs)
         }
         override fun reset() {
-            // inputFinished 结束了旧流的特征提取器。下一段使用新流并沿用同一识别器和热词。
-            val previous = stream
-            stream = recognizer.createStream(hotwordList)
-            previous.release()
+            if (inputFinished) {
+                val previous = stream
+                stream = recognizer.createStream(hotwordList)
+                previous.release()
+                hasAudio = false
+                decodedMs = 0
+            } else {
+                // 分段保留编码器上下文和已接收但还没解码的音频。
+                recognizer.reset(stream)
+            }
             text = ""
-            hasAudio = false
+            inputFinished = false
         }
         override fun finish(): String {
+            if (inputFinished) return text
+            inputFinished = true
             if (!hasAudio) return ""
             stream.acceptWaveform(tail, rate)
             stream.inputFinished()
             while (recognizer.isReady(stream)) recognizer.decode(stream)
-            return recognizer.getResult(stream).text
+            text = recognizer.getResult(stream).text.ifBlank { text }
+            return text
         }
         override fun close() {
             try { stream.release() } finally { recognizer.release() }

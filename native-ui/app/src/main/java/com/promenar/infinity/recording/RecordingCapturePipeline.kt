@@ -21,30 +21,37 @@ internal interface RecordingAudioSource {
     fun stop()
 }
 
-internal data class RecordingRecognition(val text: String, val endpoint: Boolean)
+internal data class RecordingRecognition(
+    val text: String,
+    val endpoint: Boolean,
+    val decodedMs: Long? = null,
+)
 
 internal interface RecordingDecoder : AutoCloseable {
     override fun close() = Unit
     fun accept(pcm: ShortArray): RecordingRecognition
+    // 连续输入时开始下一段。在 finish 之后开始一段独立音频。
     fun reset()
     fun finish(): String
 }
 
 internal fun RecordingDecoder.advanceSegment(state: RecordingSegmentation, pcm: ShortArray): RecordingCaptureStep {
     val result = accept(pcm)
-    return state.accept(pcm, result.text, result.endpoint, ::finish)
+    return state.accept(pcm, result.text, result.endpoint, result.decodedMs)
 }
 
 internal data class RecordingBacklog(val maxQueuedMs: Long, val durationMs: Long)
+internal typealias WithRecordingDecoder = suspend (suspend (RecordingDecoder) -> CaptureCommand) -> CaptureCommand
 
 /** 采集线程顺序落盘，识别协程按已写入的偏移读取。通知合并，积压只占用磁盘。 */
 internal suspend fun recordPcmAudio(
     source: RecordingAudioSource,
-    decoder: RecordingDecoder,
     file: RandomAccessFile,
     initialBytes: Long,
     maxBytes: Long,
     command: () -> CaptureCommand,
+    withDecoder: WithRecordingDecoder,
+    onCaptureStarted: suspend () -> Unit = {},
     onReaderStart: () -> Unit = {},
     onBacklog: (RecordingBacklog) -> Unit = {},
     onFrame: suspend (CaptureFrame) -> Unit,
@@ -121,12 +128,7 @@ internal suspend fun recordPcmAudio(
         }
     }
 
-    var readerStarted = false
-    try {
-        currentCoroutineContext().ensureActive()
-        if (command() == CaptureCommand.Continue && maxBytes - initialBytes >= 2) source.start()
-        reader.start()
-        readerStarted = true
+    suspend fun decode(decoder: RecordingDecoder): CaptureCommand {
         val blockBytes = RecordingCapturePolicy.BLOCK_SAMPLES * 2
         val encoded = ByteBuffer.allocate(blockBytes).order(ByteOrder.LITTLE_ENDIAN)
         var offset = initialBytes
@@ -159,6 +161,17 @@ internal suspend fun recordPcmAudio(
         onFrame(tail)
         failure.get()?.let { throw it }
         return command().takeUnless { it == CaptureCommand.Continue } ?: CaptureCommand.Finish
+    }
+
+    var readerStarted = false
+    try {
+        currentCoroutineContext().ensureActive()
+        val shouldStart = command() == CaptureCommand.Continue && maxBytes - initialBytes >= 2
+        if (shouldStart) source.start()
+        reader.start()
+        readerStarted = true
+        if (shouldStart) onCaptureStarted()
+        return withDecoder(::decode)
     } finally {
         stopping.set(true)
         withContext(NonCancellable + Dispatchers.IO) {

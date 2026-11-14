@@ -58,7 +58,10 @@ internal data class RecordingScreenState(
     val localReady get() = localLabel != null
 }
 
-internal typealias RecordingAudioCapture = suspend (Context, RecordingStore, RecordingSession, () -> CaptureCommand, RecordingDecoder, suspend (CaptureFrame) -> Unit) -> CaptureCommand
+internal typealias RecordingAudioCapture = suspend (
+    Context, RecordingStore, RecordingSession, () -> CaptureCommand, WithRecordingDecoder,
+    suspend () -> Unit, suspend (CaptureFrame) -> Unit,
+) -> CaptureCommand
 internal typealias RecordingDocumentPublisher = suspend (RecordingSession, suspend (String?, String) -> Unit) -> RecordingDocument
 
 internal class RecordingController(
@@ -227,34 +230,36 @@ internal class RecordingController(
         var outcome: RecordingPhase
         var lastLevel = item.audioBytes
         try {
-            val result = recognizerUse.withLock {
-                val request = lock.withLock {
-                    decoderRequest(item).also { _state.value = _state.value.copy(audioOnly = it.directory == null) }
-                }
-                decoderFactory.create(request).use { decoder ->
-                    microphone.withLock {
-                        recordAudio(app, store, item, command::get, decoder) { frame ->
-                            lock.withLock {
-                                val current = requireNotNull(session(item.id))
-                                if (frame.checkpoint) {
-                                    val segments = frame.segment?.let { current.segments + it } ?: current.segments
-                                    save(current.copy(audioBytes = frame.bytes, segments = segments, checkpointText = frame.provisional))
-                                }
-                                val quietChanged = quiet != frame.quiet
-                                if (quiet && !frame.quiet && !organizingCloud && !completingFirstLocalDraft) organize?.cancel()
-                                quiet = frame.quiet
-                                val previous = _state.value
-                                val levels = if (frame.bytes - lastLevel >= 3_200) {
-                                    lastLevel = frame.bytes
-                                    previous.levels.takeLast(47) + frame.level
-                                } else previous.levels
-                                _state.value = previous.copy(
-                                    opening = false, partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000, levels = levels,
-                                )
-                                if (organizationEnabled && current.liveOrganization && (frame.segment != null || quietChanged)) {
-                                    liveDraftSignals.trySend(Unit)
-                                }
-                            }
+            val result = microphone.withLock {
+                recordAudio(app, store, item, command::get, { decode ->
+                    recognizerUse.withLock {
+                        val request = lock.withLock {
+                            decoderRequest(item).also { _state.value = _state.value.copy(audioOnly = it.directory == null) }
+                        }
+                        decoderFactory.create(request).use { decode(it) }
+                    }
+                }, {
+                    lock.withLock { _state.value = _state.value.copy(opening = false) }
+                }) { frame ->
+                    lock.withLock {
+                        val current = requireNotNull(session(item.id))
+                        if (frame.checkpoint) {
+                            val segments = frame.segment?.let { current.segments + it } ?: current.segments
+                            save(current.copy(audioBytes = frame.bytes, segments = segments, checkpointText = frame.provisional))
+                        }
+                        val quietChanged = quiet != frame.quiet
+                        if (quiet && !frame.quiet && !organizingCloud && !completingFirstLocalDraft) organize?.cancel()
+                        quiet = frame.quiet
+                        val previous = _state.value
+                        val levels = if (frame.bytes - lastLevel >= 3_200) {
+                            lastLevel = frame.bytes
+                            previous.levels.takeLast(47) + frame.level
+                        } else previous.levels
+                        _state.value = previous.copy(
+                            partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000, levels = levels,
+                        )
+                        if (organizationEnabled && current.liveOrganization && (frame.segment != null || quietChanged)) {
+                            liveDraftSignals.trySend(Unit)
                         }
                     }
                 }

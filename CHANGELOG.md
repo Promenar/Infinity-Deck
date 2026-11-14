@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 修复录音听写在停顿和长段切分时丢失词句的问题。实时听写和重新识别均保留断段前已接收的音频，启动录音时麦克风可先于听写模型初始化采集。
+
 ## [0.57.5-beta] - 2026-11-14
 
 - 重排录音、热词和声纹弹窗，长内容可滚动，关闭和底部操作保持就位。授权麦克风和选择文件由 Android 系统完成。

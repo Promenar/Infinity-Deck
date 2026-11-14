@@ -63,7 +63,7 @@ class RecordingControllerRecognitionTest {
         }
         fun controller(
             factory: RecordingDecoderFactory = RecordingDecoderFactory { decoder() },
-            capture: RecordingAudioCapture = { _, _, _, _, _, _ -> error("不应打开麦克风") },
+            capture: RecordingAudioCapture = { _, _, _, _, _, _, _ -> error("不应打开麦克风") },
             publish: suspend (RecordingSession) -> RecordingDocument = { published.incrementAndGet(); RecordingDocument("doc", "hash") },
         ) = RecordingController(app, scope, factory, capture, false, { item, _ -> publish(item) }, { it() })
         suspend fun close() { scope.coroutineContext[Job]!!.cancelAndJoin(); root.deleteRecursively() }
@@ -105,7 +105,8 @@ class RecordingControllerRecognitionTest {
         try {
             f.seed()
             val captured = CompletableDeferred<RecordingSession>()
-            val controller = f.controller(capture = { _, store, item, _, _, emit ->
+            val controller = f.controller(capture = { _, store, item, _, _, onCaptureStarted, emit ->
+                onCaptureStarted()
                 captured.complete(item)
                 val end = item.audioBytes + 640 * 2L
                 RandomAccessFile(store.audio(item.id), "rw").use { file ->
@@ -175,7 +176,7 @@ class RecordingControllerRecognitionTest {
             val captured = CompletableDeferred<RecordingDecoderRequest>()
             val firstCheckpoint = CompletableDeferred<Unit>()
             val factory = RecordingDecoderFactory { request -> captured.complete(request); createRecordingDecoder(request) }
-            val capture: RecordingAudioCapture = { _, store, session, _, decoder, frame ->
+            val capture: RecordingAudioCapture = { _, store, session, _, withDecoder, onCaptureStarted, frame ->
                 var blocks = 0
                 val source = object : RecordingAudioSource {
                     override fun start() = Unit
@@ -183,8 +184,10 @@ class RecordingControllerRecognitionTest {
                     override fun stop() = Unit
                 }
                 RandomAccessFile(store.audio(session.id), "rw").use { file ->
-                    recordPcmAudio(source, decoder, file, 0, 160_000,
+                    recordPcmAudio(source, file, 0, 160_000,
                         command = { if (blocks < 125) CaptureCommand.Continue else CaptureCommand.Finish },
+                        withDecoder = withDecoder,
+                        onCaptureStarted = onCaptureStarted,
                         onFrame = { current -> frame(current); if (current.checkpoint) firstCheckpoint.complete(Unit) })
                 }
                 stop.await()
@@ -210,7 +213,7 @@ class RecordingControllerRecognitionTest {
         } finally { stop.complete(Unit); f.close() }
     }
 
-    @Test fun startingRecordingCancelsRecognitionAndWaitsForDecoderRelease() = runBlocking {
+    @Test fun microphoneStartsWhilePreviousRecognitionReleasesItsDecoder() = runBlocking {
         val f = Fixture()
         val entered = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -233,15 +236,20 @@ class RecordingControllerRecognitionTest {
                     override fun close() { live.decrementAndGet() }
                 }
             }
-            val controller = f.controller(factory, { _, _, _, _, _, _ -> captures.complete(Unit); CaptureCommand.Pause })
+            val controller = f.controller(factory, { _, _, _, _, withDecoder, onCaptureStarted, _ ->
+                onCaptureStarted()
+                captures.complete(Unit)
+                withDecoder { CaptureCommand.Pause }
+            })
             withTimeout(5_000) { controller.state.first { it.ready }; controller.asrModel.first { it == RecordingAsrModelState.Installed } }
             controller.recognize(f.original.id, true)
             assertTrue(entered.await(5, TimeUnit.SECONDS))
             controller.capture(f.original.id) {}
-            waitFor { controller.state.value.activeId != null }
-            assertFalse(captures.isCompleted)
-            release.countDown()
             withTimeout(5_000) { captures.await() }
+            assertFalse(controller.state.value.opening)
+            assertEquals(1, live.get())
+            release.countDown()
+            waitFor { controller.state.value.sessions.single().phase == RecordingPhase.Paused }
             waitFor { controller.state.value.recognizingId == null }
             assertEquals(1, maximum.get())
             assertEquals(f.original.segments, controller.state.value.sessions.single().segments)
@@ -303,7 +311,10 @@ class RecordingControllerRecognitionTest {
             val active = f.original.copy(id = UUID.randomUUID().toString(), phase = RecordingPhase.Interrupted)
             f.seed(active); f.install()
             val controller = f.controller(RecordingDecoderFactory { creations.incrementAndGet(); decoder() },
-                { _, _, _, _, _, _ -> started.complete(Unit); stop.await(); CaptureCommand.Pause })
+                { _, _, _, _, withDecoder, onCaptureStarted, _ ->
+                    onCaptureStarted()
+                    withDecoder { started.complete(Unit); stop.await(); CaptureCommand.Pause }
+                })
             withTimeout(5_000) { controller.state.first { it.ready }; controller.asrModel.first { it == RecordingAsrModelState.Installed } }
             controller.capture(active.id) {}
             withTimeout(5_000) { started.await() }

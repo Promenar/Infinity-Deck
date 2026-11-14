@@ -54,6 +54,26 @@ class RecordingSegmentationTest {
         assertTrue(state.accept(voice, "实时，文本", false).frame.checkpoint)
     }
 
+    @Test fun endingExactlyAtASplitKeepsAnAudioRangeForBufferedWords() {
+        for (endpoint in listOf(true, false)) {
+            val state = RecordingSegmentation(32_000)
+            repeat(1_499) { state.accept(voice, "已经解码", false) }
+            val split = state.accept(voice, "已经解码", endpoint, decodedMs = 59_520)
+            assertTrue(split.reset)
+            assertEquals(RecordingSegment(1_000, 60_520, "已经解码"), split.frame.segment)
+            assertEquals(61_000 * 32L, split.frame.bytes)
+            assertEquals(RecordingSegment(60_520, 61_000, "缓冲区尾字"), state.finish("缓冲区尾字").segment)
+        }
+    }
+
+    @Test fun louderBufferedAudioDoesNotHideSoftSpeechBeforeTheDecodedBoundary() {
+        val state = RecordingSegmentation(0)
+        state.accept(silence, "轻声", false, decodedMs = 0)
+        val split = state.accept(voice, "轻声", true, decodedMs = 40)
+        assertEquals(RecordingSegment(0, 40, "轻声"), split.frame.segment)
+        assertEquals(RecordingSegment(40, 80, "后一字"), state.finish("后一字").segment)
+    }
+
     @Test fun twoSecondsOfSilenceSetQuietAndVoiceClearsIt() {
         val state = RecordingSegmentation(0)
         repeat(49) { assertFalse(state.accept(silence, "", false).frame.quiet) }

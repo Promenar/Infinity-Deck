@@ -18,7 +18,8 @@ internal suspend fun captureRecording(
     store: RecordingStore,
     session: RecordingSession,
     command: () -> CaptureCommand,
-    decoder: RecordingDecoder,
+    withDecoder: WithRecordingDecoder,
+    onCaptureStarted: suspend () -> Unit,
     onFrame: suspend (CaptureFrame) -> Unit,
 ): CaptureCommand = withContext(Dispatchers.IO) {
     val rate = RecordingStore.SAMPLE_RATE
@@ -47,8 +48,10 @@ internal suspend fun captureRecording(
             }
             RandomAccessFile(store.audio(session.id), "rw").use { file ->
                 wakeLock.acquire()
-                recordPcmAudio(source, decoder, file, session.audioBytes, RecordingStore.MAX_AUDIO_BYTES,
+                recordPcmAudio(source, file, session.audioBytes, RecordingStore.MAX_AUDIO_BYTES,
                     command = command,
+                    withDecoder = withDecoder,
+                    onCaptureStarted = onCaptureStarted,
                     // 提升优先级失败不影响录音。
                     onReaderStart = { runCatching { Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO) } },
                     onBacklog = { backlog ->

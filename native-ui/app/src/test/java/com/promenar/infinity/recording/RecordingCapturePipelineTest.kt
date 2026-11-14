@@ -68,6 +68,19 @@ class RecordingCapturePipelineTest {
         try { RandomAccessFile(path, "rw").use { block(it) } } finally { path.delete() }
     }
 
+    private suspend fun recordPcmAudio(
+        source: RecordingAudioSource,
+        decoder: RecordingDecoder,
+        file: RandomAccessFile,
+        initialBytes: Long,
+        maxBytes: Long,
+        command: () -> CaptureCommand,
+        onReaderStart: () -> Unit = {},
+        onBacklog: (RecordingBacklog) -> Unit = {},
+        onFrame: suspend (CaptureFrame) -> Unit,
+    ) = recordPcmAudio(source, file, initialBytes, maxBytes, command,
+        withDecoder = { it(decoder) }, onReaderStart = onReaderStart, onBacklog = onBacklog, onFrame = onFrame)
+
     private fun assertWav(file: RandomAccessFile, samples: List<Short>) {
         assertEquals(44L + samples.size * 2, file.length())
         file.seek(0)
@@ -141,10 +154,13 @@ class RecordingCapturePipelineTest {
 
                 override fun accept(pcm: ShortArray): RecordingRecognition {
                     accepted++
-                    return RecordingRecognition(if (segment == 0) "第一段" else "第二段", accepted == 2)
+                    return RecordingRecognition(if (segment == 0) "第一段末尾" else "第二段", accepted == 2)
                 }
 
-                override fun finish() = if (segment == 0) "第一段末尾" else "第二段开头"
+                override fun finish(): String {
+                    assertEquals("只有音频流结束才应调用 finish", 1, segment)
+                    return "第二段开头"
+                }
                 override fun reset() { accepted = 0; segment++ }
             }
             val segments = mutableListOf<RecordingSegment>()
@@ -153,6 +169,51 @@ class RecordingCapturePipelineTest {
             }
             assertEquals(listOf(RecordingSegment(0, 80, "第一段末尾"), RecordingSegment(80, 120, "第二段开头")), segments)
             assertWav(file, blocks.flatMap { it.toList() })
+        }
+    }
+
+    @Test(timeout = 2_000) fun savesOpeningSamplesWhileDecoderIsUnavailable() = runBlocking {
+        for (ending in listOf(CaptureCommand.Pause, CaptureCommand.Finish)) withWav { file ->
+            val command = AtomicReference(CaptureCommand.Continue)
+            val blocks = List(3) { block -> ShortArray(640) { (block * 640 + it + 1).toShort() } }
+            val source = Source(command, blocks, ending)
+            val decoder = Decoder(source.stopped)
+            var started = false
+
+            val result = recordPcmAudio(
+                source, file, 0, 10_000, command::get,
+                withDecoder = { decode ->
+                    assertTrue(started)
+                    assertTrue(source.stopped.await(1, TimeUnit.SECONDS))
+                    assertEquals(44L + 3_840, file.length())
+                    decode(decoder)
+                },
+                onCaptureStarted = { started = true },
+                onFrame = {},
+            )
+
+            assertEquals(ending, result)
+            assertEquals(blocks.flatMap { it.toList() }, decoder.samples)
+            assertWav(file, decoder.samples)
+        }
+    }
+
+    @Test(timeout = 2_000) fun decoderInitializationFailureKeepsTheWavPrefix() = runBlocking {
+        withWav { file ->
+            val command = AtomicReference(CaptureCommand.Continue)
+            val leading = shortArrayOf(1, -2, 3, -4)
+            val source = Source(command, listOf(leading))
+            val expectedFailure = IOException("识别器初始化失败")
+
+            val failure = runCatching {
+                recordPcmAudio(source, file, 0, 10_000, command::get, withDecoder = {
+                    assertTrue(source.stopped.await(1, TimeUnit.SECONDS))
+                    throw expectedFailure
+                }, onFrame = {})
+            }.exceptionOrNull()
+
+            assertEquals(expectedFailure, failure)
+            assertWav(file, leading.toList())
         }
     }
 
