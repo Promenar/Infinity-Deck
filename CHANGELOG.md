@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.56.3-beta] - 2026-11-14
+
+- 折叠或展开设备时保留本地模型的下载和导入状态。
+
 ## [0.56.2-beta] - 2026-11-14
 
 - 本地模型设置统一显示模型库、下载进度和各用途的加载状态，支持内外屏同一套纵向设置内容。

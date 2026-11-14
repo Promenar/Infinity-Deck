@@ -207,6 +207,7 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
     }
 
     override fun onCleared() {
+        downloader.cancel()
         super.onCleared()
     }
 

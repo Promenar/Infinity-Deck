@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.settings
 
 import android.app.Application
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
 import com.promenar.infinity.data.local.inference.LocalModelRevision
@@ -76,6 +78,8 @@ import kotlinx.coroutines.launch
 fun LocalModelsScreen(
     onNavigateBack: () -> Unit,
     viewModel: LocalModelsViewModel = viewModel(
+        // 折叠时设置页会在两个导航宿主之间迁移，下载与导入交给 Activity 持有。
+        viewModelStoreOwner = LocalActivity.current as ViewModelStoreOwner,
         factory = LocalModelsViewModel.factory(LocalContext.current.applicationContext as Application)
     )
 ) {
