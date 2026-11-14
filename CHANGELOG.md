@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.56.0-beta] - 2026-11-14
+
 - 资料首页通过「＋ 添加」菜单进入录音、导入文件和新建笔记。
 - 从录音记录打开详情时，列表与详情以横向转场切换。标题栏和系统返回都先回录音记录，并保留列表滚动位置。
 
