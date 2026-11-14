@@ -62,7 +62,7 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
         else -> gguf?.isDownloading == true
     } }
     val pendingBytes = selected.filterNot { it.installed }.sumOf { it.bytes }
-    val complete = pendingBytes == 0L && (started || selected.isNotEmpty() && selected.all { it.installed })
+    val complete = started && pendingBytes == 0L
     val totalBytes = selected.sumOf { it.bytes }
     val progress = (selected.sumOf { it.downloaded }.toFloat() / totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f)
     val status = when {
@@ -134,8 +134,11 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
                             if (speaker.busy()) { useSpeaker = true; controller.cancelSpeakerModel() }
                             if (gguf?.isDownloading == true) { useLocal = true; controller.recommendedModel.pause() }
                         }) else InfinityPillButton(
-                            text = if (paused || failed) stringResource(R.string.recording_setup_continue)
-                                else stringResource(R.string.recording_setup_download, (pendingBytes + 500_000) / 1_000_000),
+                            text = when {
+                                paused || failed -> stringResource(R.string.recording_setup_continue)
+                                pendingBytes == 0L -> stringResource(R.string.recording_setup_download_action)
+                                else -> stringResource(R.string.recording_setup_download, (pendingBytes + 500_000) / 1_000_000)
+                            },
                             onClick = {
                                 started = true; paused = false
                                 if (useAsr && asr != RecordingAsrModelState.Installed) controller.downloadAsrModel()

@@ -56,6 +56,7 @@
     <string name="recording_setup_enter">Enter app</string>
     <string name="recording_setup_download">Download selected · %1$d MB</string>
     <string name="recording_setup_pause">Pause downloads</string>
+    <string name="recording_setup_download_action">Download selected</string>
     <string name="recording_setup_continue">Resume downloads</string>
     <string name="recording_setup_ready">Ready</string>
     <string name="recording_setup_total_ready">Selected models are ready.</string>

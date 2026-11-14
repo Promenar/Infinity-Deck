@@ -7,7 +7,8 @@ import com.promenar.infinity.domain.generation.CompletionReason
 
 class LocalProtocol(
     private val engine: LocalInferenceEngine,
-    private val modelName: String = ""
+    private val modelName: String = "",
+    private val assistantPrefix: String = "",
 ) : LlmProtocol {
 
     override val protocolType: ProtocolType = ProtocolType.Local
@@ -20,7 +21,7 @@ class LocalProtocol(
         val formattedPrompt = promptTemplate.format(
             messages = localMessagesWithToolMedia(request.messages),
             tools = request.tools?.canonicalizedForRequest().takeIf { request.toolChoice != ProtocolToolChoice.NONE },
-        )
+        ) + assistantPrefix
 
         val genConfig = ProtocolParamAdapter.buildGenerateConfig(request)
 
@@ -35,7 +36,7 @@ class LocalProtocol(
         val formattedPrompt = promptTemplate.format(
             messages = localMessagesWithToolMedia(request.messages),
             tools = request.tools?.canonicalizedForRequest().takeIf { request.toolChoice != ProtocolToolChoice.NONE },
-        )
+        ) + assistantPrefix
 
         val genConfig = ProtocolParamAdapter.buildGenerateConfig(request)
         val result = StringBuilder()

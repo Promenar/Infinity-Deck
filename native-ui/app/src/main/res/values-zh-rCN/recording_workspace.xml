@@ -55,6 +55,7 @@
     <string name="recording_setup_skip">稍后设置</string>
     <string name="recording_setup_enter">进入应用</string>
     <string name="recording_setup_download">下载所选 · %1$d MB</string>
+    <string name="recording_setup_download_action">下载所选</string>
     <string name="recording_setup_pause">暂停下载</string>
     <string name="recording_setup_continue">继续下载</string>
     <string name="recording_setup_ready">已就绪</string>

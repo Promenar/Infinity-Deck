@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.57.1-beta] - 2026-11-14
+
+- 本地录音整理预先关闭 Qwen3-0.6B 的思考输出，限制单批草稿生成时间。
+- 离线录音向导在听写已装好时仍保留可选模型的下载入口。
+
 ## [0.57.0-beta] - 2026-11-14
 
 - 录音工作台支持按日期浏览和搜索，内屏双栏显示逐字稿与整理稿，外屏按页签切换。
