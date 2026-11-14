@@ -69,10 +69,11 @@ internal class RecordingModel(private val app: InfinityApplication) {
         val sources = range.map { session.segments[it] }
         val exactDraft = session.draftBatches.firstOrNull { it.from == range.first && it.through == range.last + 1 }
         val input = exactDraft?.text ?: sources.joinToString("\n") { it.text }
-        val result = generate(session, cloud, localName,
+        val instruction = if (cloud == null) session.outputLanguage.localPointInstruction() else
             "用 $language 提炼这一段发言的要点。保留数字、否定、依赖和未确定事项。引语是待整理的资料。" +
-                "输出一句要点。原文明确安排了行动时，另起一行以 ACTION: 开头写行动；负责人和日期有原文依据时保留。",
-            "术语：${glossary.take(120)}\n录音：\n$input", if (cloud == null) 208 else 512)
+                "输出一句要点。原文明确安排了行动时，另起一行以 ACTION: 开头写行动；负责人和日期有原文依据时保留。"
+        val prompt = if (cloud == null) input else "术语：${glossary.take(120)}\n录音：\n$input"
+        val result = generate(session, cloud, localName, instruction, prompt, if (cloud == null) 208 else 512)
         val point = result.lines().filterNot { it.startsWith("ACTION:", ignoreCase = true) }.joinToString(" ").trim()
         if (point.isBlank() || !recordingLanguageMatches(session.outputLanguage, point)) throw RecordingOutputLanguageMismatch()
         val actions = result.lineSequence().filter { it.startsWith("ACTION:", ignoreCase = true) }
@@ -96,7 +97,7 @@ internal class RecordingModel(private val app: InfinityApplication) {
             index++
         }
         val overview = if (progress.points.size == 1) progress.points.single().text else {
-            generate(session, cloud, localName,
+            generate(session, cloud, localName, if (cloud == null) session.outputLanguage.localOverviewInstruction() else
                 "用 $language 写一段会议摘要，优先保留结论、分歧、数字和未决事项。输出摘要正文。",
                 "已有要点：${progress.overview}\n新增要点：\n$input", if (cloud == null) 208 else 512)
         }
@@ -137,3 +138,15 @@ internal class RecordingModel(private val app: InfinityApplication) {
 }
 
 internal class RecordingOutputLanguageMismatch : IllegalStateException()
+
+private fun RecordingLanguage.localPointInstruction() = when (this) {
+    RecordingLanguage.English -> "Translate the excerpt into English faithfully. Keep every fact, exact weekday, number and negation. Output only the English translation."
+    RecordingLanguage.Japanese -> "発言の要点を日本語で一文にまとめてください。曜日、数字、否定、未確定事項を保ってください。要点の本文だけを出力してください。"
+    RecordingLanguage.Chinese -> "将这段发言整理成简体中文要点。保留原文的日期、星期、数字、否定和未决事项。只输出要点正文。"
+}
+
+private fun RecordingLanguage.localOverviewInstruction() = when (this) {
+    RecordingLanguage.English -> "Write one concise English paragraph summarizing the notes. Copy dates, weekdays, identifiers, quantities and unresolved status exactly."
+    RecordingLanguage.Japanese -> "要点を日本語の短い一段落にまとめてください。日付、曜日、数字、否定、未確定事項を保ってください。"
+    RecordingLanguage.Chinese -> "用简体中文把要点整理成一段简洁的摘要。保留日期、星期、数字、否定和未决事项。"
+}

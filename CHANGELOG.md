@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.57.2-beta] - 2026-11-14
+
+- 以目标语言引导本地整理模型，减少中英混合录音生成英文成稿时的格式与语言错误。
+
 ## [0.57.1-beta] - 2026-11-14
 
 - 本地录音整理预先关闭 Qwen3-0.6B 的思考输出，限制单批草稿生成时间。
