@@ -2,6 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+python3 scripts/ci/screenshot-baseline.py --check-only \
+  --base native-ui/app/src/screenshotTestDebug/reference \
+  --overlay native-ui/app/src/screenshotTestDebug/reference-linux-overlay
 python3 scripts/model-catalog/update-model-catalog.py \
   --check \
   --input native-ui/app/src/main/assets/model-catalog/models-dev.normalized.json \

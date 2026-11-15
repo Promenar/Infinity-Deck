@@ -23,6 +23,14 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 本机截图验证共用 `app/src/screenshotTestDebug/reference/`，不按渠道复制像素。独立的 `screenshot-validate.yml` 保留 Linux 分片验证能力：先校验 `reference-linux-overlay/manifest.json`，再将其中已审阅的跨平台差异合成为临时参考目录，检查各类的测试结果并保留报告；基准或覆盖文件变化时必须重新审阅，截图比较阈值保持不变。设备构建只生成 APK；设备脚本会连接并修改设备，需在已授权的专用本机 AVD 上另行执行。`mainactivity-e2e` 以 `missingDimensionStrategy` 固定匹配侧载应用，其任务名保持 `assembleDeviceTest`。黑盒夹具为独立应用，保持 `:blackbox-fixture:assembleDebug`。
 
+日常 Android CI 的静态检查会先只读校验 Linux 覆盖清单。发现失配时门禁失败，并一次列出失配路径、共享图或覆盖图的哈希差异，以及未登记的文件。按日志逐项对照已验收界面后，再手动维护覆盖图和清单。在仓库根可运行同一检查。
+
+```bash
+python3 scripts/ci/screenshot-baseline.py --check-only \
+  --base native-ui/app/src/screenshotTestDebug/reference \
+  --overlay native-ui/app/src/screenshotTestDebug/reference-linux-overlay
+```
+
 需要排查托管 Linux 的截图差异时，可手动运行 GitHub Actions 的“Android 截图诊断”。该工作流使用截图验证任务，默认检查空会话预览，也可通过 `preview_filter` 指定其他预览；产物包含参考图、渲染结果与报告。它不使用发行签名材料，也不替代全量截图或发行候选验证。
 
 “Android 截图 Linux 参考图候选”可手动分片生成 Linux 渲染结果，并将每个分片的原参考图、候选及源文件清单作为 Actions 产物保留，供逐项比较和审阅；生成操作只发生在临时 runner，不自动提交或更改仓库。本机全量截图门禁仍须独立完成。全部分片成功且清单覆盖所有截图源文件后，候选才具备完整性。

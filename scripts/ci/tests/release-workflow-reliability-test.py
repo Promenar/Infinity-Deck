@@ -234,6 +234,15 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         self.assertEqual(result.returncode, 42)
         self.assertEqual(result.stdout.splitlines(), ["fixture"])
 
+    def test_static_checks_validate_tracked_linux_screenshot_overlay_read_only(self) -> None:
+        root = "native-ui/app/src/screenshotTestDebug"
+        commands = continued_shell_commands(STATIC_CHECKS, "python3")
+        checks = [command for command in commands if command[1] == "scripts/ci/screenshot-baseline.py"]
+        self.assertEqual(checks, [[
+            "python3", "scripts/ci/screenshot-baseline.py", "--check-only",
+            "--base", f"{root}/reference", "--overlay", f"{root}/reference-linux-overlay",
+        ]])
+
     def test_android_ci_runs_only_for_pull_requests_and_manual_dispatch(self) -> None:
         trigger = ANDROID_CI.split("\npermissions:", 1)[0]
         self.assertIn("  pull_request:\n", trigger)
