@@ -111,7 +111,7 @@ On the train or in bed, pick up the phone and keep going.
 
 ## Get started
 
-1. Download the APK and its `.sha256` file from [GitHub Releases](https://github.com/Promenar/Infinity-Deck/releases).
+1. Download the signed APK and its `.sha256` file from the [latest GitHub release](https://github.com/Promenar/Infinity-Deck/releases/latest).
 2. Check the SHA-256 and install. Only install packages from Releases, never CI artifacts or repackaged builds from elsewhere.
 3. Add a model provider in Settings and start chatting.
 
@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The source tree is at `v0.58.0-beta` (versionCode `163`). See the [changelog](CHANGELOG.md) for what changed.
+The current release is `v0.58.0-beta` (versionCode `163`). It adds batch recording management and live transcript drafts, improves transcription after pauses, and brings recording, file import, and note creation together in the Library. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.58.0-beta)
 
 <details>
 <summary><b>Build from source</b></summary>
@@ -177,6 +177,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. O
 **Documents & knowledge**
 
 - In the Library, use Add to record, import files, or create a note. The recorder lets you start a new recording or continue a saved one. Android Quick Settings can start recording directly. Download X-ASR for on-device Chinese–English transcription, add hotwords, and transcribe saved recordings again. Speaker analysis runs on-device and supports a local voiceprint library. Transcript cleanup can use the fast model with consent, or a local GGUF model in the sideload build.
+- Follow the draft while recording, set an output language supported by the cleanup model, and edit the finished summary in place. Long-press a recording to select multiple entries, or select all current search results and delete them together.
 - Search documents, long-term memory and the knowledge graph together, with cited answers
 - One graph per work — follow how two characters stand with each other, chapter by chapter
 - Mount outside folders; PDF, Word, Markdown, HTML and more

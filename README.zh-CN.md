@@ -111,7 +111,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 ## 开始使用
 
-1. 从 [GitHub Releases](https://github.com/Promenar/Infinity-Deck/releases) 下载 APK 和对应的 `.sha256` 文件。
+1. 从 [GitHub 最新发行页](https://github.com/Promenar/Infinity-Deck/releases/latest) 下载签名 APK 和对应的 `.sha256` 文件。
 2. 核对 SHA-256 后安装。只安装 Releases 里的正式包，不要用 CI 临时制品或来源不明的重打包版本。
 3. 在设置里添加一个模型提供商，就可以开始聊了。
 
@@ -119,7 +119,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 升级：在设置 › 关于里点“检查更新”，有新版时打开发行页下载，不会自动安装。
 
-当前源码版本为 `v0.58.0-beta`（versionCode `163`），变更见[更新日志](CHANGELOG.md)。
+当前发行版为 `v0.58.0-beta`（versionCode `163`）。本次增加录音批量管理和实时整理草稿，改善停顿后的听写，并将录音、导入文件和新建笔记集中到资料页的添加菜单。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.58.0-beta)
 
 <details>
 <summary><b>从源码构建</b></summary>
@@ -177,6 +177,7 @@ Debug APK 输出在 `native-ui/app/build/outputs/apk/sideload/debug/`。离线�
 **资料与知识**
 
 - 资料页的「＋ 添加」菜单提供录音、导入文件和新建笔记。打开录音界面后，可手动开始或续录已有录音。Android 快捷设置可直接启动录音。安装 X-ASR 听写模型后可在本机实时转写中英混读，录音可按时间戳回听、加热词和重新识别。可在本机区分说话人、调整段落归属和管理声纹。整理可使用快速模型（需确认发送文本），侧载版也可使用本地 GGUF。
+- 录制中可查看整理草稿，指定整理模型支持的输出语言，直接编辑整理成稿。长按录音可多选，也可全选当前搜索结果并批量删除。
 - 文档、长期记忆和知识图谱一起检索，答案带引用
 - 图谱按作品分开，可按篇序查人物关系的变化
 - 挂载外部文件夹；支持 PDF、Word、Markdown、HTML 等格式
