@@ -34,6 +34,10 @@ class ModelBrandResolverTest {
         assertEquals("cohere", ModelBrandResolver.brandKey("command-a"))
         assertEquals("nvidia", ModelBrandResolver.brandKey("nemotron-ultra"))
         assertEquals("ai21", ModelBrandResolver.brandKey("jamba-large"))
+        assertEquals("opencode", ModelBrandResolver.brandKey("OpenCode Go", "https://opencode.ai/zen/go/v1"))
+        assertEquals("openrouter", ModelBrandResolver.brandKey("OpenRouter"))
+        assertEquals("siliconflow", ModelBrandResolver.brandKey("SiliconFlow"))
+        assertEquals("qwen", ModelBrandResolver.brandKey("百炼 Coding Plan"))
     }
 
     @Test

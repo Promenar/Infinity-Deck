@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The current release is `v0.58.0-beta` (versionCode `163`). It adds batch recording management and live transcript drafts, improves transcription after pauses, and brings recording, file import, and note creation together in the Library. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.58.0-beta)
+The current release is `v0.59.0-beta` (versionCode `164`). It refines provider and model management UI with synchronous brand vector icons, adds popular Coding Plan and aggregator presets (`OpenCode Go`, `OpenCode Zen`, `Bailian/Zhipu/Kimi/Ark Coding Plans`, `OpenRouter`, `SiliconFlow`, `xAI`) with endpoint variant switching, fixes split-pane dividers and dialog hierarchy in Chat and Library, and adds Quick Settings tile registration plus 30-minute default-continue recording reminders. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.59.0-beta)
 
 <details>
 <summary><b>Build from source</b></summary>

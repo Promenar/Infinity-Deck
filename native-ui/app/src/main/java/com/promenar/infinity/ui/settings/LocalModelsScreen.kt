@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
@@ -59,6 +60,7 @@ import com.promenar.infinity.data.local.inference.RecordingModelPackage
 import com.promenar.infinity.data.local.inference.SlotState
 import com.promenar.infinity.data.local.inference.SlotType
 import com.promenar.infinity.data.local.inference.StoredModel
+import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityIdentifierText
@@ -237,15 +239,21 @@ internal fun LocalModelsScreenContent(
                 }
             }
             item {
-                val note = modelError?.let { stringResource(it) }
-                    ?: if (availableModels.isEmpty() && downloadProgress == null) stringResource(R.string.local_models_empty_library) else null
-                if (note != null) {
+                if (modelError != null) {
                     Text(
-                        note,
+                        stringResource(modelError),
                         Modifier.padding(horizontal = InfinitySpacing.RowHorizontal).padding(top = InfinitySpacing.FooterTop),
-                        color = if (modelError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                } else if (availableModels.isEmpty() && downloadProgress == null) {
+                    BettboxListGroup(modifier = Modifier.padding(top = 4.dp)) {
+                        InfinitySettingsRowLayout(
+                            title = stringResource(R.string.local_models_empty_library),
+                            icon = Icons.Rounded.FolderOpen,
+                            titleMaxLines = 3,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(InfinitySpacing.SectionGap))
             }

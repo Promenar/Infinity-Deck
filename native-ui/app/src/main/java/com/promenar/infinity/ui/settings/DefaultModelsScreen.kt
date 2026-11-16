@@ -2,10 +2,16 @@ package com.promenar.infinity.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ShortText
+import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -16,20 +22,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.catalog.ModelCatalogRuntime
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.ModelTimeoutSettings
-import com.promenar.infinity.ui.common.ModelPicker
-import com.promenar.infinity.ui.common.ModelSelectionUiModel
 import com.promenar.infinity.ui.common.InfinityNumericSetting
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.common.ModelPicker
+import com.promenar.infinity.ui.common.ModelSelectionUiModel
+import com.promenar.infinity.ui.common.providerDisplayName
 import com.promenar.infinity.ui.common.toModelSelectionUiModel
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
@@ -72,11 +76,19 @@ fun DefaultModelsScreen(
     }
 
     val state = remember(resolvedModels, summaryModelId, imageModelId, embeddingModelId, rerankModelId, timeouts) {
+        val summaryInfo = resolvedModels.firstOrNull { it.selectionId == summaryModelId }
+        val imageInfo = resolvedModels.firstOrNull { it.selectionId == imageModelId }
+        val embeddingInfo = resolvedModels.firstOrNull { it.selectionId == embeddingModelId }
+        val rerankInfo = resolvedModels.firstOrNull { it.selectionId == rerankModelId }
         DefaultModelsScreenState(
             summaryModelName = resolveDefaultModelName(resolvedModels, summaryModelId),
             imageModelName = resolveDefaultModelName(resolvedModels, imageModelId),
             embeddingModelName = resolveDefaultModelName(resolvedModels, embeddingModelId),
             rerankModelName = resolveDefaultModelName(resolvedModels, rerankModelId),
+            summaryProviderName = summaryInfo?.providerName,
+            imageProviderName = imageInfo?.providerName,
+            embeddingProviderName = embeddingInfo?.providerName,
+            rerankProviderName = rerankInfo?.providerName,
             timeouts = timeouts,
         )
     }
@@ -132,6 +144,10 @@ internal data class DefaultModelsScreenState(
     val imageModelName: String = "",
     val embeddingModelName: String = "",
     val rerankModelName: String = "",
+    val summaryProviderName: String? = null,
+    val imageProviderName: String? = null,
+    val embeddingProviderName: String? = null,
+    val rerankProviderName: String? = null,
     val timeouts: ModelTimeoutSettings = ModelTimeoutSettings(),
 )
 
@@ -160,17 +176,18 @@ internal fun DefaultModelsScreenContent(
                     footerModifier = Modifier.testTag("default_model_quick_description"),
                 ) {
                     DefaultModelRole.entries.forEach { role ->
-                        val selectedModelName = when (role) {
-                            DefaultModelRole.SUMMARY -> state.summaryModelName
-                            DefaultModelRole.IMAGE -> state.imageModelName
-                            DefaultModelRole.EMBEDDING -> state.embeddingModelName
-                            DefaultModelRole.RERANK -> state.rerankModelName
+                        val (selectedModelName, providerName) = when (role) {
+                            DefaultModelRole.SUMMARY -> state.summaryModelName to state.summaryProviderName
+                            DefaultModelRole.IMAGE -> state.imageModelName to state.imageProviderName
+                            DefaultModelRole.EMBEDDING -> state.embeddingModelName to state.embeddingProviderName
+                            DefaultModelRole.RERANK -> state.rerankModelName to state.rerankProviderName
                         }
                         DefaultModelSettingItem(
                             role = role,
                             selectedModelName = selectedModelName,
                             onSelectModel = { actions.onShowModelPicker(role) },
                             onClearModel = { actions.onClearModel(role) },
+                            providerName = providerName,
                         )
                     }
                 }
@@ -221,20 +238,33 @@ private val ModelTimeoutKind.labelRes: Int
         ModelTimeoutKind.RERANK -> R.string.settings_model_rerank
     }
 
+private fun DefaultModelRole.vectorIcon() = when (this) {
+    DefaultModelRole.SUMMARY -> Icons.AutoMirrored.Rounded.ShortText
+    DefaultModelRole.IMAGE -> Icons.Rounded.Image
+    DefaultModelRole.EMBEDDING -> Icons.Rounded.Hub
+    DefaultModelRole.RERANK -> Icons.AutoMirrored.Rounded.Sort
+}
+
 @Composable
 internal fun DefaultModelSettingItem(
     role: DefaultModelRole,
     selectedModelName: String,
     onSelectModel: () -> Unit,
     onClearModel: () -> Unit,
+    providerName: String? = null,
 ) {
     val selectModelLabel = stringResource(R.string.common_model_picker_title)
     val clearLabel = stringResource(R.string.common_cd_clear)
+    val subtitleText = when {
+        selectedModelName.isEmpty() -> stringResource(R.string.settings_not_set)
+        !providerName.isNullOrBlank() -> "$selectedModelName · ${providerDisplayName(providerName, protocol = null)}"
+        else -> selectedModelName
+    }
     Column {
         InfinitySettingsItem(
-            icon = null,
+            icon = role.vectorIcon(),
             title = stringResource(role.labelRes),
-            subtitle = selectedModelName.ifEmpty { stringResource(R.string.settings_not_set) },
+            subtitle = subtitleText,
             subtitleIsIdentifier = selectedModelName.isNotEmpty(),
             onClick = onSelectModel,
             showChevron = selectedModelName.isEmpty(),
@@ -257,6 +287,5 @@ internal fun DefaultModelSettingItem(
                 }
             },
         )
-
     }
 }

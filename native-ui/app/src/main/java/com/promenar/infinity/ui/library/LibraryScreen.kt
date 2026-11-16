@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -357,12 +359,17 @@ private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.Tw
             }
         }
         val contentStart = lerp(twoPaneContentStart.value, HubStripWidth.value, expansion.value).dp
+        val divider = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         Box(
             Modifier
                 .offset { IntOffset(contentStart.roundToPx(), 0) }
                 .width((windowWidth - contentStart).coerceAtLeast(0.dp))
                 .fillMaxHeight()
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.background)
+                .drawWithContent {
+                    drawContent()
+                    drawLine(divider, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
+                },
         ) {
             val stack = navigator.stack
             // 右列内前进、后退用视差推入，左列切换分区时同级叠化，与设置页两列一致。

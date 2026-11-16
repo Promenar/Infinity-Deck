@@ -43,7 +43,17 @@
     <string name="recording_shortcuts">快捷入口</string>
     <string name="recording_add_tile">添加到快捷设置</string>
     <string name="recording_tile_manual">在系统快捷设置的编辑页面添加</string>
+    <string name="recording_tile_added">已添加到系统快捷设置</string>
+    <string name="recording_tile_already_added">快捷设置面板中已存在该磁贴</string>
+    <string name="recording_tile_subtitle_idle">点击速记</string>
+    <string name="recording_tile_subtitle_active">录音中 · 点击打开</string>
+    <string name="recording_tile_subtitle_paused">已暂停 · 点击打开</string>
     <string name="recording_pin_shortcut">固定桌面快捷方式</string>
+    <string name="recording_continue_channel">录音时长提醒</string>
+    <string name="recording_continue_title">已连续录音 %1$d 分钟，是否继续？</string>
+    <string name="recording_continue_body">未操作将默认继续录音，当前录音不会中断。</string>
+    <string name="recording_continue_action_keep">继续录音（默认）</string>
+    <string name="recording_continue_action_finish">结束并保存</string>
     <string name="recording_edit">编辑</string>
     <string name="recording_document_title">文档标题</string>
     <string name="recording_save">保存</string>

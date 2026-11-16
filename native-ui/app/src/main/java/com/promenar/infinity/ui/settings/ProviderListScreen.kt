@@ -76,6 +76,7 @@ import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.ModelBrandIcon
 import com.promenar.infinity.ui.common.ModelBrandResolver
+import com.promenar.infinity.ui.common.brandAccentColor
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityGroupDivider
@@ -244,7 +245,7 @@ internal fun ProviderListScreenContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .animateItem()
-                            .padding(horizontal = 32.dp)
+                            .padding(horizontal = 20.dp)
                             .padding(top = 4.dp, bottom = InfinitySpacing.SectionHeaderBottom)
                             .testTag(UiTags.PROVIDER_LIST_SUMMARY),
                     )
@@ -484,6 +485,8 @@ private fun ProviderCard(
         credentialStatus,
     )
     val protocolLabel = provider.protocolType.label()
+    val duplicateProtocolTitle = protocolLabel.equals(providerName, ignoreCase = true) ||
+        protocolLabel.startsWith("$providerName (", ignoreCase = true)
     val host = remember(provider.baseUrl) { providerHostLabel(provider.baseUrl) }
     val missingCredential = providerCredentialMissing(provider)
     val scheme = MaterialTheme.colorScheme
@@ -582,14 +585,18 @@ private fun ProviderCard(
                 ProviderStateChip(enabledStatus, warning = false)
             }
         }
-        Text(
-            text = buildAnnotatedString {
+        val protocolOrHostText = buildAnnotatedString {
+            val showProtocol = !duplicateProtocolTitle || host.isEmpty()
+            if (showProtocol) {
                 append(protocolLabel)
-                if (host.isNotEmpty()) {
-                    append(separator)
-                    withStyle(SpanStyle(fontFamily = InfinityMonospace)) { append(host) }
-                }
-            },
+            }
+            if (host.isNotEmpty()) {
+                if (showProtocol) append(separator)
+                withStyle(SpanStyle(fontFamily = InfinityMonospace)) { append(host) }
+            }
+        }
+        Text(
+            text = protocolOrHostText,
             style = MaterialTheme.typography.bodySmall,
             color = secondary,
             maxLines = 1,
@@ -597,7 +604,15 @@ private fun ProviderCard(
         )
         Text(metaLine, style = MaterialTheme.typography.bodySmall, color = secondary)
         mediaCounts?.let { countsByType ->
-            InfinityMetaLine(providerMediaCountSegments(countsByType), style = MaterialTheme.typography.bodySmall, color = secondary)
+            val segments = listOfNotNull(
+                "${stringResource(R.string.media_settings_chat)} ${countsByType.chat}".takeIf { countsByType.chat > 0 },
+                "${stringResource(R.string.media_settings_video)} ${countsByType.video}".takeIf { countsByType.video > 0 },
+                "${stringResource(R.string.media_settings_speech)} ${countsByType.speech}".takeIf { countsByType.speech > 0 },
+                "${stringResource(R.string.media_settings_image)} ${countsByType.image}".takeIf { countsByType.image > 0 },
+            )
+            if (segments.isNotEmpty()) {
+                InfinityMetaLine(segments, style = MaterialTheme.typography.bodySmall, color = secondary)
+            }
         }
         ProviderConnectionLine(provider.id, status, nowMillis)
     }
@@ -671,22 +686,30 @@ private fun ProviderStateChip(text: String, warning: Boolean) {
     )
 }
 
-/** 提供商头像：40dp 圆角方块，能识别品牌时显示品牌标志，否则显示名称首字。 */
+/** 提供商头像：40dp 圆角方块，能识别品牌时显示品牌柔色底与同步矢量标志，否则显示名称首字。 */
 @Composable
 private fun ProviderAvatar(name: String, baseUrl: String?) {
     val brand = remember(name, baseUrl) { ModelBrandResolver.brandKey(name, baseUrl) }
+    val accent = brandAccentColor(brand)
+    val container = when {
+        accent != null -> accent.copy(alpha = 0.14f)
+        brand != null -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
     Box(
         modifier = Modifier
             .size(ProviderAvatarSize)
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (brand != null) MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)
-                else MaterialTheme.colorScheme.secondaryContainer,
-            ),
+            .background(container),
         contentAlignment = Alignment.Center,
     ) {
         if (brand != null) {
-            ModelBrandIcon(modelId = brand, modifier = Modifier.size(22.dp), contentDescription = null)
+            ModelBrandIcon(
+                modelId = brand,
+                modifier = Modifier.size(22.dp),
+                contentDescription = null,
+                fallbackTint = accent ?: MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         } else {
             Text(
                 text = name.trim().take(1).uppercase().ifEmpty { "?" },

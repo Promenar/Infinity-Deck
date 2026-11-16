@@ -265,3 +265,29 @@ val InfinityAvatarHighlight = Color.White.copy(alpha = 0.35f)
 
 /** 渐隐遮罩（BlendMode.DstIn）只取 alpha：不透明处保留内容、透明处擦除，与主题无关。 */
 val InfinityFadeMaskOpaque = Color.Black
+
+/** 模型与提供商品牌的辨识强调色（集中定义于主题色表以满足静态色值约束）。 */
+internal fun infinityBrandAccentColor(brand: String?): Color? = when (brand) {
+    "openai" -> Color(0xFF10A37F)
+    "anthropic" -> Color(0xFFD97757)
+    "google" -> Color(0xFF4285F4)
+    "deepseek" -> Color(0xFF4D6BFE)
+    "qwen" -> Color(0xFF615CED)
+    "zhipu" -> Color(0xFF3B82F6)
+    "kimi" -> Color(0xFF5865F2)
+    "volcengine" -> Color(0xFF06B6D4)
+    "minimax" -> Color(0xFFEC4899)
+    "mistral" -> Color(0xFFFA520F)
+    "baichuan" -> Color(0xFFF97316)
+    "opencode" -> Color(0xFF14B8A6)
+    "openrouter" -> Color(0xFF6366F1)
+    "siliconflow" -> Color(0xFF8B5CF6)
+    "grok" -> Color(0xFF64748B)
+    "cohere" -> Color(0xFF39594D)
+    "meta" -> Color(0xFF0082FB)
+    "ollama" -> Color(0xFF22C55E)
+    "groq" -> Color(0xFFF55036)
+    "nvidia" -> Color(0xFF74B71B)
+    "local" -> Color(0xFF22C55E)
+    else -> null
+}

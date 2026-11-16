@@ -1,7 +1,5 @@
 package com.promenar.infinity.recording
 
-import android.app.StatusBarManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
@@ -202,18 +200,10 @@ internal fun RecordingSettingsScreen(
                 }
             }
             item {
-                val tileLabel = stringResource(R.string.recording_title)
                 InfinitySettingsSection(title = stringResource(R.string.recording_shortcuts)) {
                     if (Build.VERSION.SDK_INT >= 33) {
                         InfinitySettingsItem(title = stringResource(R.string.recording_add_tile), onClick = {
-                            runCatching {
-                                context.getSystemService(StatusBarManager::class.java).requestAddTileService(
-                                    ComponentName(context, RecordingTileService::class.java),
-                                    tileLabel,
-                                    Icon.createWithResource(context, R.drawable.ic_recording_mic),
-                                    context.mainExecutor,
-                                ) { }
-                            }
+                            requestAddRecordingTile(context)
                         })
                     } else {
                         InfinitySettingsItem(title = stringResource(R.string.recording_add_tile),

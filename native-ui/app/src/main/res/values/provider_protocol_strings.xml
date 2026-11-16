@@ -31,4 +31,22 @@
     <string name="provider_preset_baichuan">Baichuan</string>
     <string name="provider_preset_custom">Custom</string>
     <string name="provider_preset_local">On-device</string>
+    <string name="provider_preset_bailian_coding">Bailian Coding Plan</string>
+    <string name="provider_preset_zhipu_coding">Zhipu Coding Plan</string>
+    <string name="provider_preset_kimi_coding">Kimi Coding Plan</string>
+    <string name="provider_preset_ark_coding">Ark Coding Plan</string>
+
+    <!-- 预设分类与端点变体 -->
+    <string name="provider_preset_cat_subscription">Subscription &amp; Gateways</string>
+    <string name="provider_preset_cat_official">Official Cloud</string>
+    <string name="provider_preset_cat_custom">Local &amp; Custom</string>
+    <string name="provider_preset_variant_title">Endpoint &amp; Protocol</string>
+    <string name="provider_variant_openai_compat">OpenAI Compat</string>
+    <string name="provider_variant_anthropic">Anthropic</string>
+    <string name="provider_variant_coding">Coding Plan</string>
+    <string name="provider_variant_standard">Standard API</string>
+    <string name="provider_variant_cn">China (.cn)</string>
+    <string name="provider_variant_global">Global</string>
+    <string name="provider_variant_beijing">Beijing</string>
+    <string name="provider_variant_singapore">Singapore</string>
 </resources>

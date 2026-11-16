@@ -135,4 +135,26 @@ class ProvidersModelsPresentationTest {
         assertThat(reconcileEditingModelId("gone", models)).isNull()
         assertThat(reconcileEditingModelId(null, models)).isNull()
     }
+
+    @Test
+    fun `全部预设及端点变体合法且可精确回溯匹配`() {
+        PROVIDER_PRESETS.filter { it.name != "Custom" }.forEach { preset ->
+            assertThat(isProviderEndpointAllowed(preset.protocolType, preset.defaultBaseUrl)).isTrue()
+            preset.variants.forEach { variant ->
+                assertThat(isProviderEndpointAllowed(variant.protocolType, variant.baseUrl)).isTrue()
+            }
+        }
+        assertThat(matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Generic_OpenAI_Compat, "https://opencode.ai/zen/go/v1")?.name)
+            .isEqualTo("OpenCode Go")
+        assertThat(matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Anthropic_Messages, "https://opencode.ai/zen/go")?.name)
+            .isEqualTo("OpenCode Go")
+        assertThat(matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Anthropic_Messages, "https://coding.dashscope.aliyuncs.com/apps/anthropic")?.name)
+            .isEqualTo("百炼 Coding Plan")
+        assertThat(matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Anthropic_Messages, "https://api.kimi.com/coding")?.name)
+            .isEqualTo("Kimi Coding Plan")
+        assertThat(matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4")?.name)
+            .isEqualTo("智谱 Coding Plan")
+        assertThat(matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Generic_OpenAI_Compat, "https://gateway.example.com/v1")?.name)
+            .isEqualTo("Custom")
+    }
 }

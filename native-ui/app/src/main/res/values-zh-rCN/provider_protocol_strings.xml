@@ -31,4 +31,22 @@
     <string name="provider_preset_baichuan">百川</string>
     <string name="provider_preset_custom">自定义</string>
     <string name="provider_preset_local">本地推理</string>
+    <string name="provider_preset_bailian_coding">百炼 Coding Plan</string>
+    <string name="provider_preset_zhipu_coding">智谱 Coding Plan</string>
+    <string name="provider_preset_kimi_coding">Kimi Coding Plan</string>
+    <string name="provider_preset_ark_coding">方舟 Coding Plan</string>
+
+    <!-- 预设分类与端点变体 -->
+    <string name="provider_preset_cat_subscription">订阅计划与聚合网关</string>
+    <string name="provider_preset_cat_official">主流官方云</string>
+    <string name="provider_preset_cat_custom">本地与自定义</string>
+    <string name="provider_preset_variant_title">端点与协议变体</string>
+    <string name="provider_variant_openai_compat">OpenAI 兼容</string>
+    <string name="provider_variant_anthropic">Anthropic 协议</string>
+    <string name="provider_variant_coding">Coding 专属</string>
+    <string name="provider_variant_standard">标准 API</string>
+    <string name="provider_variant_cn">国内站 (.cn)</string>
+    <string name="provider_variant_global">国际站</string>
+    <string name="provider_variant_beijing">国内（北京）</string>
+    <string name="provider_variant_singapore">海外（新加坡）</string>
 </resources>

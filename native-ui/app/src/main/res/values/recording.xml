@@ -43,7 +43,17 @@
     <string name="recording_shortcuts">Shortcuts</string>
     <string name="recording_add_tile">Add Quick Settings tile</string>
     <string name="recording_tile_manual">Add from the system Quick Settings editor</string>
+    <string name="recording_tile_added">Quick Settings tile added</string>
+    <string name="recording_tile_already_added">Quick Settings tile is already added</string>
+    <string name="recording_tile_subtitle_idle">Tap to record</string>
+    <string name="recording_tile_subtitle_active">Recording · Tap to open</string>
+    <string name="recording_tile_subtitle_paused">Paused · Tap to open</string>
     <string name="recording_pin_shortcut">Pin launcher shortcut</string>
+    <string name="recording_continue_channel">Recording duration reminder</string>
+    <string name="recording_continue_title">Recorded for %1$d min. Continue?</string>
+    <string name="recording_continue_body">Recording continues automatically if you take no action.</string>
+    <string name="recording_continue_action_keep">Continue (Default)</string>
+    <string name="recording_continue_action_finish">Finish &amp; Save</string>
     <string name="recording_edit">Edit</string>
     <string name="recording_document_title">Document title</string>
     <string name="recording_save">Save</string>

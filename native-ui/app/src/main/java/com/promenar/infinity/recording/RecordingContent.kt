@@ -62,6 +62,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.OutlinedTextField
@@ -222,6 +223,7 @@ internal fun RecordingPageContent(
     editor: RecordingInlineEditor? = null,
     batchOperation: RecordingBatchOperation = remember { RecordingBatchOperation() },
     onDeleteRecordings: suspend (Collection<String>) -> RecordingBatchDeletion = { RecordingBatchDeletion() },
+    onAddTile: (() -> Unit)? = null,
 ) {
     var historyQuery by rememberSaveable { mutableStateOf("") }
     var selectedRecordings by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
@@ -340,6 +342,7 @@ internal fun RecordingPageContent(
                                     },
                                     enabled = !deleting,
                                     animationsEnabled = animationsEnabled,
+                                    onAddTile = onAddTile,
                                 )
                                 RecordingDeleteNotice(deleteResult, animationsEnabled,
                                     Modifier.align(Alignment.BottomCenter).widthIn(max = FailureNoticeMaxWidth))
@@ -999,12 +1002,14 @@ private fun RecordingOrganizedList(
 
 private val recordingSeekLink = Regex("\\[(\\d+:[\\d:]+)]\\(recording://seek/(\\d+)\\)")
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RecordingWorkspaceHistory(
     state: RecordingScreenState, list: LazyListState, query: String, onQuery: (String) -> Unit,
     onStart: () -> Unit, onReturn: () -> Unit, onSelect: (RecordingSession) -> Unit,
     selecting: Boolean, selected: Set<String>, onSelectionChange: (Set<String>) -> Unit,
     onExitSelection: () -> Unit, onDeleteSelection: () -> Unit, enabled: Boolean, animationsEnabled: Boolean,
+    onAddTile: (() -> Unit)? = null,
 ) {
     val active = state.sessions.firstOrNull { it.id == state.activeId }
     val today = stringResource(R.string.recording_today)
@@ -1060,9 +1065,27 @@ private fun RecordingWorkspaceHistory(
                                 style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.fillMaxWidth(if (wide) .55f else .72f))
                             Spacer(Modifier.height(3.dp))
-                            InfinityPillButton(stringResource(if (active == null) R.string.recording_start else R.string.recording_return_active),
-                                if (active == null) onStart else onReturn, tone = InfinityPillTone.PRIMARY,
-                                enabled = state.ready && enabled, icon = Icons.Rounded.Mic)
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                InfinityPillButton(
+                                    stringResource(if (active == null) R.string.recording_start else R.string.recording_return_active),
+                                    if (active == null) onStart else onReturn,
+                                    tone = InfinityPillTone.PRIMARY,
+                                    enabled = state.ready && enabled,
+                                    icon = Icons.Rounded.Mic,
+                                )
+                                if (onAddTile != null) {
+                                    InfinityPillButton(
+                                        text = stringResource(R.string.recording_add_tile),
+                                        onClick = onAddTile,
+                                        tone = InfinityPillTone.NEUTRAL,
+                                        enabled = enabled,
+                                        icon = Icons.Rounded.Widgets,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

@@ -6,6 +6,21 @@ import java.util.Locale
 /** 录音资料可阅读和编辑，自动索引不得把原文交给向量或图谱提供商。 */
 internal const val LOCAL_RECORDING_MIME = "text/x-infinity-recording-markdown"
 
+/** 长时录音提醒周期（默认 30 分钟提醒一次，未操作默认继续）。 */
+internal const val RECORDING_CONTINUE_REMINDER_INTERVAL_MS = 30 * 60 * 1_000L
+
+/** 根据累计活跃录音时长计算已达到的最新 30 分钟提醒节点（分钟数）；未满周期返回 null。 */
+internal fun recordingContinueReminderMinutes(
+    elapsedMs: Long,
+    intervalMs: Long = RECORDING_CONTINUE_REMINDER_INTERVAL_MS,
+): Int? {
+    if (elapsedMs < intervalMs || intervalMs <= 0L) return null
+    val steps = elapsedMs / intervalMs
+    val stepMinutes = intervalMs / 60_000L
+    if (steps <= 0L || stepMinutes <= 0L) return null
+    return (steps * stepMinutes).toInt()
+}
+
 @Serializable
 internal enum class RecordingMode { Auto, Local, Raw }
 

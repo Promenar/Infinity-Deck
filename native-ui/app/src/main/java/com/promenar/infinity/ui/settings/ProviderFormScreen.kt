@@ -4,11 +4,14 @@ import com.promenar.infinity.ui.theme.InfinityMotion
 import android.content.res.Resources
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -96,8 +99,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.promenar.infinity.ui.common.InfinityPopoverSpec
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.ModelBrandResolver
+import com.promenar.infinity.ui.common.brandAccentColor
 import com.promenar.infinity.ui.common.infinityPopoverAnchor
 import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
+
+/** 预设分组：主流官方云、订阅与聚合网关、本地与自定义。 */
+enum class ProviderPresetCategory(@StringRes val titleRes: Int) {
+    OFFICIAL_CLOUD(R.string.provider_preset_cat_official),
+    SUBSCRIPTION_GATEWAY(R.string.provider_preset_cat_subscription),
+    LOCAL_CUSTOM(R.string.provider_preset_cat_custom),
+}
+
+/** 同一平台下的端点地域或协议变体（如 OpenAI Compat vs Anthropic Messages）。 */
+data class ProviderPresetVariant(
+    val label: String,
+    val protocolType: ProtocolType,
+    val baseUrl: String,
+    @StringRes val labelRes: Int? = null,
+)
+
+@Composable
+fun ProviderPresetVariant.displayLabel(): String = labelRes?.let { stringResource(it) } ?: label
 
 /** [name] 是稳定键（分支判断、testTag），界面名称取 [label]。 */
 data class ProviderPreset(
@@ -107,6 +132,8 @@ data class ProviderPreset(
     val iconRes: Int? = null,
     /** 需要翻译的预设名；为空时品牌名 [name] 直接显示。 */
     @StringRes val labelRes: Int? = null,
+    val category: ProviderPresetCategory = ProviderPresetCategory.OFFICIAL_CLOUD,
+    val variants: List<ProviderPresetVariant> = emptyList(),
 )
 
 fun ProviderPreset.label(resources: Resources): String = labelRes?.let(resources::getString) ?: name
@@ -127,6 +154,7 @@ internal data class ProviderFormUiState(
     val secretInput: String = "",
     val hasStoredCredential: Boolean = false,
     val localProtocol: ProtocolType = ProtocolType.Generic_OpenAI_Compat,
+    val variantProtocol: ProtocolType? = null,
     val protocolMenuExpanded: Boolean = false,
     val usesVertexCredential: Boolean = false,
     val isLocal: Boolean = false,
@@ -153,6 +181,7 @@ internal data class ProviderFormActions(
     val onBack: () -> Unit = {},
     val onPresetMenuExpandedChange: (Boolean) -> Unit = {},
     val onPresetSelected: (ProviderPreset) -> Unit = {},
+    val onVariantSelected: (ProviderPresetVariant) -> Unit = {},
     val onNameChange: (String) -> Unit = {},
     val onBaseUrlChange: (String) -> Unit = {},
     val onSecretChange: (String) -> Unit = {},
@@ -209,33 +238,200 @@ val PROVIDER_PRESETS = listOf(
     ProviderPreset("Anthropic", ProtocolType.Anthropic_Messages, "https://api.anthropic.com", R.drawable.ic_provider_anthropic),
     ProviderPreset("Gemini", ProtocolType.Google_Gemini, "https://generativelanguage.googleapis.com", R.drawable.ic_provider_gemini),
     ProviderPreset("Vertex AI", ProtocolType.Google_VertexAI, "https://us-central1-aiplatform.googleapis.com", R.drawable.ic_provider_gemini),
-    ProviderPreset("Kimi", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.drawable.ic_provider_kimi),
-    ProviderPreset("通义千问", ProtocolType.Qwen_DashScope, "https://dashscope.aliyuncs.com/compatible-mode", R.drawable.ic_provider_qwen, R.string.provider_preset_qwen),
-    ProviderPreset("智谱", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.drawable.ic_provider_zhipu, R.string.provider_preset_zhipu),
+    ProviderPreset(
+        name = "Kimi",
+        protocolType = ProtocolType.Moonshot_Kimi,
+        defaultBaseUrl = "https://api.moonshot.cn",
+        iconRes = R.drawable.ic_provider_kimi,
+        variants = listOf(
+            ProviderPresetVariant("China (.cn)", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.string.provider_variant_cn),
+            ProviderPresetVariant("Global (.ai)", ProtocolType.Generic_OpenAI_Compat, "https://api.moonshot.ai/v1", R.string.provider_variant_global),
+        ),
+    ),
+    ProviderPreset(
+        name = "通义千问",
+        protocolType = ProtocolType.Qwen_DashScope,
+        defaultBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode",
+        iconRes = R.drawable.ic_provider_qwen,
+        labelRes = R.string.provider_preset_qwen,
+        variants = listOf(
+            ProviderPresetVariant("Beijing", ProtocolType.Qwen_DashScope, "https://dashscope.aliyuncs.com/compatible-mode", R.string.provider_variant_beijing),
+            ProviderPresetVariant("Singapore", ProtocolType.Qwen_DashScope, "https://dashscope-intl.aliyuncs.com/compatible-mode", R.string.provider_variant_singapore),
+        ),
+    ),
+    ProviderPreset(
+        name = "智谱",
+        protocolType = ProtocolType.Zhipu_GLM,
+        defaultBaseUrl = "https://open.bigmodel.cn/api/paas",
+        iconRes = R.drawable.ic_provider_zhipu,
+        labelRes = R.string.provider_preset_zhipu,
+        variants = listOf(
+            ProviderPresetVariant("Standard API", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.string.provider_variant_standard),
+            ProviderPresetVariant("Coding Plan", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_coding),
+        ),
+    ),
     ProviderPreset("豆包", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_ark_media),
-    ProviderPreset("MiniMax", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1"),
+    ProviderPreset(
+        name = "MiniMax",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://api.minimax.io/v1",
+        iconRes = R.drawable.ic_provider_minimax,
+        variants = listOf(
+            ProviderPresetVariant("Global (.io)", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1", R.string.provider_variant_global),
+            ProviderPresetVariant("China (.cn)", ProtocolType.Generic_OpenAI_Compat, "https://api.minimaxi.com/v1", R.string.provider_variant_cn),
+            ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimaxi.com/anthropic", R.string.provider_variant_anthropic),
+        ),
+    ),
+    ProviderPreset("xAI", ProtocolType.Generic_OpenAI_Compat, "https://api.x.ai/v1", R.drawable.ic_provider_xai),
     ProviderPreset("百川", ProtocolType.Baichuan, "https://api.baichuan-ai.com", R.drawable.ic_provider_baichuan, R.string.provider_preset_baichuan),
     ProviderPreset("Mistral", ProtocolType.Mistral_Chat, "https://api.mistral.ai", R.drawable.ic_provider_mistral),
-    ProviderPreset("Local", ProtocolType.Local, "", R.drawable.ic_provider_local, R.string.provider_preset_local),
-    ProviderPreset("Custom", ProtocolType.Generic_OpenAI_Compat, "", R.drawable.ic_provider_custom, R.string.provider_preset_custom),
+    // 订阅计划与聚合网关
+    ProviderPreset(
+        name = "OpenCode Go",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://opencode.ai/zen/go/v1",
+        iconRes = R.drawable.ic_provider_opencode,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://opencode.ai/zen/go/v1", R.string.provider_variant_openai_compat),
+            ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://opencode.ai/zen/go", R.string.provider_variant_anthropic),
+        ),
+    ),
+    ProviderPreset(
+        name = "OpenCode Zen",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://opencode.ai/zen/v1",
+        iconRes = R.drawable.ic_provider_opencode,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://opencode.ai/zen/v1", R.string.provider_variant_openai_compat),
+            ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://opencode.ai/zen", R.string.provider_variant_anthropic),
+        ),
+    ),
+    ProviderPreset(
+        name = "百炼 Coding Plan",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://coding.dashscope.aliyuncs.com/v1",
+        iconRes = R.drawable.ic_provider_qwen,
+        labelRes = R.string.provider_preset_bailian_coding,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://coding.dashscope.aliyuncs.com/v1", R.string.provider_variant_openai_compat),
+            ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://coding.dashscope.aliyuncs.com/apps/anthropic", R.string.provider_variant_anthropic),
+        ),
+    ),
+    ProviderPreset(
+        name = "智谱 Coding Plan",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://open.bigmodel.cn/api/coding/paas/v4",
+        iconRes = R.drawable.ic_provider_zhipu,
+        labelRes = R.string.provider_preset_zhipu_coding,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("Coding Plan", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_coding),
+            ProviderPresetVariant("Standard API", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.string.provider_variant_standard),
+        ),
+    ),
+    ProviderPreset(
+        name = "Kimi Coding Plan",
+        protocolType = ProtocolType.Anthropic_Messages,
+        defaultBaseUrl = "https://api.kimi.com/coding",
+        iconRes = R.drawable.ic_provider_kimi,
+        labelRes = R.string.provider_preset_kimi_coding,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://api.kimi.com/coding", R.string.provider_variant_anthropic),
+            ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://api.kimi.com/coding/v1", R.string.provider_variant_openai_compat),
+        ),
+    ),
+    ProviderPreset(
+        name = "方舟 Coding Plan",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://ark.cn-beijing.volces.com/api/coding/v3",
+        iconRes = R.drawable.ic_provider_doubao,
+        labelRes = R.string.provider_preset_ark_coding,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("Coding Plan", ProtocolType.Generic_OpenAI_Compat, "https://ark.cn-beijing.volces.com/api/coding/v3", R.string.provider_variant_coding),
+            ProviderPresetVariant("Standard API", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.string.provider_variant_standard),
+        ),
+    ),
+    ProviderPreset(
+        name = "OpenRouter",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://openrouter.ai/api/v1",
+        iconRes = R.drawable.ic_provider_openrouter,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+    ),
+    ProviderPreset(
+        name = "SiliconFlow",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://api.siliconflow.cn/v1",
+        iconRes = R.drawable.ic_provider_siliconflow,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("China (.cn)", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.cn/v1", R.string.provider_variant_cn),
+            ProviderPresetVariant("Global", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.com/v1", R.string.provider_variant_global),
+        ),
+    ),
+    // 本地与自定义
+    ProviderPreset("Local", ProtocolType.Local, "", R.drawable.ic_provider_local, R.string.provider_preset_local, ProviderPresetCategory.LOCAL_CUSTOM),
+    ProviderPreset("Custom", ProtocolType.Generic_OpenAI_Compat, "", R.drawable.ic_provider_custom, R.string.provider_preset_custom, ProviderPresetCategory.LOCAL_CUSTOM),
 )
 
-/** 通用协议按主机匹配品牌，保留自定义提供商的协议选择入口。 */
+/** 通用协议按主机与路径精准匹配预设，保留自定义提供商的协议选择入口。 */
 internal fun matchProviderPreset(presets: List<ProviderPreset>, protocol: ProtocolType, baseUrl: String): ProviderPreset? {
-    if (protocol != ProtocolType.Generic_OpenAI_Compat) return presets.firstOrNull { it.protocolType == protocol }
-    fun hostOrNull(value: String): String? = try {
-        java.net.URI(value).host?.lowercase()
+    fun parseUri(value: String): java.net.URI? = try {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) null else java.net.URI(trimmed)
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: java.net.URISyntaxException) {
         null
     }
-    val host = hostOrNull(baseUrl)
-    return presets.firstOrNull { preset ->
-        preset.protocolType == protocol && preset.name != "Custom" && host != null &&
-            (host == hostOrNull(preset.defaultBaseUrl) ||
-                preset.name == "MiniMax" && host in setOf("api.minimax.io", "api.minimaxi.com"))
-    } ?: presets.firstOrNull { it.name == "Custom" }
+
+    val inputUri = parseUri(baseUrl)
+    val inputHost = inputUri?.host?.lowercase()
+    val inputPath = inputUri?.path?.trimEnd('/')?.lowercase().orEmpty()
+
+    if (inputHost != null) {
+        fun matchesEndpoint(url: String): Boolean {
+            val uri = parseUri(url)
+            val vHost = uri?.host?.lowercase()
+            val vPath = uri?.path?.trimEnd('/')?.lowercase().orEmpty()
+            return vHost == inputHost && vPath.isNotEmpty() && inputPath.startsWith(vPath)
+        }
+        // 第一优先级：主默认端点 host + 路径前缀精准命中（且协议一致或兼容），避免 Coding Plan 被同名标准预设截胡
+        presets.firstOrNull { preset ->
+            preset.name != "Custom" && preset.name != "Local" &&
+                preset.protocolType == protocol && matchesEndpoint(preset.defaultBaseUrl)
+        }?.let { return it }
+        // 第二优先级：主默认端点 host + 路径前缀命中（允许在同预设内切换了协议变体）
+        presets.firstOrNull { preset ->
+            preset.name != "Custom" && preset.name != "Local" && matchesEndpoint(preset.defaultBaseUrl)
+        }?.let { return it }
+        // 第三优先级：命中所属预设下的任意变体端点
+        presets.firstOrNull { preset ->
+            preset.name != "Custom" && preset.name != "Local" &&
+                preset.variants.any { matchesEndpoint(it.baseUrl) }
+        }?.let { return it }
+    }
+
+    if (protocol != ProtocolType.Generic_OpenAI_Compat) {
+        return presets.firstOrNull { it.protocolType == protocol && it.category != ProviderPresetCategory.SUBSCRIPTION_GATEWAY }
+            ?: presets.firstOrNull { it.protocolType == protocol }
+    }
+
+    if (inputHost != null) {
+        val hostMatch = presets.firstOrNull { preset ->
+            preset.name != "Custom" && preset.name != "Local" &&
+                (listOf(ProviderPresetVariant(preset.name, preset.protocolType, preset.defaultBaseUrl)) + preset.variants).any { variant ->
+                    variant.protocolType == protocol && parseUri(variant.baseUrl)?.host?.lowercase() == inputHost
+                }
+        }
+        if (hostMatch != null) return hostMatch
+    }
+    return presets.firstOrNull { it.name == "Custom" }
 }
 
 internal val CUSTOM_PROTOCOL_OPTIONS = listOf(
@@ -281,6 +477,7 @@ fun ProviderFormScreen(
     var saveFailed by remember { mutableStateOf(false) }
     var unavailableLocalConfiguration by remember { mutableStateOf(false) }
     var localProtocol by remember { mutableStateOf<ProtocolType>(ProtocolType.Generic_OpenAI_Compat) }
+    var variantProtocol by remember { mutableStateOf<ProtocolType?>(null) }
     var protocolMenuExpanded by remember { mutableStateOf(false) }
     var connectionTestState by remember { mutableStateOf(ProviderConnectionTestState.Idle) }
     var connectionTestFailureMessage by remember { mutableStateOf<String?>(null) }
@@ -326,6 +523,11 @@ fun ProviderFormScreen(
                     localProtocol = config.protocolType.takeUnless {
                         it is ProtocolType.Local && !app.localInferenceRuntimeGate.isAvailable
                     } ?: ProtocolType.Generic_OpenAI_Compat
+                    variantProtocol = null
+                } else if (config.protocolType != selectedPreset.protocolType) {
+                    variantProtocol = config.protocolType
+                } else {
+                    variantProtocol = null
                 }
                 loadedConnection = config.protocolType to config.baseUrl
             } else {
@@ -346,7 +548,11 @@ fun ProviderFormScreen(
         }
     }
 
-    val effectiveProtocol = if (selectedPreset.name == "Custom") localProtocol else selectedPreset.protocolType
+    val effectiveProtocol = when {
+        selectedPreset.name == "Custom" -> localProtocol
+        variantProtocol != null -> variantProtocol!!
+        else -> selectedPreset.protocolType
+    }
     val endpointValid = isProviderEndpointAllowed(effectiveProtocol, baseUrl)
     val protocolUnsupported = isRetiredProviderProtocol(effectiveProtocol)
     val legacyMigrationBlocked = requiresLegacyCredentialMigration(
@@ -566,6 +772,7 @@ fun ProviderFormScreen(
             secretInput = secretInput,
             hasStoredCredential = hasCredential,
             localProtocol = localProtocol,
+            variantProtocol = variantProtocol,
             protocolMenuExpanded = protocolMenuExpanded,
             usesVertexCredential = effectiveProtocol is ProtocolType.Google_VertexAI,
             isLocal = effectiveProtocol is ProtocolType.Local,
@@ -594,12 +801,20 @@ fun ProviderFormScreen(
             onPresetMenuExpandedChange = { presetMenuExpanded = it },
             onPresetSelected = { preset ->
                 selectedPreset = preset
+                variantProtocol = null
                 if (preset.name != "Custom" && preset.name != "Local") {
                     name = preset.label(resources)
                     baseUrl = preset.defaultBaseUrl
                 }
                 manualApiSource = null
                 presetMenuExpanded = false
+                connectionTestState = ProviderConnectionTestState.Idle
+                connectionTestFailureMessage = null
+            },
+            onVariantSelected = { variant ->
+                variantProtocol = variant.protocolType
+                baseUrl = variant.baseUrl
+                manualApiSource = null
                 connectionTestState = ProviderConnectionTestState.Idle
                 connectionTestFailureMessage = null
             },
@@ -861,45 +1076,81 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
         scrollContent = true,
         title = title,
         onDismiss = { actions.onPresetMenuExpandedChange(false) },
-        popover = InfinityPopoverSpec(anchor),
+        popover = InfinityPopoverSpec(anchor, width = ProviderProtocolPopoverWidth),
     ) {
-        state.availablePresets.forEach { preset ->
-            val selected = preset == state.selectedPreset
-            InfinitySettingsItem(
-                horizontalPadding = 0.dp,
-                title = preset.label(),
-                leadingContent = { ProviderPresetIcon(preset, selected) },
-                onClick = { actions.onPresetSelected(preset) },
-                role = Role.RadioButton,
-                selected = selected,
-                modifier = Modifier.testTag("provider_preset:${preset.name}"),
-                trailingContent = {
-                    if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                },
-            )
+        val grouped = listOf(
+            ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+            ProviderPresetCategory.OFFICIAL_CLOUD,
+            ProviderPresetCategory.LOCAL_CUSTOM,
+        )
+        grouped.forEach { category ->
+            val items = state.availablePresets.filter { it.category == category }
+            if (items.isNotEmpty()) {
+                Text(
+                    text = stringResource(category.titleRes),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+                )
+                items.forEach { preset ->
+                    val selected = preset == state.selectedPreset
+                    val subtitleHost = preset.defaultBaseUrl.removePrefix("https://").removePrefix("http://")
+                        .takeIf { it.isNotEmpty() }
+                    InfinitySettingsItem(
+                        horizontalPadding = 0.dp,
+                        title = preset.label(),
+                        subtitle = subtitleHost,
+                        subtitleIsIdentifier = subtitleHost != null,
+                        leadingContent = { ProviderPresetIcon(preset, selected) },
+                        onClick = { actions.onPresetSelected(preset) },
+                        role = Role.RadioButton,
+                        selected = selected,
+                        modifier = Modifier.testTag("provider_preset:${preset.name}"),
+                        trailingContent = {
+                            if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        },
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun ProviderPresetIcon(preset: ProviderPreset, selected: Boolean) {
-    val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    preset.iconRes?.let { iconId ->
-        Icon(
-            painter = painterResource(iconId),
+    val brand = remember(preset.name, preset.defaultBaseUrl) {
+        ModelBrandResolver.brandKey(preset.name, preset.defaultBaseUrl)
+    }
+    val accent = brandAccentColor(brand)
+    val container = when {
+        accent != null -> accent.copy(alpha = if (selected) 0.22f else 0.14f)
+        selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+        else -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)
+    }
+    val tint = accent ?: if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier = Modifier
+            .size(30.dp)
+            .background(container, RoundedCornerShape(9.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        preset.iconRes?.let { iconId ->
+            Icon(
+                painter = painterResource(iconId),
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(18.dp),
+            )
+        } ?: Icon(
+            imageVector = Icons.Rounded.Psychology,
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(18.dp),
         )
-    } ?: Icon(
-        imageVector = Icons.Rounded.Psychology,
-        contentDescription = null,
-        tint = tint,
-        modifier = Modifier.size(20.dp),
-    )
+    }
 }
 
-/** 接口：公网 / Tailscale 内网分段与状态行、tailnet 设备、接口地址与地址提示；仅内网时显示脚注。 */
+/** 接口：公网 / Tailscale 内网分段与状态行、预设端点变体快切、tailnet 设备、接口地址与地址提示；仅内网时显示脚注。 */
 @Composable
 private fun ProviderInterfaceSection(
     state: ProviderFormUiState,
@@ -907,6 +1158,12 @@ private fun ProviderInterfaceSection(
     initialPeerPickerOpen: Boolean,
 ) {
     val tailnet = state.apiSource?.selected == ProviderApiSource.TAILNET
+    val variants = state.selectedPreset.variants
+    val effectiveProtocol = when {
+        state.selectedPreset.name == "Custom" -> state.localProtocol
+        state.variantProtocol != null -> state.variantProtocol
+        else -> state.selectedPreset.protocolType
+    }
     InfinitySettingsSection(
         title = stringResource(R.string.provider_form_group_interface),
         footer = if (tailnet) stringResource(R.string.provider_api_source_footer) else null,
@@ -918,6 +1175,40 @@ private fun ProviderInterfaceSection(
                 onSourceSelected = actions.onApiSourceSelected,
                 onOpenTailscaleSettings = actions.onOpenTailscaleSettings,
             )
+            InfinityGroupDivider()
+        }
+        if (variants.size > 1) {
+            val activeVariant = variants.firstOrNull { variant ->
+                variant.protocolType == effectiveProtocol &&
+                    state.baseUrl.trim().trimEnd('/').equals(variant.baseUrl.trimEnd('/'), ignoreCase = true)
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = InfinitySpacing.Small),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.provider_preset_variant_title),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                InfinitySegmentedControl(
+                    segments = variants.map { variant ->
+                        InfinitySegment(
+                            value = variant,
+                            label = variant.displayLabel(),
+                            tag = "provider_variant:${variant.protocolType.persistedId}",
+                        )
+                    },
+                    selected = activeVariant,
+                    onSelect = actions.onVariantSelected,
+                    fillWidth = variants.size <= 2,
+                    compact = true,
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("provider_preset_variants"),
+                )
+            }
             InfinityGroupDivider()
         }
         // 选 Tailscale 内网时先选设备，接口地址随之填好。

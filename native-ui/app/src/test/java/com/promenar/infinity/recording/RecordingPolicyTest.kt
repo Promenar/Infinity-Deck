@@ -114,4 +114,14 @@ class RecordingPolicyTest {
         ))
         assertEquals("# 课程\n\n## 整理稿\n\nInfinity Deck\n\n## 原始转写\n\n- 01:01 Infinity Dick", markdown)
     }
+
+    @Test fun continueReminderTriggersAtEvery30MinuteMilestone() {
+        assertEquals(30 * 60 * 1_000L, RECORDING_CONTINUE_REMINDER_INTERVAL_MS)
+        assertNull(recordingContinueReminderMinutes(0L))
+        assertNull(recordingContinueReminderMinutes(29 * 60 * 1_000L + 59_000L))
+        assertEquals(30, recordingContinueReminderMinutes(30 * 60 * 1_000L))
+        assertEquals(30, recordingContinueReminderMinutes(59 * 60 * 1_000L + 59_000L))
+        assertEquals(60, recordingContinueReminderMinutes(60 * 60 * 1_000L))
+        assertEquals(90, recordingContinueReminderMinutes(90 * 60 * 1_000L))
+    }
 }

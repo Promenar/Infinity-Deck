@@ -243,6 +243,7 @@ private fun RecordingScreen(
             export.launch("recording-${it.id.take(8)}.txt")
         }
     }
+    val activityContext = LocalContext.current
     RecordingPageContent(
         state = state,
         current = current,
@@ -308,6 +309,9 @@ private fun RecordingScreen(
         onSpeakerSelect = { speakerId = it.id; speakerSegment = it.segmentStartMs; dialog = "speaker" },
         batchOperation = viewModel(),
         onDeleteRecordings = { controller.deleteBatch(it).await() },
+        onAddTile = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            { requestAddRecordingTile(activityContext) }
+        } else null,
     )
 
     when (dialog) {
@@ -335,6 +339,19 @@ private fun RecordingScreen(
                 RecordingDialogRow(stringResource(R.string.recording_speaker_library), {
                     dialog = null; showVoice = true
                 }, icon = Icons.Rounded.Person)
+            }
+            RecordingDialogGroup(stringResource(R.string.recording_shortcuts)) {
+                RecordingDialogRow(
+                    title = stringResource(R.string.recording_add_tile),
+                    onClick = {
+                        dialog = null
+                        requestAddRecordingTile(activityContext)
+                    },
+                    subtitle = if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+                        stringResource(R.string.recording_tile_manual)
+                    } else null,
+                    icon = Icons.Rounded.Widgets,
+                )
             }
         }
 

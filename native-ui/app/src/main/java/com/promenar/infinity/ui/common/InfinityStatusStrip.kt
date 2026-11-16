@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.common
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -67,6 +68,7 @@ fun InfinityStatusStrip(
         shape = StripShape,
         color = container,
         contentColor = content,
+        border = BorderStroke(0.8.dp, content.copy(alpha = 0.25f)),
     ) {
         Row(
             modifier = Modifier
@@ -104,10 +106,10 @@ private fun statusStripColors(kind: InfinityStatusKind): Pair<Color, Color> {
     val scheme = MaterialTheme.colorScheme
     val domain = MaterialTheme.infinityDomainColors
     return when (kind) {
-        InfinityStatusKind.Success -> domain.successContainer to domain.onSuccessContainer
-        InfinityStatusKind.Error -> scheme.errorContainer to scheme.onErrorContainer
-        InfinityStatusKind.Info -> domain.infoContainer to domain.onInfoContainer
-        InfinityStatusKind.Warning -> domain.warningContainer to domain.onWarningContainer
+        InfinityStatusKind.Success -> domain.success.copy(alpha = 0.14f) to domain.success
+        InfinityStatusKind.Error -> scheme.errorContainer.copy(alpha = 0.55f) to scheme.onErrorContainer
+        InfinityStatusKind.Info -> domain.info.copy(alpha = 0.12f) to domain.info
+        InfinityStatusKind.Warning -> domain.warning.copy(alpha = 0.14f) to domain.warning
     }
 }
 

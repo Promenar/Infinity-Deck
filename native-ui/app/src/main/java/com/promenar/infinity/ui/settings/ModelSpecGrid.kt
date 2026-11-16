@@ -115,23 +115,27 @@ private fun ModelSpecGridCell(cell: ModelSpecCell, modifier: Modifier) {
                 color = scheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
+                modifier = Modifier.weight(1f),
             )
-            if (sourceLabel != null) {
-                Spacer(Modifier.width(6.dp))
-                ModelSpecSourceChip(sourceLabel, cell.source == ModelSpecSource.Manual)
-            }
-            Spacer(Modifier.weight(1f))
             if (cell.onClick != null) {
+                Spacer(Modifier.width(6.dp))
                 Icon(Icons.Rounded.Edit, contentDescription = null, Modifier.size(14.dp), scheme.onSurfaceVariant)
             }
         }
-        Text(
-            cell.shortValue,
-            style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.Medium),
-            color = scheme.onSurface,
-            maxLines = 1,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                cell.shortValue,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.Medium),
+                color = scheme.onSurface,
+                maxLines = 1,
+            )
+            if (sourceLabel != null) {
+                ModelSpecSourceChip(sourceLabel, cell.source == ModelSpecSource.Manual)
+            }
+        }
         cell.exactValue?.let {
             Text(
                 it,

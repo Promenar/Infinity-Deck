@@ -119,7 +119,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 升级：在设置 › 关于里点“检查更新”，有新版时打开发行页下载，不会自动安装。
 
-当前发行版为 `v0.58.0-beta`（versionCode `163`）。本次增加录音批量管理和实时整理草稿，改善停顿后的听写，并将录音、导入文件和新建笔记集中到资料页的添加菜单。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.58.0-beta)
+当前发行版为 `v0.59.0-beta`（versionCode `164`）。本次精修提供商与模型管理全套界面并实现品牌同步矢量标识，新增 `OpenCode Go`、`OpenCode Zen`、百炼/智谱/Kimi/方舟 Coding Plan、`OpenRouter`、`SiliconFlow` 与 `xAI` 等分类预设及端点变体快切；补全对话与资料库分栏视觉引导并消除规格卡截断；同时为录音听写接入「添加到快捷设置」一键磁贴注册与每 30 分钟默认继续确认通知。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.59.0-beta)
 
 <details>
 <summary><b>从源码构建</b></summary>

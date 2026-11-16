@@ -54,6 +54,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -107,6 +108,7 @@ import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
 import com.promenar.infinity.ui.common.InfinitySwitch
 import com.promenar.infinity.ui.common.ModelBrandIcon
+import com.promenar.infinity.ui.common.ModelBrandTile
 import com.promenar.infinity.ui.common.ModelCapabilityBadges
 import com.promenar.infinity.ui.common.SnackbarType
 import com.promenar.infinity.ui.common.bettboxListGroupItem
@@ -749,52 +751,59 @@ internal fun ProviderModelsSyncBar(
     onRefresh: () -> Unit,
 ) {
     val now = rememberMinuteClock()
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.provider_models_enabled_count, enabledCount, totalCount),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_ENABLED_COUNT),
-            )
-            Text(
-                text = lastSyncAtMillis?.let {
-                    stringResource(R.string.provider_models_last_sync, relativeTimeLabel(it, now))
-                } ?: stringResource(R.string.provider_models_never_synced),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_LAST_SYNC),
-            )
-        }
-        FilledTonalButton(
-            onClick = onRefresh,
-            enabled = !isFetching,
-            contentPadding = PaddingValues(horizontal = 14.dp),
-            modifier = Modifier
-                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
-                .height(48.dp)
-                .testTag(UiTags.PROVIDER_MODELS_ACTION_SYNC),
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AnimatedContent(
-                targetState = isFetching,
-                transitionSpec = { InfinityMotion.fadeThrough() },
-                contentAlignment = Alignment.Center,
-                label = "provider_models_sync_icon",
-            ) { fetching ->
-                if (fetching) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(R.string.provider_models_enabled_count, enabledCount, totalCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_ENABLED_COUNT),
+                )
+                Text(
+                    text = lastSyncAtMillis?.let {
+                        stringResource(R.string.provider_models_last_sync, relativeTimeLabel(it, now))
+                    } ?: stringResource(R.string.provider_models_never_synced),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_LAST_SYNC),
+                )
             }
-            Spacer(Modifier.width(6.dp))
-            Text(
-                stringResource(if (isFetching) R.string.provider_models_syncing else R.string.provider_models_sync_action),
-                maxLines = 1,
-            )
+            Spacer(Modifier.width(12.dp))
+            FilledTonalButton(
+                onClick = onRefresh,
+                enabled = !isFetching,
+                contentPadding = PaddingValues(horizontal = 14.dp),
+                modifier = Modifier
+                    .sizeIn(minWidth = 48.dp, minHeight = 44.dp)
+                    .height(44.dp)
+                    .testTag(UiTags.PROVIDER_MODELS_ACTION_SYNC),
+            ) {
+                AnimatedContent(
+                    targetState = isFetching,
+                    transitionSpec = { InfinityMotion.fadeThrough() },
+                    contentAlignment = Alignment.Center,
+                    label = "provider_models_sync_icon",
+                ) { fetching ->
+                    if (fetching) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    stringResource(if (isFetching) R.string.provider_models_syncing else R.string.provider_models_sync_action),
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
@@ -833,15 +842,11 @@ internal fun ProviderModelsModelRow(
                     .padding(start = InfinitySpacing.RowHorizontal, end = 8.dp, top = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(ModelTileSize)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    ModelBrandIcon(modelId = remoteModelId, modifier = Modifier.size(20.dp), contentDescription = null)
-                }
+                ModelBrandTile(
+                    modelId = remoteModelId,
+                    size = ModelTileSize,
+                    shape = RoundedCornerShape(10.dp),
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(

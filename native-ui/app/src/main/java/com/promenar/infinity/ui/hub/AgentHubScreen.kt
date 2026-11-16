@@ -26,6 +26,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -36,8 +37,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -874,11 +878,19 @@ private fun HubNewChatAction(
                 .size(InfinitySpacing.MinimumTouchTarget)
                 .testTag(UiTags.HUB_NEW_CHAT),
         ) {
-            Icon(
-                imageVector = Icons.Rounded.Add,
-                contentDescription = stringResource(R.string.hub_new_chat),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = stringResource(R.string.hub_new_chat),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
         HubNewChatMenu(
             expanded = expanded,
@@ -1228,6 +1240,7 @@ private fun HubAgentSessions(
     generation: Map<String, GenerationTaskSnapshot> = emptyMap(),
     selectedSessionId: String? = null,
 ) {
+    val guideColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
     Column(Modifier.fillMaxWidth().animateContentSize(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate))) {
         if (sessions.isEmpty()) {
             Text(
@@ -1235,27 +1248,48 @@ private fun HubAgentSessions(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(
-                    start = InfinitySpacing.RowHorizontal,
+                    start = InfinitySpacing.RowHorizontal + 28.dp,
                     end = InfinitySpacing.RowHorizontal,
                     top = InfinitySpacing.Small,
                     bottom = InfinitySpacing.Small,
                 ),
             )
-        }
-        val nestedSessions = remember(sessions) { nestBranchSessions(sessions) { it } }
-        nestedSessions.forEach { (session, nested) ->
-            HubSessionRow(
-                session = session,
-                nested = nested,
-                subtitle = null,
-                activity = activity[session.id],
-                generation = generation[session.id],
-                selected = session.id == selectedSessionId,
-                onOpen = { actions.onOpenChat(session.id) },
-                onTogglePin = { actions.onToggleSessionPin(session.id) },
-                onRequestDelete = { actions.onRequestDeleteSession(session.id) },
-                tag = UiTags.hubAgentSession(session.id),
-            )
+        } else {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .drawWithContent {
+                        drawContent()
+                        val lineX = (InfinitySpacing.RowHorizontal + 20.dp).toPx()
+                        val insetY = 6.dp.toPx()
+                        if (size.height > insetY * 2) {
+                            drawLine(
+                                color = guideColor,
+                                start = Offset(lineX, insetY),
+                                end = Offset(lineX, size.height - insetY),
+                                strokeWidth = 2.dp.toPx(),
+                                cap = StrokeCap.Round,
+                            )
+                        }
+                    }
+                    .padding(start = 24.dp),
+            ) {
+                val nestedSessions = remember(sessions) { nestBranchSessions(sessions) { it } }
+                nestedSessions.forEach { (session, nested) ->
+                    HubSessionRow(
+                        session = session,
+                        nested = nested,
+                        subtitle = null,
+                        activity = activity[session.id],
+                        generation = generation[session.id],
+                        selected = session.id == selectedSessionId,
+                        onOpen = { actions.onOpenChat(session.id) },
+                        onTogglePin = { actions.onToggleSessionPin(session.id) },
+                        onRequestDelete = { actions.onRequestDeleteSession(session.id) },
+                        tag = UiTags.hubAgentSession(session.id),
+                    )
+                }
+            }
         }
     }
 }
