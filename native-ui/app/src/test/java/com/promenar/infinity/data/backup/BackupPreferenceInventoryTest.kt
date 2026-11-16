@@ -194,8 +194,10 @@ class BackupPreferenceInventoryTest {
             "ui/document/external/AppExternalDocumentTargets.kt#preferences" to "external_document_viewer",
             // 录音默认模式与回退：本机设备配置，独立偏好文件，不参与备份。
             "recording/RecordingStore.kt#prefs" to "recording_defaults",
-            // 本地模型固定版本：随本机模型文件走，独立偏好文件，不参与备份。
+            // 本地模型固定版本与三槽位上次加载记录：随本机模型文件走，独立或设备专属偏好，不参与备份。
             "data/local/inference/LocalModelRevision.kt#preferences" to "local_model_revision",
+            "data/local/inference/LocalModelSlotStore.kt#settingsPrefs" to "infinity_settings",
+            "data/local/inference/LocalModelSlotStore.kt#legacyProviderPrefs" to "infinity_provider",
         )
         val editorChain = Regex("(\\w+)\\s*\\.edit\\(\\)([\\s\\S]{0,2000}?)\\.apply\\(\\)")
         val editorPut = Regex("\\.put(?:String|StringSet|Boolean|Int|Long|Float)\\(\\s*\"([^\"]+)\"")
@@ -430,6 +432,8 @@ class BackupPreferenceInventoryTest {
             "local_models_enabled",
             "local_auto_load",
             "last_local_model",
+            "last_local_embedding_model",
+            "last_local_rerank_model",
         ).forEach { key ->
             assertWithMessage("本地运行时偏好应登记为已知: $key")
                 .that(BackupPreferencePolicy.isKnown("settings", key)).isTrue()

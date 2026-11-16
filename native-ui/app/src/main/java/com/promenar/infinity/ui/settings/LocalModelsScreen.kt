@@ -42,7 +42,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -51,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -65,16 +68,25 @@ import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityOptionItem
+import com.promenar.infinity.ui.common.InfinityOptionSectionHeader
+import com.promenar.infinity.ui.common.InfinityPopoverAnchor
+import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySheetHeight
+import com.promenar.infinity.ui.common.ModelBrandResolver
 import com.promenar.infinity.ui.common.SettingsSectionHeader
 import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.common.bettboxListGroupItem
+import com.promenar.infinity.ui.common.brandAccentColor
+import com.promenar.infinity.ui.common.infinityPopoverAnchor
+import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 fun LocalModelsScreen(
@@ -92,6 +104,7 @@ fun LocalModelsScreen(
     val rerankSlot by viewModel.rerankSlot.collectAsState()
     val isImporting by viewModel.isImporting.collectAsState()
     val pinned by viewModel.pinnedRevision.collectAsState()
+    val savedSlotPaths by viewModel.savedSlotPaths.collectAsState()
     val modelError by viewModel.modelError.collectAsState()
     val download by viewModel.downloadState.collectAsState()
 
@@ -123,6 +136,7 @@ fun LocalModelsScreen(
         onUnloadModel = viewModel::unloadModel,
         onDeleteModel = viewModel::deleteModel,
         formatFileSize = viewModel::formatFileSize,
+        savedSlotPaths = savedSlotPaths,
     )
 }
 
@@ -148,11 +162,18 @@ internal fun LocalModelsScreenContent(
     pinned: LocalModelRevision? = null,
     modelError: Int? = null,
     downloadProgress: Int? = null,
+    savedSlotPaths: Map<SlotType, String> = emptyMap(),
 ) {
     var openRole by rememberSaveable { mutableStateOf<SlotType?>(null) }
     var openModelPath by rememberSaveable { mutableStateOf<String?>(null) }
     var showDetails by rememberSaveable { mutableStateOf(false) }
     var deletePath by rememberSaveable { mutableStateOf<String?>(null) }
+    val slotAnchors = mapOf(
+        SlotType.MAIN to rememberInfinityPopoverAnchor(),
+        SlotType.EMBEDDING to rememberInfinityPopoverAnchor(),
+        SlotType.RERANK to rememberInfinityPopoverAnchor(),
+    )
+    val modelMenuAnchors = remember { mutableStateMapOf<String, InfinityPopoverAnchor>() }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val slots = mapOf(SlotType.MAIN to mainSlot, SlotType.EMBEDDING to embeddingSlot, SlotType.RERANK to rerankSlot)
@@ -231,7 +252,18 @@ internal fun LocalModelsScreenContent(
                         },
                         trailingContent = {
                             val action = stringResource(R.string.local_models_actions, label)
-                            IconButton(onClick = { openModelPath = model.filePath; showDetails = false }) {
+                            val anchor = remember(model.filePath) {
+                                modelMenuAnchors.getOrPut(model.filePath) { InfinityPopoverAnchor() }
+                            }
+                            IconButton(
+                                onClick = {
+                                    if (!anchor.consumeRecentDismiss()) {
+                                        openModelPath = model.filePath
+                                        showDetails = false
+                                    }
+                                },
+                                modifier = Modifier.infinityPopoverAnchor(anchor),
+                            ) {
                                 Icon(Icons.Rounded.MoreHoriz, contentDescription = action)
                             }
                         },
@@ -265,15 +297,25 @@ internal fun LocalModelsScreenContent(
                         bottom = InfinitySpacing.SectionHeaderBottom,
                     ),
                 )
-                InfinitySettingsGroup(footer = if (engineEnabled) null else stringResource(R.string.local_models_engine_disabled)) {
+                InfinitySettingsGroup(
+                    footer = stringResource(
+                        if (engineEnabled) R.string.local_models_assignment_footer else R.string.local_models_engine_disabled,
+                    ),
+                ) {
                     slots.entries.forEachIndexed { index, (role, state) ->
                         if (index > 0) HorizontalDivider()
+                        val savedPath = savedSlotPaths[role]
+                        val slotAnchor = slotAnchors.getValue(role)
                         val subtitle = modelByPath[state.modelPath]?.displayName()
                             ?: state.modelName.takeIf(String::isNotBlank)?.substringBeforeLast('.')
+                            ?: savedPath?.let { path ->
+                                modelByPath[path]?.displayName() ?: File(path).nameWithoutExtension
+                            }
                             ?: stringResource(role.description)
                         val status = when {
                             engineEnabled && state.isLoading -> R.string.shared_loading
                             engineEnabled && state.isLoaded -> R.string.local_models_loaded
+                            savedPath != null -> R.string.local_models_saved_status
                             else -> R.string.local_models_unassigned
                         }
                         InfinitySettingsItem(
@@ -282,7 +324,8 @@ internal fun LocalModelsScreenContent(
                             icon = role.icon,
                             titleMaxLines = 2,
                             subtitleMaxLines = 2,
-                            onClick = { openRole = role },
+                            modifier = Modifier.infinityPopoverAnchor(slotAnchor),
+                            onClick = { if (!slotAnchor.consumeRecentDismiss()) openRole = role },
                             trailingContent = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
@@ -316,6 +359,7 @@ internal fun LocalModelsScreenContent(
             engineEnabled = engineEnabled,
             importEnabled = !isImporting,
             formatFileSize = formatFileSize,
+            anchor = slotAnchors.getValue(role),
             onClose = { openRole = null },
             onEnable = { onEngineEnabledChange(true) },
             onLoad = { onLoadModel(role, it) },
@@ -334,6 +378,7 @@ internal fun LocalModelsScreenContent(
             height = InfinitySheetHeight.Content,
             scrollContent = true,
             dragGesturesEnabled = false,
+            popover = modelMenuAnchors[model.filePath]?.let { InfinityPopoverSpec(it, width = 320.dp) },
         ) {
             if (showDetails) {
                 Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
@@ -357,29 +402,30 @@ internal fun LocalModelsScreenContent(
                     }
                 }
             } else {
-                InfinitySettingsItem(
+                InfinityOptionItem(
                     icon = Icons.Rounded.Description,
                     title = stringResource(R.string.local_models_details),
                     onClick = { showDetails = true },
-                    horizontalPadding = 0.dp,
+                    role = Role.Button,
                 )
                 if (onTogglePin != null && model.supportsAssignment(SlotType.MAIN)) {
-                    InfinitySettingsItem(
+                    InfinityOptionItem(
                         icon = Icons.Rounded.PushPin,
                         title = stringResource(if (fixed) R.string.local_models_unpin else R.string.recording_library_ui_pin_model),
                         enabled = pinned == null || fixed,
                         titleMaxLines = 2,
+                        selected = fixed,
                         onClick = { onTogglePin(model.filePath); openModelPath = null },
-                        horizontalPadding = 0.dp,
+                        role = Role.Button,
                     )
                 }
                 if (!fixed) {
-                    InfinitySettingsItem(
+                    InfinityOptionItem(
                         icon = Icons.Rounded.DeleteOutline,
                         title = stringResource(R.string.local_models_delete),
-                        titleColor = MaterialTheme.colorScheme.error,
+                        destructive = true,
                         onClick = { deletePath = model.filePath; openModelPath = null },
-                        horizontalPadding = 0.dp,
+                        role = Role.Button,
                     )
                 }
             }
@@ -456,6 +502,7 @@ private fun AssignmentSheet(
     engineEnabled: Boolean,
     importEnabled: Boolean,
     formatFileSize: (Long) -> String,
+    anchor: InfinityPopoverAnchor? = null,
     onClose: () -> Unit,
     onEnable: () -> Unit,
     onLoad: (String) -> Unit,
@@ -470,40 +517,52 @@ private fun AssignmentSheet(
         height = InfinitySheetHeight.Content,
         scrollContent = true,
         dragGesturesEnabled = false,
+        popover = anchor?.let { InfinityPopoverSpec(it, width = 360.dp) },
     ) {
         if (!engineEnabled) {
             SheetHint(stringResource(R.string.local_models_engine_disabled))
-            InfinitySettingsItem(
+            InfinityOptionItem(
                 icon = Icons.Rounded.Memory,
                 title = stringResource(R.string.local_models_enable_engine),
                 onClick = onEnable,
-                horizontalPadding = 0.dp,
+                role = Role.Button,
             )
         } else if (state.isLoading) {
             LinearProgressIndicator(progress = { state.loadProgress }, modifier = Modifier.fillMaxWidth())
             SheetHint(stringResource(R.string.shared_loading))
         } else {
             if (state.error != null) SheetHint(stringResource(R.string.local_models_load_failed), error = true)
+            val options = models.filter { pinned == null || pinned.path == it.filePath }
+            if (options.isNotEmpty()) {
+                InfinityOptionSectionHeader(stringResource(R.string.local_models_available_models))
+                val pinnedLabel = stringResource(R.string.local_models_recording_pinned)
+                options.forEach { model ->
+                    val isLoaded = state.isLoaded && model.filePath == state.modelPath
+                    val brand = ModelBrandResolver.brandKey(model.displayName(), model.architecture)
+                    val subtitleSegments = buildList {
+                        addAll(model.specs(formatFileSize))
+                        if (pinned?.path == model.filePath) add(pinnedLabel)
+                    }
+                    InfinityOptionItem(
+                        icon = Icons.Rounded.Layers,
+                        title = model.displayName(),
+                        subtitleSegments = subtitleSegments,
+                        accentColor = brandAccentColor(brand),
+                        selected = isLoaded,
+                        onClick = {
+                            if (!isLoaded) onLoad(model.filePath)
+                            onClose()
+                        },
+                    )
+                }
+            }
             if (state.isLoaded) {
-                val name = models.firstOrNull { it.filePath == state.modelPath }?.displayName()
-                    ?: state.modelName.substringBeforeLast('.')
-                SheetHint(stringResource(R.string.local_models_active_assignment, name))
-                InfinitySettingsItem(
+                InfinityOptionSectionHeader(stringResource(R.string.local_models_slot_actions))
+                InfinityOptionItem(
                     icon = Icons.Rounded.VerticalAlignTop,
                     title = stringResource(R.string.local_models_unload),
                     onClick = onUnload,
-                    horizontalPadding = 0.dp,
-                )
-            }
-            val options = models.filter { pinned == null || pinned.path == it.filePath }
-            options.filterNot { state.isLoaded && it.filePath == state.modelPath }.forEach { model ->
-                InfinitySettingsItem(
-                    icon = Icons.Rounded.Layers,
-                    title = model.displayName(),
-                    subtitleSegments = model.specs(formatFileSize),
-                    titleMaxLines = 2,
-                    onClick = { onLoad(model.filePath) },
-                    horizontalPadding = 0.dp,
+                    role = Role.Button,
                 )
             }
             if (options.isEmpty() && !state.isLoaded) {
@@ -511,12 +570,12 @@ private fun AssignmentSheet(
                     if (pinned == null) R.string.local_models_no_compatible else R.string.recording_model_locked,
                 ))
                 val seeModelLibrary = role == SlotType.MAIN
-                InfinitySettingsItem(
+                InfinityOptionItem(
                     icon = if (seeModelLibrary) Icons.Rounded.Layers else Icons.Rounded.Add,
                     title = stringResource(if (seeModelLibrary) R.string.local_models_show_library else R.string.local_models_import),
                     onClick = if (seeModelLibrary) onShowLibrary else onImport,
                     enabled = seeModelLibrary || importEnabled,
-                    horizontalPadding = 0.dp,
+                    role = Role.Button,
                 )
             }
         }

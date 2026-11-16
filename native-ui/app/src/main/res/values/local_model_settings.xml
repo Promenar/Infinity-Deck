@@ -20,6 +20,11 @@
     <string name="local_models_assign_main_description">Text generation</string>
     <string name="local_models_assign_embedding_description">Convert material to vectors</string>
     <string name="local_models_assign_rerank_description">Reorder search results</string>
+    <string name="local_models_available_models">Available models</string>
+    <string name="local_models_slot_actions">Slot actions</string>
+    <string name="local_models_saved_idle">%1$s · Saved</string>
+    <string name="local_models_saved_status">Saved</string>
+    <string name="local_models_assignment_footer">Assigned model slots are saved locally and restored automatically on app launch or when re-enabling local inference.</string>
     <string name="local_models_engine_disabled">Enable local inference to load models.</string>
     <string name="local_models_no_compatible">No compatible models in the library.</string>
     <string name="local_models_show_library">View model library</string>

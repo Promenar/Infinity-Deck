@@ -20,6 +20,11 @@
     <string name="local_models_assign_main_description">文本生成</string>
     <string name="local_models_assign_embedding_description">将资料转换为向量</string>
     <string name="local_models_assign_rerank_description">重新排序检索结果</string>
+    <string name="local_models_available_models">可用模型</string>
+    <string name="local_models_slot_actions">槽位操作</string>
+    <string name="local_models_saved_idle">%1$s · 已保存待恢复</string>
+    <string name="local_models_saved_status">已保存</string>
+    <string name="local_models_assignment_footer">已分配的模型槽位会自动保存在本机，应用重启或重新启用本地推理时将自动恢复加载。</string>
     <string name="local_models_engine_disabled">开启本地推理后可加载模型。</string>
     <string name="local_models_no_compatible">模型库中没有适用于此用途的模型。</string>
     <string name="local_models_show_library">查看模型库</string>

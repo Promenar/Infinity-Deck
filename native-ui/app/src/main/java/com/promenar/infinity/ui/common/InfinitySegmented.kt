@@ -110,7 +110,7 @@ fun <T> InfinitySegmentedControl(
         }
     }
     val outer = if (fillWidth) modifier.fillMaxWidth().padding(contentPadding)
-        else modifier.horizontalScroll(scrollState).padding(contentPadding)
+        else modifier.padding(contentPadding).horizontalScroll(scrollState)
     Box(outer.height(height).alpha(if (enabled) 1f else 0.38f)) {
         Box(
             Modifier
@@ -162,7 +162,14 @@ fun <T> InfinitySegmentedControl(
                         SegmentThumb(Modifier.matchParentSize().padding(vertical = trackInset + SegmentThumbGap))
                     }
                     Box(Modifier.matchParentSize().padding(vertical = trackInset + SegmentThumbGap).pressFeedback(interaction, SegmentThumbShape))
-                    SegmentLabel(segment.label, segment.count, segment.leading, isSelected, Modifier.padding(horizontal = if (compact) 10.dp else 12.dp))
+                    SegmentLabel(
+                        label = segment.label,
+                        count = segment.count,
+                        leading = segment.leading,
+                        selected = isSelected,
+                        compact = compact,
+                        modifier = Modifier.padding(horizontal = if (compact) 7.dp else 12.dp),
+                    )
                 }
             }
         }
@@ -180,12 +187,24 @@ private fun SegmentThumb(modifier: Modifier) {
 }
 
 @Composable
-private fun SegmentLabel(label: String, count: Int?, leading: (@Composable () -> Unit)?, selected: Boolean, modifier: Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun SegmentLabel(
+    label: String,
+    count: Int?,
+    leading: (@Composable () -> Unit)?,
+    selected: Boolean,
+    compact: Boolean,
+    modifier: Modifier,
+) {
+    val labelStyle = if (compact) InfinityTypography.labelMedium else InfinityTypography.labelLarge
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
+    ) {
         leading?.invoke()
         Text(
             text = label,
-            style = InfinityTypography.labelLarge.copy(fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal),
+            style = labelStyle.copy(fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal),
             color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

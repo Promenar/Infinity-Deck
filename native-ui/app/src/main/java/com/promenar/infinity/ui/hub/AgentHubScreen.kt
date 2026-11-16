@@ -23,6 +23,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -49,6 +50,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -871,22 +874,31 @@ private fun HubNewChatAction(
     onRequestAdd: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val actionLabel = stringResource(R.string.hub_new_chat)
     Box {
-        IconButton(
-            onClick = { if (agents.isEmpty()) onRequestAdd() else expanded = true },
+        Box(
             modifier = Modifier
-                .size(InfinitySpacing.MinimumTouchTarget)
-                .testTag(UiTags.HUB_NEW_CHAT),
+                .sizeIn(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
+                .testTag(UiTags.HUB_NEW_CHAT)
+                .semantics { contentDescription = actionLabel }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    role = Role.Button,
+                    onClickLabel = actionLabel,
+                ) { if (agents.isEmpty()) onRequestAdd() else expanded = true },
+            contentAlignment = Alignment.CenterEnd,
         ) {
             Box(
                 modifier = Modifier
                     .size(34.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f), CircleShape),
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Add,
-                    contentDescription = stringResource(R.string.hub_new_chat),
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(20.dp),
                 )

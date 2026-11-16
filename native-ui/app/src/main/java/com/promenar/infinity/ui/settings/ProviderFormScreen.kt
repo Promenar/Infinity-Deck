@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.Button
@@ -98,6 +99,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.promenar.infinity.ui.common.InfinityOptionIconBadge
+import com.promenar.infinity.ui.common.InfinityOptionItem
+import com.promenar.infinity.ui.common.InfinityOptionSectionHeader
 import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
@@ -1021,19 +1025,25 @@ private fun ProviderProtocolSelector(state: ProviderFormUiState, actions: Provid
         popover = InfinityPopoverSpec(anchor, width = ProviderProtocolPopoverWidth),
     ) {
         CUSTOM_PROTOCOL_OPTIONS.forEach { protocol ->
-            InfinitySettingsItem(
-                horizontalPadding = 0.dp,
+            val selected = protocol == state.localProtocol
+            val (drawableRes, fallbackIcon, brandKey) = when (protocol) {
+                ProtocolType.Generic_OpenAI_Compat -> Triple(R.drawable.ic_provider_openai, null, "openai")
+                ProtocolType.OpenAI_Responses -> Triple(null, Icons.Rounded.Hub, "openai")
+                ProtocolType.Anthropic_Messages -> Triple(R.drawable.ic_provider_anthropic, null, "anthropic")
+                ProtocolType.Google_Gemini -> Triple(R.drawable.ic_provider_gemini, null, "google")
+                else -> Triple(null, Icons.Rounded.Psychology, null)
+            }
+            InfinityOptionItem(
                 title = protocol.label(),
                 subtitle = protocol.defaultPath.takeIf(String::isNotEmpty),
                 subtitleIsIdentifier = true,
+                icon = fallbackIcon,
+                drawableRes = drawableRes,
+                accentColor = brandAccentColor(brandKey),
+                selected = selected,
                 onClick = {
                     actions.onProtocolSelected(protocol)
                     actions.onProtocolMenuExpandedChange(false)
-                },
-                role = Role.RadioButton,
-                selected = protocol == state.localProtocol,
-                trailingContent = {
-                    androidx.compose.material3.RadioButton(selected = protocol == state.localProtocol, onClick = null)
                 },
             )
         }
@@ -1086,12 +1096,7 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
         grouped.forEach { category ->
             val items = state.availablePresets.filter { it.category == category }
             if (items.isNotEmpty()) {
-                Text(
-                    text = stringResource(category.titleRes),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
-                )
+                InfinityOptionSectionHeader(title = stringResource(category.titleRes))
                 items.forEach { preset ->
                     val selected = preset == state.selectedPreset
                     val subtitleHost = preset.defaultBaseUrl.removePrefix("https://").removePrefix("http://")
@@ -1121,33 +1126,12 @@ private fun ProviderPresetIcon(preset: ProviderPreset, selected: Boolean) {
     val brand = remember(preset.name, preset.defaultBaseUrl) {
         ModelBrandResolver.brandKey(preset.name, preset.defaultBaseUrl)
     }
-    val accent = brandAccentColor(brand)
-    val container = when {
-        accent != null -> accent.copy(alpha = if (selected) 0.22f else 0.14f)
-        selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-        else -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)
-    }
-    val tint = accent ?: if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    Box(
-        modifier = Modifier
-            .size(30.dp)
-            .background(container, RoundedCornerShape(9.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        preset.iconRes?.let { iconId ->
-            Icon(
-                painter = painterResource(iconId),
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(18.dp),
-            )
-        } ?: Icon(
-            imageVector = Icons.Rounded.Psychology,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(18.dp),
-        )
-    }
+    InfinityOptionIconBadge(
+        icon = if (preset.iconRes == null) Icons.Rounded.Psychology else null,
+        drawableRes = preset.iconRes,
+        selected = selected,
+        accentColor = brandAccentColor(brand),
+    )
 }
 
 /** 接口：公网 / Tailscale 内网分段与状态行、预设端点变体快切、tailnet 设备、接口地址与地址提示；仅内网时显示脚注。 */

@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.promenar.infinity.R
 import kotlinx.coroutines.launch
+import java.io.File
 
 class LocalModelsViewModel(application: Application) : ViewModel() {
 
@@ -24,9 +25,12 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
     private val storageManager: ModelStorageManager = ModelStorageManager(appContext)
     private val installer = app.recordings.recommendedModel
     private val revisions = LocalModelRevisionStore(appContext)
+    private val slotStore = LocalModelSlotStore(appContext)
     private val edits = Mutex()
     private val _pinnedRevision = MutableStateFlow(revisions.read())
     internal val pinnedRevision = _pinnedRevision.asStateFlow()
+    private val _savedSlotPaths = MutableStateFlow(slotStore.readAllSlotPaths())
+    internal val savedSlotPaths = _savedSlotPaths.asStateFlow()
     private val _modelError = MutableStateFlow<Int?>(null)
     internal val modelError = _modelError.asStateFlow()
 
@@ -91,7 +95,11 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
                 listOf(SlotType.MAIN to mainSlot, SlotType.EMBEDDING to embeddingSlot, SlotType.RERANK to rerankSlot)
                     .filter { it.second.value.modelPath == filePath }
                     .forEach { engine.unloadModel(it.first) }
-                storageManager.deleteModel(filePath).onSuccess { refreshModelList() }
+                storageManager.deleteModel(filePath).onSuccess {
+                    slotStore.clearModelPath(filePath)
+                    _savedSlotPaths.value = slotStore.readAllSlotPaths()
+                    refreshModelList()
+                }
             }
         }
     }
@@ -107,13 +115,25 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
                 }
                 _modelError.value = null
                 engine.loadModel(slot, modelPath)
+                    .onSuccess {
+                        slotStore.saveSlotPath(slot, modelPath)
+                        _savedSlotPaths.value = slotStore.readAllSlotPaths()
+                    }
+                    .onFailure { failure ->
+                        if (failure is CancellationException) throw failure
+                        _modelError.value = R.string.local_models_load_failed
+                    }
             }
         }
     }
 
     fun unloadModel(slot: SlotType) {
         viewModelScope.launch {
-            edits.withLock { engine.unloadModel(slot) }
+            edits.withLock {
+                engine.unloadModel(slot)
+                slotStore.clearSlot(slot)
+                _savedSlotPaths.value = slotStore.readAllSlotPaths()
+            }
         }
     }
 
@@ -139,6 +159,8 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
                         if (_isEngineEnabled.value && engine.mainSlot.value.modelPath != path) {
                             engine.loadModel(SlotType.MAIN, path).getOrThrow()
                         }
+                        slotStore.saveSlotPath(SlotType.MAIN, path)
+                        _savedSlotPaths.value = slotStore.readAllSlotPaths()
                     }
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
@@ -156,8 +178,23 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
         _isEngineEnabled.value = enabled
         prefs.edit().putBoolean("local_models_enabled", enabled).apply()
         if (enabled) {
-            revisions.read()?.let { loadModel(SlotType.MAIN, it.path) }
+            val toRestore = slotStore.readRestorableSlotPaths(
+                localModelsEnabled = true,
+                pinnedMainPath = revisions.read()?.path,
+                fileExists = { File(it).isFile },
+            )
+            toRestore.forEach { (slot, path) ->
+                val current = when (slot) {
+                    SlotType.MAIN -> mainSlot.value
+                    SlotType.EMBEDDING -> embeddingSlot.value
+                    SlotType.RERANK -> rerankSlot.value
+                }
+                if (!current.isLoaded && !current.isLoading) {
+                    loadModel(slot, path)
+                }
+            }
         } else {
+            // 关闭总开关只卸载内存模型，保留已保存的槽位路径，方便再次开启或启动时自动恢复。
             viewModelScope.launch {
                 edits.withLock {
                     if (_isEngineEnabled.value) return@withLock

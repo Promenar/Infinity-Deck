@@ -310,7 +310,7 @@ internal fun LibraryNavRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = InfinitySpacing.Small)
+            .padding(horizontal = InfinitySpacing.ScreenHorizontal)
             .clip(MaterialTheme.shapes.large)
             .background(container)
             .clickable(role = Role.Tab, onClick = onClick)
@@ -343,7 +343,7 @@ private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit,
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = InfinitySpacing.Small)
+            .padding(horizontal = InfinitySpacing.ScreenHorizontal)
             .clip(MaterialTheme.shapes.large)
             .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = navRowHeight(twoLine))

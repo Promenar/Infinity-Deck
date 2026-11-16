@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,6 +25,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityOptionItem
 import com.promenar.infinity.ui.common.InfinityStepperSetting
 import com.promenar.infinity.ui.common.InfinityValueRow
 import com.promenar.infinity.ui.common.NumericSettingKind
@@ -82,30 +86,20 @@ internal fun RetrievalStrategySetting(
         popover = InfinityPopoverSpec(anchor),
     ) {
         options.forEach { (id, label) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .selectable(
-                        selected = strategy == id,
-                        role = Role.RadioButton,
-                        onClick = {
-                            onValueChange(id)
-                            showPicker = false
-                        },
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                if (strategy == id) {
-                    Icon(
-                        Icons.Rounded.Check,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+            val icon = when (id) {
+                "hyde" -> Icons.Rounded.Psychology
+                "multi-query" -> Icons.Rounded.Hub
+                else -> Icons.Rounded.AutoAwesome
             }
+            InfinityOptionItem(
+                title = label,
+                icon = icon,
+                selected = strategy == id,
+                onClick = {
+                    onValueChange(id)
+                    showPicker = false
+                },
+            )
         }
     }
 }

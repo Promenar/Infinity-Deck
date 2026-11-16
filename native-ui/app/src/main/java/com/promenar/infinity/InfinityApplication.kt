@@ -2620,18 +2620,31 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         val settingsPrefs = getSharedPreferences("infinity_settings", MODE_PRIVATE)
         val nextHapticEnabled = settingsPrefs.getBoolean("haptic_enabled", true)
         val localRevision = com.promenar.infinity.data.local.inference.LocalModelRevisionStore(this).read()
+        val slotStore = com.promenar.infinity.data.local.inference.LocalModelSlotStore(settingsPrefs, prefs)
+        val savedSlots = slotStore.readAllSlotPaths()
+        val localModelsEnabled = settingsPrefs.getBoolean("local_models_enabled", false)
+        val autoLoadEnabled = localRevision != null ||
+            settingsPrefs.getBoolean("local_auto_load", false) ||
+            savedSlots.isNotEmpty()
         val lastModelToLoad = localInferenceRuntimeGate.startupModelPath(
-            localModelsEnabled = settingsPrefs.getBoolean("local_models_enabled", false),
-            autoLoadEnabled = localRevision != null || settingsPrefs.getBoolean("local_auto_load", false),
-            persistedModelPath = localRevision?.path ?: prefs.getString("last_local_model", null),
+            localModelsEnabled = localModelsEnabled,
+            autoLoadEnabled = autoLoadEnabled,
+            persistedModelPath = localRevision?.path ?: savedSlots[SlotType.MAIN],
         )
+        val extraSlotModelsToLoad = if (localInferenceRuntimeGate.isAvailable && localModelsEnabled && autoLoadEnabled) {
+            listOf(SlotType.EMBEDDING, SlotType.RERANK).mapNotNull { slot ->
+                savedSlots[slot]?.takeIf { java.io.File(it).isFile }?.let { slot to it }
+            }.toMap()
+        } else {
+            emptyMap()
+        }
         val inferenceEngine = if (localInferenceRuntimeGate.isAvailable) localInferenceEngine else null
         val processObserver = inferenceEngine?.let { engine ->
             object : DefaultLifecycleObserver {
                 override fun onStop(owner: LifecycleOwner) {
-                    engine.mainSlot.value.modelPath?.let { mainPath ->
-                        prefs.edit().putString("last_local_model", mainPath).apply()
-                    }
+                    engine.mainSlot.value.takeIf { it.isLoaded }?.modelPath?.let { slotStore.saveSlotPath(SlotType.MAIN, it) }
+                    engine.embeddingSlot.value.takeIf { it.isLoaded }?.modelPath?.let { slotStore.saveSlotPath(SlotType.EMBEDDING, it) }
+                    engine.rerankSlot.value.takeIf { it.isLoaded }?.modelPath?.let { slotStore.saveSlotPath(SlotType.RERANK, it) }
                 }
             }
         }
@@ -2655,6 +2668,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             hapticEnabled = nextHapticEnabled,
             inferenceEngine = inferenceEngine,
             lastModelToLoad = lastModelToLoad,
+            extraSlotModelsToLoad = extraSlotModelsToLoad,
             processObserver = processObserver,
         )
     }
@@ -2706,21 +2720,31 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     }
                 }
             },
-            prepared.lastModelToLoad?.let { modelPath ->
+            if (prepared.lastModelToLoad != null || prepared.extraSlotModelsToLoad.isNotEmpty()) {
                 jobRegistration(prepared) {
                     startupBackgroundHealthMonitor.launch(
                         scope = startupScope,
                         task = StartupBackgroundTask.LOCAL_MODEL_AUTO_LOAD,
                         start = CoroutineStart.LAZY,
                     ) {
-                        val revisions = com.promenar.infinity.data.local.inference.LocalModelRevisionStore(this@InfinityApplication)
-                        val revision = revisions.read()
-                        check(revision == null || revision.path == modelPath && revisions.verify(revision)) { "本地模型固定版本校验失败" }
-                        checkNotNull(prepared.inferenceEngine) { "本地推理启动计划与运行时能力不一致" }
-                            .loadModel(SlotType.MAIN, modelPath).getOrThrow()
+                        val slotStore = com.promenar.infinity.data.local.inference.LocalModelSlotStore(prepared.settingsPrefs, prefs)
+                        val engine = checkNotNull(prepared.inferenceEngine) { "本地推理启动计划与运行时能力不一致" }
+                        prepared.lastModelToLoad?.let { modelPath ->
+                            val revisions = com.promenar.infinity.data.local.inference.LocalModelRevisionStore(this@InfinityApplication)
+                            val revision = revisions.read()
+                            check(revision == null || revision.path == modelPath && revisions.verify(revision)) { "本地模型固定版本校验失败" }
+                            if (revision != null || java.io.File(modelPath).isFile) {
+                                engine.loadModel(SlotType.MAIN, modelPath).getOrThrow()
+                            } else {
+                                slotStore.clearSlot(SlotType.MAIN)
+                            }
+                        }
+                        prepared.extraSlotModelsToLoad.forEach { (slot, modelPath) ->
+                            engine.loadModel(slot, modelPath).getOrThrow()
+                        }
                     }
                 }
-            },
+            } else null,
             reversibleRegistration(
                 register = { hapticEnabled = prepared.hapticEnabled },
                 rollback = { hapticEnabled = true },
@@ -2774,6 +2798,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         val hapticEnabled: Boolean,
         val inferenceEngine: LocalInferenceEngine?,
         val lastModelToLoad: String?,
+        val extraSlotModelsToLoad: Map<SlotType, String> = emptyMap(),
         val processObserver: DefaultLifecycleObserver?,
         val jobs: MutableList<Job> = mutableListOf(),
     )

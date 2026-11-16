@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The current release is `v0.59.0-beta` (versionCode `164`). It refines provider and model management UI with synchronous brand vector icons, adds popular Coding Plan and aggregator presets (`OpenCode Go`, `OpenCode Zen`, `Bailian/Zhipu/Kimi/Ark Coding Plans`, `OpenRouter`, `SiliconFlow`, `xAI`) with endpoint variant switching, fixes split-pane dividers and dialog hierarchy in Chat and Library, and adds Quick Settings tile registration plus 30-minute default-continue recording reminders. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.59.0-beta)
+The current release is `v0.60.0-beta` (versionCode `165`). It unifies short single-choice pickers across Local Models, Provider protocols, Theme, Settings, Retrieval, and Agent editing onto the `InfinityOptionSheet` anchored dropdown pattern, persists all three local inference slots (`MAIN`, `EMBEDDING`, `RERANK`) across restarts and toggles, aligns Chat and Library headers to the 16dp edge, and fixes narrow-screen model-type clipping and recording empty-state layout. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.60.0-beta)
 
 <details>
 <summary><b>Build from source</b></summary>

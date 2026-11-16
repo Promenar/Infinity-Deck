@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
 import com.promenar.infinity.ui.common.InfinityIdentifierText
+import com.promenar.infinity.ui.common.InfinityOptionItem
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Check
@@ -717,27 +719,24 @@ private fun DomainListDialog(title: String, initial: List<String>, onSave: (Stri
 
 @Composable
 internal fun EngineOption(id: String, label: String, isSelected: Boolean, onClick: () -> Unit) {
-    // 单选语义、触感与按压反馈都由 InfinitySettingsItem 给出，外层不再叠一层 selectable。
-    InfinitySettingsItem(
+    // 统一采用原子选项行，展示圆角图标底板与选中态主色对勾。
+    InfinityOptionItem(
         title = label,
+        icon = Icons.Rounded.Search,
+        selected = isSelected,
         onClick = onClick,
         modifier = Modifier.testTag("search_engine_$id"),
-        role = Role.RadioButton,
-        selected = isSelected,
-        trailingContent = { androidx.compose.material3.RadioButton(selected = isSelected, onClick = null) },
     )
 }
 
 /** 搜索深度单选行；函数签名供既有无障碍测试复用。 */
 @Composable
 internal fun DepthChip(id: String, label: String, isSelected: Boolean, onClick: () -> Unit) {
-    InfinitySettingsItem(
+    InfinityOptionItem(
         title = label,
-        horizontalPadding = 0.dp,
+        icon = if (id == "advanced") Icons.Rounded.AutoAwesome else Icons.Rounded.Search,
+        selected = isSelected,
         onClick = onClick,
         modifier = Modifier.testTag("search_depth_$id"),
-        role = Role.RadioButton,
-        selected = isSelected,
-        trailingContent = { androidx.compose.material3.RadioButton(selected = isSelected, onClick = null) },
     )
 }

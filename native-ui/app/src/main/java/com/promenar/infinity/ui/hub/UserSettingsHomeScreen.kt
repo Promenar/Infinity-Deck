@@ -102,6 +102,8 @@ import com.promenar.infinity.ui.common.InfinityTabHeader
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityOptionIconBadge
+import com.promenar.infinity.ui.common.InfinityOptionItem
 import com.promenar.infinity.ui.common.InfinityPopoverAlign
 import com.promenar.infinity.ui.common.InfinityPopoverAnchor
 import com.promenar.infinity.ui.common.InfinityPopoverSpec
@@ -142,6 +144,7 @@ fun UserSettingsHomeScreen(
 
     var showNameEditor by remember { mutableStateOf(false) }
     var showProfileMenu by remember { mutableStateOf(false) }
+    val profileAnchor = rememberInfinityPopoverAnchor()
     var editingName by remember { mutableStateOf(userName) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     val languageAnchor = rememberInfinityPopoverAnchor()
@@ -192,7 +195,7 @@ fun UserSettingsHomeScreen(
                 showNameEditor = true
             },
             onToggleProfileDisplay = { viewModel.setProfilePrefersBrand(!profilePrefersBrand) },
-            onOpenProfileMenu = { showProfileMenu = true },
+            onOpenProfileMenu = { if (!profileAnchor.consumeRecentDismiss()) showProfileMenu = true },
             onShowLanguageDialog = { if (!languageAnchor.consumeRecentDismiss()) showLanguageDialog = true },
             onNavigateToSecondary = onNavigateToSecondary,
             onAboutClick = { if (!aboutAnchor.consumeRecentDismiss()) showAbout = true },
@@ -208,7 +211,13 @@ fun UserSettingsHomeScreen(
             onExportDiagnostics = exportDiagnostics,
         )
 
-    UserSettingsHomeScreenContent(state = state, actions = actions, languageAnchor = languageAnchor, aboutAnchor = aboutAnchor)
+    UserSettingsHomeScreenContent(
+        state = state,
+        actions = actions,
+        languageAnchor = languageAnchor,
+        aboutAnchor = aboutAnchor,
+        profileAnchor = profileAnchor,
+    )
 
     if (showAbout) {
         val websiteUrl = stringResource(R.string.settings_website_url)
@@ -264,6 +273,7 @@ fun UserSettingsHomeScreen(
                 actions.onEditName()
             },
             onDismiss = { showProfileMenu = false },
+            popover = InfinityPopoverSpec(profileAnchor, align = InfinityPopoverAlign.Auto),
         )
     }
 
@@ -336,6 +346,8 @@ internal fun UserSettingsHomeScreenContent(
     languageAnchor: InfinityPopoverAnchor? = null,
     /** “关于”行的位置：宽窗口下关于面板贴着该行弹出。 */
     aboutAnchor: InfinityPopoverAnchor? = null,
+    /** 个人区的位置：宽窗口下个人资料菜单贴着顶部名片/字标弹出。 */
+    profileAnchor: InfinityPopoverAnchor? = null,
 ) {
     InfinitySettingsPageLayout(
         title = stringResource(R.string.settings_title),
@@ -364,6 +376,7 @@ internal fun UserSettingsHomeScreenContent(
                         avatarUri = state.userAvatar,
                         showsBrand = state.profileShowsBrand,
                         onOpenMenu = actions.onOpenProfileMenu,
+                        modifier = if (profileAnchor != null) Modifier.infinityPopoverAnchor(profileAnchor) else Modifier,
                     )
                     state.error?.let { error ->
                         Text(
@@ -656,9 +669,10 @@ private fun UserProfileHeader(
     avatarUri: String?,
     showsBrand: Boolean,
     onOpenMenu: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .heightIn(min = ProfileHeaderHeight)
             .animateContentSize(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)),
@@ -980,15 +994,19 @@ private fun ProfileMenuSheet(
     onSetAvatar: () -> Unit,
     onEditName: () -> Unit,
     onDismiss: () -> Unit,
+    popover: InfinityPopoverSpec? = null,
 ) {
     InfinityBottomSheet(
         show = true,
         onDismiss = onDismiss,
         title = stringResource(R.string.settings_profile_menu),
+        popover = popover,
     ) {
         if (hasAvatar) {
             InfinitySettingsItem(
-                icon = if (showsBrand) Icons.Rounded.Person else Icons.Rounded.AllInclusive,
+                leadingContent = {
+                    InfinityOptionIconBadge(icon = if (showsBrand) Icons.Rounded.Person else Icons.Rounded.AllInclusive)
+                },
                 title = stringResource(if (showsBrand) R.string.settings_profile_show_avatar else R.string.settings_profile_show_brand),
                 onClick = onToggleDisplay,
                 modifier = Modifier.testTag(UiTags.SETTINGS_PROFILE_DISPLAY_TOGGLE),
@@ -996,13 +1014,13 @@ private fun ProfileMenuSheet(
             )
         }
         InfinitySettingsItem(
-            icon = Icons.Rounded.PhotoCamera,
+            leadingContent = { InfinityOptionIconBadge(icon = Icons.Rounded.PhotoCamera) },
             title = stringResource(if (hasAvatar) R.string.settings_profile_change_avatar else R.string.settings_profile_set_avatar),
             onClick = onSetAvatar,
             horizontalPadding = 0.dp,
         )
         InfinitySettingsItem(
-            icon = Icons.Rounded.Edit,
+            leadingContent = { InfinityOptionIconBadge(icon = Icons.Rounded.Edit) },
             title = stringResource(R.string.settings_edit_name),
             onClick = onEditName,
             horizontalPadding = 0.dp,
@@ -1016,14 +1034,10 @@ internal fun LanguageOption(
     isSelected: Boolean,
     onSelect: () -> Unit,
 ) {
-    InfinitySettingsItem(
-                horizontalPadding = 0.dp,
+    InfinityOptionItem(
         title = label,
-        onClick = onSelect,
-        role = Role.RadioButton,
+        icon = Icons.Rounded.Language,
         selected = isSelected,
-        trailingContent = {
-            if (isSelected) Icon(Icons.Rounded.Check, null, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
-        },
+        onClick = onSelect,
     )
 }

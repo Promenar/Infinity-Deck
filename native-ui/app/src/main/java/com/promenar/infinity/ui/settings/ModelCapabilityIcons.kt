@@ -80,7 +80,7 @@ internal fun modelTypeSegments(modelId: String): List<InfinitySegment<String>> =
         value = spec.key,
         label = stringResource(spec.labelRes),
         tag = com.promenar.infinity.ui.testing.UiTags.providerModelsTypeAction(modelId, spec.key),
-        leading = { Icon(spec.icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+        leading = { Icon(spec.icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
     )
 }
 

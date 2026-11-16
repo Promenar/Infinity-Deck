@@ -93,9 +93,8 @@ class ProviderModelReleaseBlockersTest {
             .substringBefore("private fun ProviderPresetSelector(")
         assertThat(protocol).contains("InfinityValueRow(")
         assertThat(protocol).contains("InfinityBottomSheet(")
-        assertThat(protocol).contains("selected = protocol == state.localProtocol")
-        assertThat(protocol).contains("RadioButton(")
-        assertThat(protocol).contains("Role.RadioButton")
+        assertThat(protocol).contains("InfinityOptionItem(")
+        assertThat(source("ui/common/InfinityOptionSheet.kt")).contains("role: Role = Role.RadioButton")
     }
 
     @Test

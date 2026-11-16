@@ -24,10 +24,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BrightnessAuto
+import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -62,6 +66,7 @@ import com.promenar.infinity.ui.common.InfinityNumericSetting
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinityValueRow
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityOptionItem
 import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.infinityPopoverAnchor
 import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
@@ -307,16 +312,14 @@ private fun ThemeModeSelector(
     )
     InfinityBottomSheet(show = showModes, title = stringResource(R.string.theme_mode),
         onDismiss = { showModes = false }, scrollContent = true, popover = InfinityPopoverSpec(modesAnchor)) {
-        modes.forEach { (mode, _, titleRes) ->
+        modes.forEach { (mode, icon, titleRes) ->
             val selected = selectedMode == mode
-            InfinitySettingsItem(
+            InfinityOptionItem(
                 title = stringResource(titleRes),
-                horizontalPadding = 0.dp,
+                icon = icon,
+                selected = selected,
                 onClick = { onModeSelect(mode); showModes = false },
                 modifier = Modifier.testTag("theme_mode_${mode.name.lowercase()}"),
-                role = Role.RadioButton,
-                selected = selected,
-                trailingContent = { androidx.compose.material3.RadioButton(selected = selected, onClick = null) },
             )
         }
     }
@@ -454,15 +457,19 @@ private fun SchemeStyleSelector(selected: InfinitySchemeStyle, enabled: Boolean,
         onDismiss = { show = false }, scrollContent = true, popover = InfinityPopoverSpec(anchor)) {
         options.forEach { (style, titleRes, descriptionRes) ->
             val isSelected = selected == style
-            InfinitySettingsItem(
+            val styleIcon = when (style) {
+                InfinitySchemeStyle.TONAL_SPOT -> Icons.Rounded.Palette
+                InfinitySchemeStyle.VIBRANT -> Icons.Rounded.ColorLens
+                InfinitySchemeStyle.FIDELITY -> Icons.Rounded.Brush
+                InfinitySchemeStyle.EXPRESSIVE -> Icons.Rounded.AutoAwesome
+            }
+            InfinityOptionItem(
                 title = stringResource(titleRes),
                 subtitle = stringResource(descriptionRes),
-                horizontalPadding = 0.dp,
+                icon = styleIcon,
+                selected = isSelected,
                 onClick = { onSelect(style); show = false },
                 modifier = Modifier.testTag("theme_scheme_${style.name.lowercase()}"),
-                role = Role.RadioButton,
-                selected = isSelected,
-                trailingContent = { androidx.compose.material3.RadioButton(selected = isSelected, onClick = null) },
             )
         }
     }

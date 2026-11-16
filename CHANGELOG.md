@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.60.0-beta] - 2026-11-17
+
+- **全站原子下拉与本地模型自动恢复**：抽取 `InfinityOptionSheet` / `InfinityOptionItem` / `InfinityOptionIconBadge` 原子选项组件（配分组标题、圆角矢量图标底板与选中态对勾），统一重构本地模型槽位与库菜单（支持贴行 Popover 下拉）、提供商自定义协议选择、外观模式与配色风格、语言与个人资料菜单、搜索/RAG 策略及智能体权限策略。同步实现本地推理三槽位（`MAIN` / `EMBEDDING` / `RERANK`）状态持久化，关闭总开关时保留槽位记录，重新启用或应用重启时自动校验并恢复加载。
+- **首页右缘对齐与细节修复**：统一 `InfinityTabHeader`、对话页新建按钮与折叠屏资料页左列导航胶囊的 `16.dp` 右缘基准，使顶栏按钮、搜索栏与卡片严丝合缝对齐；收紧模型编辑页“类型”五段控件内距与图标尺寸，消除 `360.dp` 窄屏下「重排」裁切；修复录音听写空历史状态图标与「还没有录音」文字重叠问题。
+
 ## [0.59.0-beta] - 2026-11-17
 
 - **提供商与模型管理 UI 精修与预设扩展**：内置常见品牌与聚合网关同步矢量标识（配柔色品牌底板），新增 `OpenCode Go`、`OpenCode Zen`、`百炼 Coding Plan`、`智谱 Coding Plan`、`Kimi Coding Plan`、`方舟 Coding Plan`、`OpenRouter`、`SiliconFlow`、`xAI` 分类预设并支持同预设内端点/协议变体快切；列表去除重复协议名与全零媒体计数噪音、对齐顶部汇总间距、柔和化连接与同步状态提示条；模型规格四宫格将来源徽章移至数值右侧，避免窄屏或大字号下「输出上限」截断；默认模型与本地空态补齐矢量图标与连续分组卡片。

@@ -80,7 +80,7 @@ fun InfinityTabHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 64.dp)
-                .padding(start = InfinitySpacing.ScreenHorizontal + InfinitySpacing.XSmall, end = InfinitySpacing.XSmall),
+                .padding(start = InfinitySpacing.ScreenHorizontal + InfinitySpacing.XSmall, end = InfinitySpacing.ScreenHorizontal),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             InfinityHeaderTitle(
@@ -100,6 +100,7 @@ fun InfinityTabHeader(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Spacer(Modifier.width(InfinitySpacing.XSmall))
             }
             actions()
         }

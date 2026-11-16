@@ -245,7 +245,8 @@ internal fun ModelEditorScreen(
                                 selectedType = type
                             }
                         },
-                        contentPadding = PaddingValues(horizontal = InfinitySpacing.RowHorizontal),
+                        compact = true,
+                        contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
                         modifier = Modifier
                             .padding(vertical = InfinitySpacing.Small)
                             .testTag("model_editor_type_picker"),

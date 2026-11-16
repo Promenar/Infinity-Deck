@@ -4,9 +4,11 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.FolderSpecial
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Shield
@@ -21,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -34,11 +37,15 @@ import com.promenar.infinity.data.local.db.entity.McpServerEntity
 import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.domain.model.ExecutionMode
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityOptionIconBadge
+import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.common.InfinityValueRow
 import com.promenar.infinity.ui.common.SettingsToggle
+import com.promenar.infinity.ui.common.infinityPopoverAnchor
+import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.workspace.AgentDefaultWorkspaceRow
 
@@ -106,6 +113,7 @@ internal fun AgentNewSessionDefaultsSection(
     onMcpToggle: (String, Boolean) -> Unit,
 ) {
     var showModePicker by remember { mutableStateOf(false) }
+    val modeAnchor = rememberInfinityPopoverAnchor()
     var showMcp by remember { mutableStateOf(false) }
     val selectedMcp = mcpRows.count { it.checked && it.available }
     InfinitySettingsSection(
@@ -115,8 +123,8 @@ internal fun AgentNewSessionDefaultsSection(
             icon = Icons.Rounded.Shield,
             title = stringResource(R.string.sheet_tool_execution_mode),
             value = stringResource(executionModeChoices.labelOf(executionMode)),
-            onClick = { showModePicker = true },
-            modifier = Modifier.testTag("agent_edit_execution_mode"),
+            onClick = { if (!modeAnchor.consumeRecentDismiss()) showModePicker = true },
+            modifier = Modifier.infinityPopoverAnchor(modeAnchor).testTag("agent_edit_execution_mode"),
         )
         AgentDefaultWorkspaceRow(workspaceId = workspaceId, workspace = workspace, onChoose = onChooseWorkspace)
         SettingsToggle(
@@ -153,6 +161,7 @@ internal fun AgentNewSessionDefaultsSection(
         tagPrefix = "agent_edit_execution_mode",
         onSelect = { onExecutionModeChange(it); showModePicker = false },
         onDismiss = { showModePicker = false },
+        popover = InfinityPopoverSpec(modeAnchor),
     )
     AgentMcpSheet(show = showMcp, rows = mcpRows, onToggle = onMcpToggle, onDismiss = { showMcp = false })
 }
@@ -168,7 +177,9 @@ internal fun AgentKnowledgeMemorySection(
     onPolicyChange: ((AgentMemoryPolicy) -> AgentMemoryPolicy) -> Unit,
 ) {
     var showMode by remember { mutableStateOf(false) }
+    val retrievalAnchor = rememberInfinityPopoverAnchor()
     var showAccess by remember { mutableStateOf(false) }
+    val accessAnchor = rememberInfinityPopoverAnchor()
     InfinitySettingsSection(
         title = stringResource(R.string.agent_edit_section_knowledge_memory),
         footer = stringResource(R.string.agent_edit_knowledge_footer),
@@ -177,15 +188,15 @@ internal fun AgentKnowledgeMemorySection(
             icon = Icons.Rounded.TravelExplore,
             title = stringResource(R.string.agent_edit_retrieval_mode),
             value = stringResource(retrievalModeChoices.labelOf(retrievalMode)),
-            onClick = { showMode = true },
-            modifier = Modifier.testTag("agent_edit_retrieval_mode"),
+            onClick = { if (!retrievalAnchor.consumeRecentDismiss()) showMode = true },
+            modifier = Modifier.infinityPopoverAnchor(retrievalAnchor).testTag("agent_edit_retrieval_mode"),
         )
         InfinityValueRow(
             icon = Icons.Rounded.FolderSpecial,
             title = stringResource(R.string.agent_edit_file_access),
             value = stringResource(fileAccessChoices.labelOf(fileAccess)),
-            onClick = { showAccess = true },
-            modifier = Modifier.testTag("agent_edit_file_access"),
+            onClick = { if (!accessAnchor.consumeRecentDismiss()) showAccess = true },
+            modifier = Modifier.infinityPopoverAnchor(accessAnchor).testTag("agent_edit_file_access"),
         )
     }
     AgentChoiceSheet(
@@ -196,6 +207,7 @@ internal fun AgentKnowledgeMemorySection(
         tagPrefix = "agent_edit_retrieval_mode",
         onSelect = { onRetrievalModeChange(it); showMode = false },
         onDismiss = { showMode = false },
+        popover = InfinityPopoverSpec(retrievalAnchor),
     )
     AgentChoiceSheet(
         show = showAccess,
@@ -205,6 +217,7 @@ internal fun AgentKnowledgeMemorySection(
         tagPrefix = "agent_edit_file_access",
         onSelect = { onFileAccessChange(it); showAccess = false },
         onDismiss = { showAccess = false },
+        popover = InfinityPopoverSpec(accessAnchor),
     )
 }
 
@@ -217,13 +230,17 @@ private fun <T> AgentChoiceSheet(
     tagPrefix: String,
     onSelect: (T) -> Unit,
     onDismiss: () -> Unit,
+    popover: InfinityPopoverSpec? = null,
 ) {
-    InfinityBottomSheet(show = show, onDismiss = onDismiss, title = title, scrollContent = true) {
+    InfinityBottomSheet(show = show, onDismiss = onDismiss, title = title, scrollContent = true, popover = popover) {
         choices.forEach { choice ->
             val label = stringResource(choice.labelRes)
             val isSelected = choice.value == selected
             InfinitySettingsItem(
                 horizontalPadding = 0.dp,
+                leadingContent = {
+                    InfinityOptionIconBadge(icon = agentChoiceIcon(choice.value), selected = isSelected)
+                },
                 title = if (choice.isDefault) stringResource(R.string.numeric_default_value, label) else label,
                 subtitle = stringResource(choice.descriptionRes),
                 subtitleMaxLines = 3,
@@ -237,6 +254,18 @@ private fun <T> AgentChoiceSheet(
             )
         }
     }
+}
+
+private fun <T> agentChoiceIcon(value: T): ImageVector = when (value) {
+    ExecutionMode.WORKSPACE -> Icons.Rounded.FolderSpecial
+    ExecutionMode.FULL_ACCESS -> Icons.Rounded.Shield
+    AgentRetrievalMode.AUTO -> Icons.Rounded.AutoAwesome
+    AgentRetrievalMode.TOOL -> Icons.Rounded.Build
+    AgentRetrievalMode.BOTH -> Icons.Rounded.TravelExplore
+    KnowledgeFileAccess.OFF -> Icons.Rounded.Shield
+    KnowledgeFileAccess.ON_REQUEST -> Icons.Rounded.FolderOpen
+    KnowledgeFileAccess.ALWAYS -> Icons.Rounded.FolderSpecial
+    else -> Icons.Rounded.AutoAwesome
 }
 
 @Composable

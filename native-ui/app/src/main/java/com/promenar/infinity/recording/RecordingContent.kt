@@ -1098,7 +1098,7 @@ private fun RecordingWorkspaceHistory(
                 )
             }
             if (groups.isEmpty()) item(key = "recording-empty") {
-                Box(Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.Center) {
+                RecordingEmpty(fill = false) {
                     RecordingEmptyLabel(Icons.Rounded.Mic, stringResource(if (query.isBlank()) R.string.recording_ui_no_history else R.string.recording_search_empty))
                 }
             }
