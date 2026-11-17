@@ -118,6 +118,13 @@
     <string name="lab_v_library_ask_desc">Numbered citations over document, active memory and graph hits</string>
     <string name="lab_v_library_locate">Locate in source</string>
     <string name="lab_v_library_locate_desc">Open the document from the answer; two highlighted hits to step through</string>
+    <string name="lab_v_recording_workbench">Recording workbench</string>
+    <string name="lab_v_recording_workbench_desc">Speaker diarization, timestamped transcript and structured notes side by side</string>
+    <string name="lab_v_recording_settings">Recording settings sheet</string>
+    <string name="lab_v_recording_settings_desc">Organization mode, output language, live draft and offline resources</string>
+
+    <string name="lab_v_production_storyboard">Production: storyboard and takes</string>
+    <string name="lab_v_production_storyboard_desc">Fog Harbor episode 1 storyboard, keyframe inputs and multi-take review</string>
 
     <string name="lab_v_tailscale_peers">Tailscale devices and ping</string>
     <string name="lab_v_tailscale_peers_desc">Ping gpu-box every second as it moves from a DERP relay to direct</string>
@@ -125,6 +132,10 @@
     <string name="lab_v_provider_tailnet_desc">A provider whose API source is the tailnet, device gpu-box</string>
     <string name="lab_v_provider_picker">Tailnet device panel</string>
     <string name="lab_v_provider_picker_desc">gpu-box selected, offline devices last</string>
+    <string name="lab_v_local_models">On-device GGUF model slots</string>
+    <string name="lab_v_local_models_desc">Main, embedding and rerank GGUF models loaded on device</string>
+    <string name="lab_v_providers_list">Cloud and tailnet providers</string>
+    <string name="lab_v_providers_list_desc">Unified management for cloud APIs and Tailscale private gateways</string>
 
     <!-- 版本舞台控制条 -->
     <string name="lab_ctrl_play">Play</string>

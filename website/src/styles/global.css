@@ -108,7 +108,7 @@ section { position: relative; }
 .sec-head p { margin: 14px 0 0; color: var(--ink-2); }
 
 /* 钉住叙事 */
-#story { height: 640vh; }
+#story { height: 1040vh; }
 .story-pin { position: sticky; top: 0; height: 100vh; height: 100svh; display: grid; grid-template-columns: minmax(0, 1fr) auto 40px; align-items: center; gap: clamp(24px, 5vw, 72px); }
 .chapters { position: relative; min-height: 280px; }
 .chapter { position: absolute; inset: 0 0 auto 0; opacity: 0; transform: translateY(24px); transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); pointer-events: none; }
@@ -149,8 +149,8 @@ section { position: relative; }
   .chapters { min-height: 230px; width: 100%; }
   .chapter h3 { font-size: 26px; }
   .chapter p { font-size: 15px; margin-top: 10px; }
-  .rail { flex-direction: row; order: 3; gap: 10px; }
-  .rail-group { flex-direction: row; gap: 4px; }
+  .rail { flex-direction: row; flex-wrap: wrap; justify-content: center; order: 3; gap: 8px 10px; max-width: 100%; }
+  .rail-group { flex-direction: row; gap: 3px; }
 }
 
 /* 诺言与实演 */

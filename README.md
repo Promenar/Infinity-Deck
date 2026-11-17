@@ -1,12 +1,13 @@
 <p align="center">
-  <img src="assets/branding/infinity-glow-icon.png" alt="Infinity Deck glowing dot-matrix infinity icon" width="112" height="112">
+  <img src="assets/branding/infinity-glow-icon.png" alt="Infinity Deck icon" width="112" height="112">
 </p>
 
 <h1 align="center">Infinity Deck</h1>
 
 <p align="center">
-  <b>Laptop off. Work goes on.</b><br>
-  The AI agent that runs on your phone, with every repo, server and GPU you own in reach. Bring your own key. Your data stays on your device.
+  <b>An open-source, local-first AI agent workbench on Android.</b><br>
+  Alpine Linux container, Git, SSH, built-in Tailscale, on-device speech &amp; GGUF inference, hybrid RAG, and a media production pipeline in a single app.<br>
+  Bring your own API key or local models. Your data and credentials stay on the device.
 </p>
 
 <p align="center">
@@ -14,117 +15,131 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Promenar/Infinity-Deck/releases"><img src="https://img.shields.io/github/v/release/Promenar/Infinity-Deck?include_prereleases&label=download&color=6366F1" alt="Download the latest release"></a>
+  <a href="https://github.com/Promenar/Infinity-Deck/releases"><img src="https://img.shields.io/github/v/release/Promenar/Infinity-Deck?include_prereleases&label=download&color=6366F1" alt="Download latest release"></a>
   <a href="https://infinityware.work"><img src="https://img.shields.io/badge/website-infinityware.work-6366F1" alt="Website"></a>
   <img src="https://img.shields.io/badge/Android-12%2B-green.svg" alt="Android 12+">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0">
 </p>
 
-AI coding tools on the desktop are great, until the computer is off and remote access goes with it. Remote control from the official apps needs that computer switched on and online, and cloud tasks can't reach your private network.
+**Infinity Deck** is an open-source AI workbench for Android 12+, combining multi-agent orchestration, on-device shell and code execution, private tailnet connectivity, offline speech transcription, a local knowledge base, and multimedia production workflows:
 
-Infinity Deck does the work on the phone itself. It runs commands in a real Linux on your phone, edits your repos over git, reaches your servers and the GPU at home through its own built-in Tailscale, and clicks through web pages. Bring your own API key — OpenAI, Claude, Gemini, DeepSeek, or a model running on hardware you own — and it shows you every step before it runs. Chats, documents and settings stay on your device; model requests go straight to the provider you chose.
-
-On the train or in bed, pick up the phone and keep going.
+- **Local execution layer**: One-tap rootless Alpine Linux (`arm64-v8a`, with `git`, `ripgrep`, Python, Node.js, and FFmpeg) alongside built-in Python and QuickJS sandboxes — run scripts, build projects, and transform files directly on the phone without keeping a remote desktop host awake.
+- **Models and on-device inference**: Connect major cloud APIs and Coding Plan presets with your own keys, or run `llama.cpp` GGUF inference locally (independent `MAIN`, `EMBEDDING`, and `RERANK` slots with `16K / 8K / 4K` Prefix KV Cache) and an on-device `sherpa-onnx` speech pipeline (`X-ASR` streaming, two-pass `SenseVoice-Small int8` refinement with RAM-tier gating and RTF backoff, and speaker diarization).
+- **Private networking and remote ops**: Embedded userspace Tailscale node (compatible with self-hosted Headscale) that never occupies Android's system VPN slot — routing SSH, self-hosted LLM gateways, ComfyUI, MCP servers, and the built-in browser straight onto your `tailnet`.
+- **Knowledge & creative workspace**: Mount device folders, query chunked vector search + cross-session memory + per-work knowledge graphs with numbered citations, organize voice recordings side by side, generate clickable web prototypes, paint inpainting masks for ComfyUI, and run script-to-rough-cut short-film production.
 
 ## Contents
 
-- 🧭 [How it differs from remote control](#how-it-differs-from-remote-control)
-- ✨ [What it can do for you](#what-it-can-do-for-you)
-- 🔒 [You're always in charge](#youre-always-in-charge)
-- 🚀 [Get started](#get-started)
-- 🧰 [Everything it does](#everything-it-does)
+- 🧭 [Architecture & Runtime Behavior](#architecture--runtime-behavior)
+- ✨ [Core Workflows](#core-workflows)
+- 🔒 [Security & Data Boundaries](#security--data-boundaries)
+- 🚀 [Install & Build](#install--build)
+- 🧰 [Capabilities](#capabilities)
 - 💬 [FAQ](#faq)
 - 📚 [Documentation](#documentation)
-- 🤝 [Get involved](#get-involved)
+- 🤝 [Contributing](#contributing)
 
-## How it differs from remote control
+## Architecture & Runtime Behavior
 
-- **The phone does the work.** A built-in Alpine Linux runs git, Python, Node.js and FFmpeg on the phone, with no computer that has to stay online.
-- **Straight to your own machines.** A Tailscale node inside the app takes SSH, models, MCP and the browser straight into your tailnet — the servers you run, the GPU at home — with no open ports and no system VPN.
-- **Any model you like.** Bring a key for any provider, switch mid-chat, or point it at a model on your own hardware.
-- **Made for the phone.** Approval cards, background tasks, a message queue, touch lock and the foldable cover screen work one-handed, lying down or on the train.
-- **Works alongside your desktop tools.** Keep your usual AI coding tools at the desk; when you leave, the phone picks up the same git repo, and while the computer is on it can SSH in and borrow its power.
+- **Standalone on-device execution**: Command execution, Git repository operations, document parsing, and local model inference run directly on the phone; offload heavy workloads to home workstations or GPU hosts over SSH and Tailscale whenever they are online.
+- **Multi-protocol model routing**: Native adapters for OpenAI Responses / Chat Completions, Anthropic Messages, Google Gemini / Vertex AI, DeepSeek, and OpenAI-compatible gateways, with mid-chat model switching and per-model connectivity probes.
+- **Zero public exposure for private services**: Embedded Tailscale connects app traffic straight to private `tailnet` peers with no public port forwarding and no system VPN conflicts.
+- **Human-in-the-loop controls**: Upfront execution plans, per-command approval cards, structured `ask_user` prompts, background job tracking, and message queueing/steering.
+- **Adaptive foldable & tablet layout**: Three-column workspace (`Navigation · Chat List · Conversation`) on inner screens with a pinnable/floating inspector; folds seamlessly to the cover screen with preserved scroll and composer state for one-handed review.
 
-## What it can do for you
+## Core Workflows
 
 <p align="center">
-  <img src="assets/screenshots/en/hero.webp" alt="Unfolded: the inspector pinned on the Git tab lists commits while the chat makes room on the left. Folded: the 502 fix report continues on the cover screen" width="860">
+  <img src="assets/screenshots/en/hero.webp" alt="Unfolded three-column workbench with pinned Git commit history alongside the cover screen continuing the 502 fix report" width="860">
 </p>
 
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/ops-diagnosis.webp" alt="Remote commands on web-01 wait for approval one by one">
-      <h3>Fix a production outage from the train</h3>
-      Your site returns 502, so you ask it to log in to the server and find out why. Every command waits for your tap before it runs. When it's fixed, it writes up a report you can keep reading on the cover screen.
+      <img src="assets/screenshots/en/ade-subagents.webp" alt="Two parallel sub-agents locating edits and auditing test coverage while the main chat waits or backgrounds">
+      <h3>Task Planning &amp; Parallel Sub-Agents</h3>
+      Before tackling complex tasks, the agent lays out step-by-step plans and spawns parallel read-only or scoped sub-agents (up to 32 active per chat, 8 per dispatch) to search codebases, check references, or review tests, returning structured findings and timings automatically.
     </td>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/ade-branch.webp" alt="Work plan proposing a branch chat in a new worktree">
-      <h3>Your code goes where you go</h3>
-      The main chat fixes the bug while a branch chat writes the tests, each in its own worktree so they never collide. Branches, diffs and commits are all in the Git panel.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="assets/screenshots/en/ade-subagents.webp" alt="Two sub-agent cards, one locating the change and one reviewing test coverage, while the main chat waits with a Background button">
-      <h3>One ask, a small team</h3>
-      Ask for a change and it plans first, then sends sub-agents out in parallel — one to find the code, another to review the tests. The main chat can wait for their findings or move to the background and keep going. When each is done, its findings come back on their own, with the time it took.
-    </td>
-    <td width="50%" valign="top">
-      <img src="assets/screenshots/en/linux-terminal.webp" alt="fastfetch in the built-in terminal: Alpine Linux">
-      <h3>A real Linux in your pocket</h3>
-      Run a Python script, convert a video with FFmpeg or <code>apk add</code> the tool you need, all inside the app. No root, no Termux.
+      <img src="assets/screenshots/en/ade-branch.webp" alt="Work plan proposing an isolated branch chat in a new Git worktree">
+      <h3>Git Worktrees &amp; Isolated Branch Chats</h3>
+      Fork side tasks into branch chats bound to isolated Git worktrees. Main and branch sessions edit files and run test suites in parallel without stepping on each other, inspected through the built-in Git panel for diffs, branches, and commit history.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="assets/screenshots/en/fold-inspector.webp" alt="Inner screen in three columns with the inspector pinned on the Run tab: the plan at step 4 of 6 with one background task running">
-      <h3>Unfold a workbench</h3>
-      The inner screen splits into three — navigation, chat list, conversation. Pin the inspector and the chat makes room for it; unpin it and it floats over the chat. Tasks, files, Git and the browser are one tap away.
+      <img src="assets/screenshots/en/ops-diagnosis.webp" alt="Remote SSH commands waiting for individual user approval">
+      <h3>SSH Remote Execution &amp; Command Approval</h3>
+      Connect over SSH to inspect failing hosts. In default approval mode, every command displays the target host, exact arguments, and execution context for confirmation before running, producing a clean incident summary afterward.
     </td>
     <td width="50%" valign="top">
-      <p align="center"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report mid-read" width="190"></p>
-      <h3>Fold it and carry on</h3>
-      Close the phone and the chat moves to the cover screen. Finish reading the incident report on the train, answer with one hand, unfold to go deeper when you're back.
+      <img src="assets/screenshots/en/linux-terminal.webp" alt="Alpine Linux running fastfetch inside the built-in terminal">
+      <h3>Built-in Rootless Alpine Linux</h3>
+      Deploy an `arm64-v8a` Alpine Linux userland in one tap with no root and no external Termux. Run Python, Node.js, FFmpeg, Git, or extend the environment with `apk add`.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3>Your notes and drafts, close at hand</h3>
-      Import PDF, Word or Markdown, or mount an outside folder. It searches documents, long-term memory and the knowledge graph together and cites its answers. Ask for artwork when the draft is done and the images generate in the background; export the result as a web page, an A4 PDF or a long image. Open a Markdown file from your file manager and it lands in the viewer, ready to save or send to a chat.
+      <img src="assets/screenshots/en/fold-inspector.webp" alt="Foldable inner screen three-column layout with pinned inspector">
+      <h3>Foldable Workbench &amp; Pinned Inspector</h3>
+      Unfolded screens switch to three columns (`Navigation · Chats · Session`) paired with a right-hand inspector housing run progress, background jobs, file browser, Git, and the built-in web browser.
     </td>
     <td width="50%" valign="top">
-      <h3>Your machines at home, on call</h3>
-      Models on your home GPU, servers on your private network and MCP services connect through the built-in Tailscale, with self-hosted Headscale supported. Chat and image generation can both run on your own GPU.
+      <p align="center"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report for one-handed reading" width="190"></p>
+      <h3>Seamless Fold/Unfold Continuity</h3>
+      Fold the device and the active chat transitions to the cover screen with scroll position and draft state intact for one-handed review, approval taps, or quick follow-up prompts.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/en/recording-workbench.webp" alt="Inner-screen recording workbench with speaker-labeled transcript on the left and structured notes on the right">
+      <h3>Offline Speech &amp; Recording Cleanup</h3>
+      On-device streaming dictation (`X-ASR`), optional `SenseVoice-Small int8` two-pass refiner (with RAM-tier sizing and RTF circuit-breaker fallback), and local speaker diarization (`pyannote + CAM++`), producing live organization drafts, clickable timestamp links, and dual-pane editing.
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/en/library-ask.webp" alt="Hybrid library search answer with numbered citations across documents, memory, and graph">
+      <h3>Hybrid RAG Library &amp; Knowledge Graph</h3>
+      Import PDF, Word, Markdown, and HTML files or mount device folders. Combines vector + keyword search, cross-session long-term memory, and entity knowledge graphs to generate cited answers that jump straight to highlighted source passages.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/en/local-models.webp" alt="On-device GGUF model manager showing Main, Embeddings, and Reranker slots loaded with llama.cpp Vulkan">
+      <h3>Model Routing &amp; On-Device GGUF</h3>
+      Connect cloud providers and Coding Plan presets alongside `llama.cpp` GGUF inference managing three independent slots (`Main`, `Embedding`, `Rerank`) with automatic restart recovery and Tailscale private gateways in the unified picker.
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/en/production-storyboard.webp" alt="Short-film production panel displaying episode storyboard scenes, reference inputs, and Seedance generation plans">
+      <h3>Canvas Prototypes, Image Editing &amp; Film Panel</h3>
+      Build clickable multi-screen HTML prototypes, generate or inpaint images via cloud APIs or ComfyUI, and coordinate scripts, character/location assets, storyboards, and video takes (Volcano Ark Seedance, MiniMax, ComfyUI) with round-based review and on-device MP4 + SRT rough-cut export.
     </td>
   </tr>
 </table>
 
-## You're always in charge
+## Security & Data Boundaries
 
-- **It asks before every command.** By default nothing runs without your approval, and deleting files always needs your OK, whatever mode you're in.
-- **Passwords never pass through the AI.** When one is needed, a secret input card stores it straight into the credential. It never enters the chat, and screenshots are blocked while it's shown.
-- **Every key in one keychain.** SSH keys, Git tokens, API keys and website logins are stored encrypted. Showing a value takes device authentication and it hides again after 30 seconds; a copied value leaves the clipboard after 60.
-- **Your data stays on your phone.** Chats, documents and settings live on the device, and model requests go straight to the provider you chose, never through a server of ours.
-- **You own your backups.** Save them to a local file or WebDAV, encrypted if you like.
-- **Fully open source.** GPL-3.0.
+- **Per-command approval gates**: Shell and SSH calls require confirmation by default; destructive operations such as file deletion trigger explicit confirmation in every permission mode.
+- **Credential isolation from LLM context**: Passwords and tokens are entered via dedicated secret-input cards (`FLAG_SECURE` screenshot blocking enabled) straight into encrypted storage, never written into chat history or model prompts.
+- **Android Keystore keychain**: API keys, SSH private keys, Git tokens, and site credentials are encrypted on device; plaintext reveal requires biometric or lockscreen verification, auto-hides after 30 seconds, and clears the clipboard after 60 seconds.
+- **Local storage & direct requests**: Chat databases, RAG indexes, recordings, and preferences stay on the phone; LLM requests travel directly from the device to your configured endpoint with no intermediary proxy.
+- **Encrypted backups**: Export encrypted local backup archives (including optional voiceprint and credential recovery) or sync via WebDAV.
+- **Open-source license**: Released under GPL-3.0.
 
-## Get started
+## Install & Build
 
-1. Download the signed APK and its `.sha256` file from the [latest GitHub release](https://github.com/Promenar/Infinity-Deck/releases/latest).
-2. Check the SHA-256 and install. Only install packages from Releases, never CI artifacts or repackaged builds from elsewhere.
-3. Add a model provider in Settings and start chatting.
+### Prebuilt APK
 
-Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and takes about 64 MB, or about 470 MB with the default tools (git, ripgrep, Python, Node.js, FFmpeg), each of which you can uncheck.
+1. Download the signed `.apk` and matching `.sha256` file from [GitHub Releases](https://github.com/Promenar/Infinity-Deck/releases/latest) or the [official download page](https://infinityware.work/en/download/).
+2. Verify the SHA-256 checksum before installing (install only official Releases packages; avoid temporary CI artifacts or third-party repacks).
+3. Launch the app, configure your cloud API keys in Settings, or download the built-in Linux environment, offline ASR models, and local GGUF models as needed.
 
-To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
+- **Requirements**: Android 12 (API 31) or later. Built-in Linux and on-device GGUF inference require `arm64-v8a`; Alpine base occupies ~64 MB, or ~470 MB with the default toolchain (`git`, `ripgrep`, Python, Node.js, FFmpeg, each optional at install time).
+- **App updates**: Check **Settings › About › Check for updates** to query the latest GitHub Release and open the download page; nothing downloads or installs silently in the background.
+- **Current release**: `v0.61.2-beta` (`versionCode` `169`), adding the two-pass `SenseVoice` refiner with hardware-adaptive tiering, dynamic local GGUF model routing with 3-slot auto-recovery, expanded provider & Coding Plan presets, unified Recording & Default Model settings, and updated line-wrapping device tests. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.2-beta)
 
-The current release is `v0.61.2-beta` (versionCode `169`). It updates the public line-wrapping device contract alongside SenseVoice two-pass refiner, local GGUF chat integration, Coding Plan presets, and unified Recording & Default Model settings. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.2-beta)
+### Build from Source
 
-<details>
-<summary><b>Build from source</b></summary>
-
-You need JDK 17 or newer, the Android SDK, `python3.14` on `PATH` (it precompiles the bundled Python) and Go 1.21 or newer (it builds the Tailscale library).
+Requires JDK 17+, Android SDK (API 36 / Build Tools 36.0.0 / NDK / CMake 3.22.1), `python3.14` on `PATH` (for precompiling the bundled Python runtime), and Go 1.21+ (for compiling the embedded Tailscale native library `libnxtailnet.so`).
 
 ```bash
 cd native-ui
@@ -132,111 +147,100 @@ cd native-ui
 ./gradlew :app:testSideloadDebugUnitTest :app:lintSideloadDebug
 ```
 
-The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/`. Offline builds, signing and release checks are covered in [Development and release verification](docs/guide/development.md) and [Distribution builds](docs/distribution-builds.md).
+The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/app-sideload-debug.apk`. Full build instructions, offline dependency checks, and release gates are documented in [Development and release verification](docs/guide/development.md) and [Distribution builds](docs/distribution-builds.md).
 
-</details>
+## Capabilities
 
-## Everything it does
+**Chat & Model Layer**
 
-**Chat & models**
+- Connect OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi, Bailian, OpenRouter, SiliconFlow, xAI, and any compatible API with built-in Coding Plan presets (OpenCode Go/Zen, Bailian, Zhipu, Kimi, Ark) and fast protocol/endpoint variant switching
+- On-device GGUF inference (`llama.cpp`): independent `MAIN`, `EMBEDDING`, and `RERANK` slots with restart auto-restore, `Q8_0` KV cache quantization, cross-turn Prefix KV reuse, and RAM-adaptive `16K / 8K / 4K` context sizing; loaded main model is injected directly into the session picker
+- Switch models mid-session, run up to 16 concurrent generating chats, queue or steer follow-up messages during streaming
+- Original message search and pagination remain available even after automatic conversation compaction
+- Structured question cards, foreground service keep-alive, and pocket touch-lock
+- Skills & MCP server support with a built-in catalog installer, plus `.idpet` chat pet packs ([download](https://infinityware.work/en/download/#pets))
 
-- Bring your own key for OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi or any OpenAI-compatible endpoint
-- Switch models mid-chat; up to 16 chats generating at once
-- Queue your next message or let it jump the line
-- Long chats stay searchable: after compaction the agent can search and page through the original messages
-- Question cards when it needs your call; keeps going with the screen locked
-- Touch lock so the phone can go straight into your pocket
-- Skills and MCP servers; a skill store installs vetted skills from the official catalog or catalogs you add
-- Chat pets: import a `.idpet` pack and a pet stands on the input bar, changing pose and lines with the task state and the time of day (morning, day, evening, night); tap it or drag it around
+**Agents & Automation**
 
-**Agents**
+- Task plans with live step tracking
+- Parallel sub-agent orchestration: up to 32 sub-agents per session (8 per batch) with rate-limit, offline, and timeout backoff retries
+- Isolated branch sessions linked to dedicated Git worktrees
+- Background execution queue for slow commands, daemons, image generation, and downloads (up to 32 per session) with completion wakeup
+- One-shot timers and recurring Cron jobs
 
-- Plans before it acts
-- Up to 32 sub-agents working in parallel; conclusions return on their own
-- Side work becomes a branch chat
-- Slow commands, image generation and downloads move to the background and wake the chat when done
-- Scheduled tasks, one-shot to cron
+**Local Runtime & Code Tooling**
 
-**Runtime & code**
+- One-tap rootless Alpine Linux (`arm64-v8a`) inside the app, no Termux required
+- Built-in shell, Python, and QuickJS sandboxes even when Alpine Linux is not installed
+- Integrated Git client and visual inspector (branches, worktrees, diffs, commit log); file browser surfaces current branch and change counts
+- Per-command Git credential env injection without touching repo config files
+- Chunked reading of large text files up to 100 MiB
 
-- One-tap Alpine Linux — no root, no Termux
-- Built-in shell, Python and JavaScript sandboxes even without Linux
-- Built-in git; branches, diffs and commits in the Git panel
-- Git passwords injected per command, never written to repo config
-- The agent reads text files up to 100 MiB, a section at a time
+**Remote Hosts & Private Networking**
 
-**Servers & private network**
+- SSH command execution and SFTP transfers up to 4 GiB per file
+- Embedded true terminal emulator with local port forwarding and manual session takeover
+- Keychain supports generating Ed25519 / RSA 4096 keys or importing OpenSSH / PEM / PKCS8 keys (including passphrase-protected keys), batch public-key deployment, and pre-switch login checks
+- Embedded Tailscale node (with self-hosted Headscale support) routing SSH, private model APIs, MCP, and the browser directly over `tailnet`
 
-- SSH by host alias to run commands and read or write files, up to 4 GiB per file
-- SSH keys live in the keychain: generate Ed25519 or RSA 4096, or import OpenSSH, PEM and PKCS8 keys, passphrase-protected ones included
-- Deploy a public key to several hosts at once, with a test login before any host switches to it
-- Take over any time in a real terminal or with port forwarding
-- A Tailscale node inside the app, with self-hosted Headscale support
-- Models, SSH, MCP and the browser reach your tailnet directly — no open ports, no system VPN
+**Offline Recording & Audio Cleanup**
 
-**Documents & knowledge**
+- On-device streaming ASR (`X-ASR` Chinese/English) with weighted custom hotwords, pause/resume, Android Quick Settings tile trigger, and 30-minute long-recording prompts
+- Optional `SenseVoice-Small int8` two-pass refiner (237 MB) with device-tier strategy (`END_OF_UTTERANCE_AND_FALLBACK`, `PAUSE_REFINEMENT`, `STREAMING_ONLY`) and RTF > 0.65 circuit breaker
+- On-device speaker diarization and local voiceprint library (included in encrypted backups) with timestamped audio scrubbing and inline speaker reassignment
+- Real-time batch drafting during recording, selectable output languages (Chinese, English, Japanese, etc.), side-by-side transcript/summary editor, and multi-select / search-result batch deletion
 
-- In the Library, use Add to record, import files, or create a note. The recorder lets you start a new recording or continue a saved one. Android Quick Settings can start recording directly. Download X-ASR for on-device Chinese–English transcription, add hotwords, and transcribe saved recordings again. Speaker analysis runs on-device and supports a local voiceprint library. Transcript cleanup can use the fast model with consent, or a local GGUF model in the sideload build.
-- Follow the draft while recording, set an output language supported by the cleanup model, and edit the finished summary in place. Long-press a recording to select multiple entries, or select all current search results and delete them together.
-- Search documents, long-term memory and the knowledge graph together, with cited answers
-- One graph per work — follow how two characters stand with each other, chapter by chapter
-- Mount outside folders; PDF, Word, Markdown, HTML and more
-- Open Markdown files from other apps: save as, save to Storage, or send to a chat as an attachment or a reference
-- Large Markdown renders in chunks; text up to 16 MiB is shown
+**Library & Knowledge Graph**
 
-**Web & output**
+- Import PDF, Word, Markdown, and HTML files or mount device folders via SAF / filesystem paths
+- Hybrid retrieval across vector embeddings, keyword search, cross-session active memory, and per-work entity knowledge graphs with clickable numbered citations
+- Registered Android "Open with / Share" target for `.md` files with chunked rendering up to 16 MiB, Save As, Library import, and chat attachment support
 
-- Browser tabs, mobile or desktop sites; watch the agent, take over and hand it back
-- Type `localhost:8888` to open services running in Linux or Termux
-- Canvas pages, clickable multi-screen prototypes and versioned artifacts
-- Image generation with a drawing board for markup and masks
-- A production panel ties script, assets, storyboard, takes and cut together. Preview each shot's channel, references and prompt; review in rounds with approve, reject and suggest, then send the round to the agent; generation counts are tracked per stage, shot and asset. The agent can extend a shot by chaining segments from each last frame, run ComfyUI upscale or frame-interpolation templates on a take, and generate score versions; scripted work it runs outside the app is shown with progress, and unregistered media files are flagged. Works with Volcano Ark Seedance, MiniMax and your own ComfyUI workflows. Save rough cuts per episode and export them on the phone as MP4 with an SRT subtitle file
-- Export chats as a web page, A4 PDF or long image
+**Browser, Canvas & Multimedia Production**
 
-**Foldables**
+- Multi-tab built-in browser supporting mobile/desktop user-agent switching, direct `localhost` port access, `tailnet` URLs, agent observation, and manual login takeover
+- Interactive multi-screen prototypes, canvas pages, and versioned document artifacts
+- Cloud and ComfyUI image generation with an integrated sketch & inpainting mask editor
+- Production panel connecting scripts, character/location/prop assets, storyboards, multi-take generation, music/score versions, round-based reviews, last-frame shot chaining, ComfyUI upscale/interpolation templates, and on-device MP4 + SRT export
+- Export any chat as standalone HTML, A4 PDF, or a long scrolling PNG
 
-- Three columns on the inner screen: navigation, chat list and chat
-- An inspector for tasks, files, Git and the browser, pinned beside the chat or floating over it
-- When it's closed, an edge strip reopens any tab
-- Chats carry on as you fold and unfold
-
-Details and limits for each item are in the [feature guide](docs/guide/features.md) (in Chinese).
+See the [feature guide](docs/guide/features.md) for detailed limits and specifications across modules.
 
 ## FAQ
 
-**The official apps already have remote control. Why this?**
+**How is Infinity Deck different from API chat wrappers?**
 
-Remote control drives your computer: that computer has to stay on and online, and the phone is only the remote. Cloud tasks don't need your computer, but they can't reach your private network and only run that vendor's models. Infinity Deck runs on the phone itself, reaches your own machines through Tailscale and talks to any model you choose. The two also work together: while your computer is on, let it SSH in for the heavy lifting.
+Typical chat clients only assemble prompts and stream text. Infinity Deck embeds Alpine Linux, Git, SSH, a Tailscale userspace node, browser automation, hybrid RAG, and on-device speech/GGUF runtimes directly on the phone so agents can edit repositories, inspect servers, transcribe audio, and build artifacts under your approval.
 
-**How is this different from a chat app?**
+**How does it differ from desktop remote-control mobile apps?**
 
-Chat apps answer. This one does the work: it runs commands in a real Linux, edits your repos over git, logs in to your servers over SSH and drives a browser — with your approval before anything runs.
+Remote-control apps turn the phone into a thin viewport while requiring a desktop host to remain awake and reachable; pure cloud sandboxes cannot see your home LAN or local hardware. Infinity Deck runs locally offline or on the move, and bridges directly into your home GPU/NAS/servers over Tailscale and SSH whenever they are online.
 
-**Do I need Termux or root?**
+**Does the built-in Linux require root or Termux?**
 
-No. The Linux environment is a one-tap Alpine install inside the app (arm64). Termux works too, but it's optional.
+No. Alpine Linux deploys in one tap as an unprivileged `arm64-v8a` userspace environment inside the app. External Termux remains optional.
 
-**Why are the detailed guides in Chinese?**
+**Which languages are supported in documentation?**
 
-The project is built by a Chinese-speaking developer and the guides grew out of working notes. The README covers the essentials and the app interface itself is in English as well. Help translating is welcome.
+Both `README.md` / `README.zh-CN.md` and the app UI support English and Simplified Chinese. Detailed architecture notes and deep-dive guides under `docs/guide/` are authored in Simplified Chinese; translation PRs are welcome.
 
 ## Documentation
 
-| Guide | Covers | Language |
-|---|---|---|
-| [Features](docs/guide/features.md) | Chat and rendering, context management, documents and the knowledge graph, agent tools, sub-agents, browser, background and scheduled tasks, export and backup | Chinese |
-| [Security and privacy](docs/guide/security-privacy.md) | Key storage, backup encryption, SSH, Git and Tailscale credentials, network security, diagnostics | Chinese |
-| [Execution environments](docs/guide/execution-environments.md) | Built-in Linux, Termux, sandboxed script runtimes, SSH | Chinese |
-| [Workspaces](docs/guide/workspaces.md) | Workspace types, Git, what agents can reach, mounted folders | Chinese |
-| [Install and upgrade](docs/guide/install-and-upgrade.md) | Requirements, data migration, APK verification | Chinese |
-| [Development](docs/guide/development.md) | Build commands, bundled Python and Tailscale, rich-content security, icons, tech stack | Chinese |
+| Document | Contents |
+|---|---|
+| [Features](docs/guide/features.md) | Chat & rendering, context management, library & knowledge graphs, agent tools, sub-agents, browser, background & cron jobs, production panel, export & backup |
+| [Security & Privacy](docs/guide/security-privacy.md) | Keychain encryption, backup encryption, SSH/Git/Tailscale credential isolation, network security, diagnostic events |
+| [Execution Environments](docs/guide/execution-environments.md) | Built-in Alpine Linux, Termux integration, isolated script sandboxes, SSH |
+| [Workspaces & External Folders](docs/guide/workspaces.md) | Workspace modes, Git panel, agent reachability boundaries, external folder mounting |
+| [Install, Upgrade & Migration](docs/guide/install-and-upgrade.md) | System requirements, data migration, DB schema chain, APK verification |
+| [Development & Release Verification](docs/guide/development.md) | Build commands, bundled Python & Tailscale packaging, rich-content security, icon assets, tech stack |
 
-See also the [architecture overview](docs/ARCHITECTURE.md) and the [guide index](docs/guide/README.md).
+See also [Architecture Overview](docs/ARCHITECTURE.md), [Model Catalog Spec](docs/model-catalog.md), [Distribution Builds](docs/distribution-builds.md), and the [Guide Index](docs/guide/README.md).
 
-## Get involved
+## Contributing
 
-Bugs and ideas are welcome as GitHub issues. If you'd like to change code, read [AGENTS.md](AGENTS.md) first — the project runs a heavy verification gate, so opening an issue to talk it through before a large PR saves everyone time.
+Bug reports and feature proposals are welcome via GitHub Issues. Before submitting a Pull Request, please read [AGENTS.md](AGENTS.md) to review repository coding standards, unit tests, screenshot baselines, and device gate requirements; for large architectural or UI changes, open an issue first to align on design.
 
 ## License
 
-Infinity Deck is released under the [GNU General Public License v3.0](LICENSE). The settings list, navigation bar and appearance page include Compose adaptations of [Bettbox](https://github.com/appshubcc/Bettbox), also GPLv3. Agent avatar symbols come from Google's Material Symbols Rounded (Apache-2.0). Sources and scope are listed in the [third-party notices](docs/legal/THIRD_PARTY_NOTICES.md).
+Infinity Deck is licensed under the [GNU General Public License v3.0](LICENSE). Settings lists, navigation bars, and theme appearance screens include Compose adaptations from [Bettbox](https://github.com/appshubcc/Bettbox) (also GPL-3.0); agent avatar icons are sourced from Google Material Symbols Rounded (Apache-2.0). Full attribution and scope are listed in [THIRD_PARTY_NOTICES.md](docs/legal/THIRD_PARTY_NOTICES.md).

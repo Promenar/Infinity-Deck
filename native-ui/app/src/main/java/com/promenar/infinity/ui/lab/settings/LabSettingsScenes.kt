@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.lab.settings
 
+import android.text.format.Formatter
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,6 +11,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.R
+import com.promenar.infinity.data.local.inference.BackendType
+import com.promenar.infinity.data.local.inference.SlotState
+import com.promenar.infinity.data.local.inference.StoredModel
+import com.promenar.infinity.data.model.ProviderListItem
+import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.tailnet.TailnetEndpoints
 import com.promenar.infinity.data.tailnet.TailnetPaths
 import com.promenar.infinity.data.tailnet.TailnetPhase
@@ -26,6 +32,7 @@ import com.promenar.infinity.ui.lab.tailnet.LabTailnet
 import com.promenar.infinity.ui.lab.timeline.LabTimeline
 import com.promenar.infinity.ui.lab.timeline.labTimeline
 import com.promenar.infinity.ui.settings.BuiltInTailscaleStatus
+import com.promenar.infinity.ui.settings.LocalModelsScreenContent
 import com.promenar.infinity.ui.settings.PROVIDER_PRESETS
 import com.promenar.infinity.ui.settings.ProviderApiSource
 import com.promenar.infinity.ui.settings.ProviderApiSourceHint
@@ -34,6 +41,10 @@ import com.promenar.infinity.ui.settings.ProviderConnectionTestState
 import com.promenar.infinity.ui.settings.ProviderFormActions
 import com.promenar.infinity.ui.settings.ProviderFormContent
 import com.promenar.infinity.ui.settings.ProviderFormUiState
+import com.promenar.infinity.ui.settings.ProviderListScreenActions
+import com.promenar.infinity.ui.settings.ProviderListScreenContent
+import com.promenar.infinity.ui.settings.ProviderListScreenState
+import com.promenar.infinity.ui.settings.ProviderModelCount
 import com.promenar.infinity.ui.settings.ProviderTailnetInfo
 import com.promenar.infinity.ui.settings.TailscalePingRun
 import com.promenar.infinity.ui.settings.TailscaleSettingsContent
@@ -55,6 +66,14 @@ internal val labSettingsScenes: Map<String, () -> LabScene> = mapOf(
     // 同一表单打开 tailnet 设备面板，gpu-box 已选中，离线的 nas 排在后面。
     "settings.state.provider-gateway-picker" to {
         LabStateScene { ProviderGatewayForm(pickerOpen = true) }
+    },
+    // 本地模型三槽位：Main、Embedding、Rerank 均已在设备端加载 GGUF。
+    "settings.state.local-models" to {
+        LabStateScene { LocalModelsScene() }
+    },
+    // 多品牌云端服务与 Tailscale 私有网关统一列表。
+    "settings.state.providers" to {
+        LabStateScene { ProvidersListScene() }
     },
 )
 
@@ -156,4 +175,154 @@ private fun LabSceneScope.ProviderGatewayForm(pickerOpen: Boolean) {
     }
     // 打开态复用表单里真实的设备行与面板：量到设备行位置后打开，宽窗口贴着设备行弹出。
     ProviderFormContent(state = state, actions = actions, initialPeerPickerOpen = pickerOpen)
+}
+
+// —— 本地模型（llama.cpp 三槽位） ——
+
+@Composable
+private fun LabSceneScope.LocalModelsScene() {
+    val context = LocalContext.current
+    val mainPath = "/data/user/0/com.promenar.infinity/files/models/Qwen3-4B-Q8_0.gguf"
+    val embedPath = "/data/user/0/com.promenar.infinity/files/models/bge-small-zh-v1.5-f16.gguf"
+    val rerankPath = "/data/user/0/com.promenar.infinity/files/models/bge-reranker-v2-m3-q8_0.gguf"
+    val models = remember {
+        listOf(
+            StoredModel(
+                id = "qwen3-4b",
+                fileName = "Qwen3-4B-Q8_0.gguf",
+                filePath = mainPath,
+                sizeBytes = 4_290_000_000L,
+                format = "GGUF",
+                addedAt = 1_763_000_000_000L,
+                architecture = "qwen3",
+                quantization = "Q8_0",
+                contextLength = 32_768,
+                parameterCount = "4B",
+                modelName = "Qwen3-4B",
+            ),
+            StoredModel(
+                id = "bge-small-zh",
+                fileName = "bge-small-zh-v1.5-f16.gguf",
+                filePath = embedPath,
+                sizeBytes = 48_200_000L,
+                format = "GGUF",
+                addedAt = 1_762_990_000_000L,
+                architecture = "bert",
+                quantization = "F16",
+                contextLength = 512,
+                embeddingLength = 512,
+                parameterCount = "24M",
+                modelName = "bge-small-zh-v1.5",
+            ),
+            StoredModel(
+                id = "bge-reranker-v2-m3",
+                fileName = "bge-reranker-v2-m3-q8_0.gguf",
+                filePath = rerankPath,
+                sizeBytes = 635_000_000L,
+                format = "GGUF",
+                addedAt = 1_762_980_000_000L,
+                architecture = "xlm-roberta",
+                quantization = "Q8_0",
+                contextLength = 8_192,
+                parameterCount = "568M",
+                modelName = "bge-reranker-v2-m3",
+            ),
+        )
+    }
+    LocalModelsScreenContent(
+        availableModels = models,
+        engineEnabled = true,
+        gpuAvailable = true,
+        mainSlot = SlotState(
+            modelPath = mainPath,
+            isLoaded = true,
+            backendType = BackendType.LLAMA_VULKAN,
+            modelName = "Qwen3-4B-Q8_0.gguf",
+            quantization = "Q8_0",
+            contextSize = 8_192,
+        ),
+        embeddingSlot = SlotState(
+            modelPath = embedPath,
+            isLoaded = true,
+            backendType = BackendType.LLAMA_CPU,
+            modelName = "bge-small-zh-v1.5-f16.gguf",
+            quantization = "F16",
+            contextSize = 512,
+        ),
+        rerankSlot = SlotState(
+            modelPath = rerankPath,
+            isLoaded = true,
+            backendType = BackendType.LLAMA_CPU,
+            modelName = "bge-reranker-v2-m3-q8_0.gguf",
+            quantization = "Q8_0",
+            contextSize = 8_192,
+        ),
+        onNavigateBack = onExit,
+        formatFileSize = { bytes -> Formatter.formatShortFileSize(context, bytes) },
+    )
+}
+
+// —— 多品牌云端与 Tailnet 提供商 ——
+
+@Composable
+private fun LabSceneScope.ProvidersListScene() {
+    val zh = isChinese(LocalContext.current.resources)
+    val state = remember(zh) {
+        ProviderListScreenState(
+            providers = listOf(
+                ProviderListItem(
+                    id = "deepseek",
+                    name = "DeepSeek",
+                    baseUrl = "https://api.deepseek.com",
+                    model = "deepseek-chat",
+                    protocolType = ProtocolType.DeepSeek,
+                    hasApiKey = true,
+                ),
+                ProviderListItem(
+                    id = "anthropic",
+                    name = "Anthropic",
+                    baseUrl = "https://api.anthropic.com",
+                    model = "claude-sonnet-4-6",
+                    protocolType = ProtocolType.Anthropic_Messages,
+                    hasApiKey = true,
+                ),
+                ProviderListItem(
+                    id = "gemini",
+                    name = "Google Gemini",
+                    baseUrl = "https://generativelanguage.googleapis.com",
+                    model = "gemini-3.1-pro",
+                    protocolType = ProtocolType.Google_Gemini,
+                    hasApiKey = true,
+                ),
+                ProviderListItem(
+                    id = "openai",
+                    name = "OpenAI",
+                    baseUrl = "https://api.openai.com",
+                    model = "gpt-5.2",
+                    protocolType = ProtocolType.OpenAI_Responses,
+                    hasApiKey = true,
+                ),
+                ProviderListItem(
+                    id = "gpu-box",
+                    name = if (zh) "家里的网关 · Qwen" else "Home gateway · Qwen",
+                    baseUrl = LabTailnet.GATEWAY_URL,
+                    model = "qwen3.5-32b",
+                    protocolType = ProtocolType.Generic_OpenAI_Compat,
+                    hasApiKey = true,
+                ),
+            ),
+            modelCounts = mapOf(
+                "deepseek" to ProviderModelCount(3, 4),
+                "anthropic" to ProviderModelCount(3, 3),
+                "gemini" to ProviderModelCount(4, 5),
+                "openai" to ProviderModelCount(4, 6),
+                "gpu-box" to ProviderModelCount(2, 2),
+            ),
+            tailnetProviderIds = setOf("gpu-box"),
+        )
+    }
+    ProviderListScreenContent(
+        state = state,
+        actions = ProviderListScreenActions(onNavigateBack = onExit),
+    )
 }

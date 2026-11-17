@@ -116,6 +116,13 @@
     <string name="lab_v_library_ask_desc">带编号引用的答案，文档、主动记忆与图谱命中</string>
     <string name="lab_v_library_locate">原文定位</string>
     <string name="lab_v_library_locate_desc">从答案打开文档，两处命中段高亮并可切换</string>
+    <string name="lab_v_recording_workbench">录音整理工作台</string>
+    <string name="lab_v_recording_workbench_desc">说话人区分、带时间戳逐字稿与结构化整理稿并排对照</string>
+    <string name="lab_v_recording_settings">录音整理设置弹层</string>
+    <string name="lab_v_recording_settings_desc">整理方式、输出语言、实时草稿与离线资源入口</string>
+
+    <string name="lab_v_production_storyboard">制作面板：分镜与候选审片</string>
+    <string name="lab_v_production_storyboard_desc">雾港第一集分镜表、关键帧引用与多候选视频审片</string>
 
     <string name="lab_v_tailscale_peers">Tailscale 设备与 Ping</string>
     <string name="lab_v_tailscale_peers_desc">打开 gpu-box 每秒 Ping，从 DERP 中继转为直连</string>
@@ -123,6 +130,10 @@
     <string name="lab_v_provider_tailnet_desc">提供商的 API 源选 Tailscale 内网，设备为 gpu-box</string>
     <string name="lab_v_provider_picker">tailnet 设备面板</string>
     <string name="lab_v_provider_picker_desc">选中 gpu-box，离线设备排在后面</string>
+    <string name="lab_v_local_models">本地模型三槽位</string>
+    <string name="lab_v_local_models_desc">主对话、向量嵌入与重排序 GGUF 模型在设备端加载就绪</string>
+    <string name="lab_v_providers_list">多品牌与内网提供商</string>
+    <string name="lab_v_providers_list_desc">云端模型服务与 Tailscale 私有网关统一管理</string>
 
     <!-- 版本舞台控制条 -->
     <string name="lab_ctrl_play">播放</string>

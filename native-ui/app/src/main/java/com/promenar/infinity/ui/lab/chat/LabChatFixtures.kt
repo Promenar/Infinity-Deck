@@ -24,7 +24,7 @@ import com.promenar.infinity.ui.lab.timeline.LabTimelineBuilder
  * 子代理分组与实时输出都以调用步骤 id 为键。
  */
 
-internal const val LAB_MODEL = "DeepSeek V4.1 Flash"
+internal const val LAB_MODEL = "DeepSeek V3.2"
 internal const val LAB_AGENT = "Infinity"
 
 /** 脚本里每段思考显示的时长。 */

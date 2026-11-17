@@ -84,6 +84,7 @@ object LabCatalog {
                             LabVersion("plan", "inspector.state.plan", R.string.lab_v_inspector_plan, R.string.lab_v_inspector_plan_desc, LabVersionKind.STATE),
                             LabVersion("files-repo", "inspector.state.files-repo", R.string.lab_v_files_repo, R.string.lab_v_files_repo_desc, LabVersionKind.STATE),
                             LabVersion("open-shift", "inspector.workflow.open-shift", R.string.lab_v_open_shift, R.string.lab_v_open_shift_desc, LabVersionKind.WORKFLOW),
+                            LabVersion("production", "inspector.state.production", R.string.lab_v_production_storyboard, R.string.lab_v_production_storyboard_desc, LabVersionKind.STATE),
                         ),
                     ),
                 ),
@@ -113,6 +114,8 @@ object LabCatalog {
                 children = listOf(
                     LabVersion("ask", "library.state.ask", R.string.lab_v_library_ask, R.string.lab_v_library_ask_desc, LabVersionKind.STATE, LabScreenFit.ANY),
                     LabVersion("locate", "library.state.locate", R.string.lab_v_library_locate, R.string.lab_v_library_locate_desc, LabVersionKind.STATE, LabScreenFit.ANY),
+                    LabVersion("recording-workbench", "recording.state.workbench", R.string.lab_v_recording_workbench, R.string.lab_v_recording_workbench_desc, LabVersionKind.STATE, LabScreenFit.ANY),
+                    LabVersion("recording-settings", "recording.state.settings", R.string.lab_v_recording_settings, R.string.lab_v_recording_settings_desc, LabVersionKind.STATE, LabScreenFit.ANY),
                 ),
             ),
             LabNode(
@@ -122,6 +125,8 @@ object LabCatalog {
                     LabVersion("tailscale-peers", "settings.workflow.tailscale-peers", R.string.lab_v_tailscale_peers, R.string.lab_v_tailscale_peers_desc, LabVersionKind.WORKFLOW),
                     LabVersion("provider-tailnet", "settings.state.provider-tailnet", R.string.lab_v_provider_tailnet, R.string.lab_v_provider_tailnet_desc, LabVersionKind.STATE),
                     LabVersion("provider-gateway-picker", "settings.state.provider-gateway-picker", R.string.lab_v_provider_picker, R.string.lab_v_provider_picker_desc, LabVersionKind.STATE),
+                    LabVersion("local-models", "settings.state.local-models", R.string.lab_v_local_models, R.string.lab_v_local_models_desc, LabVersionKind.STATE),
+                    LabVersion("providers", "settings.state.providers", R.string.lab_v_providers_list, R.string.lab_v_providers_list_desc, LabVersionKind.STATE),
                 ),
             ),
         ),

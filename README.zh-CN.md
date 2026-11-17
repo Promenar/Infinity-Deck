@@ -92,12 +92,26 @@
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3>端侧离线语音与混合 RAG 知识库</h3>
-      内置离线流式听写（X-ASR）、可选 `SenseVoice-Small int8` 二遍精修（按设备内存与 CPU 自动分级，含 RTF 熔断退避）及本地说话人分离（pyannote + CAM++），录制中同步生成整理草稿。支持导入 PDF、Word、Markdown 或挂载外部目录，结合向量检索、长期记忆与知识图谱生成带引用的回答。
+      <img src="assets/screenshots/zh/recording-workbench.webp" alt="内屏录音整理工作台：左栏说话人逐字稿与右栏结构化整理稿并排对照">
+      <h3>端侧离线语音与录音整理</h3>
+      内置离线流式听写（X-ASR）、可选 `SenseVoice-Small int8` 二遍精修（按设备内存与 CPU 自动分级，含 RTF 熔断退避）及本地说话人分离（pyannote + CAM++）。支持录制中同步生成整理草稿、按时间戳点击回听与双栏对照编辑。
     </td>
     <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/library-ask.webp" alt="资料库混合检索与带编号引用溯源">
+      <h3>混合 RAG 资料库与知识图谱</h3>
+      支持导入 PDF、Word、Markdown、HTML 或直接挂载手机外部目录，融合文档向量、关键词检索、跨会话长期记忆与实体知识图谱生成带编号引用的答案，一键定位高亮原文。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/local-models.webp" alt="本地 GGUF 模型三槽位：Main、Embedding、Rerank 在 Vulkan 与 CPU 上加载就绪">
+      <h3>模型路由与端侧 GGUF 推理</h3>
+      支持自有 API Key 接入主流云端模型与 Coding Plan 预设，内置 `llama.cpp` 引擎独立托管对话（Main）、向量嵌入（Embedding）与重排序（Rerank）三槽位并支持重启自动恢复，配合内置 Tailscale 直连私有模型网关。
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screenshots/zh/production-storyboard.webp" alt="短片制作面板：雾港分镜列表、参考图输入与多通道视频生成规划">
       <h3>画布原型、图像重绘与音视频制作面板</h3>
-      支持在对话中生成可交互多屏网页原型与版本化文档产物；接入云端或自建 ComfyUI 进行生图与画板蒙版重绘；通过制作面板管理剧本、资产、分镜与视频候选（支持火山方舟 Seedance、MiniMax 与 ComfyUI 工作流），支持回合制批注审片、尾帧续接镜头及导出 MP4 粗剪与 SRT 字幕。
+      支持在对话中生成可交互多屏网页原型与版本化文档产物；接入云端或自建 ComfyUI 进行生图与画板蒙版重绘；通过制作面板管理剧本、资产、分镜与视频候选（兼容火山方舟 Seedance、MiniMax 与 ComfyUI），支持回合制审片与导出 MP4 粗剪及 SRT 字幕。
     </td>
   </tr>
 </table>

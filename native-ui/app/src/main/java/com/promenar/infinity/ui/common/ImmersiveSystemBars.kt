@@ -20,7 +20,10 @@ fun ImmersiveSystemBars(enabled: Boolean = true) {
     val view = LocalView.current
     DisposableEffect(view, enabled) {
         if (!enabled) return@DisposableEffect onDispose {}
-        val window = (view.parent as? DialogWindowProvider)?.window ?: view.context.findActivity()?.window
+        val dialogWindow = generateSequence<Any>(view) { (it as? android.view.View)?.parent }
+            .filterIsInstance<DialogWindowProvider>()
+            .firstOrNull()?.window
+        val window = dialogWindow ?: view.context.findActivity()?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller?.hide(WindowInsetsCompat.Type.systemBars())

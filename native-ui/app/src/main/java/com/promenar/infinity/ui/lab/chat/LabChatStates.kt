@@ -105,6 +105,7 @@ internal val labChatStateScenes: Map<String, () -> LabScene> = mapOf(
                     public = PublicNetworkStatus.CONNECTED,
                     tailscale = TailscaleLightStatus.CONNECTED,
                     tailnetProviderIds = setOf(GATEWAY_PROVIDER),
+                    localProviderIds = setOf(LOCAL_PROVIDER),
                 ),
                 onRetryTailscale = {},
             )
@@ -122,8 +123,9 @@ internal val labChatStateScenes: Map<String, () -> LabScene> = mapOf(
 
 private const val ASK_AT = AdeTimes.EXPLORED + 3_000
 private const val SECRET_AT = AdeTimes.COMMITTED + 600
+private const val LOCAL_PROVIDER = "local_gguf"
 private const val GATEWAY_PROVIDER = "lab-gateway"
-private const val GATEWAY_MODEL = "lab-gateway::qwen3.8-32b"
+private const val GATEWAY_MODEL = "lab-gateway::qwen3.5-32b"
 
 @Composable
 private fun rememberStatesText(): LabStatesText {
@@ -204,12 +206,18 @@ private fun LabChatFrame.withSecretInput(text: LabStatesText, expiresAt: Long): 
     )
 }
 
-private fun pickerModel(id: String, name: String, provider: String, providerId: String) = ModelSelectionUiModel(
+private fun pickerModel(
+    id: String,
+    name: String,
+    provider: String,
+    providerId: String,
+    contextTokens: Int = 131_072,
+) = ModelSelectionUiModel(
     selectionId = "$providerId::$id",
     remoteModelId = id,
     displayName = name,
     providerName = provider,
-    contextTokens = 131_072,
+    contextTokens = contextTokens,
     workload = ModelWorkload.GENERATIVE_TEXT,
     capabilityStates = mapOf(ModelCapability.REASONING to SupportState.SUPPORTED),
     chatEndpointCompatible = SupportState.SUPPORTED,
@@ -217,9 +225,11 @@ private fun pickerModel(id: String, name: String, provider: String, providerId: 
 )
 
 private fun pickerModels(text: LabStatesText) = listOf(
-    pickerModel("qwen3.8-32b", "Qwen3.8 32B", text.gatewayName, GATEWAY_PROVIDER),
-    pickerModel("gemma-4-27b", "Gemma 4 27B", text.gatewayName, GATEWAY_PROVIDER),
-    pickerModel(LAB_MODEL, LAB_MODEL, "DeepSeek", "lab-deepseek"),
+    pickerModel("Qwen3-4B-Q8_0.gguf", "Qwen3-4B (Q8_0)", text.localProviderName, LOCAL_PROVIDER, contextTokens = 16_384),
+    pickerModel("qwen3.5-32b", "Qwen3.5 32B", text.gatewayName, GATEWAY_PROVIDER),
+    pickerModel("deepseek-chat", LAB_MODEL, "DeepSeek", "lab-deepseek"),
+    pickerModel("claude-sonnet-4-6", "Claude Sonnet 4.6", "Anthropic", "lab-anthropic", contextTokens = 200_000),
+    pickerModel("gemini-3.1-pro", "Gemini 3.1 Pro", "Google Gemini", "lab-google", contextTokens = 1_000_000),
 )
 
 /** 新开的会话：问题已发出，请求要经内置 Tailscale 发往 gpu-box，节点正在接入 tailnet。 */
@@ -232,7 +242,7 @@ private fun tailnetWaitFrame(text: LabStatesText): LabChatFrame = LabChatFrame(
             isGenerating = true,
             status = GenerationStatus.THINKING,
         ),
-        modelDisplayNames = mapOf(GATEWAY_MODEL to "Qwen3.8 32B"),
+        modelDisplayNames = mapOf(GATEWAY_MODEL to "Qwen3.5 32B"),
         generationStartedAt = 0L,
         generationPhase = GenerationPhase.CONNECTING,
         tailnetWait = TailnetWaitState.Waiting(
@@ -266,6 +276,7 @@ internal class LabStatesText(zh: Boolean) {
     val secretPurpose = if (zh) "推送 starlog 到 github.com" else "Push starlog to github.com"
     val secretDestination = if (zh) "Git 凭据 · github.com" else "Git credential · github.com"
 
+    val localProviderName = if (zh) "本地推理 · llama.cpp" else "On-device · llama.cpp"
     val gatewayName = if (zh) "家里的网关" else "Home gateway"
     val tailnetSessionTitle = if (zh) "问家里的模型" else "Ask the home model"
     val tailnetPrompt = if (zh) {

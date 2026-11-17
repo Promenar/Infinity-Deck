@@ -3,7 +3,10 @@ package com.promenar.infinity.ui.lab.chat
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,8 +22,10 @@ import com.promenar.infinity.data.git.GitChangeList
 import com.promenar.infinity.data.git.GitCommitLog
 import com.promenar.infinity.data.git.GitCommitSummary
 import com.promenar.infinity.data.git.GitStatus
-import com.promenar.infinity.ui.git.GitEntrySummary
 import com.promenar.infinity.data.git.GitTracking
+import com.promenar.infinity.data.production.DocumentRef
+import com.promenar.infinity.data.production.ProductionSnapshot
+import com.promenar.infinity.data.production.ShotDialogue
 import com.promenar.infinity.ui.chat.ChatPage
 import com.promenar.infinity.ui.chat.ChatScreenActions
 import com.promenar.infinity.ui.common.InfinityPaneLevel
@@ -28,19 +33,25 @@ import com.promenar.infinity.ui.common.InfinityPanePresentation
 import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
 import com.promenar.infinity.ui.common.infinityInspectorAvailable
 import com.promenar.infinity.ui.git.GitChangesPanel
+import com.promenar.infinity.ui.git.GitEntrySummary
 import com.promenar.infinity.ui.git.GitLoad
 import com.promenar.infinity.ui.git.GitPanelActions
 import com.promenar.infinity.ui.git.GitPanelTab
 import com.promenar.infinity.ui.git.GitPanelUiState
 import com.promenar.infinity.ui.git.gitPageModifier
 import com.promenar.infinity.ui.lab.fakes.LabMediaResolver
-import com.promenar.infinity.ui.lab.stage.LabSceneScope
-import com.promenar.infinity.ui.media.LabWorkspaceMediaResolvers
 import com.promenar.infinity.ui.lab.stage.LabScene
+import com.promenar.infinity.ui.lab.stage.LabSceneScope
 import com.promenar.infinity.ui.lab.stage.LabStateScene
 import com.promenar.infinity.ui.lab.stage.LabWorkflowScene
 import com.promenar.infinity.ui.lab.timeline.LabTimeline
 import com.promenar.infinity.ui.lab.timeline.labTimeline
+import com.promenar.infinity.ui.media.LabWorkspaceMediaResolvers
+import com.promenar.infinity.ui.media.LocalWorkspaceMedia
+import com.promenar.infinity.ui.media.WorkspaceMediaEnvironment
+import com.promenar.infinity.ui.production.ProductionPanelContent
+import com.promenar.infinity.ui.production.ProductionPhaseTwoSamples
+import com.promenar.infinity.ui.production.ProductionTab
 import java.time.Instant
 import java.time.ZoneId
 
@@ -111,6 +122,9 @@ internal val labChatScenes: Map<String, () -> LabScene> = mapOf(
     },
     "inspector.state.git-commits" to {
         LabStateScene { AdeStill(ADE_DONE, AdeTimes.DONE + 60_000, initialPages = listOf(ChatPage.Git), gitTab = GitPanelTab.COMMITS) }
+    },
+    "inspector.state.production" to {
+        LabStateScene { ProductionScene() }
     },
 )
 
@@ -286,4 +300,143 @@ internal fun adeCommitLog(nowMillis: Long): GitCommitLog {
             )
         },
     )
+}
+
+@Composable
+private fun LabSceneScope.ProductionScene() {
+    val context = LocalContext.current
+    val zh = isChinese(context.resources)
+    val snapshot = remember(zh) { if (zh) ProductionPhaseTwoSamples.snapshot else englishProductionSnapshot() }
+    val services = remember(zh) {
+        if (zh) ProductionPhaseTwoSamples.services
+        else ProductionPhaseTwoSamples.services.copy(
+            channelLabel = { if (it == "seedance") "Seedance 2.5" else "Local H3" },
+        )
+    }
+    val mediaEntries = remember {
+        listOf(
+            "/productions/harbor/assets/front.png",
+            "/productions/harbor/assets/side.png",
+            "/productions/harbor/assets/back.png",
+            "/productions/harbor/assets/detail.png",
+            "/productions/harbor/assets/linwan-v1.png",
+            "/productions/harbor/assets/linwan-v2.png",
+            "/productions/harbor/assets/zhou-v1.png",
+            "/productions/harbor/assets/pier-v1.png",
+            "/productions/harbor/keyframes/sc01-02-k1.png",
+            "/productions/harbor/keyframes/sc01-03-a.png",
+            "/productions/harbor/keyframes/sc01-03-b.png",
+        ).associateWith { vpath -> ISSUE_COVER_REF.copy(path = vpath) to ISSUE_COVER_ASSET }
+    }
+    val resolver = remember {
+        LabMediaResolver(context, mediaEntries).also { LabWorkspaceMediaResolvers.register(LAB_SESSION_ID, it) }
+    }
+    DisposableEffect(resolver) { onDispose { LabWorkspaceMediaResolvers.unregister(LAB_SESSION_ID, resolver) } }
+    val media = remember(resolver) { WorkspaceMediaEnvironment(LAB_SESSION_ID, resolver) }
+
+    CompositionLocalProvider(LocalWorkspaceMedia provides media) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            ProductionPanelContent(
+                snapshot = snapshot,
+                onAction = { _, _ -> null },
+                onResolve = { null },
+                sessionId = LAB_SESSION_ID,
+                services = services,
+                tasks = ProductionPhaseTwoSamples.tasks,
+                channels = ProductionPhaseTwoSamples.channels,
+                channelOrder = ProductionPhaseTwoSamples.order,
+                initialTab = ProductionTab.STORYBOARD,
+                initialShot = null,
+                onBack = onExit,
+            )
+        }
+    }
+}
+
+private fun englishProductionSnapshot(): ProductionSnapshot {
+    val source = ProductionPhaseTwoSamples.production
+    val translated = source.copy(
+        title = "Fog Harbor",
+        logline = "Ten years after a disappearance at sea, a daughter returns to Fog Harbor and finds her father's unsent letter at the old pier.",
+        bible = listOf(
+            DocumentRef("Story Bible", "productions/harbor/bible/story.md"),
+            DocumentRef("Visual Look", "productions/harbor/bible/look.md"),
+        ),
+        assets = source.assets.map { asset ->
+            when (asset.id) {
+                "char-linwan" -> asset.copy(
+                    name = "Lin Wan",
+                    description = "28, short hair, dark trench coat.",
+                    looks = asset.looks.map { look ->
+                        look.copy(name = if (look.id == "coat") "Trench Coat" else "Tailored Suit")
+                    },
+                )
+                "char-zhou" -> asset.copy(name = "Old Zhou")
+                "loc-pier" -> asset.copy(name = "Old Pier Boardwalk")
+                "prop-letter" -> asset.copy(name = "Envelope", userNote = "Needs weathered paper texture.")
+                else -> asset
+            }
+        },
+        seasons = source.seasons.map { season ->
+            season.copy(
+                episodes = season.episodes.map { episode ->
+                    when (episode.id) {
+                        "S1E01" -> episode.copy(
+                            title = "Returning to Harbor",
+                            scenes = episode.scenes.map { scene ->
+                                when (scene.code) {
+                                    "SC01" -> scene.copy(
+                                        heading = "EXT. PIER BOARDWALK - NIGHT",
+                                        shots = scene.shots.map { shot ->
+                                            when (shot.code) {
+                                                "SC01-01" -> shot.copy(
+                                                    title = "Distant pier in fog",
+                                                    size = "Wide",
+                                                    prompt = "Old pier at night, low sea mist, a lone lantern swaying at the boardwalk end.",
+                                                )
+                                                "SC01-02" -> shot.copy(
+                                                    title = "Lin Wan turns back",
+                                                    size = "Close",
+                                                    camera = "Eye level",
+                                                    cameraMovement = "Slow push-in",
+                                                    visual = "Lin Wan pauses and looks back toward the end of the boardwalk.",
+                                                    performance = "Alert gaze, measured breathing.",
+                                                    dialogue = listOf(ShotDialogue("char-linwan", "Did you hear that?", "Quietly")),
+                                                    sound = "Foghorn and waves",
+                                                    transition = "Cut",
+                                                    continuity = "Follows boardwalk wide shot",
+                                                    prompt = "Lin Wan in the fog pauses and turns back, rim-lit from behind, alert expression.",
+                                                    agentNote = "Take 2 preserves keyframe framing.",
+                                                )
+                                                "SC01-03" -> shot.copy(
+                                                    title = "Envelope under lamp",
+                                                    size = "CU",
+                                                    userNote = "Handwriting on the envelope needs to be legible.",
+                                                )
+                                                else -> shot
+                                            }
+                                        },
+                                    )
+                                    "SC02" -> scene.copy(
+                                        heading = "INT. TACKLE WAREHOUSE - NIGHT",
+                                        shots = scene.shots.map { shot ->
+                                            when (shot.code) {
+                                                "SC02-01" -> shot.copy(title = "Pushing the door open", size = "Medium")
+                                                "SC02-02" -> shot.copy(title = "Shadows between racks", size = "Full")
+                                                else -> shot
+                                            }
+                                        },
+                                    )
+                                    else -> scene
+                                }
+                            },
+                        )
+                        "S1E02" -> episode.copy(title = "Tide Chart")
+                        else -> episode
+                    }
+                },
+            )
+        },
+    )
+    return ProductionPhaseTwoSamples.snapshot.copy(production = translated)
 }

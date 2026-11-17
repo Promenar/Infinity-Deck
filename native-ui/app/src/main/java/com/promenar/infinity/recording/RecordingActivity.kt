@@ -545,7 +545,7 @@ private fun RecordingSessionHotwords(item: RecordingSession, dismiss: () -> Unit
 }
 
 @Composable
-private fun RecordingLanguageChoices(output: RecordingLanguage, select: (RecordingLanguage) -> Unit) {
+internal fun RecordingLanguageChoices(output: RecordingLanguage, select: (RecordingLanguage) -> Unit) {
     InfinitySegmentedControl(
         segments = RecordingLanguage.entries.map { option ->
             InfinitySegment(value = option, label = option.label)
@@ -558,7 +558,7 @@ private fun RecordingLanguageChoices(output: RecordingLanguage, select: (Recordi
 }
 
 @Composable
-private fun RecordingWorkspaceSettings(
+internal fun RecordingWorkspaceSettings(
     mode: RecordingMode,
     language: RecordingLanguage,
     live: Boolean,
@@ -567,6 +567,7 @@ private fun RecordingWorkspaceSettings(
     single: Boolean,
     dismiss: () -> Unit,
     onSave: (RecordingMode, RecordingLanguage, Boolean, Boolean, Boolean) -> Unit,
+    localInferenceAvailable: Boolean = (LocalContext.current.applicationContext as? InfinityApplication)?.localInferenceRuntimeGate?.isAvailable ?: true,
     resources: @Composable () -> Unit,
 ) {
     var route by rememberSaveable { mutableStateOf(mode) }
@@ -574,7 +575,6 @@ private fun RecordingWorkspaceSettings(
     var draft by rememberSaveable { mutableStateOf(live) }
     var separate by rememberSaveable { mutableStateOf(speakers) }
     var fallbackState by rememberSaveable { mutableStateOf(fallback) }
-    val app = LocalContext.current.applicationContext as InfinityApplication
     val wide = rememberInfinityWideWindow()
     val modes = @Composable {
         RecordingDialogGroup(stringResource(R.string.recording_route_title), modifier = Modifier.selectableGroup()) {
@@ -583,7 +583,7 @@ private fun RecordingWorkspaceSettings(
                 Triple(RecordingMode.Auto, R.string.recording_mode_auto, R.string.recording_dialog_mode_cloud),
                 Triple(RecordingMode.Raw, R.string.recording_mode_raw, R.string.recording_dialog_mode_raw),
             ).forEach { (option, label, detail) ->
-                if (option != RecordingMode.Local || app.localInferenceRuntimeGate.isAvailable) {
+                if (option != RecordingMode.Local || localInferenceAvailable) {
                     RecordingDialogRow(stringResource(label), { route = option }, stringResource(detail), selected = route == option)
                 }
             }
