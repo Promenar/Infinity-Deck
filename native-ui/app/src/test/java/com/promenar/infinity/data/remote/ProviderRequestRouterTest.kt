@@ -154,6 +154,18 @@ class ProviderRequestRouterTest {
     }
 
     @Test
+    fun `显式允许停用模型时路由解析成功以支持未启用模型测速`() {
+        seed("p", "model", "key")
+        models["p::model"] = models.getValue("p::model").copy(enabled = false)
+
+        assertFailure("p::model", ProviderResolutionError.MODEL_DISABLED)
+        val resolved = router.resolve("p::model", allowDisabledModel = true) as ProviderResolution.Success
+        assertThat(resolved.value.providerId).isEqualTo("p")
+        assertThat(resolved.value.remoteModelId).isEqualTo("model")
+        assertThat(createdConfigs).isEmpty()
+    }
+
+    @Test
     fun `Vertex 凭证缺字段或私钥不可解析时不创建客户端且不泄露原文`() {
         val secretMarker = "never-print-private-material"
         seedVertex("vertex", "gemini", """{"project_id":"project","client_email":"a@b","private_key":"$secretMarker"}""")

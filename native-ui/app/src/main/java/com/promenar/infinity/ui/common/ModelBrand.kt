@@ -100,10 +100,17 @@ object ModelBrandResolver {
 
 /** 同步矢量 Drawable 映射：避免异步图片加载延迟导致列表或预览显示白块或首字回退。 */
 @DrawableRes
-internal fun localBrandDrawableRes(brand: String): Int? = when (brand) {
+internal fun localBrandDrawableRes(brand: String, rawSource: String? = null): Int? = when (brand) {
     "openai" -> R.drawable.ic_provider_openai
     "anthropic" -> R.drawable.ic_provider_anthropic
-    "google" -> R.drawable.ic_provider_gemini
+    "google" -> {
+        val lower = rawSource?.lowercase().orEmpty()
+        if (rawSource == null || "gemini" in lower) {
+            R.drawable.ic_provider_gemini
+        } else {
+            R.drawable.ic_provider_google
+        }
+    }
     "deepseek" -> R.drawable.ic_provider_deepseek
     "qwen" -> R.drawable.ic_provider_qwen
     "mistral" -> R.drawable.ic_provider_mistral
@@ -141,7 +148,7 @@ fun ModelBrandIcon(
     tintOverride: Color? = null,
 ) {
     val brand = ModelBrandResolver.brandKey(modelId)
-    val localRes = brand?.let(::localBrandDrawableRes)
+    val localRes = brand?.let { localBrandDrawableRes(it, modelId) }
     if (localRes != null) {
         val tint = tintOverride ?: brandAccentColor(brand) ?: fallbackTint
         Icon(

@@ -154,6 +154,7 @@ internal class ProviderModelTestCoordinator(
     private val timeoutMillis: Long = 15_000,
     private val nowNanos: () -> Long = System::nanoTime,
     private val beforeJobStartForTest: (String) -> Unit = {},
+    private val onProviderVerified: (String) -> Unit = {},
 ) {
     private val _states = MutableStateFlow<Map<String, ModelTestState>>(emptyMap())
     val states: StateFlow<Map<String, ModelTestState>> = _states.asStateFlow()
@@ -179,7 +180,9 @@ internal class ProviderModelTestCoordinator(
                         )
                         is ProbeOutcome.Failed -> outcome.error
                     }
-                    setState(modelId, terminal, generation)
+                    if (setState(modelId, terminal, generation) && outcome is ProbeOutcome.Success) {
+                        onProviderVerified(outcome.providerId)
+                    }
                 } catch (_: TimeoutCancellationException) {
                     setState(modelId, ModelTestState.Error(GenerationFailureCode.TIMEOUT), generation)
                 } catch (cancelled: CancellationException) {
@@ -210,16 +213,17 @@ internal class ProviderModelTestCoordinator(
         job?.cancel()
     }
 
-    private fun setState(modelId: String, state: ModelTestState, generation: Long) {
+    private fun setState(modelId: String, state: ModelTestState, generation: Long): Boolean {
         synchronized(jobsLock) {
-            if (generations[modelId] != generation) return
+            if (generations[modelId] != generation) return false
             _states.value = _states.value + (modelId to state)
+            return true
         }
     }
 
     private suspend fun probe(modelId: String): ProbeOutcome {
-        // 模型级生成能力测试：与 ProviderConnectionProbe 的零推理成本连接探测严格分离。
-        val resolved = when (val resolution = router.resolve(modelId)) {
+        // 模型级生成能力测试：与 ProviderConnectionProbe 的零推理成本连接探测严格分离，允许在不启用模型开关的情况下先行测速。
+        val resolved = when (val resolution = router.resolve(modelId, allowDisabledModel = true)) {
             is ProviderResolution.Success -> resolution.value
             is ProviderResolution.Failure -> return ProbeOutcome.Failed(
                 ModelTestState.Error(
@@ -243,8 +247,8 @@ internal class ProviderModelTestCoordinator(
         ).mapNotNull { chunk ->
             when (chunk) {
                 is StreamChunk.Error -> ProbeOutcome.Failed(ModelTestState.Error(chunk.code, chunk.retryAfterSeconds))
-                is StreamChunk.TextDelta -> if (chunk.content.isNotEmpty()) ProbeOutcome.Success(nowNanos()) else null
-                is StreamChunk.Thinking -> if (chunk.content.isNotEmpty()) ProbeOutcome.Success(nowNanos()) else null
+                is StreamChunk.TextDelta -> if (chunk.content.isNotEmpty()) ProbeOutcome.Success(nowNanos(), resolved.providerId) else null
+                is StreamChunk.Thinking -> if (chunk.content.isNotEmpty()) ProbeOutcome.Success(nowNanos(), resolved.providerId) else null
                 is StreamChunk.Completed -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.UNKNOWN))
                 else -> null
             }
@@ -252,7 +256,7 @@ internal class ProviderModelTestCoordinator(
     }
 
     private sealed interface ProbeOutcome {
-        data class Success(val receivedAtNanos: Long) : ProbeOutcome
+        data class Success(val receivedAtNanos: Long, val providerId: String) : ProbeOutcome
         data class Failed(val error: ModelTestState.Error) : ProbeOutcome
     }
 }
@@ -371,7 +375,16 @@ class SettingsViewModel(
     private val modelSyncGate = ModelSyncGate()
 
     private val modelTestCoordinator by lazy {
-        ProviderModelTestCoordinator(app.providerRequestRouter, viewModelScope)
+        ProviderModelTestCoordinator(
+            router = app.providerRequestRouter,
+            scope = viewModelScope,
+            onProviderVerified = { providerId ->
+                pm.recordProviderConnectionTest(
+                    providerId,
+                    com.promenar.infinity.data.remote.provider.ProviderConnectionProbeResult.Success,
+                )
+            },
+        )
     }
     val modelTestStates: StateFlow<Map<String, ModelTestState>>
         get() = modelTestCoordinator.states
@@ -545,8 +558,14 @@ class SettingsViewModel(
                             com.promenar.infinity.data.manager.ModelSyncResult.UNCHANGED -> Unit
                         }
                     }
-                    // 只有真正从提供商拉到列表并合并完成才算一次同步；内置回退不更新“上次同步”时间。
-                    if (!usedBuiltInFallback) pm.recordProviderModelSync(providerId)
+                    // 只有真正从提供商拉到列表并合并完成才算一次同步；内置回退不更新“上次同步”时间与连接状态。
+                    if (!usedBuiltInFallback) {
+                        pm.recordProviderModelSync(providerId)
+                        pm.recordProviderConnectionTest(
+                            providerId,
+                            com.promenar.infinity.data.remote.provider.ProviderConnectionProbeResult.Success,
+                        )
+                    }
 
                     // 构造结构化反馈：新增/更新计数进入 typed args，展示层负责本地化
                     if (newCount > 0 || updatedCount > 0) {
@@ -614,7 +633,15 @@ class SettingsViewModel(
                 }
             }
         }
-        if (verified != null && verified != model) pm.replaceModelFromInternalFlow(verified)
+        if (verified != null) {
+            if (verified != model) pm.replaceModelFromInternalFlow(verified)
+            if (providerId.isNotBlank()) {
+                pm.recordProviderConnectionTest(
+                    providerId,
+                    com.promenar.infinity.data.remote.provider.ProviderConnectionProbeResult.Success,
+                )
+            }
+        }
         return verified
     }
 

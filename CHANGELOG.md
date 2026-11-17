@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.60.1-beta] - 2026-11-17
+
+- **提供商连接状态与测速解耦**：修复首次引导添加主提供商（`default`）、模型列表远端拉取及单模型测速成功后未回写 `ProviderStatusStore` 的问题；放开未启用模型在模型编辑页单独测速的限制（`allowDisabledModel = true`），同时保持正式对话与 Agent 路由的停用拦截；精简提供商管理列表行，移除卡片底部的过期手动测速状态行，保留按需测试入口与 `ComfyUI 主机` 实时在线探测。
+- **Google 系与矢量品牌图标修复**：修复 `ic_provider_gemini.xml`、`ic_provider_cohere.xml`、`ic_provider_deepseek.xml`、`ic_provider_openai.xml` 与 `ic_github_mark.xml` 中 SVGO 圆弧标志位连写导致 Android `VectorDrawable` 图形畸变截断的问题；按方案 A 为模型列表、`ProviderListScreen` 与模型选择器落地 Google 系品牌区分——`Gemini` 系列展示完整对称的四芒星 Spark 图标，`Gemma` / Google 系列展示专属 Google G 矢量图标。
+
 ## [0.60.0-beta] - 2026-11-17
 
 - **全站原子下拉与本地模型自动恢复**：抽取 `InfinityOptionSheet` / `InfinityOptionItem` / `InfinityOptionIconBadge` 原子选项组件（配分组标题、圆角矢量图标底板与选中态对勾），统一重构本地模型槽位与库菜单（支持贴行 Popover 下拉）、提供商自定义协议选择、外观模式与配色风格、语言与个人资料菜单、搜索/RAG 策略及智能体权限策略。同步实现本地推理三槽位（`MAIN` / `EMBEDDING` / `RERANK`）状态持久化，关闭总开关时保留槽位记录，重新启用或应用重启时自动校验并恢复加载。

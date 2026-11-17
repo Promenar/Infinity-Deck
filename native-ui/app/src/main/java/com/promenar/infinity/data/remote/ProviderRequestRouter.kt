@@ -52,6 +52,10 @@ sealed interface ProviderResolution {
 
 interface ProviderRequestRouter {
     fun resolve(modelId: String): ProviderResolution
+
+    /** 允许模型测速等诊断入口在保留正式对话拦截语义的前提下，解析已停用模型的传输配置。 */
+    fun resolve(modelId: String, allowDisabledModel: Boolean): ProviderResolution = resolve(modelId)
+
     fun createClient(resolved: ResolvedProviderModel): UnifiedLlmClient
     suspend fun sessionHeaders(resolved: ResolvedProviderModel, sessionId: String?): SessionRequestHeaders? = null
 }
@@ -91,12 +95,15 @@ class DefaultProviderRequestRouter(
         clientFactory = { config -> UnifiedLlmClient({ config }, middlewares, sessionIdentifier = sessionIdentifier) },
     )
 
-    override fun resolve(modelId: String): ProviderResolution {
+    override fun resolve(modelId: String): ProviderResolution =
+        resolve(modelId, allowDisabledModel = false)
+
+    override fun resolve(modelId: String, allowDisabledModel: Boolean): ProviderResolution {
         val model = modelResolver(modelId)
             ?: return failure(ProviderResolutionError.MODEL_NOT_FOUND, modelId)
         val providerId = model.providerId
             ?: return failure(ProviderResolutionError.PROVIDER_ID_MISSING, modelId)
-        if (!model.enabled) {
+        if (!model.enabled && !allowDisabledModel) {
             return failure(ProviderResolutionError.MODEL_DISABLED, modelId, providerId)
         }
         if (unsupportedPersistedProtocolResolver(providerId)) {

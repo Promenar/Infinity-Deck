@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The current release is `v0.60.0-beta` (versionCode `165`). It unifies short single-choice pickers across Local Models, Provider protocols, Theme, Settings, Retrieval, and Agent editing onto the `InfinityOptionSheet` anchored dropdown pattern, persists all three local inference slots (`MAIN`, `EMBEDDING`, `RERANK`) across restarts and toggles, aligns Chat and Library headers to the 16dp edge, and fixes narrow-screen model-type clipping and recording empty-state layout. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.60.0-beta)
+The current release is `v0.60.1-beta` (versionCode `166`). It streamlines provider cards, keeps connection status consistent across onboarding, remote sync, and model latency probes, allows probing disabled models before enabling them, fixes SVG vector arc rendering for Gemini Spark, Google G (Gemma), OpenAI, DeepSeek, Cohere, and GitHub icons, and includes `InfinityOptionSheet` dropdowns, local 3-slot auto-restore, and 16dp header alignment. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.60.1-beta)
 
 <details>
 <summary><b>Build from source</b></summary>

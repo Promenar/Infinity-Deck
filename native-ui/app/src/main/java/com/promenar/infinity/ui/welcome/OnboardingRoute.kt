@@ -98,8 +98,13 @@ internal fun OnboardingRoute(
     }
     val modelName = onboarding.modelId?.let { id -> allModels.firstOrNull { it.id == id }?.name ?: id }
 
+    var lastConnectProbe by remember { mutableStateOf<ProviderConnectionProbeResult?>(null) }
     val finishConnect: suspend (OnboardingConnectOutcome) -> Unit = { outcome ->
         if (outcome is OnboardingConnectOutcome.Connected) {
+            settings.recordProviderConnectionTest(
+                outcome.providerId,
+                lastConnectProbe ?: ProviderConnectionProbeResult.Success,
+            )
             connect = OnboardingConnectStatus.Connected
             if (modelsOverride == null) settings.refreshProviderModels(outcome.providerId)?.join()
             store.recordProviderConnected(outcome.providerId)
@@ -143,6 +148,7 @@ internal fun OnboardingRoute(
         onConnect = { draft ->
             if (connect != OnboardingConnectStatus.Connecting) {
                 connect = OnboardingConnectStatus.Connecting
+                lastConnectProbe = null
                 scope.launch {
                     finishConnect(
                         connectOnboardingProvider(
@@ -151,7 +157,9 @@ internal fun OnboardingRoute(
                             probe = { config ->
                                 withContext(Dispatchers.IO) {
                                     try {
-                                        ProviderConnectionProbe.processScoped.probe(config)
+                                        ProviderConnectionProbe.processScoped.probe(config).also {
+                                            lastConnectProbe = it
+                                        }
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (_: Exception) {
@@ -169,6 +177,7 @@ internal fun OnboardingRoute(
         onConnectLocal = {
             if (connect != OnboardingConnectStatus.Connecting) {
                 connect = OnboardingConnectStatus.Connecting
+                lastConnectProbe = ProviderConnectionProbeResult.Success
                 scope.launch {
                     val slot = if (forceLocalProbeFailureForTesting) SlotState() else app.localInferenceEngine.mainSlot.value
                     finishConnect(connectOnboardingLocalProvider(localProviderModelsForConnection(slot), onboarding.providerId, save))

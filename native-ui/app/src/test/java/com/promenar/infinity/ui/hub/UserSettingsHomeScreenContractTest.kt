@@ -278,13 +278,13 @@ class UserSettingsHomeScreenContractTest {
     }
 
     @Test
-    fun `提供商同处一个分组且主机名凭证模型数与连接状态写在行内`() {
+    fun `提供商同处一个分组且主机名凭证模型数写在行内而不展示过时连接测试`() {
         assertThat(providerListSource).contains("verticalArrangement = Arrangement.spacedBy(0.dp)")
         assertThat(providerListSource).contains("BettboxListGroup(")
         assertThat(providerListSource).doesNotContain("footer = provider.baseUrl")
         assertThat(providerListSource).contains("R.string.settings_provider_status_summary")
         assertThat(providerListSource).contains("R.plurals.provider_list_model_count")
-        assertThat(providerListSource).contains("ProviderConnectionLine(")
+        assertThat(providerListSource).doesNotContain("ProviderConnectionLine(")
         assertThat(providerListSource).contains("provider.rawProtocolId")
         assertThat(providerListSource).doesNotContain("state.providers.map")
     }

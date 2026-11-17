@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.common
 
+import com.promenar.infinity.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -51,5 +52,29 @@ class ModelBrandResolverTest {
     fun `case insensitive`() {
         assertEquals("deepseek", ModelBrandResolver.brandKey("DeepSeek-V4-Flash"))
         assertEquals("qwen", ModelBrandResolver.brandKey("QWEN3-MAX"))
+    }
+
+    @Test
+    fun `google models distinguish gemini spark and google g logo`() {
+        assertEquals(
+            R.drawable.ic_provider_gemini,
+            localBrandDrawableRes("google", "gemini-3.8-flash"),
+        )
+        assertEquals(
+            R.drawable.ic_provider_gemini,
+            localBrandDrawableRes("google", "google/gemini-2.5-pro"),
+        )
+        assertEquals(
+            R.drawable.ic_provider_google,
+            localBrandDrawableRes("google", "gemma-4-31b-it"),
+        )
+        assertEquals(
+            R.drawable.ic_provider_google,
+            localBrandDrawableRes("google", "Gemma 4 31B IT"),
+        )
+        assertEquals(
+            R.drawable.ic_provider_google,
+            localBrandDrawableRes("google", "Vertex AI"),
+        )
     }
 }

@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -83,7 +82,6 @@ import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
-import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
@@ -223,7 +221,6 @@ internal fun ProviderListScreenContent(
         }
     ) { contentPadding ->
         val compactHeightEmptyState = LocalConfiguration.current.screenHeightDp < 480
-        val now = rememberMinuteClock()
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -265,9 +262,7 @@ internal fun ProviderListScreenContent(
                                     provider = provider,
                                     counts = state.modelCounts[provider.id] ?: ProviderModelCount(0, 0),
                                     mediaCounts = state.mediaCounts[provider.id] ?: ProviderMediaCount(),
-                                    status = state.statuses[provider.id],
                                     onTailnet = provider.id in state.tailnetProviderIds,
-                                    nowMillis = now,
                                     onClick = { actions.onProviderModels(provider.id) },
                                     onEdit = { actions.onEditProvider(provider.id) },
                                     onDelete = { actions.onRequestDeleteProvider(provider.id) },
@@ -450,7 +445,7 @@ private fun ProviderEmptyIcon(size: androidx.compose.ui.unit.Dp) {
 }
 
 /**
- * 提供商行：名称与状态标签 / 协议与主机名 / 内网、凭证与模型数 / 最近一次连接测试。
+ * 提供商行：名称与状态标签 / 协议与主机名 / 内网、凭证与模型数。
  * 点按进入模型列表，⋮ 菜单为编辑、管理模型、删除。
  */
 @Composable
@@ -458,9 +453,7 @@ private fun ProviderCard(
     provider: ProviderListItem,
     counts: ProviderModelCount,
     mediaCounts: ProviderMediaCount? = null,
-    status: ProviderStatus?,
     onTailnet: Boolean,
-    nowMillis: Long,
     onClick: () -> Unit,
     onEdit: () -> Unit,
     onDelete: (() -> Unit)?,
@@ -614,35 +607,6 @@ private fun ProviderCard(
                 InfinityMetaLine(segments, style = MaterialTheme.typography.bodySmall, color = secondary)
             }
         }
-        ProviderConnectionLine(provider.id, status, nowMillis)
-    }
-}
-
-/** 最近一次连接测试：彩色圆点 + “连接正常 · 2 小时前”；从未测试时给出提示。 */
-@Composable
-private fun ProviderConnectionLine(providerId: String, status: ProviderStatus?, nowMillis: Long) {
-    val record = status?.lastConnection
-    val scheme = MaterialTheme.colorScheme
-    val domain = MaterialTheme.infinityDomainColors
-    val dotColor: Color = when (record?.statusKind()) {
-        InfinityStatusKind.Success -> domain.success
-        InfinityStatusKind.Error -> scheme.error
-        InfinityStatusKind.Warning -> domain.warning
-        InfinityStatusKind.Info -> domain.info
-        null -> scheme.outline
-    }
-    val segments = if (record == null) {
-        listOf(stringResource(R.string.provider_connection_never_tested))
-    } else {
-        listOf(record.outcomeLabel(), relativeTimeLabel(record.testedAtMillis, nowMillis))
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 2.dp).testTag(UiTags.providerConnectionStatus(providerId)),
-    ) {
-        Box(Modifier.size(6.dp).background(dotColor, CircleShape))
-        Spacer(Modifier.width(6.dp))
-        InfinityMetaLine(segments, style = MaterialTheme.typography.bodySmall, color = if (record == null) scheme.outline else scheme.onSurfaceVariant)
     }
 }
 
@@ -705,7 +669,7 @@ private fun ProviderAvatar(name: String, baseUrl: String?) {
     ) {
         if (brand != null) {
             ModelBrandIcon(
-                modelId = brand,
+                modelId = "$name ${baseUrl.orEmpty()}",
                 modifier = Modifier.size(22.dp),
                 contentDescription = null,
                 fallbackTint = accent ?: MaterialTheme.colorScheme.onSurfaceVariant,

@@ -119,7 +119,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 升级：在设置 › 关于里点“检查更新”，有新版时打开发行页下载，不会自动安装。
 
-当前发行版为 `v0.60.0-beta`（versionCode `165`）。本次抽取 `InfinityOptionSheet` 全站原子下拉组件并统一替换本地模型分配、提供商协议、外观主题、语言、检索策略与智能体权限等 7 处选择器；实现本地推理三槽位状态持久化与冷启动/重开自动恢复加载；同步对齐对话与资料页 `16dp` 右缘基准，并修复窄屏模型类型裁切与录音空状态文字重叠问题。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.60.0-beta)
+当前发行版为 `v0.60.1-beta`（versionCode `166`）：精简提供商卡片并统一引导、远端同步与单模型测速的状态记录；允许未启用模型先行测速；修复 Gemini 四芒星、Google G（Gemma）、OpenAI、DeepSeek、Cohere 与 GitHub 矢量圆弧渲染畸变，并集成 `InfinityOptionSheet` 原子下拉组件、本地推理三槽位自动恢复及 `16dp` 顶栏对齐。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.60.1-beta)
 
 <details>
 <summary><b>从源码构建</b></summary>

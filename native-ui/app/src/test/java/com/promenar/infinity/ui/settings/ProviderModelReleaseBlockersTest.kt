@@ -1,12 +1,17 @@
 package com.promenar.infinity.ui.settings
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.model.ModelInfo
+import com.promenar.infinity.data.model.ProviderConfig
+import com.promenar.infinity.data.model.ProviderListItem
+import com.promenar.infinity.data.remote.DefaultProviderRequestRouter
 import com.promenar.infinity.data.remote.ProviderRequestRouter
 import com.promenar.infinity.data.remote.ProviderResolution
 import com.promenar.infinity.data.remote.ResolvedProviderModel
 import com.promenar.infinity.data.remote.StreamConfig
 import com.promenar.infinity.data.remote.UnifiedLlmClient
 import com.promenar.infinity.data.remote.UnifiedProviderConfig
+import com.promenar.infinity.data.remote.stableModelId
 import com.promenar.infinity.data.remote.protocol.LlmProtocol
 import com.promenar.infinity.data.remote.protocol.OpenAIProtocol
 import com.promenar.infinity.data.remote.protocol.PromptRequest
@@ -442,6 +447,72 @@ class ProviderModelReleaseBlockersTest {
         advanceUntilIdle()
         assertThat(coordinator.states.value["provider-a::remote-a"])
             .isEqualTo(ModelTestState.Error(GenerationFailureCode.NETWORK))
+    }
+
+    @Test
+    fun `disabled model can still be tested and records verified provider`() = runTest {
+        val disabledModelId = stableModelId("provider-a", "remote-disabled")
+        val protocol = RecordingProtocol {
+            flowOf(
+                StreamChunk.TextDelta("OK"),
+                StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN),
+            )
+        }
+        val router = DefaultProviderRequestRouter(
+            modelResolver = { id ->
+                if (id == disabledModelId) {
+                    ModelInfo(
+                        name = "Remote Disabled",
+                        id = disabledModelId,
+                        description = "",
+                        enabled = false,
+                        providerName = "Provider A",
+                        providerId = "provider-a",
+                        remoteModelId = "remote-disabled",
+                    )
+                } else null
+            },
+            providerResolver = { id ->
+                if (id == "provider-a") {
+                    ProviderListItem(
+                        id = "provider-a",
+                        name = "Provider A",
+                        baseUrl = "https://provider.invalid/v1",
+                        protocolType = ProtocolType.OpenAI_ChatCompletions,
+                        hasApiKey = true,
+                        enabled = true,
+                    )
+                } else null
+            },
+            configResolver = { id ->
+                if (id == "provider-a") {
+                    ProviderConfig(
+                        protocolType = ProtocolType.OpenAI_ChatCompletions,
+                        baseUrl = "https://provider.invalid/v1",
+                        apiKey = "test-key",
+                        model = "remote-disabled",
+                    )
+                } else null
+            },
+            clientFactory = { config ->
+                UnifiedLlmClient(
+                    providerConfigResolver = { config },
+                    protocolFactory = { protocol },
+                )
+            },
+        )
+        val verifiedProviders = mutableListOf<String>()
+        val coordinator = ProviderModelTestCoordinator(
+            router = router,
+            scope = this,
+            onProviderVerified = { verifiedProviders += it },
+        )
+
+        coordinator.test(disabledModelId)
+        advanceUntilIdle()
+
+        assertThat(coordinator.states.value[disabledModelId]).isInstanceOf(ModelTestState.Success::class.java)
+        assertThat(verifiedProviders).containsExactly("provider-a")
     }
 
     private fun coordinator(
