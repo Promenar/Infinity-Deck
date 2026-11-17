@@ -135,7 +135,7 @@
 
 - **Requirements**: Android 12 (API 31) or later. Built-in Linux and on-device GGUF inference require `arm64-v8a`; Alpine base occupies ~64 MB, or ~470 MB with the default toolchain (`git`, `ripgrep`, Python, Node.js, FFmpeg, each optional at install time).
 - **App updates**: Check **Settings › About › Check for updates** to query the latest GitHub Release and open the download page; nothing downloads or installs silently in the background.
-- **Current release**: `v0.61.2-beta` (`versionCode` `169`), adding the two-pass `SenseVoice` refiner with hardware-adaptive tiering, dynamic local GGUF model routing with 3-slot auto-recovery, expanded provider & Coding Plan presets, unified Recording & Default Model settings, and updated line-wrapping device tests. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.2-beta)
+- **Current release**: `v0.61.3-beta` (`versionCode` `170`), adding the redesigned recording organization status state machine and provenance tracking (stepped progress, route/model attribution, structured error classification with 60s auto-retry countdown, previous-draft preservation, and tab/history indicators) on top of the Visual Lab and bilingual showcase updates. [Releases](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### Build from Source
 

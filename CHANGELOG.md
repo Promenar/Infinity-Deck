@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.61.3-beta] - 2026-11-18
+
 - **录音听写整理稿生成状态系统性重设计**：
   - 消除分步整理之间的闪烁与轮询等待：新增运行态 `RecordingOrganizeRun`，在“提炼要点 → 汇总摘要 → 生成并保存文档”全链路连续保持运行状态与起始计时，录音结束、二遍精修、说话人分析及重识别后即时接棒调度；
   - 持久化来源与结构化失败分类：`RecordingSession` 新增 `organizedSource`（记录云端/本地路线、服务商、模型名、生成时间与语言）与 `lastOrganizeFailure`（区分请求超时、模型错误、输出语言不符、空结果与存储错误并保留 60 秒自动重试时间戳），兼容旧版 `transcript.json`；

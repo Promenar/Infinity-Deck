@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.61.2-beta`（versionCode `169`）。汇总上线录音 `SenseVoice` 二遍精修与硬件自适应分级、本地 GGUF 模型接入会话列表与三槽位自动恢复、主流模型与 Coding Plan 预设扩展、全站弹窗与排版规范统一，并同步更新文本换行设备门禁断言。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.2-beta)
+- **当前版本**：`v0.61.3-beta`（versionCode `170`）。系统性重构录音听写整理稿生成状态机与来源追溯（跨步骤进度条与阶段展示、云端/本地模型来源行与已更新标记、失败原因分类与 60 秒自动重试倒计时、保留旧稿对照与外屏页签/历史列表圆点），并包含 Visual Lab 场景扩展与新版中英文截图资产。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 
