@@ -368,7 +368,13 @@ fun ChatRoute(
         }
     }
     val taskCompletionUndo by chatViewModel.taskCompletionUndo.collectAsStateWithLifecycle()
-    val providerModels by ProviderManager.getInstance().providerModels.collectAsStateWithLifecycle()
+    val persistedProviderModels by ProviderManager.getInstance().providerModels.collectAsStateWithLifecycle()
+    val activeLocalModel = com.promenar.infinity.data.local.inference.LocalSessionModelBridge.rememberActiveLocalModelInfo()
+    val providerModels = remember(persistedProviderModels, activeLocalModel) {
+        if (activeLocalModel != null && persistedProviderModels.none { it.id == activeLocalModel.id }) {
+            persistedProviderModels + activeLocalModel
+        } else persistedProviderModels
+    }
     val modelDisplayNames = remember(providerModels, uiState.session?.modelId, uiState.messages) {
         resolveModelDisplayNames(
             sessionModelId = uiState.session?.modelId,
@@ -377,8 +383,14 @@ fun ChatRoute(
         )
     }
     val providers by ProviderManager.getInstance().providers.collectAsStateWithLifecycle()
-    val providerDisplayNames = remember(providers) {
-        providers.filter { it.name.isNotBlank() }.associate { it.id to it.name }
+    val providerDisplayNames = remember(providers, activeLocalModel) {
+        providers.filter { it.name.isNotBlank() }.associate { it.id to it.name } +
+            (if (activeLocalModel != null) {
+                mapOf(
+                    com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_ID to
+                        com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_NAME,
+                )
+            } else emptyMap())
     }
     val agentReasoningEffort by chatViewModel.agentReasoningEffort.collectAsStateWithLifecycle()
     val sessionReasoningEffort = uiState.session?.inferenceParams?.reasoningEffort

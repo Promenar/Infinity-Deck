@@ -94,7 +94,7 @@ internal fun AgentSubagentModelSection(
         SettingsToggle(
             title = stringResource(R.string.subagent_model_allow_per_task),
             description = stringResource(R.string.subagent_model_allow_per_task_desc),
-            descriptionMaxLines = 3,
+            descriptionMaxLines = 2,
             icon = Icons.Rounded.SwapHoriz,
             checked = policy.allowPerTaskModel,
             onCheckedChange = { allow -> onPolicyChange { it.copy(allowPerTaskModel = allow) } },

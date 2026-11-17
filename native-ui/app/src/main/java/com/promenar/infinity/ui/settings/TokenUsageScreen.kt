@@ -627,7 +627,7 @@ private fun ModelBreakdownRow(model: ModelCostInfo) {
             cacheHit,
             cost,
         ),
-        subtitleMaxLines = 3,
+        subtitleMaxLines = 2,
         trailingContent = {
             Text(
                 text = formatTokenCount(model.inputTokens + model.outputTokens),

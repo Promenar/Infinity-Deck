@@ -71,6 +71,9 @@
     <string name="recording_setup_intro">按需准备模型。你可以先进入应用，之后从设置补装。</string>
     <string name="recording_setup_asr">中英听写</string>
     <string name="recording_setup_asr_detail">实时生成逐字稿，也可补识别原音</string>
+    <string name="recording_setup_refine">二遍精修 · SenseVoice</string>
+    <string name="recording_setup_refine_detail">句末与停顿自动校准，减少漏词</string>
+    <string name="recording_setup_recommended">推荐</string>
     <string name="recording_setup_speakers">说话人区分与声纹匹配</string>
     <string name="recording_setup_speakers_detail">录完在设备上区分说话人</string>
     <string name="recording_setup_local">本地整理 · Qwen3-0.6B</string>

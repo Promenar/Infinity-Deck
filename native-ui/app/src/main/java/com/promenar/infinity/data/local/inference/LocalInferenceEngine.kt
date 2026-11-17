@@ -37,6 +37,7 @@ data class SlotState(
     val modelName: String = "",
     val modelSize: String = "",
     val quantization: String = "",
+    val contextSize: Int = 0,
     val error: String? = null
 )
 
@@ -48,6 +49,8 @@ class LlamaCppBackend : InferenceBackend {
         get() = if (ctx?.gpuAccelerated == true) BackendType.LLAMA_VULKAN else BackendType.LLAMA_CPU
 
     override val isLoaded: Boolean get() = ctx != null
+
+    override val contextSize: Int get() = ctx?.contextSize ?: 0
 
     override suspend fun loadModel(path: String, config: LoadConfig): Result<Unit> {
         return withContext(Dispatchers.IO) {
@@ -90,13 +93,25 @@ class LlamaCppBackend : InferenceBackend {
     }
 }
 
+private fun resolveDefaultMainContextSize(appContext: Context): Int = try {
+    com.promenar.infinity.recording.RecordingHardwareAdvisor.recommendedLocalContextSize(appContext)
+} catch (_: Throwable) {
+    8192
+}
+
 class LocalInferenceEngine internal constructor(
     private val mainBackend: InferenceBackend,
     private val embeddingBackend: InferenceBackend,
     private val rerankBackend: InferenceBackend,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val defaultMainContextSize: Int = 8192,
 ) {
-    constructor(appContext: Context) : this(LlamaCppBackend(), LlamaCppBackend(), LlamaCppBackend())
+    constructor(appContext: Context) : this(
+        LlamaCppBackend(),
+        LlamaCppBackend(),
+        LlamaCppBackend(),
+        defaultMainContextSize = resolveDefaultMainContextSize(appContext),
+    )
 
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val operationMutex = Mutex()
@@ -117,10 +132,14 @@ class LocalInferenceEngine internal constructor(
 
     var onStateChanged: (() -> Unit)? = null
 
+    fun defaultLoadConfig(slot: SlotType): LoadConfig = LoadConfig(
+        contextSize = if (slot == SlotType.MAIN) defaultMainContextSize else 2048,
+    )
+
     suspend fun loadModel(
         slot: SlotType,
         modelPath: String,
-        config: LoadConfig = LoadConfig()
+        config: LoadConfig = defaultLoadConfig(slot),
     ): Result<Unit> = withContext(ioDispatcher) {
         withEngineLock {
             // native 模型分配与槽位接管必须成对完成，取消在资源交接后传播。
@@ -140,6 +159,7 @@ class LocalInferenceEngine internal constructor(
 
                 backend.loadModel(modelPath, config).also { result ->
                     result.onSuccess {
+                        val effectiveCtx = backend.contextSize.takeIf { it > 0 } ?: config.contextSize
                         stateField.value = SlotState(
                             modelPath = modelPath,
                             isLoaded = true,
@@ -148,7 +168,8 @@ class LocalInferenceEngine internal constructor(
                             backendType = backend.backendType,
                             modelName = fileName,
                             modelSize = formatFileSize(sizeBytes),
-                            quantization = detectQuantization(fileName)
+                            quantization = detectQuantization(fileName),
+                            contextSize = effectiveCtx,
                         )
                         onStateChanged?.invoke()
                     }.onFailure { e ->

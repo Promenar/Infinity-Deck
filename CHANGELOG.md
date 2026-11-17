@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.61.0-beta] - 2026-11-17
+
+- **录音听写止漏词与独立 SenseVoice 二遍精修**：优化流式分段延续门槛（`0.28f` / `28` 窗 / `4s` 静默）、扩充 `640 ms` 预卷缓冲、修复切段 `onset` 越界与热词纠正 `85%` 阈值，并解除后台首轮本地整理对恢复说话的线程抢占；新增可按需独立下载、SHA-256 校验安装的 `SenseVoice-Small int8` 二遍精修模型（237 MB），支持手机硬件三维自动评估分级（`REALTIME_TWO_PASS` 旗舰句末+兜底、`DEFERRED_TWO_PASS` 中端停顿后精修、`STREAMING_ONLY` 入门轻量模式）与连续慢段 RTF > 0.65 运行时熔断退避，同步落地四项等高引导清单与三态精修策略控件。
+- **本地推理接入会话列表与 16K Prefix KV Cache**：将已加载到内存的 `SlotType.MAIN` 本地 GGUF 模型通过 `LocalSessionModelBridge` 动态注入会话模型选择器（未加载即从列表隐藏，Play 渠道保持隔离）；`llama.cpp` JNI 层新增 `Q8_0/Q8_0` KV 量化与 3 级自动回退、跨轮前缀 Token KV 复用及 RAM 自适应上下文窗口（`16384 / 8192 / 4096`，受 `n_ctx_train` 约束）；`LocalProtocol` 补齐 `<tools>` 系统注入、`<tool_response>` 回传与 `<think>` / `<tool_call>` 跨分片流式解析，打通端侧推理与 Agent 工具调用链路。
+- **全站排版换行与统一说明容器**：将 `InfinityUiLineBreak` 升级为 `HighQuality + Strict + WordBreak.Default`，根除左对齐 1.1–1.5 行文本首行提前折行留白问题；抽离 `InfinitySectionFooterCard` 与 `InfinityEmbeddedNoteCard` 原子容器全局收编分组页脚与结构化状态摘要；升级 `UniformRowHeight`（组内多行副标题 76dp 等高）并将全站 17 处列表行高上限与模型库/热词库/语言弹窗裸文本统一规范收敛。
+
 ## [0.60.1-beta] - 2026-11-17
 
 - **提供商连接状态与测速解耦**：修复首次引导添加主提供商（`default`）、模型列表远端拉取及单模型测速成功后未回写 `ProviderStatusStore` 的问题；放开未启用模型在模型编辑页单独测速的限制（`allowDisabledModel = true`），同时保持正式对话与 Agent 路由的停用拦截；精简提供商管理列表行，移除卡片底部的过期手动测速状态行，保留按需测试入口与 `ComfyUI 主机` 实时在线探测。

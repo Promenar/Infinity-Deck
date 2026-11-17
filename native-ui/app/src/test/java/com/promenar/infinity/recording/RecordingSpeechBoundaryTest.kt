@@ -10,9 +10,10 @@ class RecordingSpeechBoundaryTest {
         val detector = RecordingSpeechBoundary { probability }
         repeat(3) { assertNull(detector.accept(ShortArray(640)).end) }
 
+        // 前 21 块（13,440 + 384 = 13,824 样本 = 27 窗 = 864ms）静音不切段；第 22 块凑满第 28 窗（896ms）才切段。
         probability = .05f
-        repeat(10) { assertNull(detector.accept(ShortArray(640)).end) }
-        assertEquals(384, detector.accept(ShortArray(640)).end)
+        repeat(21) { assertNull(detector.accept(ShortArray(640)).end) }
+        assertEquals(512, detector.accept(ShortArray(640)).end)
         repeat(100) { assertNull(detector.accept(ShortArray(640)).end) }
     }
 
@@ -21,12 +22,13 @@ class RecordingSpeechBoundaryTest {
         val detector = RecordingSpeechBoundary { probability }
         fun window() = detector.accept(ShortArray(RecordingSpeechBoundary.WINDOW_SAMPLES)).end
         repeat(3) { assertNull(window()) }
+        // 气口停顿 8 窗（256ms）且低于 0.35 但高于 0.28 的轻声延续（0.32f）保持不断流。
         probability = .05f
         repeat(8) { assertNull(window()) }
-        probability = .4f
+        probability = .32f
         assertNull(window())
         probability = .05f
-        repeat(13) { assertNull(window()) }
+        repeat(27) { assertNull(window()) }
         assertEquals(512, window())
     }
 
@@ -50,7 +52,7 @@ class RecordingSpeechBoundaryTest {
         assertEquals(RecordingSpeechWindow(), detector.accept(block))
         assertEquals(RecordingSpeechWindow(onset = -1_280), detector.accept(block))
         probability = .05f
-        repeat(10) { assertEquals(RecordingSpeechWindow(), detector.accept(block)) }
-        assertEquals(RecordingSpeechWindow(end = 384), detector.accept(block))
+        repeat(21) { assertEquals(RecordingSpeechWindow(), detector.accept(block)) }
+        assertEquals(RecordingSpeechWindow(end = 512), detector.accept(block))
     }
 }

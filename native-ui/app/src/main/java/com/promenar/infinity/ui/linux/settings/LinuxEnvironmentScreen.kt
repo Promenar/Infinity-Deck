@@ -609,7 +609,7 @@ internal fun LinuxDangerRows(uninstallSubtitle: String, busy: LinuxBusyAction?, 
     InfinitySettingsItem(
         title = stringResource(R.string.linux_reset_title),
         subtitle = stringResource(R.string.linux_reset_subtitle),
-        subtitleMaxLines = 3,
+        subtitleMaxLines = 2,
         titleColor = MaterialTheme.colorScheme.error,
         enabled = busy == null,
         onClick = { onRequest(LinuxBusyAction.RESET) },

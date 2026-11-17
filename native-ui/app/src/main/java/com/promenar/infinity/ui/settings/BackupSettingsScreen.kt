@@ -452,7 +452,7 @@ internal fun BackupSettingsScreenContent(
                     InfinitySettingsItem(
                         title = stringResource(R.string.backup_content_title),
                         subtitle = backupLayerSummary(uiState),
-                        subtitleMaxLines = 3,
+                        subtitleMaxLines = 2,
                         onClick = { contentExpanded = !contentExpanded },
                         trailingContent = {
                             Icon(if (contentExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown, contentDescription = null)

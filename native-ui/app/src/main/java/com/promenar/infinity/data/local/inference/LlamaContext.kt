@@ -22,18 +22,24 @@ class LlamaContext private constructor(
 
         suspend fun load(
             modelPath: String,
-            contextSize: Int = 2048,
+            contextSize: Int = 8192,
             nThreads: Int = GpuDetector.recommendedThreadCount(),
             useGpu: Boolean = false
         ): LlamaContext? = withContext(Dispatchers.IO) {
             val ptr = nativeLoadModel(modelPath.encodeToByteArray(), contextSize, nThreads, useGpu)
             if (ptr == 0L) null
-            else LlamaContext(ptr, modelPath, contextSize, useGpu)
+            else {
+                val actualContext = nativeGetContextSize(ptr).takeIf { it > 0 } ?: contextSize
+                LlamaContext(ptr, modelPath, actualContext, useGpu)
+            }
         }
 
         private external fun nativeLoadModel(
             modelPath: ByteArray, nCtx: Int, nThreads: Int, useGpu: Boolean
         ): Long
+
+        @JvmStatic
+        private external fun nativeGetContextSize(ptr: Long): Int
     }
 
     suspend fun tokenize(text: String, addBos: Boolean = true): IntArray =
@@ -78,8 +84,6 @@ class LlamaContext private constructor(
     }
 
     fun generate(prompt: String, config: GenerateConfig = GenerateConfig()): Flow<String> = flow {
-        clear()
-
         val promptTokens = tokenize(prompt, addBos = true)
         if (promptTokens.isEmpty()) return@flow
 

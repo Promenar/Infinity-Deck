@@ -243,7 +243,7 @@ private fun <T> AgentChoiceSheet(
                 },
                 title = if (choice.isDefault) stringResource(R.string.numeric_default_value, label) else label,
                 subtitle = stringResource(choice.descriptionRes),
-                subtitleMaxLines = 3,
+                subtitleMaxLines = 2,
                 role = Role.RadioButton,
                 selected = isSelected,
                 modifier = Modifier.testTag("${tagPrefix}_${choice.value.toString().lowercase()}"),

@@ -74,14 +74,14 @@ class RecordingSegmentationTest {
         assertEquals(RecordingSegment(40, 80, "后一字"), state.finish("后一字").segment)
     }
 
-    @Test fun twoSecondsOfSilenceSetQuietAndVoiceClearsIt() {
+    @Test fun fourSecondsOfSilenceSetQuietAndVoiceClearsIt() {
         val state = RecordingSegmentation(0)
-        repeat(49) { assertFalse(state.accept(silence, "", false).frame.quiet) }
+        repeat(99) { assertFalse(state.accept(silence, "", false).frame.quiet) }
         assertTrue(state.accept(silence, "", false).frame.quiet)
         val spoken = state.accept(voice, "测试", false).frame
         assertFalse(spoken.quiet)
         val tail = state.finish(" 测试， 完成。 ")
-        assertEquals(RecordingSegment(2_000, 2_040, "测试，完成。"), tail.segment)
+        assertEquals(RecordingSegment(4_000, 4_040, "测试，完成。"), tail.segment)
         assertTrue(tail.quiet)
     }
 }

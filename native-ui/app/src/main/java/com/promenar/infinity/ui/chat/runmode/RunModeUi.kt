@@ -176,7 +176,7 @@ fun RunModeOptions(selected: SessionRunMode?, linuxSupported: Boolean, onSelect:
                 unavailableReason ?: if (mode == SessionRunMode.LINUX) R.string.run_mode_linux_desc else R.string.run_mode_builtin_desc,
             ),
             enabled = unavailableReason == null,
-            subtitleMaxLines = 3,
+            subtitleMaxLines = 2,
             role = Role.RadioButton,
             selected = mode == selected,
             modifier = Modifier.testTag(RunModeTags.option(mode)),

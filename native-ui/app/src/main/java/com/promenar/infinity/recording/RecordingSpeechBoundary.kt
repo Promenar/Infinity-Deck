@@ -43,8 +43,8 @@ internal class RecordingSpeechBoundary(private val classify: (FloatArray) -> Flo
     companion object {
         const val WINDOW_SAMPLES = 512
         private const val ONSET = .5f
-        private const val CONTINUATION = .35f
+        private const val CONTINUATION = .28f
         private const val MIN_SPEECH_WINDOWS = 3
-        private const val MIN_SILENCE_WINDOWS = 14
+        const val MIN_SILENCE_WINDOWS = 28
     }
 }

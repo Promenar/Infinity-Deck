@@ -14,6 +14,7 @@ object InfinitySpacing {
     val RowHorizontal = 16.dp
     val RowSingleLineHeight = 48.dp
     val RowTwoLineHeight = 64.dp
+    val RowMultiLineSubtitleHeight = 76.dp
     val RowTwoLineVertical = 12.dp
     val RowTwoLineGap = 2.dp
     val RowIconSize = 20.dp

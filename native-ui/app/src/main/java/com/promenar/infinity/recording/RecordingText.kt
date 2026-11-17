@@ -1,7 +1,7 @@
 package com.promenar.infinity.recording
 
 private val chinesePunctuation = "，。！？、；：".codePoints().toArray().toSet()
-private const val MIN_CORRECTION_PERCENT = 60L
+private const val MIN_CORRECTION_PERCENT = 85L
 
 internal fun normalizeRecordingText(text: String): String = buildString {
     var previous: Int? = null

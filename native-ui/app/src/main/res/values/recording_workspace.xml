@@ -76,6 +76,9 @@
     <string name="recording_setup_intro">Prepare the models you need, or install them later from settings.</string>
     <string name="recording_setup_asr">Chinese and English transcription</string>
     <string name="recording_setup_asr_detail">Transcribe live and transcribe saved audio later.</string>
+    <string name="recording_setup_refine">Two-pass refinement · SenseVoice</string>
+    <string name="recording_setup_refine_detail">Re-check at pauses to reduce missed words.</string>
+    <string name="recording_setup_recommended">Recommended</string>
     <string name="recording_setup_speakers">Speaker separation and voiceprint matching</string>
     <string name="recording_setup_speakers_detail">Identify speakers on the device after recording.</string>
     <string name="recording_setup_local">Local organization · Qwen3-0.6B</string>

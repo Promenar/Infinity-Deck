@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import com.promenar.infinity.data.document.ContextBudgetDecision
 import com.promenar.infinity.data.document.ContextBudgetGate
 import com.promenar.infinity.data.document.ContextBudgetRequest
+import com.promenar.infinity.data.local.inference.LocalSessionModelBridge
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.findRemoteModelSpec
 import com.promenar.infinity.data.remote.protocol.PromptRequest
@@ -34,12 +35,16 @@ object PreparedPromptBudgetGate {
             ?: remoteModelId
         val modelSpec = findRemoteModelSpec(remoteModelId)
         val savedContext = settings.getInt("model_info_${persistedModelId}_context", 0)
+        val localRuntimeContext = LocalSessionModelBridge.runtimeContextTokens(persistedModelId)
         val modelContext = savedContext.takeIf { it > 0 }
+            ?: localRuntimeContext
             ?: modelSpec?.contextLength?.takeIf { it > 0 }
         // 显式输出上限会随请求发送，必须完整预留；未发送时由提供商决定实际输出，
         // 只按模型最大输出与 IMPLICIT_OUTPUT_RESERVE_CAP 的较小值预留，避免长输出模型把窗口占去一半。
+        val defaultLocalReserve = localRuntimeContext?.let { (it / 4).coerceIn(1024, 4096) }
         val outputReserve = prompt.maxTokens?.takeIf { it > 0 }
             ?: session.inferenceParams?.maxTokens?.takeIf { it > 0 }
+            ?: defaultLocalReserve
             ?: (modelSpec?.maxOutputTokens?.takeIf { it > 0 } ?: 4096).coerceAtMost(IMPLICIT_OUTPUT_RESERVE_CAP)
         return PromptWindow(modelContext, outputReserve)
     }

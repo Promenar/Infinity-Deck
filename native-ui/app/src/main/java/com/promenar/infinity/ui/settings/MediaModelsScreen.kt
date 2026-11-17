@@ -34,7 +34,7 @@ internal fun MediaModelsScreenContent(
                     InfinitySettingsItem(
                         title = row.name,
                         subtitleSegments = channelDescriptionSegments(row),
-                        subtitleMaxLines = Int.MAX_VALUE,
+                        subtitleMaxLines = 2,
                         titleMaxLines = 2,
                         onClick = { onOpen(row) },
                         leadingContent = {

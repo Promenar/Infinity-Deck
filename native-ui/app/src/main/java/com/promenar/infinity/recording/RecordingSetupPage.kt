@@ -14,9 +14,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.InfinityApplication
@@ -25,42 +27,98 @@ import com.promenar.infinity.data.local.inference.RecordingModelPackage
 import com.promenar.infinity.ui.common.InfinityPageLayout
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.InfinitySectionFooterCard
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 
 private data class SetupModel(
-    val title: Int, val detail: Int, val bytes: Long, val installed: Boolean, val downloaded: Long,
-    val selected: Boolean, val toggle: (Boolean) -> Unit,
+    val title: Int,
+    val detail: Int,
+    val bytes: Long,
+    val installed: Boolean,
+    val downloaded: Long,
+    val selected: Boolean,
+    val recommended: Boolean = false,
+    val toggle: (Boolean) -> Unit,
 )
 
 @Composable
 internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) {
     val app = LocalContext.current.applicationContext as InfinityApplication
     val controller = app.recordings
+    val screenState by controller.state.collectAsStateWithLifecycle()
     val asr by controller.asrModel.collectAsStateWithLifecycle()
+    val refine by controller.refineModel.collectAsStateWithLifecycle()
     val speaker by controller.speakerModel.collectAsStateWithLifecycle()
     val gguf by controller.recommendedModel.state.collectAsStateWithLifecycle()
     val supportsLocal = app.localInferenceRuntimeGate.isAvailable
+    val recommendRefine = screenState.refineCapability != RecordingRefineCapability.STREAMING_ONLY
     var useAsr by rememberSaveable { mutableStateOf(true) }
+    var useRefineOverride by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val useRefine = useRefineOverride ?: recommendRefine
     var useSpeaker by rememberSaveable { mutableStateOf(false) }
     var useLocal by rememberSaveable { mutableStateOf(false) }
     var started by rememberSaveable { mutableStateOf(false) }
     var paused by rememberSaveable { mutableStateOf(false) }
     val localInstalled = remember(gguf) { supportsLocal && controller.recommendedModel.installed() }
-    val running = asr.busy() || speaker.busy() || gguf?.isDownloading == true
-    val failed = asr is RecordingAsrModelState.Failed || speaker is RecordingAsrModelState.Failed || gguf?.error != null
+    val running = asr.busy() || refine.busy() || speaker.busy() || gguf?.isDownloading == true
+    val failed = asr is RecordingAsrModelState.Failed ||
+        refine is RecordingAsrModelState.Failed ||
+        speaker is RecordingAsrModelState.Failed ||
+        gguf?.error != null
     val models = buildList {
-        add(SetupModel(R.string.recording_setup_asr, R.string.recording_setup_asr_detail, controller.asrModelDownloadBytes,
-            asr == RecordingAsrModelState.Installed, asr.bytes(controller.asrModelDownloadBytes), useAsr) { useAsr = it })
-        add(SetupModel(R.string.recording_setup_speakers, R.string.recording_setup_speakers_detail, RecordingSpeakerModelManager.DOWNLOAD_BYTES,
-            speaker == RecordingAsrModelState.Installed, speaker.bytes(RecordingSpeakerModelManager.DOWNLOAD_BYTES), useSpeaker) { useSpeaker = it })
-        if (supportsLocal) add(SetupModel(R.string.recording_setup_local, R.string.recording_setup_local_detail, RecordingModelPackage.bytes,
-            localInstalled, if (localInstalled) RecordingModelPackage.bytes else gguf?.downloadedBytes ?: 0, useLocal) { useLocal = it })
+        add(
+            SetupModel(
+                title = R.string.recording_setup_asr,
+                detail = R.string.recording_setup_asr_detail,
+                bytes = controller.asrModelDownloadBytes,
+                installed = asr == RecordingAsrModelState.Installed,
+                downloaded = asr.bytes(controller.asrModelDownloadBytes),
+                selected = useAsr,
+            ) { useAsr = it },
+        )
+        add(
+            SetupModel(
+                title = R.string.recording_setup_refine,
+                detail = R.string.recording_setup_refine_detail,
+                bytes = controller.refineModelDownloadBytes,
+                installed = refine == RecordingAsrModelState.Installed,
+                downloaded = refine.bytes(controller.refineModelDownloadBytes),
+                selected = useRefine,
+                recommended = recommendRefine,
+            ) { useRefineOverride = it },
+        )
+        add(
+            SetupModel(
+                title = R.string.recording_setup_speakers,
+                detail = R.string.recording_setup_speakers_detail,
+                bytes = RecordingSpeakerModelManager.DOWNLOAD_BYTES,
+                installed = speaker == RecordingAsrModelState.Installed,
+                downloaded = speaker.bytes(RecordingSpeakerModelManager.DOWNLOAD_BYTES),
+                selected = useSpeaker,
+            ) { useSpeaker = it },
+        )
+        if (supportsLocal) {
+            add(
+                SetupModel(
+                    title = R.string.recording_setup_local,
+                    detail = R.string.recording_setup_local_detail,
+                    bytes = RecordingModelPackage.bytes,
+                    installed = localInstalled,
+                    downloaded = if (localInstalled) RecordingModelPackage.bytes else gguf?.downloadedBytes ?: 0,
+                    selected = useLocal,
+                ) { useLocal = it },
+            )
+        }
     }
-    val selected = models.filter { model -> model.selected || when (model.title) {
-        R.string.recording_setup_asr -> asr.busy()
-        R.string.recording_setup_speakers -> speaker.busy()
-        else -> gguf?.isDownloading == true
-    } }
+    val selected = models.filter { model ->
+        model.selected || when (model.title) {
+            R.string.recording_setup_asr -> asr.busy()
+            R.string.recording_setup_refine -> refine.busy()
+            R.string.recording_setup_speakers -> speaker.busy()
+            else -> gguf?.isDownloading == true
+        }
+    }
     val pendingBytes = selected.filterNot { it.installed }.sumOf { it.bytes }
     val complete = started && pendingBytes == 0L
     val totalBytes = selected.sumOf { it.bytes }
@@ -72,9 +130,14 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
         failed || started -> R.string.recording_setup_retry
         else -> null
     }
+    val subtitleMaxLines = if (LocalDensity.current.fontScale > 1f) 2 else 1
     BackHandler(onBack = onFinish)
-    InfinityPageLayout(title = stringResource(if (firstRun) R.string.recording_setup_heading else R.string.recording_setup_title),
-        onBack = onFinish, scrollable = false, bodyPadding = PaddingValues()) {
+    InfinityPageLayout(
+        title = stringResource(if (firstRun) R.string.recording_setup_heading else R.string.recording_setup_title),
+        onBack = onFinish,
+        scrollable = false,
+        bodyPadding = PaddingValues(),
+    ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Column(Modifier.widthIn(max = 510.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 20.dp)) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 17.dp, bottom = 14.dp)) {
@@ -85,31 +148,80 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
                     }
                     Spacer(Modifier.height(13.dp))
                     Text(stringResource(R.string.recording_setup_title), style = InfinityTypography.headlineSmall)
-                    Text(stringResource(R.string.recording_setup_intro), Modifier.padding(top = 6.dp, bottom = 20.dp),
-                        style = InfinityTypography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    InfinitySectionFooterCard(
+                        text = stringResource(R.string.recording_setup_intro),
+                        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
+                        maxLines = 3,
+                    )
                     Surface(shape = RoundedCornerShape(17.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                         Column {
                             models.forEachIndexed { index, model ->
                                 if (index != 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                 val enabled = !model.installed && !running && !paused
-                                Row(Modifier.fillMaxWidth().heightIn(min = 69.dp)
-                                    .toggleable(model in selected || model.installed, enabled = enabled, role = Role.Checkbox, onValueChange = model.toggle)
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .heightIn(min = 68.dp)
+                                        .toggleable(
+                                            model in selected || model.installed,
+                                            enabled = enabled,
+                                            role = Role.Checkbox,
+                                            onValueChange = model.toggle,
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
                                     Checkbox(checked = model in selected || model.installed, onCheckedChange = null, enabled = enabled)
-                                    Column(Modifier.weight(1f)) {
-                                        Text(stringResource(model.title), style = InfinityTypography.titleSmall)
-                                        Text(stringResource(model.detail), style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall + 2.dp),
+                                        ) {
+                                            Text(
+                                                text = stringResource(model.title),
+                                                style = InfinityTypography.titleSmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                            )
+                                            if (model.recommended) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(999.dp),
+                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                ) {
+                                                    Text(
+                                                        text = stringResource(R.string.recording_setup_recommended),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = stringResource(model.detail),
+                                            style = InfinityTypography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = subtitleMaxLines,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
                                     }
-                                    Text(if (model.installed) stringResource(R.string.recording_setup_ready)
+                                    Text(
+                                        text = if (model.installed) stringResource(R.string.recording_setup_ready)
                                         else stringResource(R.string.recording_setup_mb, (model.bytes + 500_000) / 1_000_000),
-                                        style = InfinityTypography.labelMedium, maxLines = 1)
+                                        style = InfinityTypography.labelMedium,
+                                        maxLines = 1,
+                                        color = if (model.installed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             }
                         }
                     }
-                    Text(stringResource(if (supportsLocal) R.string.recording_setup_privacy else R.string.recording_setup_play),
-                        Modifier.padding(vertical = 11.dp), style = InfinityTypography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    InfinitySectionFooterCard(
+                        text = stringResource(if (supportsLocal) R.string.recording_setup_privacy else R.string.recording_setup_play),
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        maxLines = 3,
+                    )
                     if (status != null) {
                         Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -122,30 +234,45 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
                         }
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = onFinish, modifier = Modifier.testTag("recording-setup-skip")) {
-                        Text(stringResource(if (!firstRun || running || complete) R.string.recording_setup_enter else R.string.recording_setup_skip))
-                    }
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    InfinityPillButton(
+                        text = stringResource(if (!firstRun || running || complete) R.string.recording_setup_enter else R.string.recording_setup_skip),
+                        onClick = onFinish,
+                        tone = InfinityPillTone.NEUTRAL,
+                        modifier = Modifier.testTag("recording-setup-skip"),
+                    )
                     if (!complete) {
-                        if (running) InfinityPillButton(stringResource(R.string.recording_setup_pause), {
-                            paused = true
-                            if (asr.busy()) { useAsr = true; controller.cancelAsrModelDownload() }
-                            if (speaker.busy()) { useSpeaker = true; controller.cancelSpeakerModel() }
-                            if (gguf?.isDownloading == true) { useLocal = true; controller.recommendedModel.pause() }
-                        }) else InfinityPillButton(
-                            text = when {
-                                paused || failed -> stringResource(R.string.recording_setup_continue)
-                                pendingBytes == 0L -> stringResource(R.string.recording_setup_download_action)
-                                else -> stringResource(R.string.recording_setup_download, (pendingBytes + 500_000) / 1_000_000)
-                            },
-                            onClick = {
-                                started = true; paused = false
-                                if (useAsr && asr != RecordingAsrModelState.Installed) controller.downloadAsrModel()
-                                if (useSpeaker && speaker != RecordingAsrModelState.Installed) controller.downloadSpeakerModel()
-                                if (supportsLocal && useLocal && !localInstalled) controller.recommendedModel.start()
-                            }, enabled = pendingBytes > 0, tone = InfinityPillTone.PRIMARY,
-                        )
+                        if (running) {
+                            InfinityPillButton(stringResource(R.string.recording_setup_pause), {
+                                paused = true
+                                if (asr.busy()) { useAsr = true; controller.cancelAsrModelDownload() }
+                                if (refine.busy()) { useRefineOverride = true; controller.cancelRefineModelDownload() }
+                                if (speaker.busy()) { useSpeaker = true; controller.cancelSpeakerModel() }
+                                if (gguf?.isDownloading == true) { useLocal = true; controller.recommendedModel.pause() }
+                            })
+                        } else {
+                            InfinityPillButton(
+                                text = when {
+                                    paused || failed -> stringResource(R.string.recording_setup_continue)
+                                    pendingBytes == 0L -> stringResource(R.string.recording_setup_download_action)
+                                    else -> stringResource(R.string.recording_setup_download, (pendingBytes + 500_000) / 1_000_000)
+                                },
+                                onClick = {
+                                    started = true; paused = false
+                                    if (useAsr && asr != RecordingAsrModelState.Installed) controller.downloadAsrModel()
+                                    if (useRefine && refine != RecordingAsrModelState.Installed) controller.downloadRefineModel()
+                                    if (useSpeaker && speaker != RecordingAsrModelState.Installed) controller.downloadSpeakerModel()
+                                    if (supportsLocal && useLocal && !localInstalled) controller.recommendedModel.start()
+                                },
+                                enabled = pendingBytes > 0,
+                                tone = InfinityPillTone.PRIMARY,
+                                icon = Icons.Rounded.Download,
+                            )
+                        }
                     }
                 }
             }

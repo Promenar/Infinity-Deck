@@ -19,8 +19,11 @@ class RecordingTextTest {
 
     @Test fun rejectsSubstantialContentLossAndNormalizesTheSource() {
         assertEquals("一二三四五六七八九十", protectRecordingCorrection("一 二 三 四 五 六 七 八 九 十", "一二三四五"))
-        assertEquals("一二三四五六七八", protectRecordingCorrection("嗯一二三四五六七八啊", "一二三四五六七八"))
-        assertEquals("123abc", protectRecordingCorrection("123456abcd", "123abc"))
+        assertEquals("一二三四五六七八九十甲乙丙丁", protectRecordingCorrection("嗯一二三四五六七八九十甲乙丙丁啊", "一二三四五六七八九十甲乙丙丁"))
+        // 低于 85%（例如 10 字只保留 6~8 字）则视为过度删减，退回规范化原文。
+        assertEquals("123456abcd", protectRecordingCorrection("123456abcd", "123abc"))
+        assertEquals("123456abcd", protectRecordingCorrection("123456abcd", "123456ab"))
+        assertEquals("123456abc", protectRecordingCorrection("123456abcd", "123456abc"))
         assertEquals("123456abcd", protectRecordingCorrection("123456abcd", "123ab！？，。"))
         assertEquals("完整原文", protectRecordingCorrection("完整原文", ""))
         assertEquals("𠀀𠀁𠀂𠀃𠀄", protectRecordingCorrection("𠀀𠀁𠀂𠀃𠀄", "𠀀𠀁"))

@@ -47,7 +47,7 @@ internal fun <T> PermissionChoiceList(
             horizontalPadding = 0.dp,
             title = stringResource(choice.labelRes),
             subtitle = stringResource(if (choice.enabled) choice.descriptionRes else choice.disabledReason ?: choice.descriptionRes),
-            subtitleMaxLines = 3,
+            subtitleMaxLines = 2,
             role = Role.RadioButton,
             selected = isSelected,
             enabled = allowed,

@@ -2,6 +2,10 @@ package com.promenar.infinity.recording
 
 import android.content.res.AssetManager
 import com.k2fsa.sherpa.onnx.FeatureConfig
+import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
@@ -23,8 +27,67 @@ internal fun interface RecordingDecoderFactory {
     fun create(request: RecordingDecoderRequest): RecordingDecoder
 }
 
+internal interface RecordingRefiner : AutoCloseable {
+    fun refine(pcm: ShortArray): String?
+    override fun close() = Unit
+}
+
+internal fun interface RecordingRefinerFactory {
+    fun create(directory: File, hotwords: List<RecordingHotword>): RecordingRefiner
+}
+
 // 已校验的 X-ASR encoder 按 48 个 10 ms 特征帧推进一次。Sherpa JNI 没有暴露已处理帧数。
 private const val X_ASR_DECODE_STEP_MS = 480L
+private val senseVoiceControlTagRegex = Regex("<\\|[^|]+\\|>")
+
+internal fun sanitizeSenseVoiceOutput(raw: String, hotwords: List<RecordingHotword>): String? {
+    val cleaned = normalizeRecordingText(senseVoiceControlTagRegex.replace(raw, ""))
+    if (cleaned.isBlank()) return null
+    val replaced = if (hotwords.isEmpty()) cleaned else RecordingHotwordReplacer(hotwords).replace(cleaned)
+    return normalizeRecordingText(replaced).takeIf { it.isNotBlank() }
+}
+
+internal fun createSenseVoiceRefiner(
+    directory: File,
+    hotwords: List<RecordingHotword> = emptyList(),
+    threads: Int = RecordingHardwareAdvisor.recommendedAsrThreads(),
+): RecordingRefiner {
+    val rate = RecordingCapturePolicy.SAMPLE_RATE
+    val recognizer = OfflineRecognizer(
+        assetManager = null,
+        config = OfflineRecognizerConfig(
+            featConfig = FeatureConfig(sampleRate = rate, featureDim = 80),
+            modelConfig = OfflineModelConfig(
+                senseVoice = OfflineSenseVoiceModelConfig(
+                    model = File(directory, "model.int8.onnx").absolutePath,
+                    language = "auto",
+                    useInverseTextNormalization = true,
+                ),
+                tokens = File(directory, "tokens.txt").absolutePath,
+                numThreads = threads,
+            ),
+        ),
+    )
+    return object : RecordingRefiner {
+        override fun refine(pcm: ShortArray): String? {
+            if (pcm.isEmpty()) return null
+            val audio = FloatArray(pcm.size) { pcm[it] / 32768f }
+            val stream = recognizer.createStream()
+            return try {
+                stream.acceptWaveform(audio, rate)
+                recognizer.decode(stream)
+                val text = recognizer.getResult(stream).text
+                sanitizeSenseVoiceOutput(text, hotwords)
+            } finally {
+                stream.release()
+            }
+        }
+
+        override fun close() {
+            recognizer.release()
+        }
+    }
+}
 
 internal object EmptyRecordingDecoder : RecordingDecoder {
     override fun accept(pcm: ShortArray) = RecordingRecognition("")
@@ -42,7 +105,7 @@ internal fun createRecordingDecoder(request: RecordingDecoderRequest): Recording
         featConfig = FeatureConfig(sampleRate = rate, featureDim = 80),
         modelConfig = OnlineModelConfig(
             transducer = OnlineTransducerModelConfig(path("encoder.int8.onnx"), path("decoder.onnx"), path("joiner.int8.onnx")),
-            tokens = path("tokens.txt"), numThreads = 2, modelType = "zipformer2",
+            tokens = path("tokens.txt"), numThreads = RecordingHardwareAdvisor.recommendedAsrThreads(), modelType = "zipformer2",
             modelingUnit = if (beamSearch) "bpe" else "",
             bpeVocab = if (beamSearch) path("bpe.vocab") else "",
         ),

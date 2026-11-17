@@ -121,8 +121,13 @@ internal fun InfinitySettingsRowLayout(
 ) {
     val segments = subtitleSegments?.filter(String::isNotBlank)?.takeIf { it.isNotEmpty() }
     val hasSubtitle = subtitle != null || segments != null || subtitleContent != null
-    // 同组有双行项时，单行项也取双行高，标题在行内垂直居中。
-    val rowHeight = uniformRowMinHeight(hasSubtitle, InfinitySpacing.RowSingleLineHeight, InfinitySpacing.RowTwoLineHeight)
+    // 同组有双行/多行副标题项时，其余项同步按统一行高排版，避免同组行高参差。
+    val rowHeight = uniformRowMinHeight(
+        hasSubtitle = hasSubtitle,
+        singleLine = InfinitySpacing.RowSingleLineHeight,
+        twoLine = InfinitySpacing.RowTwoLineHeight,
+        multiLineSubtitle = hasSubtitle && subtitleMaxLines > 1,
+    )
     BoxWithConstraints(modifier = modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.38f)) {
         val trailingMaxWidth = maxWidth * trailingMaxWidthFraction
         val expandTitle = maxWidth < 280.dp || LocalDensity.current.fontScale > 1f

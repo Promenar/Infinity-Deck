@@ -112,7 +112,7 @@ class BackupPreferenceInventoryTest {
     fun `录音配置与本地模型固定版本留在设备`() {
         listOf("recording_defaults" to "mode", "recording_defaults" to "fallback",
             "recording_defaults" to "distinguish_speakers", "recording_defaults" to "summary_language",
-            "recording_defaults" to "live_organization",
+            "recording_defaults" to "live_organization", "recording_defaults" to "refine_mode",
             "local_model_revision" to "name", "local_model_revision" to "sha256").forEach { (scope, key) ->
             assertThat(BackupPreferencePolicy.isKnown(scope, key)).isTrue()
             assertThat(BackupPreferencePolicy.isAllowed(scope, key)).isFalse()

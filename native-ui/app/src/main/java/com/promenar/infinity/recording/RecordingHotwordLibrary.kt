@@ -146,7 +146,7 @@ internal fun RecordingHotwordLibraryContent(
                                     enabled = !pending,
                                     selected = pane == HotwordPane.Edit && selectedId == entry.id,
                                     modifier = Modifier.bettboxListGroupItem(index, visible.size),
-                                    subtitleMaxLines = 3,
+                                    subtitleMaxLines = 1,
                                     trailingContent = {
                                         val label = stringResource(R.string.recording_hotword_toggle, entry.text)
                                         InfinitySwitch(entry.enabled, { onToggle(entry.id, it) }, Modifier.semantics { contentDescription = label }, enabled = !pending)
@@ -245,9 +245,8 @@ private fun hotwordImportLabel(result: RecordingHotwordImport): String =
 @Composable
 private fun HotwordVocabularyNotice(unknown: List<Char>) {
     if (unknown.isEmpty()) return
-    Text(
-        stringResource(R.string.recording_hotword_out_of_vocab_detail, unknown.joinToString("、")),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = InfinityTypography.bodySmall,
+    InfinitySectionFooterCard(
+        text = stringResource(R.string.recording_hotword_out_of_vocab_detail, unknown.joinToString("、")),
+        maxLines = 3,
     )
 }

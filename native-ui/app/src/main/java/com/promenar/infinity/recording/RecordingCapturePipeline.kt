@@ -53,7 +53,9 @@ internal suspend fun RecordingDecoder.advanceSegment(
         if (cut == pcm.size) return
     }
     val suffix = if (cut == null) pcm else pcm.copyOfRange(cut, pcm.size)
-    val result = speech.onset?.let { restartAtOnset(it - (cut ?: 0), suffix) } ?: accept(suffix)
+    // 仅处理落在切段点之后的起声，避免跨越尾帧边界误传给下一句的 lead 缓冲区。
+    val suffixOnset = speech.onset?.takeIf { cut == null || it >= cut }
+    val result = suffixOnset?.let { restartAtOnset(it - (cut ?: 0), suffix) } ?: accept(suffix)
     val step = state.accept(suffix, result.text, endpoint = false, decodedMs = result.decodedMs)
     onFrame(step.frame)
     if (step.reset) reset()

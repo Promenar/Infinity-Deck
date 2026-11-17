@@ -114,7 +114,7 @@ internal fun ScopeChoiceList(
             horizontalPadding = 0.dp,
             title = stringResource(choice.labelRes),
             subtitle = stringResource(if (allowed) choice.descriptionRes else R.string.settings_ia_scope_above_cap),
-            subtitleMaxLines = 3,
+            subtitleMaxLines = 2,
             role = Role.RadioButton,
             selected = selected,
             enabled = allowed,

@@ -655,7 +655,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.export.DefaultSessionExporter(
             this, messageRepository, sessionRepository, workspaceMediaResolver,
             agentName = { agentId -> agentRepository.getById(agentId)?.name },
-            modelName = { modelId -> ProviderManager.getInstance().providerModels.value.firstOrNull { it.id == modelId }?.name },
+            modelName = { modelId -> currentProviderModelsWithLocal().firstOrNull { it.id == modelId }?.name },
         )
     }
 
@@ -1053,7 +1053,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 val directory = sessionWorkspaceResolver.resolve(session.id) as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory
                 val fileSkills = skillCatalog.scan(directory?.let { com.promenar.infinity.data.skills.SkillWorkspace(it.workspace.id, it.root) }).skills
                 com.promenar.infinity.data.agentconfig.AgentConfigCatalog(
-                    models = providers.providerModels.value.filter { it.providerId in configured }.associate { it.id to it.name },
+                    models = providers.providerModels.value.filter { it.providerId in configured }.associate { it.id to it.name } +
+                        listOfNotNull(com.promenar.infinity.data.local.inference.LocalSessionModelBridge.currentActiveModelInfo()).associate { it.id to it.name },
                     skills = skillRepository.getAllCustomSkills().first().associate { it.id to it.name } + fileSkills.associate { it.id to (it.displayName ?: it.name) },
                     mcpServers = skillRepository.getAllMcpServers().first().associate { it.id to it.name },
                 )
@@ -1113,7 +1114,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 liveOutput = toolLiveOutputStore,
                 contextLimitText = subagentRuntimeTexts.contextLimit,
                 modelSupportsToolCalling = { modelId -> com.promenar.infinity.data.subagent.SubagentModelSelection.supportsToolCalling(
-                    modelId, ProviderManager.getInstance().providerModels.value,
+                    modelId, currentProviderModelsWithLocal(),
                 ) },
                 modelUnavailableText = subagentRuntimeTexts.modelUnavailable,
                 modelToolCallingUnsupportedText = subagentRuntimeTexts.modelToolCallingUnsupported,
@@ -1131,7 +1132,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             },
             applicationScope = CoroutineScope(generationScope.coroutineContext + Dispatchers.IO),
             dispatcher = { systemTurnDispatcher },
-            contextWindow = { modelId -> ProviderManager.getInstance().providerModels.value.find { it.id == modelId }?.contextLength },
+            contextWindow = { modelId -> currentProviderModelsWithLocal().find { it.id == modelId }?.contextLength },
             writeResult = subagentResultFiles::write,
             texts = subagentRuntimeTexts,
             modelPolicyFor = { agentRepository.getById(it.agentId)?.subagentModelPolicy ?: com.promenar.infinity.data.agent.AgentSubagentModelPolicy() },
@@ -2091,7 +2092,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.AgentTaskSkill(
                 policyFor = { agentRepository.getById(it.agentId)?.subagentModelPolicy ?: com.promenar.infinity.data.agent.AgentSubagentModelPolicy() },
                 modelSupportsToolCalling = { modelId -> com.promenar.infinity.data.subagent.SubagentModelSelection.supportsToolCalling(
-                    modelId, ProviderManager.getInstance().providerModels.value,
+                    modelId, currentProviderModelsWithLocal(),
                 ) },
             ) { subagentLauncher })
             register(com.promenar.infinity.ui.chat.manager.skills.AgentWaitSkill { subagentLauncher })
@@ -2193,10 +2194,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     },
                     knowledgeAccessAllowed = ::knowledgeAccessAllowedForTools,
                     subagentModelPolicy = { current -> knowledgeConfigForTools(current.agentId)?.subagentModels ?: com.promenar.infinity.data.agent.AgentSubagentModelPolicy() },
-                    modelName = { modelId -> ProviderManager.getInstance().providerModels.value.firstOrNull { it.id == modelId }?.name },
+                    modelName = { modelId -> currentProviderModelsWithLocal().firstOrNull { it.id == modelId }?.name },
                 ) { current ->
                     com.promenar.infinity.data.generation.MediaViewTarget.capabilities(
-                        ProviderManager.getInstance().providerModels.value.firstOrNull { it.id == current.modelId },
+                        currentProviderModelsWithLocal().firstOrNull { it.id == current.modelId },
                     )
                 }.resolve(session)
 
@@ -2228,7 +2229,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         when (val route = providerRequestRouter.resolve(modelId)) {
             is com.promenar.infinity.data.remote.ProviderResolution.Failure -> com.promenar.infinity.data.generation.MediaViewTarget()
             is com.promenar.infinity.data.remote.ProviderResolution.Success -> com.promenar.infinity.data.generation.MediaViewTarget(
-                com.promenar.infinity.data.generation.MediaViewTarget.capabilities(manager.providerModels.value.firstOrNull { it.id == route.value.modelId }),
+                com.promenar.infinity.data.generation.MediaViewTarget.capabilities(currentProviderModelsWithLocal().firstOrNull { it.id == route.value.modelId }),
                 route.value.config.protocolType,
                 route.value.modelId,
             )
@@ -2264,7 +2265,16 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             middlewares,
             sessionIdentifier = sessionHeaderIdentity::identifier,
             sessionHeaderPreferences = com.promenar.infinity.data.local.SessionHeaderPreferences(getSharedPreferences("infinity_settings", MODE_PRIVATE)),
+            localRuntimeSlot = { localInferenceRuntimeGate.createIfAvailable { localInferenceEngine }?.mainSlot?.value },
+            localRuntimeEnabled = { getSharedPreferences("infinity_settings", MODE_PRIVATE).getBoolean("local_models_enabled", false) },
         )
+    }
+
+    private fun currentProviderModelsWithLocal(): List<com.promenar.infinity.data.model.ModelInfo> {
+        val persisted = ProviderManager.getInstance().providerModels.value
+        val activeLocal = com.promenar.infinity.data.local.inference.LocalSessionModelBridge.currentActiveModelInfo()
+            ?: return persisted
+        return if (persisted.any { it.id == activeLocal.id }) persisted else persisted + activeLocal
     }
 
     var hapticEnabled: Boolean = true
@@ -2300,6 +2310,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         getSharedPreferences(com.promenar.infinity.data.tailnet.TailnetSettingsStore.PREFERENCES_NAME, MODE_PRIVATE)
             .edit().remove("tailnet_allowed_peers").apply()
         instance = this
+        com.promenar.infinity.data.local.inference.LocalSessionModelBridge.bindRuntime(
+            slotReader = { localInferenceRuntimeGate.createIfAvailable { localInferenceEngine }?.mainSlot?.value },
+            enabledReader = { getSharedPreferences("infinity_settings", MODE_PRIVATE).getBoolean("local_models_enabled", false) },
+        )
         com.promenar.infinity.startup.diagnostics.AppDiagnostics.initialize(filesDir)
         com.promenar.infinity.utils.InfinityLogger.init(this)
         StartupWriteBarrier.install(startupIssueManager)

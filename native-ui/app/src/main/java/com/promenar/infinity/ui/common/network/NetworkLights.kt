@@ -96,7 +96,8 @@ fun networkLightsState(
         .mapTo(mutableSetOf()) { it.id }
     val localProviderIds = providers
         .filter { it.protocolType is com.promenar.infinity.data.remote.protocol.ProtocolType.Local }
-        .mapTo(mutableSetOf()) { it.id }
+        .mapTo(mutableSetOf()) { it.id } +
+        com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_ID
     return NetworkLightsState(
         public = public,
         tailscale = tailscaleLightStatus(tailnet.phase, tailnetProviderIds.isNotEmpty()),

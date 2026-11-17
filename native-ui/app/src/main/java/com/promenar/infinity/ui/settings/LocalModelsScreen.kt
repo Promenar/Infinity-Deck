@@ -232,24 +232,17 @@ internal fun LocalModelsScreenContent(
                     if (showDownload || index > 0) HorizontalDivider()
                     val label = model.displayName()
                     val fixed = pinned?.path == model.filePath
+                    val pinStatus = if (fixed || model.fileName == RecordingModelPackage.filename) {
+                        stringResource(if (fixed) R.string.local_models_recording_pinned else R.string.local_models_downloaded)
+                    } else {
+                        null
+                    }
                     InfinitySettingsRowLayout(
                         title = label,
                         icon = Icons.Rounded.Layers,
                         titleMaxLines = 2,
-                        subtitleContent = {
-                            InfinityMetaLine(
-                                segments = model.specs(formatFileSize),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (fixed || model.fileName == RecordingModelPackage.filename) {
-                                Text(
-                                    stringResource(if (fixed) R.string.local_models_recording_pinned else R.string.local_models_downloaded),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        },
+                        subtitleSegments = model.specs(formatFileSize) + listOfNotNull(pinStatus),
+                        subtitleMaxLines = 1,
                         trailingContent = {
                             val action = stringResource(R.string.local_models_actions, label)
                             val anchor = remember(model.filePath) {

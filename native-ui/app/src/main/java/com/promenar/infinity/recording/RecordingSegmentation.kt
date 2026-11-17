@@ -7,7 +7,7 @@ internal object RecordingCapturePolicy {
     const val TAIL_SILENCE_SECONDS = 1
     const val FORCE_SEGMENT_MS = 60_000L
     const val CHECKPOINT_SECONDS = 5
-    const val QUIET_SECONDS = 2
+    const val QUIET_SECONDS = 4
     const val SPEECH_ENERGY = 0.00005
 }
 

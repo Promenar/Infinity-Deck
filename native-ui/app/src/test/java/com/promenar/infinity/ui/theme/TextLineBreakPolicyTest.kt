@@ -41,9 +41,9 @@ class TextLineBreakPolicyTest {
             )
         }
         roles.forEach { assertThat(it.lineBreak).isEqualTo(InfinityUiLineBreak) }
-        assertThat(InfinityUiLineBreak.strategy).isEqualTo(LineBreak.Strategy.Balanced)
+        assertThat(InfinityUiLineBreak.strategy).isEqualTo(LineBreak.Strategy.HighQuality)
         assertThat(InfinityUiLineBreak.strictness).isEqualTo(LineBreak.Strictness.Strict)
-        assertThat(InfinityUiLineBreak.wordBreak).isEqualTo(LineBreak.WordBreak.Phrase)
+        assertThat(InfinityUiLineBreak.wordBreak).isEqualTo(LineBreak.WordBreak.Default)
     }
 
     @Test

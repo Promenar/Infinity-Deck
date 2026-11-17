@@ -8,6 +8,8 @@ interface InferenceBackend {
 
     val isLoaded: Boolean
 
+    val contextSize: Int get() = 0
+
     suspend fun loadModel(path: String, config: LoadConfig): Result<Unit>
 
     fun generate(prompt: String, config: GenerateConfig): Flow<String>

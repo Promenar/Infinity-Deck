@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
@@ -179,9 +180,18 @@ internal fun RecordingSettingsScreen(
                 }
             }
             item {
-                InfinitySettingsSection(title = stringResource(R.string.recording_asr_section)) {
-                    InfinitySettingsItem(title = stringResource(R.string.recording_setup_title), showChevron = true, onClick = { showSetup = true })
-                    RecordingModelDownloads(controller)
+                InfinitySettingsSection(
+                    title = stringResource(R.string.recording_asr_section),
+                    footer = stringResource(R.string.recording_refine_section_footer),
+                ) {
+                    InfinitySettingsItem(
+                        title = stringResource(R.string.recording_setup_title),
+                        subtitle = stringResource(R.string.recording_setup_entry_subtitle),
+                        showChevron = true,
+                        onClick = { showSetup = true },
+                    )
+                    InfinityGroupDivider()
+                    RecordingModelDownloads(controller, state)
                 }
             }
             item {
@@ -235,7 +245,6 @@ internal fun RecordingModelSettings(
         subtitle = stringResource(R.string.recording_hotword_count, hotwords.count { it.enabled }, hotwords.size),
         onClick = onHotwords,
         showChevron = true,
-        subtitleMaxLines = 2,
     )
     InfinitySettingsItem(
         title = stringResource(R.string.recording_speaker_library),
@@ -254,9 +263,30 @@ internal fun RecordingModelSettings(
 
 
 @Composable
-internal fun RecordingModelDownloads(controller: RecordingController) {
+internal fun RecordingModelDownloads(
+    controller: RecordingController,
+    screenState: RecordingScreenState? = null,
+) {
     val asr by controller.asrModel.collectAsStateWithLifecycle()
+    val refine by controller.refineModel.collectAsStateWithLifecycle()
     val speakerModel by controller.speakerModel.collectAsStateWithLifecycle()
+    val state = screenState ?: controller.state.collectAsStateWithLifecycle().value
     RecordingAsrControls(asr, controller::downloadAsrModel, controller::cancelAsrModelDownload)
+    InfinityGroupDivider()
+    RecordingRefineControls(
+        state = refine,
+        capability = state.refineCapability,
+        onDownload = controller::downloadRefineModel,
+        onCancel = controller::cancelRefineModelDownload,
+    )
+    InfinityGroupDivider()
+    RecordingRefineStrategyControls(
+        selectedMode = state.refineMode,
+        capability = state.refineCapability,
+        refineInstalled = refine == RecordingAsrModelState.Installed,
+        runtimeDegraded = state.refineRuntimeDegraded,
+        onSelectMode = controller::setRefineMode,
+    )
+    InfinityGroupDivider()
     RecordingAsrControls(speakerModel, controller::downloadSpeakerModel, controller::cancelSpeakerModel, speaker = true)
 }

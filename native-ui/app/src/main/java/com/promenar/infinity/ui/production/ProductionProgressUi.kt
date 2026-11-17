@@ -373,7 +373,7 @@ internal fun TakeSourceSection(take: Take, shot: Shot, production: Production, o
             if (source.params.isNotEmpty()) ProductionRow(
                 stringResource(R.string.production_source_params),
                 subtitleSegments = source.paramSegments(),
-                subtitleMaxLines = 3,
+                subtitleMaxLines = 2,
                 chevron = false,
             )
         }

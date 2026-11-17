@@ -205,31 +205,234 @@ internal class RecordingAsrModelManager(
         } finally { temporary.deleteRecursively() }
     }
 
-    private suspend fun copyVerified(input: InputStream, target: File, expected: RecordingAsrFile) {
-        val digest = MessageDigest.getInstance("SHA-256")
-        var done = 0L
-        target.outputStream().use { output ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (count > expected.bytes - done) throw ModelDownloadIntegrityException("听写模型文件过大")
-                output.write(buffer, 0, count)
-                digest.update(buffer, 0, count)
-                done += count
-            }
-            output.fd.sync()
+    private suspend fun copyVerified(input: InputStream, target: File, expected: RecordingAsrFile) =
+        copyVerifiedFile(input, target, expected, "听写模型文件")
+
+    private fun storageFailure(error: Throwable): Boolean = isAsrStorageFailure(error)
+    private class AsrStorageException : IOException()
+    companion object { const val STORAGE_MARGIN_BYTES = 64L * 1024 * 1024 }
+}
+
+private suspend fun copyVerifiedFile(
+    input: InputStream,
+    target: File,
+    expected: RecordingAsrFile,
+    label: String,
+) {
+    val digest = MessageDigest.getInstance("SHA-256")
+    var done = 0L
+    target.outputStream().use { output ->
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (count > expected.bytes - done) throw ModelDownloadIntegrityException("${label}过大")
+            output.write(buffer, 0, count)
+            digest.update(buffer, 0, count)
+            done += count
         }
-        if (done != expected.bytes || digest.digest().joinToString("") { "%02x".format(it) } != expected.sha256) {
-            throw ModelDownloadIntegrityException("听写模型文件校验不符")
+        output.fd.sync()
+    }
+    if (done != expected.bytes || digest.digest().joinToString("") { "%02x".format(it) } != expected.sha256) {
+        throw ModelDownloadIntegrityException("${label}校验不符")
+    }
+}
+
+private fun isAsrStorageFailure(error: Throwable): Boolean = generateSequence(error) { it.cause }.any {
+    it.message?.contains("ENOSPC", ignoreCase = true) == true ||
+        it is android.system.ErrnoException && it.errno == android.system.OsConstants.ENOSPC
+}
+
+internal data class RecordingRefinePackage(
+    val version: String,
+    val baseUrl: String,
+    val files: List<RecordingAsrFile>,
+) {
+    val bytes get() = files.sumOf { it.bytes }
+
+    companion object {
+        val CURRENT = RecordingRefinePackage(
+            version = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
+            baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/main/",
+            files = listOf(
+                RecordingAsrFile(
+                    name = "model.int8.onnx",
+                    bytes = 237_115_547L,
+                    sha256 = "12ca1a2ae7ecf3e0019ef2822307ee0b5cadc9196569e379b4c4026f8205276d",
+                ),
+                RecordingAsrFile(
+                    name = "tokens.txt",
+                    bytes = 315_894L,
+                    sha256 = "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc",
+                ),
+            ),
+        )
+    }
+}
+
+internal interface RecordingRefineDownload {
+    suspend fun downloadFile(
+        url: String,
+        fileName: String,
+        directory: File,
+        expectedSha256: String,
+        expectedBytes: Long,
+        progress: (Long, Long) -> Unit,
+    ): File
+
+    fun cancel()
+}
+
+private class RecordingRefineHttpDownload(context: Context) : RecordingRefineDownload {
+    private val downloader = ModelDownloader(context)
+
+    override suspend fun downloadFile(
+        url: String,
+        fileName: String,
+        directory: File,
+        expectedSha256: String,
+        expectedBytes: Long,
+        progress: (Long, Long) -> Unit,
+    ): File = downloader.downloadFile(
+        url = url,
+        fileName = fileName,
+        directory = directory,
+        expectedSha256 = expectedSha256,
+        expectedBytes = expectedBytes,
+        onProgress = progress,
+    ).getOrThrow()
+
+    override fun cancel() = downloader.cancel()
+}
+
+/** 独立管理 SenseVoice-Small (int8) 二遍精修模型的断点下载、SHA-256 校验与原子安装。 */
+internal class RecordingRefineModelManager(
+    private val root: File,
+    private val scope: CoroutineScope,
+    private val download: RecordingRefineDownload,
+    val spec: RecordingRefinePackage = RecordingRefinePackage.CURRENT,
+    private val availableBytes: (File) -> Long = { it.usableSpace },
+) {
+    constructor(context: Context, scope: CoroutineScope) : this(
+        File(context.filesDir, "asr-models"),
+        scope,
+        RecordingRefineHttpDownload(context),
+    )
+
+    private val _state = MutableStateFlow<RecordingAsrModelState>(RecordingAsrModelState.Missing)
+    val state = _state.asStateFlow()
+    private var job: Job? = null
+    private val directory get() = File(root, spec.version)
+    private val downloads get() = File(root, ".download/${spec.version}")
+
+    init {
+        scope.launch(Dispatchers.IO) {
+            synchronized(this@RecordingRefineModelManager) {
+                if (job == null && isInstalled()) {
+                    _state.value = RecordingAsrModelState.Installed
+                }
+            }
         }
     }
 
-    private fun storageFailure(error: Throwable): Boolean = generateSequence(error) { it.cause }.any {
-        it.message?.contains("ENOSPC", ignoreCase = true) == true ||
-            it is android.system.ErrnoException && it.errno == android.system.OsConstants.ENOSPC
+    fun isInstalled(): Boolean = directory.isDirectory &&
+        runCatching { File(directory, "version").readText() == spec.version }.getOrDefault(false) &&
+        spec.files.all { expected ->
+            File(directory, expected.name).let { file -> file.isFile && file.length() == expected.bytes }
+        }
+
+    fun installedDirectory(): File? = directory.takeIf { isInstalled() }
+
+    @Synchronized
+    fun start() {
+        if (job?.isCompleted == false || _state.value == RecordingAsrModelState.Installed) return
+        job = scope.launch(Dispatchers.IO) { install() }
     }
-    private class AsrStorageException : IOException()
-    companion object { const val STORAGE_MARGIN_BYTES = 64L * 1024 * 1024 }
+
+    @Synchronized
+    fun cancel() {
+        if (job?.isCompleted == false) {
+            job?.cancel()
+            download.cancel()
+        }
+    }
+
+    private suspend fun install() = withContext(Dispatchers.IO) {
+        val temporary = File(root, ".${spec.version}.install")
+        try {
+            if (isInstalled()) {
+                _state.value = RecordingAsrModelState.Installed
+                return@withContext
+            }
+            check(root.isDirectory || root.mkdirs())
+            temporary.deleteRecursively()
+            val pendingBytes = spec.files.sumOf { expected ->
+                val cached = File(downloads, expected.name)
+                val partial = File(downloads, "${expected.name}.part")
+                when {
+                    cached.isFile && cached.length() == expected.bytes -> 0L
+                    partial.isFile -> (expected.bytes - partial.length()).coerceAtLeast(0L)
+                    else -> expected.bytes
+                }
+            }
+            if (availableBytes(root) < pendingBytes + RecordingAsrModelManager.STORAGE_MARGIN_BYTES) {
+                throw RefineStorageException()
+            }
+            check(temporary.mkdirs())
+            var completedBefore = 0L
+            for (expected in spec.files) {
+                currentCoroutineContext().ensureActive()
+                val alreadyDone = completedBefore
+                _state.value = RecordingAsrModelState.Downloading(
+                    alreadyDone.coerceIn(0L, spec.bytes),
+                    spec.bytes,
+                )
+                val downloaded = download.downloadFile(
+                    url = "${spec.baseUrl}${expected.name}",
+                    fileName = expected.name,
+                    directory = downloads,
+                    expectedSha256 = expected.sha256,
+                    expectedBytes = expected.bytes,
+                ) { done, _ ->
+                    val overall = (alreadyDone + done).coerceIn(0L, spec.bytes)
+                    _state.value = RecordingAsrModelState.Downloading(overall, spec.bytes)
+                }
+                currentCoroutineContext().ensureActive()
+                downloaded.inputStream().use { input ->
+                    copyVerifiedFile(input, File(temporary, expected.name), expected, "精修模型文件")
+                }
+                completedBefore += expected.bytes
+            }
+            _state.value = RecordingAsrModelState.Installing
+            File(temporary, "version").outputStream().use {
+                it.write(spec.version.toByteArray())
+                it.fd.sync()
+            }
+            currentCoroutineContext().ensureActive()
+            if (directory.exists()) check(directory.deleteRecursively())
+            Files.move(temporary.toPath(), directory.toPath(), ATOMIC_MOVE)
+            _state.value = RecordingAsrModelState.Installed
+            downloads.deleteRecursively()
+        } catch (e: CancellationException) {
+            _state.value = if (isInstalled()) RecordingAsrModelState.Installed else RecordingAsrModelState.Missing
+            throw e
+        } catch (e: Exception) {
+            if (e is ModelDownloadIntegrityException) {
+                downloads.deleteRecursively()
+            }
+            _state.value = RecordingAsrModelState.Failed(
+                when {
+                    e is RefineStorageException || isAsrStorageFailure(e) -> R.string.recording_asr_storage
+                    e is ModelDownloadIntegrityException -> R.string.recording_asr_integrity
+                    e is IOException && _state.value is RecordingAsrModelState.Downloading -> R.string.recording_asr_network
+                    else -> R.string.recording_asr_other
+                },
+            )
+        } finally {
+            temporary.deleteRecursively()
+        }
+    }
+
+    private class RefineStorageException : IOException()
 }

@@ -12,26 +12,37 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
+import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /*
- * 同一列表内的行等高：组内任一行带副标题时，单行项也按双行项的高度排版，
- * 避免同一张卡片里行高参差。分组容器提供登记表，共用行布局在组合时登记自己是否为双行。
+ * 同一列表内的行等高：
+ * - 组内任一行带副标题时，单行项也按双行项高度（64dp）排版；
+ * - 组内任一行声明多行副标题（subtitleMaxLines > 1）时，组内所有行统一按 76dp 最小高度排版，
+ *   避免同一卡片或选项组内因某项 1 行、邻项 2 行而出现行高参差。
  */
 
 /** 一组列表行的等高登记表；[forced] 为真时整组固定按双行排版。 */
 @Stable
 class RowHeightGroup internal constructor(private val forced: Boolean) {
     private var twoLineRows by mutableIntStateOf(0)
+    private var multiLineSubtitleRows by mutableIntStateOf(0)
 
     /** 组内是否按双行高排版；读取它的行随登记变化重组。 */
     val twoLine: Boolean get() = forced || twoLineRows > 0
 
-    internal fun add() {
+    /** 组内是否存在需要多行副标题（2 行）预留空间的条目。 */
+    val hasMultiLineSubtitle: Boolean get() = multiLineSubtitleRows > 0
+
+    internal fun add(multiLineSubtitle: Boolean = false) {
         twoLineRows++
+        if (multiLineSubtitle) multiLineSubtitleRows++
     }
 
-    internal fun remove() {
+    internal fun remove(multiLineSubtitle: Boolean = false) {
         twoLineRows = (twoLineRows - 1).coerceAtLeast(0)
+        if (multiLineSubtitle) {
+            multiLineSubtitleRows = (multiLineSubtitleRows - 1).coerceAtLeast(0)
+        }
     }
 }
 
@@ -49,22 +60,34 @@ fun ProvideUniformRowHeight(twoLine: Boolean? = null, content: @Composable () ->
 }
 
 /**
- * 行的最小高度：自身有第二行时取 [twoLine]；同组有双行项时单行项也取 [twoLine]，否则取 [singleLine]。
- * 双行项在组合落地时登记，组内高度在布局阶段读取，首帧即为最终高度，不会先矮后高跳一下。
- * 不在任何分组内时只看自身。
+ * 行的最小高度：
+ * - 同组内存在多行副标题项或自身为多行副标题时取 [multiLineHeight]（默认 76dp）；
+ * - 同组有副标题或自身有副标题时取 [twoLine]（64dp）；
+ * - 其余单行项取 [singleLine]（48dp）。
  */
 @Composable
-fun uniformRowMinHeight(hasSubtitle: Boolean, singleLine: Dp, twoLine: Dp): Modifier {
+fun uniformRowMinHeight(
+    hasSubtitle: Boolean,
+    singleLine: Dp,
+    twoLine: Dp,
+    multiLineSubtitle: Boolean = false,
+    multiLineHeight: Dp = InfinitySpacing.RowMultiLineSubtitleHeight,
+): Modifier {
     val group = LocalRowHeightGroup.current
+    val countMultiLine = hasSubtitle && multiLineSubtitle
     if (group != null && hasSubtitle) {
-        DisposableEffect(group) {
-            group.add()
-            onDispose { group.remove() }
+        DisposableEffect(group, countMultiLine) {
+            group.add(countMultiLine)
+            onDispose { group.remove(countMultiLine) }
         }
     }
     return Modifier.layout { measurable, constraints ->
-        val tall = hasSubtitle || group?.twoLine == true
-        val min = (if (tall) twoLine else singleLine).roundToPx()
+        val minDp = when {
+            countMultiLine || group?.hasMultiLineSubtitle == true -> multiLineHeight
+            hasSubtitle || group?.twoLine == true -> twoLine
+            else -> singleLine
+        }
+        val min = minDp.roundToPx()
             .coerceAtLeast(constraints.minHeight)
             .coerceAtMost(constraints.maxHeight)
         val placeable = measurable.measure(constraints.copy(minHeight = min))

@@ -683,7 +683,7 @@ private fun RecordingModeRow(route: RecordingRoute, onMode: () -> Unit) {
             title = stringResource(R.string.recording_settings),
             subtitle = stringResource(routeLabel(route)),
             onClick = onMode,
-            subtitleMaxLines = 3,
+            subtitleMaxLines = 2,
             showChevron = true,
         )
     }

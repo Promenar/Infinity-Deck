@@ -214,17 +214,25 @@ fun SessionSettingsSheet(
     }
 }
 
-/** 会话可切换的服务商模型；本机推理不可用时去掉本地服务商的模型。 */
+/** 会话可切换的服务商模型；未加载到内存的本地模型不在列表展示。 */
 @Composable
 private fun rememberVisibleProviderModels(): List<ModelInfo> {
     val context = androidx.compose.ui.platform.LocalContext.current
     val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(context.applicationContext as android.app.Application))
     val providerModels by settingsViewModel.providerModels.collectAsStateWithLifecycle()
     val providers by settingsViewModel.providers.collectAsStateWithLifecycle()
-    return remember(providerModels, providers) {
-        filterLocalInferenceModels(
+    val loadedLocalModel = com.promenar.infinity.data.local.inference.LocalSessionModelBridge.rememberActiveLocalModelInfo()
+    return remember(providerModels, providers, loadedLocalModel) {
+        val localProviderIds = providers.filter { it.protocolType is ProtocolType.Local }.mapTo(mutableSetOf()) { it.id }
+        val filtered = filterLocalInferenceModels(
             models = providerModels,
-            localProviderIds = providers.filter { it.protocolType is ProtocolType.Local }.mapTo(mutableSetOf()) { it.id },
+            localProviderIds = localProviderIds,
+            localInferenceAvailable = BuildConfig.LOCAL_INFERENCE_AVAILABLE,
+        )
+        com.promenar.infinity.data.local.inference.LocalSessionModelBridge.mergeVisibleModels(
+            persistedModels = filtered,
+            loadedLocalModel = loadedLocalModel,
+            localProviderIds = localProviderIds,
             localInferenceAvailable = BuildConfig.LOCAL_INFERENCE_AVAILABLE,
         )
     }
@@ -386,13 +394,32 @@ private fun ParamsPanel(
     val providerManager = ProviderManager.getInstance()
     val providers by providerManager.providers.collectAsStateWithLifecycle()
     val providerModels by providerManager.providerModels.collectAsStateWithLifecycle()
+    val activeLocalModel = com.promenar.infinity.data.local.inference.LocalSessionModelBridge.rememberActiveLocalModelInfo()
+    val effectiveProviderModels = remember(providerModels, activeLocalModel) {
+        if (activeLocalModel != null && providerModels.none { it.id == activeLocalModel.id }) {
+            providerModels + activeLocalModel
+        } else providerModels
+    }
+    val effectiveProviders = remember(providers, activeLocalModel) {
+        if (activeLocalModel != null && providers.none { it.id == com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_ID }) {
+            providers + com.promenar.infinity.data.model.ProviderListItem(
+                id = com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_ID,
+                name = com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_NAME,
+                baseUrl = "",
+                model = activeLocalModel.remoteModelId,
+                protocolType = ProtocolType.Local,
+                hasApiKey = false,
+                enabled = true,
+            )
+        } else providers
+    }
     val modelKey = session?.modelId?.takeIf(String::isNotBlank)
     val schemesFlow = remember(modelKey) {
         modelKey?.let(chatViewModel::parameterSchemes) ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }
     val schemes by schemesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val profile = remember(modelKey, providers, providerModels) {
-        sessionModelParameterProfile(modelKey, providers, providerModels)
+    val profile = remember(modelKey, effectiveProviders, effectiveProviderModels) {
+        sessionModelParameterProfile(modelKey, effectiveProviders, effectiveProviderModels)
     }
     val storedEffort = com.promenar.infinity.data.model.params.ReasoningEffort.fromWireName(
         params.reasoningEffort ?: agentDefaults?.reasoningEffort,
@@ -412,7 +439,7 @@ private fun ParamsPanel(
     SessionParamsContent(
         params = params,
         editor = editor,
-        modelName = modelKey?.let { resolveModelDisplayName(it, providerModels) },
+        modelName = modelKey?.let { resolveModelDisplayName(it, effectiveProviderModels) },
         actions = actions,
     )
 }
@@ -616,7 +643,7 @@ internal fun SessionToolsContent(
                 horizontalPadding = 0.dp,
                 title = if (mode == ExecutionMode.WORKSPACE) stringResource(R.string.numeric_default_value, label) else label,
                 subtitle = stringResource(mode.descriptionRes),
-                subtitleMaxLines = 3,
+                subtitleMaxLines = 2,
                 role = Role.RadioButton,
                 selected = mode == selectedExecutionMode,
                 modifier = Modifier.testTag("session_execution_mode_${mode.name.lowercase()}"),

@@ -35,18 +35,18 @@ val SpaceGrotesk = InfinityMonospace
 
 /**
  * 换行策略分三类：
- * - 界面文本（标题、标签、列表与说明）使用 [InfinityUiLineBreak]：平衡各行长度、严格 CJK 避头尾规则与短语断词，
- *   避免末行孤字、行首标点与短语被拆断；
+ * - 界面文本（标题、标签、列表与说明）使用 [InfinityUiLineBreak]：优先排满行宽并遵守严格 CJK 避头尾规则，
+ *   避免首行提前折行留白与行首标点；
  * - 阅读文本（聊天正文、Markdown、文档与检索内容）使用 [InfinityReadingLineBreak]，保证长段落排版质量与性能；
  * - 输入框使用 [InfinityInputLineBreak]，编辑时不触发整段回流；
  * - 文件名、URL、路径与模型 ID 等标识符先经 [breakableIdentifier] 在分隔符后提供断点，避免在单词中间断开。
  * 未设置时 Android 回落到贪心换行且中文可在任意字间断开，因此每个角色都必须显式声明。
  */
 val InfinityUiLineBreak: LineBreak = LineBreak(
-    strategy = LineBreak.Strategy.Balanced,
+    strategy = LineBreak.Strategy.HighQuality,
     // 严格 CJK 规则：问号、句号、右引号等不得出现在行首（Heading 预设为 Loose，会放宽避头点）。
     strictness = LineBreak.Strictness.Strict,
-    wordBreak = LineBreak.WordBreak.Phrase,
+    wordBreak = LineBreak.WordBreak.Default,
 )
 val InfinityReadingLineBreak: LineBreak = LineBreak.Paragraph
 val InfinityInputLineBreak: LineBreak = LineBreak.Simple

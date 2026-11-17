@@ -35,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.withResumed
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinitySectionFooterCard
 import com.promenar.infinity.ui.common.SettingsInput
 import com.promenar.infinity.ui.common.rememberInfinityWideWindow
 import com.promenar.infinity.ui.theme.forInput
@@ -559,8 +560,10 @@ private fun RecordingWorkspaceSettings(
     val languages = @Composable {
         RecordingDialogGroup(stringResource(if (single) R.string.recording_output_language else R.string.recording_default_language)) {
             RecordingLanguageChoices(output) { output = it }
-            Text(stringResource(R.string.recording_dialog_language_support), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            InfinitySectionFooterCard(
+                text = stringResource(R.string.recording_dialog_language_support),
+                maxLines = 3,
+            )
         }
     }
     RecordingDialog(stringResource(R.string.recording_settings), dismiss, icon = Icons.Rounded.Tune,

@@ -74,6 +74,60 @@ internal suspend fun <T> withRecordingRecognitionWakeLock(context: Context, acti
     try { return action() } finally { if (lock.isHeld) lock.release() }
 }
 
+private const val MAX_REFINE_SLICE_MS = 65_000L
+
+/** 从录音 WAV 中按毫秒区间安全截取 PCM16 样本，越界或损坏时返回 null。 */
+internal fun readRecordingWavSlice(
+    audio: File,
+    startMs: Long,
+    endMs: Long,
+    marginMs: Long = 160L,
+): ShortArray? {
+    if (!audio.isFile || endMs <= startMs) return null
+    return RandomAccessFile(audio, "r").use { file ->
+        if (file.length() <= RecordingStore.WAV_HEADER_BYTES) return@use null
+        val header = ByteArray(44).also(file::readFully)
+        val buffer = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+        if (header.copyOfRange(0, 4).decodeToString() != "RIFF" || header.copyOfRange(8, 16).decodeToString() != "WAVEfmt ") {
+            return@use null
+        }
+        val headerDataBytes = buffer.getInt(40).toLong() and 0xffffffffL
+        val availableDataBytes = (file.length() - RecordingStore.WAV_HEADER_BYTES).coerceAtLeast(0L)
+        val validDataBytes = minOf(headerDataBytes.takeIf { it > 0L } ?: availableDataBytes, availableDataBytes) and -2L
+        val fromMs = (startMs - marginMs).coerceAtLeast(0L)
+        val clampedEndMs = minOf(endMs + marginMs, fromMs + MAX_REFINE_SLICE_MS)
+        val startByte = (fromMs * 32L) and -2L
+        val endByte = ((clampedEndMs * 32L) and -2L).coerceAtMost(validDataBytes)
+        val countBytes = (endByte - startByte).toInt()
+        if (countBytes <= 0) return@use null
+        file.seek(RecordingStore.WAV_HEADER_BYTES + startByte)
+        val bytes = ByteArray(countBytes).also(file::readFully)
+        ShortArray(countBytes / 2) { index ->
+            ((bytes[index * 2].toInt() and 0xff) or (bytes[index * 2 + 1].toInt() shl 8)).toShort()
+        }
+    }
+}
+
+/** 对 WAV 中指定分段使用二遍精修模型重解码并保留说话人归属；空结果或失败时保留原句文本。 */
+internal suspend fun refineRecordingSegments(
+    audio: File,
+    segments: List<RecordingSegment>,
+    refiner: RecordingRefiner,
+    onProgress: suspend (Float) -> Unit = {},
+): List<RecordingSegment> {
+    if (segments.isEmpty()) {
+        onProgress(1f)
+        return segments
+    }
+    return segments.mapIndexed { index, segment ->
+        currentCoroutineContext().ensureActive()
+        val pcm = readRecordingWavSlice(audio, segment.startMs, segment.endMs)
+        val refinedText = if (pcm != null) runCatching { refiner.refine(pcm) }.getOrNull() else null
+        onProgress((index + 1).toFloat() / segments.size)
+        if (!refinedText.isNullOrBlank()) segment.copy(text = refinedText) else segment
+    }
+}
+
 /** 在连续接话处定位文本切点。短句另行解码只用于定位，原始内容、热词替换结果与标点直接保留。 */
 internal suspend fun refineRecordingSpeakerSegments(
     audio: File,

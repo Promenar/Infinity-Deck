@@ -80,16 +80,42 @@ class DefaultProviderRequestRouter(
         middlewares: List<LlmMiddleware> = emptyList(),
         sessionIdentifier: suspend (String) -> String? = { null },
         sessionHeaderPreferences: com.promenar.infinity.data.local.SessionHeaderPreferences? = null,
+        localRuntimeSlot: (() -> com.promenar.infinity.data.local.inference.SlotState?)? = null,
+        localRuntimeEnabled: () -> Boolean = { false },
     ) : this(
-        modelResolver = { id -> providerManager.providerModels.value.firstOrNull { it.id == id }?.let { model ->
-            sessionHeaderPreferences?.let { model.copy(sessionHeaderMode = it.model(id)) } ?: model
-        } },
-        providerResolver = { id -> providerManager.providers.value.firstOrNull { it.id == id } },
-        configResolver = { id -> providerManager.getProviderConfig(id)?.let { config ->
-            sessionHeaderPreferences?.provider(id)?.let { headers ->
-                config.copy(sessionHeadersEnabled = headers.enabled, sessionHeaderName = headers.name)
-            } ?: config
-        } },
+        modelResolver = { id ->
+            val runtimeModel = com.promenar.infinity.data.local.inference.LocalSessionModelBridge.activeLocalModelInfo(
+                slot = localRuntimeSlot?.invoke(),
+                localModelsEnabled = localRuntimeEnabled(),
+            )?.takeIf { it.id == id }
+            runtimeModel ?: providerManager.providerModels.value.firstOrNull { it.id == id }?.let { model ->
+                sessionHeaderPreferences?.let { model.copy(sessionHeaderMode = it.model(id)) } ?: model
+            }
+        },
+        providerResolver = { id ->
+            if (id == com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_ID) {
+                com.promenar.infinity.data.local.inference.LocalSessionModelBridge.activeLocalProviderItem(
+                    slot = localRuntimeSlot?.invoke(),
+                    localModelsEnabled = localRuntimeEnabled(),
+                )
+            } else {
+                providerManager.providers.value.firstOrNull { it.id == id }
+            }
+        },
+        configResolver = { id ->
+            if (id == com.promenar.infinity.data.local.inference.LocalSessionModelBridge.LOCAL_RUNTIME_PROVIDER_ID) {
+                com.promenar.infinity.data.local.inference.LocalSessionModelBridge.activeLocalProviderConfig(
+                    slot = localRuntimeSlot?.invoke(),
+                    localModelsEnabled = localRuntimeEnabled(),
+                )
+            } else {
+                providerManager.getProviderConfig(id)?.let { config ->
+                    sessionHeaderPreferences?.provider(id)?.let { headers ->
+                        config.copy(sessionHeadersEnabled = headers.enabled, sessionHeaderName = headers.name)
+                    } ?: config
+                }
+            }
+        },
         unsupportedPersistedProtocolResolver = providerManager::isPersistedProtocolUnsupported,
         sessionIdentifier = sessionIdentifier,
         clientFactory = { config -> UnifiedLlmClient({ config }, middlewares, sessionIdentifier = sessionIdentifier) },

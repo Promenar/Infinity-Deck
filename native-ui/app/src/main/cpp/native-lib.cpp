@@ -16,7 +16,37 @@ struct LlamaSession {
     llama_model   *model = nullptr;
     llama_context *ctx   = nullptr;
     const llama_vocab *vocab = nullptr;
+    std::vector<llama_token> active_tokens;
 };
+
+static llama_context * init_context_with_kv_fallback(
+        llama_model *model, uint32_t n_ctx, int32_t n_threads) {
+    auto create_params = [&](enum ggml_type type_k, enum ggml_type type_v, enum llama_flash_attn_type fa) {
+        llama_context_params ctx_params = llama_context_default_params();
+        ctx_params.n_ctx           = n_ctx;
+        ctx_params.n_threads       = n_threads;
+        ctx_params.n_threads_batch = n_threads;
+        ctx_params.embeddings      = false;
+        ctx_params.type_k          = type_k;
+        ctx_params.type_v          = type_v;
+        ctx_params.flash_attn_type = fa;
+        return ctx_params;
+    };
+
+    // 首选双向 Q8_0 KV 量化 + Flash Attention（内存减半、适配 8K~16K 上下文）。
+    if (llama_context *ctx = llama_init_from_model(
+            model, create_params(GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, LLAMA_FLASH_ATTN_TYPE_ENABLED))) {
+        return ctx;
+    }
+    LOGI("Falling back to Q8_0 K / F16 V KV cache with auto Flash Attention");
+    if (llama_context *ctx = llama_init_from_model(
+            model, create_params(GGML_TYPE_Q8_0, GGML_TYPE_F16, LLAMA_FLASH_ATTN_TYPE_AUTO))) {
+        return ctx;
+    }
+    LOGI("Falling back to default F16 KV cache");
+    return llama_init_from_model(
+            model, create_params(GGML_TYPE_F16, GGML_TYPE_F16, LLAMA_FLASH_ATTN_TYPE_AUTO));
+}
 
 static std::once_flag backend_once;
 
@@ -66,13 +96,14 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_00024Companion_nati
         return 0;
     }
 
-    llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx           = static_cast<uint32_t>(nCtx);
-    ctx_params.n_threads       = static_cast<int32_t>(nThreads);
-    ctx_params.n_threads_batch = static_cast<int32_t>(nThreads);
-    ctx_params.embeddings      = false;
+    int32_t train_ctx = llama_model_n_ctx_train(session->model);
+    uint32_t resolved_ctx = static_cast<uint32_t>(std::max<int32_t>(nCtx, 512));
+    if (train_ctx > 0 && resolved_ctx > static_cast<uint32_t>(train_ctx)) {
+        resolved_ctx = static_cast<uint32_t>(train_ctx);
+    }
 
-    session->ctx = llama_init_from_model(session->model, ctx_params);
+    session->ctx = init_context_with_kv_fallback(
+            session->model, resolved_ctx, static_cast<int32_t>(nThreads));
     if (!session->ctx) {
         LOGE("Failed to create context");
         llama_model_free(session->model);
@@ -82,9 +113,16 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_00024Companion_nati
 
     session->vocab = llama_model_get_vocab(session->model);
 
-    LOGI("Model loaded (n_ctx=%d, threads=%d, gpu=%s)",
-         nCtx, nThreads, useGpu ? "on" : "off");
+    LOGI("Model loaded (requested_ctx=%d, actual_ctx=%u, train_ctx=%d, threads=%d, gpu=%s)",
+         nCtx, llama_n_ctx(session->ctx), train_ctx, nThreads, useGpu ? "on" : "off");
     return reinterpret_cast<jlong>(session);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeGetContextSize(
+        JNIEnv *, jobject, jlong ptr) {
+    auto *session = reinterpret_cast<LlamaSession *>(ptr);
+    return static_cast<jint>(llama_n_ctx(session->ctx));
 }
 
 // ═══════════════════════════════════════════════
@@ -177,12 +215,37 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeIngestPrompt(
 
     auto *session = reinterpret_cast<LlamaSession *>(ptr);
     jsize len = env->GetArrayLength(tokens);
+    if (len <= 0) {
+        return JNI_FALSE;
+    }
     jint *token_arr = env->GetIntArrayElements(tokens, nullptr);
 
-    uint32_t n_batch = llama_n_batch(session->ctx);
+    // 复用连续轮次间最长公共前缀 KV 缓存，至少保留末尾 1 个 token 重算最新 logits。
+    jsize max_prefix = std::min<jsize>(len - 1, static_cast<jsize>(session->active_tokens.size()));
+    jsize common_prefix = 0;
+    while (common_prefix < max_prefix &&
+           session->active_tokens[static_cast<size_t>(common_prefix)] ==
+               static_cast<llama_token>(token_arr[common_prefix])) {
+        common_prefix++;
+    }
 
+    llama_memory_t mem = llama_get_memory(session->ctx);
+    if (common_prefix == 0) {
+        llama_memory_clear(mem, true);
+        session->active_tokens.clear();
+    } else if (common_prefix < static_cast<jsize>(session->active_tokens.size())) {
+        if (!llama_memory_seq_rm(mem, 0, static_cast<llama_pos>(common_prefix), -1)) {
+            llama_memory_clear(mem, true);
+            session->active_tokens.clear();
+            common_prefix = 0;
+        } else {
+            session->active_tokens.resize(static_cast<size_t>(common_prefix));
+        }
+    }
+
+    uint32_t n_batch = llama_n_batch(session->ctx);
     bool succeeded = true;
-    for (jsize i = 0; i < len; i += static_cast<jsize>(n_batch)) {
+    for (jsize i = common_prefix; i < len; i += static_cast<jsize>(n_batch)) {
         int32_t batch_size = static_cast<int32_t>(
             std::min(static_cast<jsize>(n_batch), len - i));
         llama_batch batch = llama_batch_get_one(
@@ -191,10 +254,15 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeIngestPrompt(
 
         int32_t ret = llama_decode(session->ctx, batch);
         if (ret != 0) {
-            LOGE("llama_decode failed during prompt ingestion: %d", ret);
+            LOGE("llama_decode failed during prompt ingestion: %d (prefix=%d, len=%d)",
+                 ret, static_cast<int>(common_prefix), static_cast<int>(len));
+            llama_memory_clear(mem, true);
+            session->active_tokens.clear();
             succeeded = false;
             break;
         }
+        auto *start_tok = reinterpret_cast<llama_token *>(&token_arr[i]);
+        session->active_tokens.insert(session->active_tokens.end(), start_tok, start_tok + batch_size);
     }
 
     env->ReleaseIntArrayElements(tokens, token_arr, JNI_ABORT);
@@ -237,8 +305,12 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeDecode(
     int32_t ret = llama_decode(session->ctx, batch);
     if (ret != 0) {
         LOGE("llama_decode failed: %d", ret);
+        llama_memory_t mem = llama_get_memory(session->ctx);
+        llama_memory_clear(mem, true);
+        session->active_tokens.clear();
         return -1;
     }
+    session->active_tokens.push_back(tok);
 
     const float *logits = llama_get_logits_ith(session->ctx, -1);
     if (!logits) {
@@ -261,6 +333,7 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeEmbed(
     llama_set_embeddings(session->ctx, true);
     llama_memory_t mem = llama_get_memory(session->ctx);
     llama_memory_clear(mem, true);
+    session->active_tokens.clear();
 
     const auto utf8 = utf8_bytes(env, text);
     const auto *str = utf8.data();
@@ -343,6 +416,7 @@ Java_com_promenar_infinity_data_local_inference_LlamaContext_nativeClear(
     auto *session = reinterpret_cast<LlamaSession *>(ptr);
     llama_memory_t mem = llama_get_memory(session->ctx);
     llama_memory_clear(mem, true);
+    session->active_tokens.clear();
 }
 
 // ═══════════════════════════════════════════════

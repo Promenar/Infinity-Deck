@@ -20,6 +20,8 @@ internal class RecordingUtteranceLead {
         val onset = written + onsetFromEnd
         if (onset < LONG_PAUSE_SAMPLES) return null
         val start = onset - PRE_ROLL_SAMPLES
+        // 若回放起点不晚于流首（<= 0），旧流已完整包含句首音频，绝不毁流重灌。
+        if (start <= 0L) return null
         // 起声前的词元可能来自静音噪声；重启时仍保留足够的声前原音。
         if (lastToken != null && lastToken >= onset) return null
         return Replay(start, ShortArray((written - start).toInt()) { samples[((start + it) % samples.size).toInt()] })
@@ -27,10 +29,10 @@ internal class RecordingUtteranceLead {
 
     data class Replay(val start: Long, val pcm: ShortArray)
 
-    private companion object {
+    companion object {
         const val LONG_PAUSE_SAMPLES = 24 * RecordingSpeechBoundary.WINDOW_SAMPLES
-        const val PRE_ROLL_SAMPLES = 11 * RecordingSpeechBoundary.WINDOW_SAMPLES
-        const val HISTORY_SAMPLES = PRE_ROLL_SAMPLES + 3 * RecordingSpeechBoundary.WINDOW_SAMPLES + RecordingCapturePolicy.BLOCK_SAMPLES
+        const val PRE_ROLL_SAMPLES = 20 * RecordingSpeechBoundary.WINDOW_SAMPLES
+        private const val HISTORY_SAMPLES = PRE_ROLL_SAMPLES + 4 * RecordingSpeechBoundary.WINDOW_SAMPLES + RecordingCapturePolicy.BLOCK_SAMPLES
     }
 }
 

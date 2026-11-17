@@ -32,7 +32,7 @@ object ProtocolParamAdapter {
 
     fun buildGenerateConfig(request: PromptRequest): GenerateConfig {
         return clampGenerateConfig(GenerateConfig(
-            maxTokens = request.maxTokens ?: 512,
+            maxTokens = request.maxTokens ?: 1536,
             temperature = (request.temperature ?: 0.7).toFloat(),
             topP = (request.topP ?: 0.9).toFloat(),
             topK = request.topK ?: 40,

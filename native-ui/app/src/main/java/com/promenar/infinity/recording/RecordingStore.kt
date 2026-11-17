@@ -50,6 +50,11 @@ internal class RecordingStore(
         get() = prefs.getBoolean("live_organization", true)
         set(value) { prefs.edit().putBoolean("live_organization", value).apply() }
 
+    var refineMode: RecordingRefineMode
+        get() = RecordingRefineMode.entries.firstOrNull { it.name == prefs.getString("refine_mode", null) }
+            ?: RecordingRefineMode.AUTO
+        set(value) { prefs.edit().putString("refine_mode", value.name).apply() }
+
     fun newSession(title: String) = RecordingSession(
         id = UUID.randomUUID().toString(),
         createdAt = System.currentTimeMillis(),

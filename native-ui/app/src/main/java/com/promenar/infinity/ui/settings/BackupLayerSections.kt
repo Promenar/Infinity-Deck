@@ -138,7 +138,7 @@ internal fun ColumnScope.BackupLayerToggles(
         checked = state.encryptBackup || state.keysChecked,
         onCheckedChange = onEncryptBackupChange,
         enabled = !state.keysChecked,
-        descriptionMaxLines = 3,
+        descriptionMaxLines = 2,
     )
 }
 

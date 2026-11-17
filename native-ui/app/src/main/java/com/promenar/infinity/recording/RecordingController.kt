@@ -50,11 +50,15 @@ internal data class RecordingScreenState(
     val recognizeProgress: Float = 0f,
     val speakerAnalysisId: String? = null,
     val speakerProgress: Float = 0f,
+    val refiningId: String? = null,
     val failure: Int? = null,
     val ready: Boolean = false,
     val cloudKey: String? = null,
     val cloudLabel: String? = null,
     val localLabel: String? = null,
+    val refineMode: RecordingRefineMode = RecordingRefineMode.AUTO,
+    val refineCapability: RecordingRefineCapability = RecordingRefineCapability.STREAMING_ONLY,
+    val refineRuntimeDegraded: Boolean = false,
 ) {
     val localReady get() = localLabel != null
 }
@@ -81,6 +85,9 @@ internal class RecordingController(
         RecordingLibrary(app).publish(item, prepare)
     },
     private val recognizeWithWakeLock: suspend (suspend () -> List<RecordingSegment>) -> List<RecordingSegment> = { withRecordingRecognitionWakeLock(app, it) },
+    private val refinerFactory: RecordingRefinerFactory = RecordingRefinerFactory { dir, hotwords ->
+        createSenseVoiceRefiner(dir, hotwords)
+    },
 ) {
     val store = RecordingStore(app)
     val recommendedModel = com.promenar.infinity.data.local.inference.RecordingModelInstaller(app, io)
@@ -89,6 +96,13 @@ internal class RecordingController(
     val asrModel = asr.state
     val asrModelInstalledBytes = asr.spec.installedBytes
     val asrModelDownloadBytes = asr.spec.bytes
+    private val refine = RecordingRefineModelManager(app, io)
+    val refineModel = refine.state
+    val refineModelDownloadBytes = refine.spec.bytes
+    private val refineUse = Mutex()
+    private val rtfTracker = RefineRtfTracker()
+    private val refinedKeys = mutableMapOf<String, MutableSet<Pair<Long, Long>>>()
+    @Volatile private var refineJob: Job? = null
     private val hotwordStore = RecordingHotwordStore(java.io.File(app.filesDir, RecordingHotwordStore.FILE_NAME))
     private val _hotwords = MutableStateFlow<List<RecordingHotword>>(emptyList())
     val hotwords = _hotwords.asStateFlow()
@@ -151,9 +165,17 @@ internal class RecordingController(
                 R.string.recording_hotword_storage
             }
             voicePeopleValue.value = runCatching { voiceStore.read() }.getOrDefault(emptyList())
+            val hardware = runCatching { RecordingHardwareAdvisor.assess(app) }.getOrNull()
+            val savedRefineMode = runCatching { store.refineMode }.getOrDefault(RecordingRefineMode.AUTO)
             lock.withLock {
                 unfinishedRollbacks.addAll(rollbacks)
-                _state.value = RecordingScreenState(sessions = restored, ready = true, failure = hotwordFailure)
+                _state.value = RecordingScreenState(
+                    sessions = restored,
+                    ready = true,
+                    failure = hotwordFailure,
+                    refineMode = savedRefineMode,
+                    refineCapability = hardware?.capability ?: RecordingRefineCapability.STREAMING_ONLY,
+                )
             }
             restored.filter {
                 it.needsDocumentPublication()
@@ -224,6 +246,7 @@ internal class RecordingController(
             }
             recognition?.cancel()
             speakerJob?.cancel()
+            if (_state.value.refiningId == item.id) refineJob?.cancel()
             quiet = false
             if (!fromPause) firstLocalDraftAttempted = resume != null
             command.set(CaptureCommand.Continue)
@@ -239,6 +262,18 @@ internal class RecordingController(
     private suspend fun record(item: RecordingSession, onIdle: () -> Unit) {
         var outcome: RecordingPhase
         val waveform = RecordingWaveformSampler(_waveform.value) { _waveform.value = it }
+        rtfTracker.reset()
+        _state.value = _state.value.copy(refineRuntimeDegraded = false)
+        val initialHotwords = lock.withLock { effective(item) }
+        val realtimeQueue = Channel<Pair<Int, RecordingSegment>>(Channel.UNLIMITED)
+        val realtimeRefine = if (effectiveRefineStrategy() == RecordingRefineStrategy.REALTIME_AND_DEFERRED &&
+            refine.installedDirectory() != null
+        ) {
+            io.launch { runRealtimeRefineWorker(item.id, initialHotwords, realtimeQueue) }
+        } else {
+            realtimeQueue.close()
+            null
+        }
         try {
             val result = microphone.withLock {
                 recordAudio(app, store, item, command::get, { decode ->
@@ -251,14 +286,20 @@ internal class RecordingController(
                 }, {
                     lock.withLock { _state.value = _state.value.copy(opening = false) }
                 }, waveform) { frame ->
+                    var queuedSegment: Pair<Int, RecordingSegment>? = null
                     lock.withLock {
                         val current = requireNotNull(session(item.id))
                         if (frame.checkpoint) {
-                            val segments = frame.segment?.let { current.segments + it } ?: current.segments
+                            val segment = frame.segment
+                            val segments = if (segment != null) {
+                                queuedSegment = current.segments.size to segment
+                                current.segments + segment
+                            } else current.segments
                             save(current.copy(audioBytes = frame.bytes, segments = segments, checkpointText = frame.provisional))
                         }
                         val quietChanged = quiet != frame.quiet
-                        if (quiet && !frame.quiet && !organizingCloud && !completingFirstLocalDraft) organize?.cancel()
+                        // 说话一旦恢复，立即中止正在进行的本地 LLM 整理任务，将全部算力归还给实时语音识别。
+                        if (quiet && !frame.quiet && !organizingCloud) organize?.cancel()
                         quiet = frame.quiet
                         _state.value = _state.value.copy(
                             partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000,
@@ -267,6 +308,7 @@ internal class RecordingController(
                             liveDraftSignals.trySend(Unit)
                         }
                     }
+                    queuedSegment?.let { realtimeQueue.trySend(it) }
                 }
             }
             outcome = if (result == CaptureCommand.Pause) RecordingPhase.Paused else RecordingPhase.Finished
@@ -275,6 +317,12 @@ internal class RecordingController(
             outcome = RecordingPhase.Interrupted
         } catch (_: LinkageError) {
             outcome = RecordingPhase.Interrupted
+        } finally {
+            realtimeQueue.close()
+            if (realtimeRefine != null) {
+                withTimeoutOrNull(2_000) { realtimeRefine.join() }
+                realtimeRefine.cancel()
+            }
         }
         lock.withLock {
             if (command.get() == CaptureCommand.Discard) {
@@ -303,7 +351,10 @@ internal class RecordingController(
                 if (_state.value.organizingId == item.id) organize?.cancel()
                 store.clearCapture(item.id)
             }
-            if (outcome == RecordingPhase.Finished) {
+            val needsDeferredRefine = hasPendingRefinement(final) && outcome in setOf(RecordingPhase.Finished, RecordingPhase.Paused)
+            if (needsDeferredRefine) {
+                scheduleDeferredRefine(item.id)
+            } else if (outcome == RecordingPhase.Finished) {
                 nextAttempt.remove(item.id)
                 publish(item.id)
                 startSpeakerAnalysis(item.id)
@@ -323,8 +374,9 @@ internal class RecordingController(
                 if (current != null && _state.value.organizingId == current.id) organize?.cancel()
                 if (capture?.isActive == true) return@withLock
                 if (current != null) {
+                    val finished = current.copy(phase = RecordingPhase.Finished)
                     try {
-                        save(current.copy(phase = RecordingPhase.Finished))
+                        save(finished)
                     } catch (failure: Exception) {
                         if (failure is CancellationException) throw failure
                         report(R.string.recording_storage_failed)
@@ -333,8 +385,14 @@ internal class RecordingController(
                     store.clearCapture(current.id)
                     nextAttempt.remove(current.id)
                     _state.value = _state.value.copy(activeId = null)
-                    publish(current.id)
-                    startSpeakerAnalysis(current.id)
+                    if (_state.value.refiningId != current.id) {
+                        if (hasPendingRefinement(finished)) {
+                            scheduleDeferredRefine(current.id)
+                        } else {
+                            publish(current.id)
+                            startSpeakerAnalysis(current.id)
+                        }
+                    }
                 }
                 onIdle()
             }
@@ -347,6 +405,7 @@ internal class RecordingController(
                 val id = _state.value.activeId
                 if (id == null) { onIdle(); return@withLock }
                 if (command.get() == CaptureCommand.Discard) return@withLock
+                if (_state.value.refiningId == id) refineJob?.cancel()
                 try {
                     store.markDiscard(id)
                 } catch (failure: Exception) {
@@ -659,7 +718,172 @@ internal class RecordingController(
 
     fun downloadAsrModel() = asr.start()
     fun cancelAsrModelDownload() = asr.cancel()
+    fun downloadRefineModel() = refine.start()
+    fun cancelRefineModelDownload() = refine.cancel()
+    fun setRefineMode(mode: RecordingRefineMode) {
+        store.refineMode = mode
+        _state.value = _state.value.copy(
+            refineMode = mode,
+            refineRuntimeDegraded = if (mode != RecordingRefineMode.AUTO) false else _state.value.refineRuntimeDegraded,
+        )
+    }
     fun unknownHotwordCharacters(text: String): List<Char>? = asr.unknownCharacters(text)
+
+    private fun effectiveRefineStrategy(): RecordingRefineStrategy =
+        RecordingHardwareAdvisor.resolveStrategy(
+            mode = _state.value.refineMode,
+            refineModelInstalled = refine.isInstalled(),
+            capability = _state.value.refineCapability,
+            runtimeDegraded = _state.value.refineRuntimeDegraded,
+        )
+
+    private fun hasPendingRefinement(item: RecordingSession): Boolean {
+        if (effectiveRefineStrategy() == RecordingRefineStrategy.NONE || item.segments.isEmpty()) return false
+        val refined = refinedKeys[item.id].orEmpty()
+        return item.segments.any { (it.startMs to it.endMs) !in refined }
+    }
+
+    private suspend fun runRealtimeRefineWorker(
+        sessionId: String,
+        hotwords: List<RecordingHotword>,
+        queue: Channel<Pair<Int, RecordingSegment>>,
+    ) {
+        val directory = refine.installedDirectory() ?: return
+        val audio = store.audio(sessionId)
+        try {
+            refineUse.withLock {
+                refinerFactory.create(directory, hotwords).use { refiner ->
+                    for ((index, segment) in queue) {
+                        currentCoroutineContext().ensureActive()
+                        if (effectiveRefineStrategy() != RecordingRefineStrategy.REALTIME_AND_DEFERRED) break
+                        val pcm = readRecordingWavSlice(audio, segment.startMs, segment.endMs) ?: continue
+                        val startNs = System.nanoTime()
+                        val refinedText = runCatching { refiner.refine(pcm) }.getOrNull()
+                        val elapsedMs = (System.nanoTime() - startNs) / 1_000_000L
+                        val degraded = rtfTracker.record(elapsedMs, segment.endMs - segment.startMs)
+                        lock.withLock {
+                            if (degraded && _state.value.refineMode == RecordingRefineMode.AUTO) {
+                                _state.value = _state.value.copy(refineRuntimeDegraded = true)
+                            }
+                            if (!refinedText.isNullOrBlank()) {
+                                applySingleSegmentRefinement(sessionId, index, segment, refinedText)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            // 实时精修失败不影响流式录音与原文本落盘。
+        }
+    }
+
+    private suspend fun applySingleSegmentRefinement(
+        sessionId: String,
+        index: Int,
+        expected: RecordingSegment,
+        refinedText: String,
+    ) {
+        val current = session(sessionId) ?: return
+        if (current.captureRollbackPending) return
+        val existing = current.segments.getOrNull(index) ?: return
+        if (existing.startMs != expected.startMs || existing.endMs != expected.endMs) return
+        refinedKeys.getOrPut(sessionId) { mutableSetOf() }.add(expected.startMs to expected.endMs)
+        if (existing.text == refinedText) return
+        val updatedSegments = current.segments.toMutableList().apply {
+            set(index, existing.copy(text = refinedText))
+        }
+        val rewind = current.draftBatches.takeWhile { it.through <= index }
+        val updated = current.copy(
+            segments = updatedSegments,
+            draftBatches = rewind,
+            organizedThrough = minOf(current.organizedThrough, index),
+            reprocessThrough = current.reprocessThrough?.coerceAtMost(index),
+        )
+        runCatching { save(updated) }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun scheduleDeferredRefine(id: String) {
+        refineJob?.cancel()
+        _state.value = _state.value.copy(refiningId = id)
+        refineJob = io.launch(start = CoroutineStart.ATOMIC) {
+            try {
+                val directory = refine.installedDirectory()
+                val snapshot = lock.withLock { session(id) }
+                if (directory != null && snapshot != null && !snapshot.captureRollbackPending) {
+                    val hotwords = effective(snapshot)
+                    val audio = store.audio(id)
+                    val alreadyRefined = lock.withLock { refinedKeys[id]?.toSet().orEmpty() }
+                    val pendingIndexes = snapshot.segments.withIndex()
+                        .filter { (_, seg) -> (seg.startMs to seg.endMs) !in alreadyRefined }
+                        .map { it.index }
+                    if (pendingIndexes.isNotEmpty()) {
+                        val updates = mutableMapOf<Int, String>()
+                        refineUse.withLock {
+                            refinerFactory.create(directory, hotwords).use { refiner ->
+                                for (index in pendingIndexes) {
+                                    currentCoroutineContext().ensureActive()
+                                    val seg = snapshot.segments[index]
+                                    val pcm = readRecordingWavSlice(audio, seg.startMs, seg.endMs) ?: continue
+                                    val text = runCatching { refiner.refine(pcm) }.getOrNull()
+                                    if (!text.isNullOrBlank()) updates[index] = text
+                                }
+                            }
+                        }
+                        lock.withLock {
+                            currentCoroutineContext().ensureActive()
+                            val current = session(id)
+                            if (current != null && !current.captureRollbackPending && current.segments.size == snapshot.segments.size) {
+                                val merged = current.segments.toMutableList()
+                                val set = refinedKeys.getOrPut(id) { mutableSetOf() }
+                                var minChanged = Int.MAX_VALUE
+                                for (index in pendingIndexes) {
+                                    val orig = snapshot.segments[index]
+                                    val cur = merged[index]
+                                    if (cur.startMs == orig.startMs && cur.endMs == orig.endMs) {
+                                        set.add(orig.startMs to orig.endMs)
+                                        val nextText = updates[index]
+                                        if (!nextText.isNullOrBlank() && cur.text != nextText) {
+                                            merged[index] = cur.copy(text = nextText)
+                                            minChanged = minOf(minChanged, index)
+                                        }
+                                    }
+                                }
+                                if (minChanged < Int.MAX_VALUE) {
+                                    save(current.copy(
+                                        segments = merged,
+                                        draftBatches = current.draftBatches.takeWhile { it.through <= minChanged },
+                                        organizedThrough = minOf(current.organizedThrough, minChanged),
+                                        reprocessThrough = current.reprocessThrough?.coerceAtMost(minChanged),
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // 二遍精修兜底失败时保留流式逐字稿，正常推进后续发布与说话人分析。
+            } finally {
+                withContext(NonCancellable) {
+                    lock.withLock {
+                        if (_state.value.refiningId == id) {
+                            _state.value = _state.value.copy(refiningId = null)
+                        }
+                        val latest = session(id)
+                        if (latest != null && !latest.captureRollbackPending && latest.phase == RecordingPhase.Finished) {
+                            nextAttempt.remove(id)
+                            publish(id)
+                            startSpeakerAnalysis(id)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     private fun effective(item: RecordingSession) = effectiveRecordingHotwords(item, _hotwords.value)
     private fun decoderRequest(item: RecordingSession): RecordingDecoderRequest {
@@ -734,26 +958,63 @@ internal class RecordingController(
                     capture?.isActive == true || recognition?.isCompleted == false || !asr.isInstalled()) return@withLock
                 if (_state.value.organizingId == id) organize?.cancel()
                 if (_state.value.speakerAnalysisId == id) speakerJob?.cancel()
+                if (_state.value.refiningId == id) refineJob?.cancel()
                 val request = decoderRequest(item)
+                val refineDir = refine.installedDirectory().takeIf { _state.value.refineMode != RecordingRefineMode.OFF }
                 // 即使刚派发就被取消，也要执行 finally 清除界面上的识别状态。
                 recognition = io.launch(start = CoroutineStart.ATOMIC) {
                     try {
                         currentCoroutineContext().ensureActive()
                         val speakerFiles = speakerModels.installed()?.takeIf { item.distinguishSpeakers }
-                        val recognitionShare = if (speakerFiles == null) 1f else .85f
+                        val streamShare = when {
+                            refineDir != null && speakerFiles != null -> .55f
+                            refineDir != null -> .70f
+                            speakerFiles != null -> .85f
+                            else -> 1f
+                        }
+                        val refineShare = 0.30f
                         val people = voicePeopleValue.value
-                        val segments = recognizerUse.withLock {
+                        val streamedSegments = recognizerUse.withLock {
                             recognizeWithWakeLock {
                                 decoderFactory.create(request).use { decoder ->
                                     val audio = store.audio(id)
                                     val recognized = recognizeRecordingWav(audio, decoder) { progress ->
-                                        lock.withLock { _state.value = _state.value.copy(recognizeProgress = progress.coerceIn(0f, 1f) * recognitionShare) }
+                                        lock.withLock { _state.value = _state.value.copy(recognizeProgress = progress.coerceIn(0f, 1f) * streamShare) }
                                     }
-                                    if (!item.distinguishSpeakers || !item.speakerAssignmentsEdited) recognized
+                                    if (refineDir != null || !item.distinguishSpeakers || !item.speakerAssignmentsEdited) recognized
                                     else {
                                         decoder.reset()
                                         val refined = refineRecordingSpeakerSegments(
                                             audio, recognized, item.assignedSpeakerTurns(), decoder, protectAssignments = true,
+                                        )
+                                        item.copy(segments = refined).preserveSpeakerAssignments(item).segments
+                                    }
+                                }
+                            }
+                        }
+                        val segments = if (refineDir == null) {
+                            streamedSegments
+                        } else {
+                            val audio = store.audio(id)
+                            val twoPass = refineUse.withLock {
+                                withRecordingRecognitionWakeLock(app) {
+                                    refinerFactory.create(refineDir, request.hotwords).use { refiner ->
+                                        refineRecordingSegments(audio, streamedSegments, refiner) { progress ->
+                                            lock.withLock {
+                                                _state.value = _state.value.copy(
+                                                    recognizeProgress = (streamShare + progress.coerceIn(0f, 1f) * refineShare).coerceIn(0f, 1f),
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (!item.distinguishSpeakers || !item.speakerAssignmentsEdited) twoPass
+                            else recognizerUse.withLock {
+                                withRecordingRecognitionWakeLock(app) {
+                                    decoderFactory.create(request).use { decoder ->
+                                        val refined = refineRecordingSpeakerSegments(
+                                            audio, twoPass, item.assignedSpeakerTurns(), decoder, protectAssignments = true,
                                         )
                                         item.copy(segments = refined).preserveSpeakerAssignments(item).segments
                                     }
@@ -889,7 +1150,9 @@ internal class RecordingController(
             if (id == _state.value.organizingId) organize?.cancel()
             if (id == _state.value.recognizingId) recognition?.cancel()
             if (id == _state.value.speakerAnalysisId) speakerJob?.cancel()
+            if (id == _state.value.refiningId) refineJob?.cancel()
             nextAttempt.remove(id)
+            refinedKeys.remove(id)
             speakerAnalysisFailures.remove(id)
             _state.value = _state.value.copy(sessions = _state.value.sessions.filterNot { it.id == id })
             true
@@ -992,7 +1255,7 @@ internal class RecordingController(
         val item = _state.value.sessions.firstOrNull { candidate ->
             if (candidate.captureRollbackPending || SystemClock.elapsedRealtime() < (nextAttempt[candidate.id] ?: 0L) ||
                 active != null && candidate.id != active || candidate.id == _state.value.recognizingId ||
-                candidate.id == _state.value.speakerAnalysisId) return@firstOrNull false
+                candidate.id == _state.value.speakerAnalysisId || candidate.id == _state.value.refiningId) return@firstOrNull false
             val selectedRoute = route(candidate)
             if (active == candidate.id) {
                 return@firstOrNull nextLiveRecordingDraft(candidate, selectedRoute, quiet, !firstLocalDraftAttempted) != null
