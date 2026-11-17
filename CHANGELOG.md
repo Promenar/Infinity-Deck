@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.61.1-beta] - 2026-11-17
+## [0.61.2-beta] - 2026-11-17
 
 自上一公开版 `v0.58.0-beta` 以来的主要更新：
 

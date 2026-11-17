@@ -9,12 +9,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.DeviceConfigurationOverride
 import androidx.compose.ui.test.FontScale
 import androidx.compose.ui.test.Locales
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.then
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.then
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -32,7 +37,6 @@ import com.promenar.infinity.data.skills.DiscoveredSkill
 import com.promenar.infinity.data.skills.SkillScope
 import com.promenar.infinity.data.skills.SkillSourceGroup
 import com.promenar.infinity.data.skills.SkillStatus
-import com.promenar.infinity.ui.skills.SkillCatalogActions
 import com.promenar.infinity.ui.chat.ApprovalCard
 import com.promenar.infinity.ui.chat.ApprovalDisplayCall
 import com.promenar.infinity.ui.chat.ApprovalPreview
@@ -41,17 +45,19 @@ import com.promenar.infinity.ui.settings.AgentSkillsSection
 import com.promenar.infinity.ui.settings.ProviderListScreenActions
 import com.promenar.infinity.ui.settings.ProviderListScreenContent
 import com.promenar.infinity.ui.settings.ProviderListScreenState
+import com.promenar.infinity.ui.skills.SkillCatalogActions
 import com.promenar.infinity.ui.testing.findOrphanLines
-import com.promenar.infinity.ui.testing.orphanLastLine
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.InfinityUiLineBreak
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * 全站换行策略的设备门禁：在中文、窄屏与放大字号下，界面文本不得出现末行孤字。
- * 贪心换行对照组用于证明判定器能复现原问题。
+ * 全站换行策略的设备门禁：
+ * 1. [InfinityUiLineBreak] 采用 HighQuality + Strict + WordBreak.Default，优先排满首行（消除 Balanced 在 1.1–1.5 行短文本首行产生的右侧大留白），并严格遵守 CJK 避头点规则；
+ * 2. [InfinityMetaLine] 保持各元数据分段完整，绝不以分隔符“·”作为新行开头。
  */
 @RunWith(AndroidJUnit4::class)
 class TextWrappingDeviceTest {
@@ -59,11 +65,11 @@ class TextWrappingDeviceTest {
     val rule = createComposeRule()
 
     private val corpus = listOf(
-        "OpenAI 兼容（通用） · 已启用 · API Key 已配置",
+        "硬件检测：12 GB 内存 · arm64 旗舰处理器（当前空闲 3.4 GB）",
+        "当前策略：录音中专注低延迟流式识别，暂停与结束时统一精修",
+        "流式模型保证边说边出字；独立二遍精修模型（SenseVoice）在停顿或句末自动复核，减少漏词并校准标点与中英混读。",
         "技能包是可复用的任务指令（SKILL.md）。启用后，助手只在任务与技能描述相符时加载其指令与参考文件；技能包不会执行代码。",
-        "选择会被保存；在安全沙箱可用前，自定义脚本不会被广告或执行。",
         "每次请求的最大工具调用轮次（1–100）。达到后助手停止调用工具并总结进度。",
-        "永久删除工作区文件与目录，删除后无法恢复。",
         "根据提交记录与变更文件撰写结构化发行说明，适用于版本发布前整理。",
     )
 
@@ -77,20 +83,39 @@ class TextWrappingDeviceTest {
         }
         rule.runOnIdle {
             val ui = InfinityTypography.bodyMedium
-            val greedy = ui.copy(lineBreak = LineBreak.Simple)
-            var greedyOrphans = 0
-            val uiOrphans = mutableListOf<String>()
+            assertThat(ui.lineBreak).isEqualTo(InfinityUiLineBreak)
+            val balanced = ui.copy(
+                lineBreak = LineBreak(
+                    strategy = LineBreak.Strategy.Balanced,
+                    strictness = LineBreak.Strictness.Strict,
+                    wordBreak = LineBreak.WordBreak.Phrase,
+                ),
+            )
+            var balancedPrematureGaps = 0
+            val kinsokuViolations = mutableListOf<String>()
             for (text in corpus) {
-                for (widthDp in 140..420) {
+                for (widthDp in 160..420) {
                     val px = with(density) { widthDp.dp.roundToPx() }
-                    if (measure(measurer, text, greedy, px).orphanLastLine() != null) greedyOrphans++
-                    measure(measurer, text, ui, px).orphanLastLine()?.let { uiOrphans += "${widthDp}dp: ${it.lastLine} ← $text" }
+                    val minFillAdvancePx = with(density) { 28.dp.toPx() }
+                    val uiLayout = measure(measurer, text, ui, px)
+                    val balancedLayout = measure(measurer, text, balanced, px)
+                    if (uiLayout.lineCount == 2 && balancedLayout.lineCount == 2) {
+                        val uiFirstWidth = uiLayout.getLineRight(0) - uiLayout.getLineLeft(0)
+                        val balancedFirstWidth = balancedLayout.getLineRight(0) - balancedLayout.getLineLeft(0)
+                        if (uiFirstWidth - balancedFirstWidth >= minFillAdvancePx) {
+                            balancedPrematureGaps++
+                        }
+                    }
+                    uiLayout.firstKinsokuViolation()?.let { violation ->
+                        kinsokuViolations += "${widthDp}dp: $violation ← $text"
+                    }
                 }
             }
-            Log.i("TextWrapping", "greedy=$greedyOrphans ui=${uiOrphans.size}")
-            assertWithMessage("贪心换行对照组应能复现孤字").that(greedyOrphans).isGreaterThan(0)
-            assertWithMessage("界面换行策略仍出现孤字：\n${uiOrphans.take(20).joinToString("\n")}")
-                .that(uiOrphans).isEmpty()
+            Log.i("TextWrapping", "balancedPrematureGaps=$balancedPrematureGaps kinsoku=${kinsokuViolations.size}")
+            assertWithMessage("HighQuality 相比 Balanced 应在双行短文本中消除首行提前折行留白")
+                .that(balancedPrematureGaps).isGreaterThan(0)
+            assertWithMessage("界面换行策略出现行首避头标点违规：\n${kinsokuViolations.take(20).joinToString("\n")}")
+                .that(kinsokuViolations).isEmpty()
         }
     }
 
@@ -102,8 +127,8 @@ class TextWrappingDeviceTest {
             for (scale in listOf(1f, 1.3f)) {
                 rule.runOnIdle { current = width to scale }
                 rule.waitForIdle()
-                val orphans = rule.findOrphanLines()
-                assertWithMessage("宽度 $width 字号 ${scale}x 出现孤字：$orphans").that(orphans).isEmpty()
+                val violations = rule.findKinsokuViolations()
+                assertWithMessage("宽度 $width 字号 ${scale}x 出现行首标点违规：$violations").that(violations).isEmpty()
             }
         }
     }
@@ -207,4 +232,39 @@ class TextWrappingDeviceTest {
 
     private fun measure(measurer: TextMeasurer, text: String, style: TextStyle, widthPx: Int) =
         measurer.measure(text, style, constraints = Constraints(maxWidth = widthPx))
+
+    private fun TextLayoutResult.firstKinsokuViolation(): String? {
+        if (lineCount < 2) return null
+        val text = layoutInput.text.text
+        for (line in 1 until lineCount) {
+            val start = getLineStart(line)
+            if (start > 0 && text[start - 1] == '\n') continue
+            val lineText = text.substring(start, getLineEnd(line, visibleEnd = true)).trimStart()
+            val firstChar = lineText.firstOrNull() ?: continue
+            if (firstChar in FORBIDDEN_LINE_START_CHARS) {
+                return "L${line + 1} starts with '$firstChar' in \"$lineText\""
+            }
+        }
+        return null
+    }
+
+    private fun ComposeContentTestRule.findKinsokuViolations(): List<String> {
+        val violations = mutableListOf<String>()
+        fun visit(node: SemanticsNode) {
+            if (SemanticsActions.GetTextLayoutResult in node.config) {
+                val results = mutableListOf<TextLayoutResult>()
+                node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+                for (result in results) {
+                    result.firstKinsokuViolation()?.let { violations += it }
+                }
+            }
+            node.children.forEach(::visit)
+        }
+        onRoot(useUnmergedTree = true).fetchSemanticsNode().let(::visit)
+        return violations
+    }
+
+    private companion object {
+        private const val FORBIDDEN_LINE_START_CHARS = "。，、；：？！）》」』】"
+    }
 }

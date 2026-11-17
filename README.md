@@ -119,7 +119,7 @@ Requires Android 12 or later. The built-in Linux needs an arm64-v8a device and t
 
 To update, tap Check for updates in Settings › About. A newer release opens its download page; nothing installs on its own.
 
-The current release is `v0.61.1-beta` (versionCode `168`). It removes the redundant top mode card from Recording Settings, unifies Recording Workbench dialogs into the app-wide adaptive bottom sheet / wide centered dialog and `BettboxListGroup` visual system, and deduplicates the default Image model setting into Media Models while fixing the image preset clear/sync deadlock. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.1-beta)
+The current release is `v0.61.2-beta` (versionCode `169`). It updates the public line-wrapping device contract alongside SenseVoice two-pass refiner, local GGUF chat integration, Coding Plan presets, and unified Recording & Default Model settings. [Release notes](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.2-beta)
 
 <details>
 <summary><b>Build from source</b></summary>
