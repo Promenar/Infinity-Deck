@@ -45,7 +45,6 @@ class DefaultModelsInteractionTest {
 
     private val fixtures = listOf(
         ModelFixture(fixtureProviderId, "summary", "task8-test-summary", "Task 8 Quick Model", "chat", listOf("chat")),
-        ModelFixture(fixtureProviderId, "image", "task8-test-image", "Task 8 Image Model", "image", listOf("image")),
         ModelFixture(fixtureProviderId, "embedding", "task8-test-embedding", "Task 8 Embedding Model", "embedding", listOf("embedding")),
         ModelFixture(fixtureProviderId, "rerank", "task8-test-rerank", "Task 8 Rerank Model", "rerank", listOf("rerank")),
     )

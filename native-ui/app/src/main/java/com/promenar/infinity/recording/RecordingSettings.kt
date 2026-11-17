@@ -135,8 +135,6 @@ internal fun RecordingSettingsScreen(
     val context = LocalContext.current
     val controller = context.recordingController()
     val state by controller.state.collectAsStateWithLifecycle()
-    var mode by remember { mutableStateOf(controller.store.mode) }
-    var fallback by remember { mutableStateOf(controller.store.fallback) }
     val shortcuts = context.getSystemService(ShortcutManager::class.java)
     var showHotwords by rememberSaveable { mutableStateOf(false) }
     var showVoice by rememberSaveable { mutableStateOf(false) }
@@ -161,24 +159,6 @@ internal fun RecordingSettingsScreen(
 
     InfinitySettingsPageLayout(title = stringResource(R.string.recording_settings), onBack = onBack) { padding ->
         LazyColumn(contentPadding = padding) {
-            item {
-                InfinitySettingsSection(title = stringResource(R.string.recording_settings)) {
-                    RecordingModeOptions(mode) {
-                        mode = it
-                        controller.setMode(null, it)
-                    }
-                    if (mode == RecordingMode.Auto && BuildConfig.LOCAL_INFERENCE_AVAILABLE) {
-                        SettingsToggle(
-                            title = stringResource(R.string.recording_fallback),
-                            checked = fallback,
-                            onCheckedChange = {
-                                fallback = it
-                                controller.store.fallback = it
-                            },
-                        )
-                    }
-                }
-            }
             item {
                 InfinitySettingsSection(
                     title = stringResource(R.string.recording_asr_section),

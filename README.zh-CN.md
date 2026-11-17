@@ -119,7 +119,7 @@ Infinity Deck 让手机自己干活：在手机里的真 Linux 跑命令，用 g
 
 升级：在设置 › 关于里点“检查更新”，有新版时打开发行页下载，不会自动安装。
 
-当前发行版为 `v0.61.0-beta`（versionCode `167`）：修复录音流式听写吞字漏词，引入可按需独立下载的 SenseVoice 二遍精修模型、手机硬件自动分级与 RTF 熔断退避；将内存已加载的本地推理模型（未加载自动隐藏）接入会话选择器与 Agent 工具链，支持 16K/8K/4K Prefix KV Cache 与流式思考/工具解析；并完成全站左对齐满行换行、等高列表与 `InfinitySectionFooterCard` 统一说明容器规范收敛。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.0-beta)
+当前发行版为 `v0.61.1-beta`（versionCode `168`）：精简「设置 › 录音整理」顶部冗余分组，将录音工作台设置与确认弹层统一为全站竖屏上滑面板 + 宽屏居中弹窗及 `BettboxListGroup` 规范；并将「默认模型」中的图像模型入口收敛到「媒体模型」，同步修复默认图像通道清除/切换卡死与 `ComfyUI` 置顶清空云端默认图模型的问题。 [发行说明](https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.1-beta)
 
 <details>
 <summary><b>从源码构建</b></summary>

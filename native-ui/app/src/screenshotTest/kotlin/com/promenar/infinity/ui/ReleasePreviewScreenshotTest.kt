@@ -2423,7 +2423,6 @@ fun defaultModelsChineseTabletReleasePreview() {
 
 private fun previewDefaultModelsState() = DefaultModelsScreenState(
     summaryModelName = "Gemini 3.5 Flash",
-    imageModelName = "Gemini 3.1 Flash Lite Image",
     embeddingModelName = "BAAI/bge-m3",
     rerankModelName = "BAAI/bge-reranker-v2-m3",
 )

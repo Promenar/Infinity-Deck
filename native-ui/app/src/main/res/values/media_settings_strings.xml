@@ -174,4 +174,5 @@
     <string name="media_settings_diagnostic_29">Node %1$s</string>
     <string name="media_settings_connection">Connection</string>
     <string name="media_settings_host_actions">Host</string>
+    <string name="media_settings_entry_subtitle">Manage default channels and order for image, video, and speech generation</string>
 </resources>

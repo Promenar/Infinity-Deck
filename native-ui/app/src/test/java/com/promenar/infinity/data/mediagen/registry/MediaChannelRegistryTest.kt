@@ -51,4 +51,20 @@ class MediaChannelRegistryTest {
         assertEquals(listOf("a"), restored.orders.value[MediaGroup.AUDIO])
         assertThrows(IllegalArgumentException::class.java) { restored.reorder(MediaGroup.VIDEO, listOf("a")) }
     }
+    @Test fun comfyFirstImageOrderPreservesCloudPresetImageModel() {
+        val p = prefs()
+        val store = MediaChannelOrderStore(p)
+        val caps = MediaCapabilities(setOf(GenerationMode.TEXT))
+        val channels = listOf(
+            MediaChannel("comfy:local-flux", MediaGroup.IMAGE, caps),
+            MediaChannel("cloud:p::gpt-image-2.5", MediaGroup.IMAGE, caps),
+            MediaChannel("cloud:p::gpt-image-2", MediaGroup.IMAGE, caps),
+        )
+        store.reconcile(channels)
+        assertEquals(listOf("comfy:local-flux", "cloud:p::gpt-image-2.5", "cloud:p::gpt-image-2"), store.orders.value[MediaGroup.IMAGE])
+        assertEquals("p::gpt-image-2.5", p.getString("preset_image_model", null))
+
+        store.reorder(MediaGroup.IMAGE, listOf("comfy:local-flux", "cloud:p::gpt-image-2"))
+        assertEquals("p::gpt-image-2", p.getString("preset_image_model", null))
+    }
 }

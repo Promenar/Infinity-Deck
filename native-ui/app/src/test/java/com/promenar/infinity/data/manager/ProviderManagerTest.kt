@@ -609,6 +609,28 @@ class ProviderManagerTest {
     }
 
     @Test
+    fun `clearing image preset succeeds even when media image order is populated`() {
+        addExtraProviderWithModel()
+        val extraModelId = "extra-a::extra-model"
+        val caps = com.promenar.infinity.domain.mediagen.MediaCapabilities(setOf(com.promenar.infinity.domain.mediagen.GenerationMode.TEXT))
+        manager.mediaChannelOrders.reconcile(
+            listOf(
+                com.promenar.infinity.domain.mediagen.MediaChannel(
+                    "cloud:$extraModelId",
+                    com.promenar.infinity.domain.mediagen.MediaGroup.IMAGE,
+                    caps,
+                ),
+            ),
+        )
+        manager.setPresetModel("image", extraModelId)
+        assertThat(manager.imageModelId.value).isEqualTo(extraModelId)
+
+        manager.setPresetModel("image", "")
+
+        assertThat(manager.imageModelId.value).isEmpty()
+    }
+
+    @Test
     fun `deleting model removes all persisted metadata keys`() {
         addExtraProviderWithModel()
         val modelId = "extra-a::extra-model"

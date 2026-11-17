@@ -6,9 +6,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ShortText
 import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,7 +43,6 @@ enum class DefaultModelRole(
     val labelRes: Int,
 ) {
     SUMMARY("summary", "chat", R.string.settings_model_summary),
-    IMAGE("image", "image", R.string.settings_model_image),
     EMBEDDING("embedding", "embedding", R.string.settings_model_embedding),
     RERANK("rerank", "rerank", R.string.settings_model_rerank)
 }
@@ -58,7 +57,6 @@ fun DefaultModelsScreen(
 
     val allModels by viewModel.providerModels.collectAsState()
     val summaryModelId by viewModel.summaryModelId.collectAsState()
-    val imageModelId by viewModel.imageModelId.collectAsState()
     val embeddingModelId by viewModel.embeddingModelId.collectAsState()
     val rerankModelId by viewModel.rerankModelId.collectAsState()
     val timeouts by viewModel.modelTimeouts.collectAsState()
@@ -75,18 +73,15 @@ fun DefaultModelsScreen(
         }
     }
 
-    val state = remember(resolvedModels, summaryModelId, imageModelId, embeddingModelId, rerankModelId, timeouts) {
+    val state = remember(resolvedModels, summaryModelId, embeddingModelId, rerankModelId, timeouts) {
         val summaryInfo = resolvedModels.firstOrNull { it.selectionId == summaryModelId }
-        val imageInfo = resolvedModels.firstOrNull { it.selectionId == imageModelId }
         val embeddingInfo = resolvedModels.firstOrNull { it.selectionId == embeddingModelId }
         val rerankInfo = resolvedModels.firstOrNull { it.selectionId == rerankModelId }
         DefaultModelsScreenState(
             summaryModelName = resolveDefaultModelName(resolvedModels, summaryModelId),
-            imageModelName = resolveDefaultModelName(resolvedModels, imageModelId),
             embeddingModelName = resolveDefaultModelName(resolvedModels, embeddingModelId),
             rerankModelName = resolveDefaultModelName(resolvedModels, rerankModelId),
             summaryProviderName = summaryInfo?.providerName,
-            imageProviderName = imageInfo?.providerName,
             embeddingProviderName = embeddingInfo?.providerName,
             rerankProviderName = rerankInfo?.providerName,
             timeouts = timeouts,
@@ -114,7 +109,6 @@ fun DefaultModelsScreen(
         val role = activePickerRole!!
         val currentId = when (role) {
             DefaultModelRole.SUMMARY -> summaryModelId
-            DefaultModelRole.IMAGE -> imageModelId
             DefaultModelRole.EMBEDDING -> embeddingModelId
             DefaultModelRole.RERANK -> rerankModelId
         }
@@ -141,11 +135,9 @@ internal fun resolveDefaultModelName(models: List<ModelSelectionUiModel>, id: St
 
 internal data class DefaultModelsScreenState(
     val summaryModelName: String = "",
-    val imageModelName: String = "",
     val embeddingModelName: String = "",
     val rerankModelName: String = "",
     val summaryProviderName: String? = null,
-    val imageProviderName: String? = null,
     val embeddingProviderName: String? = null,
     val rerankProviderName: String? = null,
     val timeouts: ModelTimeoutSettings = ModelTimeoutSettings(),
@@ -178,7 +170,6 @@ internal fun DefaultModelsScreenContent(
                     DefaultModelRole.entries.forEach { role ->
                         val (selectedModelName, providerName) = when (role) {
                             DefaultModelRole.SUMMARY -> state.summaryModelName to state.summaryProviderName
-                            DefaultModelRole.IMAGE -> state.imageModelName to state.imageProviderName
                             DefaultModelRole.EMBEDDING -> state.embeddingModelName to state.embeddingProviderName
                             DefaultModelRole.RERANK -> state.rerankModelName to state.rerankProviderName
                         }
@@ -194,7 +185,14 @@ internal fun DefaultModelsScreenContent(
             }
             if (onMediaModels != null) item("media-models") {
                 InfinitySettingsSection(title = stringResource(R.string.media_settings_title)) {
-                    InfinitySettingsItem(title = stringResource(R.string.media_settings_title), onClick = onMediaModels, showChevron = true)
+                    InfinitySettingsItem(
+                        icon = Icons.Rounded.AutoAwesome,
+                        title = stringResource(R.string.media_settings_title),
+                        subtitle = stringResource(R.string.media_settings_entry_subtitle),
+                        subtitleMaxLines = 1,
+                        onClick = onMediaModels,
+                        showChevron = true,
+                    )
                 }
             }
             item("timeouts") {
@@ -240,7 +238,6 @@ private val ModelTimeoutKind.labelRes: Int
 
 private fun DefaultModelRole.vectorIcon() = when (this) {
     DefaultModelRole.SUMMARY -> Icons.AutoMirrored.Rounded.ShortText
-    DefaultModelRole.IMAGE -> Icons.Rounded.Image
     DefaultModelRole.EMBEDDING -> Icons.Rounded.Hub
     DefaultModelRole.RERANK -> Icons.AutoMirrored.Rounded.Sort
 }

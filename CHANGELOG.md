@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.61.1-beta] - 2026-11-17
+
+- **设置与默认模型图像通道去重与同步修复**：从 `设置 › 默认模型` 的系统功能模型清单移除与「媒体模型」重复的「图像模型」预设（保留快速模型、嵌入模型、重排模型 3 项，并补充「媒体模型」入口描述）；修复 `ProviderManager.setPresetModel("image", ...)` 对非空媒体通道顺序短路导致清除无响应与无法变更的问题，并调整 `MediaChannelOrderStore` 在 `ComfyUI` 模板排在首位时仍保留首个云端生图通道作为 `preset_image_model` 供会话调用。
+- **录音设置去重与弹层全站风格统一**：移除 `设置 › 录音整理` 顶部与圆角冲突且功能重复的「录音整理」分段卡片，页面从「识别」开篇并将回退开关收口至录音工作台「录制选项」；按全站 `InfinityBottomSheet` / `InfinityConfirmDialog` / `BettboxListGroup` 规范统一 `RecordingDialog` 与 `RecordingConfirm`（窄屏竖屏呈现顶部拖拽条无框上滑面板，宽屏内屏切换为 `640.dp` 居中圆角弹窗；默认输出语言收口为横向 `InfinitySegmentedControl` 与 `InfinityEmbeddedNoteCard`，移除旧版蓝框描边选中块与通栏分割线）。
+
 ## [0.61.0-beta] - 2026-11-17
 
 - **录音听写止漏词与独立 SenseVoice 二遍精修**：优化流式分段延续门槛（`0.28f` / `28` 窗 / `4s` 静默）、扩充 `640 ms` 预卷缓冲、修复切段 `onset` 越界与热词纠正 `85%` 阈值，并解除后台首轮本地整理对恢复说话的线程抢占；新增可按需独立下载、SHA-256 校验安装的 `SenseVoice-Small int8` 二遍精修模型（237 MB），支持手机硬件三维自动评估分级（`REALTIME_TWO_PASS` 旗舰句末+兜底、`DEFERRED_TWO_PASS` 中端停顿后精修、`STREAMING_ONLY` 入门轻量模式）与连续慢段 RTF > 0.65 运行时熔断退避，同步落地四项等高引导清单与三态精修策略控件。

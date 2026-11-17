@@ -45,11 +45,19 @@ class MediaChannelOrderStore(private val prefs: SharedPreferences) {
     }
 
     private fun write(next: Map<MediaGroup, List<String>>) {
-        if (next == _orders.value && MediaGroup.entries.all { prefs.contains(key(it)) }) return
+        val firstCloudImage = next[MediaGroup.IMAGE].orEmpty()
+            .firstOrNull { it.startsWith("cloud:") }
+            ?.removePrefix("cloud:")
+            .orEmpty()
+        if (next == _orders.value &&
+            MediaGroup.entries.all { prefs.contains(key(it)) } &&
+            prefs.getString("preset_image_model", null) == firstCloudImage
+        ) {
+            return
+        }
         val editor = prefs.edit()
         next.forEach { (group, order) -> editor.putString(key(group), JsonArray(order.map(::JsonPrimitive)).toString()) }
-        val firstImage = next[MediaGroup.IMAGE].orEmpty().firstOrNull()
-        editor.putString("preset_image_model", firstImage?.takeIf { it.startsWith("cloud:") }?.removePrefix("cloud:").orEmpty())
+        editor.putString("preset_image_model", firstCloudImage)
         check(editor.commit()) { "媒体通道顺序保存失败" }
         _orders.value = next
     }

@@ -14,7 +14,7 @@ class DefaultModelsScreenContractTest {
     ).toString(Charsets.UTF_8)
 
     @Test
-    fun `default model role has exactly four options`() {
+    fun `default model role has exactly three system roles`() {
         val enumBlock = screenSource.substringAfter("enum class DefaultModelRole(")
             .substringBefore("\n}")
         val roles = Regex("(?m)^\\s{4}([A-Z]+)\\(")
@@ -22,7 +22,7 @@ class DefaultModelsScreenContractTest {
             .map { it.groupValues[1] }
             .toList()
 
-        assertThat(roles).containsExactly("SUMMARY", "IMAGE", "EMBEDDING", "RERANK").inOrder()
+        assertThat(roles).containsExactly("SUMMARY", "EMBEDDING", "RERANK").inOrder()
     }
 
     @Test

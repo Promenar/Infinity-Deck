@@ -1276,14 +1276,6 @@ class ProviderManager private constructor(
         require(modelId.isBlank() || _providerModels.value.any { it.id == modelId }) {
             "预设模型必须使用已注册的稳定复合 ID"
         }
-        if (type == "image") {
-            val group = com.promenar.infinity.domain.mediagen.MediaGroup.IMAGE
-            val order = mediaChannelOrders.orders.value[group].orEmpty()
-            if (order.isNotEmpty()) {
-                if (modelId.isNotBlank()) mediaChannelOrders.reorder(group, listOf("cloud:$modelId"))
-                return
-            }
-        }
         val key = when (type) {
             "summary" -> {
                 _summaryModelId.value = modelId
@@ -1292,6 +1284,12 @@ class ProviderManager private constructor(
             }
             "image" -> {
                 _imageModelId.value = modelId
+                if (modelId.isNotBlank()) {
+                    val group = com.promenar.infinity.domain.mediagen.MediaGroup.IMAGE
+                    if ("cloud:$modelId" in mediaChannelOrders.orders.value[group].orEmpty()) {
+                        mediaChannelOrders.reorder(group, listOf("cloud:$modelId"))
+                    }
+                }
                 "preset_image_model"
             }
             "embedding" -> {

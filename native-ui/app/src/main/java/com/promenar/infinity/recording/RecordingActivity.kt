@@ -33,9 +33,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.withResumed
+import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
-import com.promenar.infinity.ui.common.InfinitySectionFooterCard
+import com.promenar.infinity.ui.common.InfinityEmbeddedNoteCard
+import com.promenar.infinity.ui.common.InfinityEmbeddedNoteRow
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.SettingsInput
 import com.promenar.infinity.ui.common.rememberInfinityWideWindow
 import com.promenar.infinity.ui.theme.forInput
@@ -317,19 +321,29 @@ private fun RecordingScreen(
 
     when (dialog) {
         "mode" -> if (state.ready && (selected == null || current != null)) RecordingWorkspaceSettings(
-            current?.mode ?: defaultMode, current?.outputLanguage ?: controller.store.outputLanguage,
+            current?.mode ?: defaultMode,
+            current?.outputLanguage ?: controller.store.outputLanguage,
             current?.liveOrganization ?: controller.store.liveOrganization,
-            current?.distinguishSpeakers ?: controller.store.distinguishSpeakers, current != null,
+            current?.distinguishSpeakers ?: controller.store.distinguishSpeakers,
+            fallback = controller.store.fallback,
+            single = current != null,
             dismiss = { dialog = null },
-            onSave = { mode, language, live, speakers ->
-                if (current == null) defaultMode = mode
+            onSave = { mode, language, live, speakers, fallback ->
+                if (current == null) {
+                    defaultMode = mode
+                    controller.store.fallback = fallback
+                }
                 controller.configure(current?.id, mode, language, live, speakers)
                 dialog = null
             },
         ) {
-            if (current?.cloudConsent != null) RecordingDialogRow(stringResource(R.string.recording_revoke), {
-                controller.allowCloud(current.id, null); dialog = null
-            }, icon = Icons.Rounded.Cloud, destructive = true)
+            if (current?.cloudConsent != null) {
+                RecordingDialogGroup {
+                    RecordingDialogRow(stringResource(R.string.recording_revoke), {
+                        controller.allowCloud(current.id, null); dialog = null
+                    }, icon = Icons.Rounded.Cloud, destructive = true)
+                }
+            }
             RecordingDialogGroup(stringResource(R.string.recording_dialog_resources)) {
                 RecordingDialogRow(stringResource(R.string.recording_setup_title), {
                     dialog = null; showSetup = true
@@ -340,19 +354,6 @@ private fun RecordingScreen(
                 RecordingDialogRow(stringResource(R.string.recording_speaker_library), {
                     dialog = null; showVoice = true
                 }, icon = Icons.Rounded.Person)
-            }
-            RecordingDialogGroup(stringResource(R.string.recording_shortcuts)) {
-                RecordingDialogRow(
-                    title = stringResource(R.string.recording_add_tile),
-                    onClick = {
-                        dialog = null
-                        requestAddRecordingTile(activityContext)
-                    },
-                    subtitle = if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
-                        stringResource(R.string.recording_tile_manual)
-                    } else null,
-                    icon = Icons.Rounded.Widgets,
-                )
             }
         }
 
@@ -395,19 +396,21 @@ private fun RecordingScreen(
             }, cancel = stringResource(R.string.recording_dialog_keep_editing), destructive = true)
         "actions" -> if (current != null) RecordingDialog(stringResource(R.string.recording_actions),
             { dialog = null }, icon = Icons.Rounded.MoreHoriz, width = 412.dp) {
-            RecordingDialogRow(stringResource(R.string.recording_settings), { dialog = "mode" }, icon = Icons.Rounded.Tune)
-            RecordingDialogRow(stringResource(R.string.recording_hotword_session), { dialog = "hotwords" }, icon = Icons.Rounded.Description)
-            if (state.ready && !active && current.segments.isNotEmpty()) {
-                RecordingDialogRow(stringResource(R.string.recording_ui_reprocess), { dialog = "organize" }, icon = Icons.Rounded.Refresh)
+            RecordingDialogGroup {
+                RecordingDialogRow(stringResource(R.string.recording_settings), { dialog = "mode" }, icon = Icons.Rounded.Tune)
+                RecordingDialogRow(stringResource(R.string.recording_hotword_session), { dialog = "hotwords" }, icon = Icons.Rounded.Description)
+                if (state.ready && !active && current.segments.isNotEmpty()) {
+                    RecordingDialogRow(stringResource(R.string.recording_ui_reprocess), { dialog = "organize" }, icon = Icons.Rounded.Refresh)
+                }
+                if (active && route == RecordingRoute.Consent) {
+                    RecordingDialogRow(stringResource(R.string.recording_enable_cloud), { dialog = "consent" }, icon = Icons.Rounded.Cloud)
+                }
+                if (!active && current.documentId == null) RecordingDialogRow(stringResource(R.string.recording_save_library), {
+                    controller.publish(current.id); dialog = null
+                }, icon = Icons.Rounded.Save)
+                if (!active) RecordingDialogRow(stringResource(R.string.recording_ui_delete), { dialog = "delete" },
+                    icon = Icons.Rounded.Delete, destructive = true)
             }
-            if (active && route == RecordingRoute.Consent) {
-                RecordingDialogRow(stringResource(R.string.recording_enable_cloud), { dialog = "consent" }, icon = Icons.Rounded.Cloud)
-            }
-            if (!active && current.documentId == null) RecordingDialogRow(stringResource(R.string.recording_save_library), {
-                controller.publish(current.id); dialog = null
-            }, icon = Icons.Rounded.Save)
-            if (!active) RecordingDialogRow(stringResource(R.string.recording_ui_delete), { dialog = "delete" },
-                icon = Icons.Rounded.Delete, destructive = true)
         }
         "language" -> if (current != null) {
             var language by rememberSaveable(current.id) { mutableStateOf(current.outputLanguage) }
@@ -424,9 +427,25 @@ private fun RecordingScreen(
                     }, dismiss)
                 },
             ) {
-                RecordingLanguageChoices(language, { language = it })
+                RecordingDialogGroup {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RecordingLanguageChoices(language) { language = it }
+                        InfinityEmbeddedNoteCard(
+                            rows = listOf(
+                                InfinityEmbeddedNoteRow(
+                                    icon = Icons.Rounded.Info,
+                                    text = stringResource(R.string.recording_dialog_language_support),
+                                ),
+                            ),
+                        )
+                    }
+                }
                 RecordingDialogNote(stringResource(R.string.recording_language_detail))
-                RecordingDialogNote(stringResource(R.string.recording_dialog_language_support))
             }
         }
         "consent" -> {
@@ -461,11 +480,13 @@ private fun RecordingScreen(
         }
         "transcript-actions" -> if (current != null) RecordingDialog(stringResource(R.string.recording_transcript_actions),
             { dialog = null }, icon = Icons.Rounded.Description, width = 412.dp) {
-            RecordingDialogRow(stringResource(R.string.recording_recognize), { dialog = "recognize" },
-                icon = Icons.Rounded.Refresh, enabled = canRecognize)
-            RecordingDialogRow(stringResource(R.string.recording_hotword_session), { dialog = "hotwords" }, icon = Icons.Rounded.Description)
-            RecordingDialogRow(stringResource(R.string.recording_export_raw), { dialog = null; exportRaw() },
-                icon = Icons.Rounded.FileDownload, enabled = current.segments.isNotEmpty())
+            RecordingDialogGroup {
+                RecordingDialogRow(stringResource(R.string.recording_recognize), { dialog = "recognize" },
+                    icon = Icons.Rounded.Refresh, enabled = canRecognize)
+                RecordingDialogRow(stringResource(R.string.recording_hotword_session), { dialog = "hotwords" }, icon = Icons.Rounded.Description)
+                RecordingDialogRow(stringResource(R.string.recording_export_raw), { dialog = null; exportRaw() },
+                    icon = Icons.Rounded.FileDownload, enabled = current.segments.isNotEmpty())
+            }
         }
         "recognize" -> if (current != null && canRecognize) {
             var rewrite by rememberSaveable(current.id) { mutableStateOf(false) }
@@ -477,7 +498,7 @@ private fun RecordingScreen(
                     controller.recognize(current.id, rewriteOrganized = route != RecordingRoute.Raw && rewrite)
                 }, dismiss) },
             ) {
-                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RecordingDialogGroup(modifier = Modifier.selectableGroup()) {
                     RecordingDialogRow(stringResource(R.string.recording_recognize_raw_only), { rewrite = false },
                         stringResource(R.string.recording_dialog_recognize_keep), selected = !rewrite || route == RecordingRoute.Raw)
                     if (route != RecordingRoute.Raw) RecordingDialogRow(stringResource(R.string.recording_recognize_rewrite),
@@ -514,7 +535,9 @@ private fun RecordingSessionHotwords(item: RecordingSession, dismiss: () -> Unit
     RecordingDialog(stringResource(R.string.recording_hotword_session), dismiss, icon = Icons.Rounded.Description,
         subtitle = item.title, footer = { RecordingDialogActions(stringResource(R.string.recording_dialog_save_hotwords),
             { save(words.lines(), useLibrary) }, dismiss) }) {
-        RecordingDialogRow(stringResource(R.string.recording_hotword_use_library), { useLibrary = !useLibrary }, checked = useLibrary)
+        RecordingDialogGroup {
+            RecordingDialogRow(stringResource(R.string.recording_hotword_use_library), { useLibrary = !useLibrary }, checked = useLibrary)
+        }
         OutlinedTextField(words, { words = it }, Modifier.fillMaxWidth(), minLines = 4, maxLines = 6,
             label = { Text(stringResource(R.string.recording_hotword_words)) }, textStyle = MaterialTheme.typography.bodyMedium.forInput())
         RecordingDialogNote(stringResource(R.string.recording_dialog_hotword_scope))
@@ -523,54 +546,84 @@ private fun RecordingSessionHotwords(item: RecordingSession, dismiss: () -> Unit
 
 @Composable
 private fun RecordingLanguageChoices(output: RecordingLanguage, select: (RecordingLanguage) -> Unit) {
-    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RecordingLanguage.entries.forEach { option ->
-            RecordingDialogRow(option.label, { select(option) }, selected = option == output)
-        }
-    }
+    InfinitySegmentedControl(
+        segments = RecordingLanguage.entries.map { option ->
+            InfinitySegment(value = option, label = option.label)
+        },
+        selected = output,
+        onSelect = select,
+        fillWidth = true,
+        compact = true,
+    )
 }
 
 @Composable
 private fun RecordingWorkspaceSettings(
-    mode: RecordingMode, language: RecordingLanguage, live: Boolean, speakers: Boolean, single: Boolean,
-    dismiss: () -> Unit, onSave: (RecordingMode, RecordingLanguage, Boolean, Boolean) -> Unit,
+    mode: RecordingMode,
+    language: RecordingLanguage,
+    live: Boolean,
+    speakers: Boolean,
+    fallback: Boolean,
+    single: Boolean,
+    dismiss: () -> Unit,
+    onSave: (RecordingMode, RecordingLanguage, Boolean, Boolean, Boolean) -> Unit,
     resources: @Composable () -> Unit,
 ) {
     var route by rememberSaveable { mutableStateOf(mode) }
     var output by rememberSaveable { mutableStateOf(language) }
     var draft by rememberSaveable { mutableStateOf(live) }
     var separate by rememberSaveable { mutableStateOf(speakers) }
+    var fallbackState by rememberSaveable { mutableStateOf(fallback) }
     val app = LocalContext.current.applicationContext as InfinityApplication
     val wide = rememberInfinityWideWindow()
     val modes = @Composable {
-        RecordingDialogGroup(stringResource(R.string.recording_route_title)) {
-            Column(Modifier.selectableGroup()) {
-                listOf(
-                    Triple(RecordingMode.Local, R.string.recording_mode_local, R.string.recording_dialog_mode_local),
-                    Triple(RecordingMode.Auto, R.string.recording_mode_auto, R.string.recording_dialog_mode_cloud),
-                    Triple(RecordingMode.Raw, R.string.recording_mode_raw, R.string.recording_dialog_mode_raw),
-                ).forEach { (option, label, detail) ->
-                    if (option != RecordingMode.Local || app.localInferenceRuntimeGate.isAvailable) {
-                        RecordingDialogRow(stringResource(label), { route = option }, stringResource(detail), selected = route == option)
-                    }
+        RecordingDialogGroup(stringResource(R.string.recording_route_title), modifier = Modifier.selectableGroup()) {
+            listOf(
+                Triple(RecordingMode.Local, R.string.recording_mode_local, R.string.recording_dialog_mode_local),
+                Triple(RecordingMode.Auto, R.string.recording_mode_auto, R.string.recording_dialog_mode_cloud),
+                Triple(RecordingMode.Raw, R.string.recording_mode_raw, R.string.recording_dialog_mode_raw),
+            ).forEach { (option, label, detail) ->
+                if (option != RecordingMode.Local || app.localInferenceRuntimeGate.isAvailable) {
+                    RecordingDialogRow(stringResource(label), { route = option }, stringResource(detail), selected = route == option)
                 }
             }
         }
     }
     val languages = @Composable {
         RecordingDialogGroup(stringResource(if (single) R.string.recording_output_language else R.string.recording_default_language)) {
-            RecordingLanguageChoices(output) { output = it }
-            InfinitySectionFooterCard(
-                text = stringResource(R.string.recording_dialog_language_support),
-                maxLines = 3,
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RecordingLanguageChoices(output) { output = it }
+                InfinityEmbeddedNoteCard(
+                    rows = listOf(
+                        InfinityEmbeddedNoteRow(
+                            icon = Icons.Rounded.Info,
+                            text = stringResource(R.string.recording_dialog_language_support),
+                        ),
+                    ),
+                )
+            }
         }
     }
-    RecordingDialog(stringResource(R.string.recording_settings), dismiss, icon = Icons.Rounded.Tune,
+    RecordingDialog(
+        stringResource(R.string.recording_settings),
+        dismiss,
+        icon = Icons.Rounded.Tune,
         subtitle = stringResource(if (single) R.string.recording_dialog_scope_one else R.string.recording_dialog_scope_new),
-        width = 560.dp, footer = { RecordingDialogActions(stringResource(R.string.recording_dialog_save_settings),
-            { onSave(route, output, draft, separate) }, dismiss) }) {
-        if (wide) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        width = 640.dp,
+        footer = {
+            RecordingDialogActions(
+                stringResource(R.string.recording_dialog_save_settings),
+                { onSave(route, output, draft, separate, fallbackState) },
+                dismiss,
+            )
+        },
+    ) {
+        if (wide) Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(Modifier.weight(1f)) { modes() }
             Box(Modifier.weight(1f)) { languages() }
         } else {
@@ -580,6 +633,9 @@ private fun RecordingWorkspaceSettings(
         RecordingDialogGroup(stringResource(R.string.recording_dialog_capture_options)) {
             RecordingDialogRow(stringResource(R.string.recording_live_setting), { draft = !draft }, checked = draft)
             RecordingDialogRow(stringResource(R.string.recording_speaker_distinguish), { separate = !separate }, checked = separate)
+            if (!single && BuildConfig.LOCAL_INFERENCE_AVAILABLE) {
+                RecordingDialogRow(stringResource(R.string.recording_fallback), { fallbackState = !fallbackState }, checked = fallbackState)
+            }
         }
         resources()
     }

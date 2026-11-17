@@ -174,4 +174,5 @@
     <string name="media_settings_diagnostic_29">节点 %1$s</string>
     <string name="media_settings_connection">连接</string>
     <string name="media_settings_host_actions">主机</string>
+    <string name="media_settings_entry_subtitle">管理图像、视频与语音生成的默认通道与顺序</string>
 </resources>

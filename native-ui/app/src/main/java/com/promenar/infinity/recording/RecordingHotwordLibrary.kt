@@ -213,7 +213,9 @@ internal fun RecordingHotwordLibraryContent(
                             modifier = Modifier.focusRequester(focus))
                         LaunchedEffect(selectedId) { focus.requestFocus(); keyboard?.show() }
                         SettingsInput(spoken, { spoken = it; error = null }, label = stringResource(R.string.recording_hotword_spoken))
-                        RecordingDialogRow(stringResource(R.string.recording_dialog_hotword_enabled), { enabled = !enabled }, checked = enabled)
+                        RecordingDialogGroup {
+                            RecordingDialogRow(stringResource(R.string.recording_dialog_hotword_enabled), { enabled = !enabled }, checked = enabled)
+                        }
                         HotwordVocabularyNotice(unknown?.invoke(writing + " " + spoken).orEmpty())
                     } else {
                         SettingsInput(importText, { importText = it; error = null },

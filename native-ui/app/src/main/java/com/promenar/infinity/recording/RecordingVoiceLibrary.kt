@@ -221,9 +221,11 @@ private fun RecordingVoicePersonSheet(person: RecordingVoicePerson, controller: 
                 }
             }
         }
-        RecordingDialogRow(stringResource(R.string.recording_voice_remove_person), {
-            failed = false; confirm = true
-        }, icon = Icons.Rounded.Delete, destructive = true, enabled = !pending)
+        RecordingDialogGroup {
+            RecordingDialogRow(stringResource(R.string.recording_voice_remove_person), {
+                failed = false; confirm = true
+            }, icon = Icons.Rounded.Delete, destructive = true, enabled = !pending)
+        }
         if (failed) VoiceFailure()
     }
 }

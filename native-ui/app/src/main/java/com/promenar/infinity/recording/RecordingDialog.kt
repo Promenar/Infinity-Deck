@@ -3,43 +3,51 @@ package com.promenar.infinity.recording
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.promenar.infinity.R
-import com.promenar.infinity.ui.common.InfinityPillButton
-import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.BettboxListGroup
+import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityEmbeddedNoteCard
+import com.promenar.infinity.ui.common.InfinityEmbeddedNoteRow
+import com.promenar.infinity.ui.common.InfinityNoteTone
+import com.promenar.infinity.ui.common.InfinityOptionIconBadge
+import com.promenar.infinity.ui.common.InfinitySettingsItem
+import com.promenar.infinity.ui.common.InfinityWindowBackScope
+import com.promenar.infinity.ui.common.SettingsSectionHeader
+import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.common.rememberInfinityWideWindow
+import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 
 @Composable
@@ -71,64 +79,165 @@ internal fun RecordingDialog(
     }
     Dialog(
         onDismissRequest = { if (dismissEnabled) close() },
-        properties = DialogProperties(dismissOnBackPress = dismissEnabled, dismissOnClickOutside = false,
-            usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        properties = DialogProperties(
+            dismissOnBackPress = dismissEnabled,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
-        val scrim = MaterialTheme.colorScheme.scrim
-        Box(Modifier.fillMaxSize().drawBehind { drawRect(scrim, alpha = .28f * entrance.value) }) {
-            Box(Modifier.matchParentSize().pointerInput(Unit) {
-                detectTapGestures { if (canClose) close() }
-            })
-            Box(
-                Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(horizontal = if (wide) 22.dp else 8.dp, vertical = if (wide) 18.dp else 10.dp),
-                contentAlignment = if (wide) Alignment.Center else Alignment.BottomCenter,
-            ) {
-                val accent = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                Surface(
-                    Modifier.widthIn(max = if (wide) width else Dp.Infinity).fillMaxWidth()
-                        .graphicsLayer {
-                            alpha = entrance.value
-                            translationY = (1f - entrance.value) * 7.dp.toPx()
-                        }.semantics { testTag = "recording_dialog" },
-                    shape = RoundedCornerShape(if (wide) 26.dp else 23.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        InfinityWindowBackScope {
+            val scheme = MaterialTheme.colorScheme
+            val scrim = scheme.scrim
+            Box(Modifier.fillMaxSize().drawBehind { drawRect(scrim, alpha = .56f * entrance.value) }) {
+                Box(Modifier.matchParentSize().pointerInput(Unit) {
+                    detectTapGestures { if (canClose) close() }
+                })
+                Box(
+                    modifier = if (wide) {
+                        Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
+                    } else {
+                        Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.statusBars.union(WindowInsets.displayCutout))
+                            .padding(top = 24.dp)
+                    },
+                    contentAlignment = if (wide) Alignment.Center else Alignment.BottomCenter,
                 ) {
-                    val horizontal = if (wide) 20.dp else 15.dp
-                    Column {
-                        Row(
-                            Modifier.fillMaxWidth().padding(start = horizontal, end = 10.dp, top = 12.dp, bottom = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Box(Modifier.size(36.dp).background(accent.copy(alpha = .14f), RoundedCornerShape(11.dp)),
-                                contentAlignment = Alignment.Center) {
-                                Icon(icon, null, Modifier.size(20.dp), tint = accent)
+                    val sheetShape = if (wide) {
+                        RoundedCornerShape(28.dp)
+                    } else {
+                        RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .then(if (wide) Modifier.widthIn(max = width) else Modifier)
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                alpha = entrance.value
+                                val offsetDp = if (wide) 7.dp else 20.dp
+                                translationY = (1f - entrance.value) * offsetDp.toPx()
                             }
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(title, Modifier.semantics { heading() }, style = InfinityTypography.titleLarge)
-                                if (subtitle != null) Text(subtitle, style = InfinityTypography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            IconButton(close, enabled = dismissEnabled, modifier = Modifier.size(48.dp)) {
-                                Icon(if (back == null) Icons.Rounded.Close else Icons.AutoMirrored.Rounded.ArrowBack,
-                                    stringResource(if (back == null) R.string.recording_dialog_close else R.string.common_cd_back),
-                                    Modifier.size(20.dp))
-                            }
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            .semantics { testTag = "recording_dialog" },
+                        shape = sheetShape,
+                        color = scheme.surfaceContainer,
+                        contentColor = scheme.onSurface,
+                    ) {
                         Column(
-                            Modifier.weight(1f, fill = false).fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = horizontal, vertical = 13.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            content = body,
-                        )
-                        if (footer != null) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Box(Modifier.fillMaxWidth().padding(horizontal = horizontal, vertical = 8.dp),
-                                contentAlignment = Alignment.CenterEnd) { footer() }
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (wide) Modifier
+                                    else Modifier.windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
+                                ),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            if (!wide) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 14.dp, bottom = 10.dp)
+                                        .width(40.dp)
+                                        .height(4.dp)
+                                        .background(scheme.outlineVariant, CircleShape),
+                                )
+                            }
+                            val horizontal = 20.dp
+                            if (wide) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = horizontal, end = 12.dp, top = 16.dp, bottom = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    InfinityOptionIconBadge(
+                                        icon = icon,
+                                        selected = !destructive,
+                                        destructive = destructive,
+                                    )
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = title,
+                                            modifier = Modifier.semantics { heading() },
+                                            style = InfinityTypography.titleLarge,
+                                            color = scheme.onSurface,
+                                        )
+                                        if (subtitle != null) {
+                                            Text(
+                                                text = subtitle,
+                                                style = InfinityTypography.bodySmall,
+                                                color = scheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    IconButton(onClick = close, enabled = dismissEnabled, modifier = Modifier.size(40.dp)) {
+                                        Icon(
+                                            imageVector = if (back == null) Icons.Rounded.Close else Icons.AutoMirrored.Rounded.ArrowBack,
+                                            contentDescription = stringResource(
+                                                if (back == null) R.string.recording_dialog_close else R.string.common_cd_back,
+                                            ),
+                                            tint = scheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = if (back != null) 8.dp else horizontal, end = horizontal, bottom = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    if (back != null) {
+                                        IconButton(onClick = back, enabled = dismissEnabled, modifier = Modifier.size(40.dp)) {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                                contentDescription = stringResource(R.string.common_cd_back),
+                                                tint = scheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = title,
+                                            modifier = Modifier.semantics { heading() },
+                                            style = InfinityTypography.titleLarge,
+                                            color = scheme.onSurface,
+                                        )
+                                        if (subtitle != null) {
+                                            Text(
+                                                text = subtitle,
+                                                style = InfinityTypography.bodySmall,
+                                                color = scheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = horizontal, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                content = body,
+                            )
+                            if (footer != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = horizontal, end = horizontal, top = 4.dp, bottom = 18.dp),
+                                    contentAlignment = Alignment.CenterEnd,
+                                ) {
+                                    footer()
+                                }
+                            } else {
+                                Spacer(Modifier.height(10.dp))
+                            }
                         }
                     }
                 }
@@ -149,31 +258,72 @@ internal fun RecordingDialogActions(
     enabled: Boolean = true,
     extra: (@Composable () -> Unit)? = null,
 ) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val scheme = MaterialTheme.colorScheme
+    val labelStyle = InfinityTypography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         extra?.invoke()
-        InfinityPillButton(cancel, dismiss, enabled = enabled)
-        InfinityPillButton(confirm, onConfirm, enabled = enabled && confirmEnabled,
-            tone = if (destructive) InfinityPillTone.DESTRUCTIVE else InfinityPillTone.PRIMARY)
+        FilledTonalButton(
+            onClick = dismiss,
+            enabled = enabled,
+            shape = CircleShape,
+            modifier = Modifier.height(44.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp),
+        ) {
+            Text(cancel, style = labelStyle)
+        }
+        Button(
+            onClick = onConfirm,
+            enabled = enabled && confirmEnabled,
+            shape = CircleShape,
+            modifier = Modifier.height(44.dp),
+            contentPadding = PaddingValues(horizontal = 22.dp),
+            colors = if (destructive) {
+                ButtonDefaults.buttonColors(containerColor = scheme.error, contentColor = scheme.onError)
+            } else {
+                ButtonDefaults.buttonColors()
+            },
+        ) {
+            Text(confirm, style = labelStyle)
+        }
     }
 }
 
 @Composable
 internal fun RecordingDialogNote(text: String, warning: Boolean = false) {
-    val colors = MaterialTheme.colorScheme
-    val tint = if (warning) colors.error else colors.primary
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(11.dp), color = tint.copy(alpha = .07f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = .25f))) {
-        Text(text, Modifier.padding(11.dp), style = InfinityTypography.bodySmall, color = colors.onSurfaceVariant)
-    }
+    InfinityEmbeddedNoteCard(
+        rows = listOf(
+            InfinityEmbeddedNoteRow(
+                icon = if (warning) Icons.Rounded.WarningAmber else Icons.Rounded.Info,
+                text = text,
+                tone = if (warning) InfinityNoteTone.WARNING else InfinityNoteTone.DEFAULT,
+            ),
+        ),
+    )
 }
 
 @Composable
-internal fun RecordingDialogGroup(title: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (title != null) Text(title, Modifier.padding(start = 2.dp, bottom = 3.dp).semantics { heading() },
-            style = InfinityTypography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        content()
+internal fun RecordingDialogGroup(
+    title: String? = null,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (title != null) {
+            SettingsSectionHeader(
+                title = title,
+                titleStyle = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(
+                    start = InfinitySpacing.RowHorizontal,
+                    end = InfinitySpacing.RowHorizontal,
+                    bottom = 4.dp,
+                ),
+            )
+        }
+        BettboxListGroup(modifier = Modifier.fillMaxWidth().then(modifier), content = content)
     }
 }
 
@@ -187,32 +337,42 @@ internal fun RecordingDialogRow(
     checked: Boolean? = null,
     enabled: Boolean = true,
     destructive: Boolean = false,
+    chevron: Boolean = true,
 ) {
-    val colors = MaterialTheme.colorScheme
-    val accent = if (destructive) colors.error else colors.primary
-    val action = when {
-        selected != null -> Modifier.selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
-        checked != null -> Modifier.toggleable(checked, enabled, Role.Switch) { onClick() }
-        else -> Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-    }
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-        color = if (selected == true) colors.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent,
-        border = if (selected == true) androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = .26f)) else null) {
-        Row(Modifier.then(action).heightIn(min = 48.dp).padding(horizontal = 11.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) Icon(icon, null, Modifier.size(19.dp), tint = accent)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, style = InfinityTypography.bodyMedium,
-                    color = (if (destructive) accent else colors.onSurface).copy(alpha = if (enabled) 1f else .48f))
-                if (subtitle != null) Text(subtitle, style = InfinityTypography.bodySmall, color = colors.onSurfaceVariant)
-            }
-            when {
-                checked != null -> Switch(checked, onCheckedChange = null, enabled = enabled)
-                selected == true -> Icon(Icons.Rounded.Check, null, Modifier.size(19.dp), tint = accent)
-                selected == false -> Spacer(Modifier.width(19.dp))
-                else -> Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = accent)
-            }
-        }
+    val scheme = MaterialTheme.colorScheme
+    if (checked != null) {
+        SettingsToggle(
+            title = title,
+            description = subtitle,
+            checked = checked,
+            onCheckedChange = { onClick() },
+            icon = icon,
+            enabled = enabled,
+            descriptionMaxLines = 2,
+        )
+    } else {
+        InfinitySettingsItem(
+            icon = icon,
+            title = title,
+            subtitle = subtitle,
+            subtitleMaxLines = 2,
+            titleColor = if (destructive) scheme.error else null,
+            onClick = onClick,
+            enabled = enabled,
+            role = if (selected != null) Role.RadioButton else Role.Button,
+            selected = selected,
+            showChevron = chevron && selected == null,
+            trailingContent = if (selected == true) {
+                {
+                    Icon(
+                        imageVector = Icons.Rounded.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (destructive) scheme.error else scheme.primary,
+                    )
+                }
+            } else null,
+        )
     }
 }
 
@@ -229,11 +389,18 @@ internal fun RecordingConfirm(
     note: String? = null,
     warning: Boolean = false,
 ) {
-    RecordingDialog(title, dismiss, icon = if (destructive) Icons.Rounded.Delete else icon, width = 412.dp,
-        destructive = destructive, footer = { RecordingDialogActions(confirm, action, dismiss, cancel, destructive) }) {
-        Text(message, style = InfinityTypography.bodyMedium)
-        if (note != null) RecordingDialogNote(note, warning)
-    }
+    InfinityConfirmDialog(
+        title = title,
+        message = message,
+        confirmText = confirm,
+        cancelText = cancel,
+        onConfirm = action,
+        onCancel = dismiss,
+        isDestructive = destructive,
+        modifier = Modifier.semantics { testTag = "recording_dialog" },
+        icon = if (destructive) Icons.Rounded.Delete else icon,
+        content = note?.let { { RecordingDialogNote(it, warning) } },
+    )
 }
 
 @Composable
@@ -241,3 +408,4 @@ internal fun RecordingConfirm(
     title: Int, message: String, confirm: Int, dismiss: () -> Unit, action: () -> Unit,
     cancel: String = stringResource(R.string.recording_cancel), icon: ImageVector = Icons.Rounded.Info, note: String? = null,
 ) = RecordingConfirm(stringResource(title), message, stringResource(confirm), dismiss, action, cancel, icon, note = note)
+
