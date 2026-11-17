@@ -254,7 +254,7 @@ internal fun DefaultModelSettingItem(
     val clearLabel = stringResource(R.string.common_cd_clear)
     val subtitleText = when {
         selectedModelName.isEmpty() -> stringResource(R.string.settings_not_set)
-        !providerName.isNullOrBlank() -> "$selectedModelName · ${providerDisplayName(providerName, protocol = null)}"
+        !providerName.isNullOrBlank() -> "$selectedModelName · ${providerDisplayName(providerName, protocol = null)}" // wrap-check: allow 单行模型与提供商短语副标题
         else -> selectedModelName
     }
     Column {

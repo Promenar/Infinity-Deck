@@ -16,8 +16,12 @@ All notable changes to this project will be documented in this file.
 
 ## [0.61.1-beta] - 2026-11-17
 
-- **设置与默认模型图像通道去重与同步修复**：从 `设置 › 默认模型` 的系统功能模型清单移除与「媒体模型」重复的「图像模型」预设（保留快速模型、嵌入模型、重排模型 3 项，并补充「媒体模型」入口描述）；修复 `ProviderManager.setPresetModel("image", ...)` 对非空媒体通道顺序短路导致清除无响应与无法变更的问题，并调整 `MediaChannelOrderStore` 在 `ComfyUI` 模板排在首位时仍保留首个云端生图通道作为 `preset_image_model` 供会话调用。
-- **录音设置去重与弹层全站风格统一**：移除 `设置 › 录音整理` 顶部与圆角冲突且功能重复的「录音整理」分段卡片，页面从「识别」开篇并将回退开关收口至录音工作台「录制选项」；按全站 `InfinityBottomSheet` / `InfinityConfirmDialog` / `BettboxListGroup` 规范统一 `RecordingDialog` 与 `RecordingConfirm`（窄屏竖屏呈现顶部拖拽条无框上滑面板，宽屏内屏切换为 `640.dp` 居中圆角弹窗；默认输出语言收口为横向 `InfinitySegmentedControl` 与 `InfinityEmbeddedNoteCard`，移除旧版蓝框描边选中块与通栏分割线）。
+自上一公开版 `v0.58.0-beta` 以来的主要更新：
+
+- **录音听写止漏词与 SenseVoice 二遍精修**：优化流式分段延续门槛、扩充 `640 ms` 预卷缓冲并修复切段边界与热词纠正阈值，解除后台首轮本地整理对恢复说话的线程抢占；新增可按需独立下载的 `SenseVoice-Small int8` 二遍精修模型（237 MB），支持手机硬件自动分级（旗舰句末+兜底、中端停顿后精修、入门纯流式）与连续慢段 RTF 运行时熔断退避；新增系统快捷设置「录音听写」磁贴与连续录音满 30 分钟提醒。
+- **本地推理接入会话与三槽位自动恢复**：已加载到内存的 `SlotType.MAIN` 本地 GGUF 模型动态注入会话模型选择器（未加载自动隐藏）；`llama.cpp` JNI 新增 `Q8_0` KV 量化、跨轮前缀 Token KV 复用与 RAM 自适应上下文窗口（`16K / 8K / 4K`），打通 `<tools>` / `<think>` / `<tool_call>` 端侧流式解析；支持 `MAIN` / `EMBEDDING` / `RERANK` 三槽位状态持久化与重启自动恢复。
+- **提供商与模型管理扩展**：新增 `OpenCode Go`、`OpenCode Zen`、国内四大 `Coding Plan`（百炼 / 智谱 / Kimi / 方舟）、`OpenRouter`、`SiliconFlow`、`xAI` 预设及同预设端点/协议变体快切；修复 Google / Gemini / OpenAI / DeepSeek / Cohere 矢量图标畸变，区分 Gemini Spark 与 Google G 图标；支持未启用模型在编辑页单独测速，回写首次引导与远端同步连接状态；将「默认模型」中重复的图像模型收口至「媒体模型」，修复默认图像通道清除与切换同步问题。
+- **全站弹窗、下拉与排版规范统一**：抽离 `InfinityOptionSheet` 原子下拉弹窗、分组页脚卡片 `InfinitySectionFooterCard` 与内嵌说明卡片 `InfinityEmbeddedNoteCard`；升级 `InfinityUiLineBreak`（`HighQuality + Strict`）与 `UniformRowHeight`（76dp 多行等高），消除左对齐短文本提前折行留白；统一录音设置页与工作台弹层（窄屏竖屏上滑面板、宽屏内屏 `640.dp` 居中圆角弹窗），对齐全站首页顶栏 `16.dp` 右缘基准。
 
 ## [0.61.0-beta] - 2026-11-17
 
