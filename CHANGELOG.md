@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **录音听写整理稿生成状态系统性重设计**：
+  - 消除分步整理之间的闪烁与轮询等待：新增运行态 `RecordingOrganizeRun`，在“提炼要点 → 汇总摘要 → 生成并保存文档”全链路连续保持运行状态与起始计时，录音结束、二遍精修、说话人分析及重识别后即时接棒调度；
+  - 持久化来源与结构化失败分类：`RecordingSession` 新增 `organizedSource`（记录云端/本地路线、服务商、模型名、生成时间与语言）与 `lastOrganizeFailure`（区分请求超时、模型错误、输出语言不符、空结果与存储错误并保留 60 秒自动重试时间戳），兼容旧版 `transcript.json`；
+  - 统一状态卡、页签与列表提示：重写 `RecordingOrganizeStatusCard`（覆盖实时草稿、分步进度、重新整理保留旧稿、失败保留旧稿/空态倒计时、等待云端授权、等待前台本地模型、等待云端排队/前置处理、等待说话人分析、无可用模型、续录新增/已取消、仅转写全部状态，支持取消整理与失败后一键「改用本地」）、成功来源行（带 6 秒「已更新」标记）、「旧版 / 当前版本」对照标注（重新整理中旧稿降透明度），以及外屏页签与历史列表行状态圆点；不再以全局底部 Snackbar 短暂泛报整理失败。
 - **扩充视觉实验室与弹窗沉浸式修复**：在视觉实验室新增 `recording.state.workbench`（说话人逐字稿与整理稿双栏工作台）、`recording.state.settings`（录音整理外屏上滑面板 / 内屏居中弹窗）、`inspector.state.production`（《雾港》分镜与审片制作面板，接通 `LabMediaResolver`）、`settings.state.local-models`（本地 GGUF 三槽位）与 `settings.state.providers`（多品牌服务商与 Tailnet 网关）五个场景；更新 `LAB_MODEL` 为 `DeepSeek V3.2`，在模型选择器纳入本机 GGUF 槽位；修复 `ImmersiveSystemBars` 向上查找 `DialogWindowProvider` 使独立弹窗在录制模式下正常隐藏系统栏。
 - **真机重拍与中英文文档、官网全面对齐**：在 OPPO Find N5 真机采集全套中英文内外屏截图并生成 WebP 资产（补充 `recording-workbench`、`outer-recording-settings`、`library-ask`、`production-storyboard`、`local-models`、`model-network`、`providers`）；同步补全 `README.zh-CN.md` 全部核心工作流配图，重写英文版 `README.md` 为冷静干脆开发者工具风；同步更新官网 `website/src/i18n.mjs`、`website/src/guides.mjs` 与 `website/src/styles/global.css` 为 10 章节体验演示与中英文产品体验风文案。
 

@@ -65,6 +65,7 @@ internal fun recordingRecognitionResult(
     draftBatches = emptyList(),
     summaryPending = rewriteOrganized,
     summaryProgress = null,
+    lastOrganizeFailure = if (rewriteOrganized) null else current.lastOrganizeFailure,
 )
 
 internal suspend fun <T> withRecordingRecognitionWakeLock(context: Context, action: suspend () -> T): T {

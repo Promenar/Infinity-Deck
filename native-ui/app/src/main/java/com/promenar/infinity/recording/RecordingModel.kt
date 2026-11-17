@@ -91,7 +91,8 @@ internal class RecordingModel(private val app: InfinityApplication) {
         val prompt = if (cloud == null) input else "术语：${glossary.take(120)}\n录音：\n$input"
         val result = generate(session, cloud, localName, instruction, prompt, if (cloud == null) 208 else 512)
         val point = result.lines().filterNot { it.startsWith("ACTION:", ignoreCase = true) }.joinToString(" ").trim()
-        if (point.isBlank() || !recordingLanguageMatches(session.outputLanguage, point)) throw RecordingOutputLanguageMismatch()
+        if (point.isBlank()) throw RecordingEmptyOutputException()
+        if (!recordingLanguageMatches(session.outputLanguage, point)) throw RecordingOutputLanguageMismatch()
         val actions = result.lineSequence().filter { it.startsWith("ACTION:", ignoreCase = true) }
             .map { it.substringAfter(':').trim() }.filter { it.isNotBlank() && recordingLanguageMatches(session.outputLanguage, it) }
             .toList()
@@ -155,13 +156,14 @@ internal class RecordingModel(private val app: InfinityApplication) {
             }
         }
         val text = result.toString().substringAfter("</think>").trim()
-        check(finished && !text.startsWith("<think>"))
-        check(text.isNotBlank())
+        check(finished)
+        if (text.isBlank() || text.startsWith("<think>")) throw RecordingEmptyOutputException()
         return text
     }
 }
 
 internal class RecordingOutputLanguageMismatch : IllegalStateException()
+internal class RecordingEmptyOutputException : IllegalStateException()
 
 private fun RecordingLanguage.localPointInstruction() = when (this) {
     RecordingLanguage.English -> "Translate the excerpt into English faithfully. Keep every fact, exact weekday, number and negation. Output only the English translation."

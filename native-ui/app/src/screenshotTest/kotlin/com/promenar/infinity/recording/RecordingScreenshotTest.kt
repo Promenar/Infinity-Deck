@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
-import com.promenar.infinity.R
 import com.promenar.infinity.ui.theme.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -29,6 +28,9 @@ private fun recordingSample(
     organized: String = SAMPLE_ORGANIZED,
     documentId: String? = null,
     segments: Int = 2,
+    organizedThrough: Int = if (organized.isNotBlank()) segments else 0,
+    organizedSource: RecordingOrganizeSource? = null,
+    lastOrganizeFailure: RecordingOrganizeFailure? = null,
 ) = RecordingSession(
     id = "recording-preview",
     createdAt = 0L,
@@ -40,7 +42,10 @@ private fun recordingSample(
         RecordingSegment(26_000, 52_000, "逐字稿保留时间点，整理稿按议题分段。Review the English terminology."),
     ).take(segments),
     organized = organized,
+    organizedThrough = organizedThrough,
     documentId = documentId,
+    organizedSource = organizedSource,
+    lastOrganizeFailure = lastOrganizeFailure,
 )
 
 @Composable
@@ -62,6 +67,7 @@ private fun RecordingExample(
     asr: RecordingAsrModelState = RecordingAsrModelState.Installed,
     recognizing: Boolean = false,
     analyzing: Boolean = false,
+    organizeRun: RecordingOrganizeRun? = null,
 ) {
     val active = session?.phase == RecordingPhase.Recording || session?.phase == RecordingPhase.Paused
     val waveform = remember { MutableStateFlow(RecordingWaveformSamples(List(160) { ((it * 7) % 13) / 13f }, 160)) }
@@ -69,6 +75,8 @@ private fun RecordingExample(
         state = RecordingScreenState(
             sessions = history,
             activeId = session?.id.takeIf { active },
+            organizingId = organizeRun?.sessionId,
+            organizeRun = organizeRun,
             recognizingId = session?.id.takeIf { recognizing },
             recognizeProgress = if (recognizing) .45f else 0f,
             speakerAnalysisId = session?.id.takeIf { analyzing },
@@ -92,7 +100,10 @@ private fun RecordingExample(
 
 private fun recordingHistory() = listOf(
     recordingSample().copy(id = "history-1", title = "产品讨论 Product review"),
-    recordingSample(RecordingPhase.Interrupted).copy(id = "history-2", title = "周会 Weekly sync", audioBytes = 1_260_000L * 32),
+    recordingSample(
+        RecordingPhase.Interrupted,
+        lastOrganizeFailure = RecordingOrganizeFailure(RecordingOrganizeErrorKind.Timeout, failedAt = 0L),
+    ).copy(id = "history-2", title = "周会 Weekly sync", audioBytes = 1_260_000L * 32),
     recordingSample().copy(id = "history-3", title = "访谈：离线同步 Offline sync interview", audioBytes = 3_725_000L * 32),
 )
 
@@ -154,7 +165,14 @@ fun recordingTranscriptPreview() = RecordingFrame(InfinityThemeMode.LIGHT) { Rec
 @Preview(name = "整理稿 深中360 大字", widthDp = 360, heightDp = 800, locale = "zh-rCN", fontScale = 1.3f)
 @Preview(name = "整理稿 深英840 内屏", widthDp = 840, heightDp = 720, locale = "en")
 @Composable
-fun recordingOrganizedPreview() = RecordingFrame(InfinityThemeMode.DARK) { RecordingExample(recordingSample(), organized = true) }
+fun recordingOrganizedPreview() = RecordingFrame(InfinityThemeMode.DARK) {
+    RecordingExample(
+        recordingSample(
+            organizedSource = RecordingOrganizeSource(cloud = false, model = "Qwen3-0.6B", completedAt = 1_763_000_000_000L),
+        ),
+        organized = true,
+    )
+}
 
 @PreviewTest
 @Preview(name = "云端待确认 浅中360", widthDp = 360, heightDp = 800, locale = "zh-rCN")
@@ -171,7 +189,59 @@ fun recordingConsentPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
 @Preview(name = "整理失败提示 深英840 内屏", widthDp = 840, heightDp = 720, locale = "en")
 @Composable
 fun recordingFailurePreview() = RecordingFrame(InfinityThemeMode.DARK) {
-    RecordingExample(recordingSample(organized = ""), organized = true, failure = R.string.recording_organize_failed)
+    RecordingExample(
+        recordingSample(
+            organized = "",
+            lastOrganizeFailure = RecordingOrganizeFailure(
+                kind = RecordingOrganizeErrorKind.Timeout,
+                engine = RecordingOrganizeEngine(cloud = true, provider = "DeepSeek", model = "deepseek-v4-flash"),
+                failedAt = 1_763_000_000_000L,
+                elapsedMs = 75_000L,
+                retryAtEpochMs = 60_000L,
+            ),
+        ),
+        organized = true,
+    )
+}
+
+@PreviewTest
+@Preview(name = "重新整理中 深中360", widthDp = 360, heightDp = 800, locale = "zh-rCN")
+@Preview(name = "重新整理中 深英840 内屏", widthDp = 840, heightDp = 720, locale = "en")
+@Composable
+fun recordingOrganizeRerunPreview() = RecordingFrame(InfinityThemeMode.DARK) {
+    RecordingExample(
+        session = recordingSample(
+            organizedSource = RecordingOrganizeSource(cloud = false, model = "Qwen3-4B", completedAt = 1_763_000_000_000L),
+        ),
+        organized = true,
+        organizeRun = RecordingOrganizeRun(
+            sessionId = "recording-preview",
+            engine = RecordingOrganizeEngine(cloud = true, provider = "DeepSeek", model = "deepseek-v4-flash"),
+            stage = RecordingOrganizeStage.Overview,
+            step = 3,
+            totalSteps = 4,
+        ),
+    )
+}
+
+@PreviewTest
+@Preview(name = "整理失败保留旧稿 浅中360", widthDp = 360, heightDp = 800, locale = "zh-rCN")
+@Preview(name = "整理失败保留旧稿 浅英360", widthDp = 360, heightDp = 800, locale = "en")
+@Composable
+fun recordingOrganizeFailedKeptOldPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
+    RecordingExample(
+        session = recordingSample(
+            organizedSource = RecordingOrganizeSource(cloud = false, model = "Qwen3-4B", completedAt = 1_763_000_000_000L),
+            lastOrganizeFailure = RecordingOrganizeFailure(
+                kind = RecordingOrganizeErrorKind.Timeout,
+                engine = RecordingOrganizeEngine(cloud = true, provider = "DeepSeek", model = "deepseek-v4-flash"),
+                failedAt = 1_763_000_000_000L,
+                elapsedMs = 75_000L,
+                retryAtEpochMs = 60_000L,
+            ),
+        ),
+        organized = true,
+    )
 }
 
 @PreviewTest

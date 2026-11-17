@@ -29,6 +29,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -59,6 +60,9 @@ internal data class RecordingScreenState(
     val refineMode: RecordingRefineMode = RecordingRefineMode.AUTO,
     val refineCapability: RecordingRefineCapability = RecordingRefineCapability.STREAMING_ONLY,
     val refineRuntimeDegraded: Boolean = false,
+    val organizeRun: RecordingOrganizeRun? = null,
+    val organizeUpdatedId: String? = null,
+    val organizeCanceledIds: Set<String> = emptySet(),
 ) {
     val localReady get() = localLabel != null
 }
@@ -129,6 +133,7 @@ internal class RecordingController(
     val waveform = _waveform.asStateFlow()
     private var capture: Job? = null
     private var organize: Job? = null
+    private var organizeUpdatedClearJob: Job? = null
     private var quiet = false
     private var cloudJobRunning = false
     private var organizingCloud = false
@@ -150,7 +155,6 @@ internal class RecordingController(
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     InfinityLogger.diagnostic("recording.scheduler_failed", mapOf("cause" to failure.javaClass.simpleName))
-                    report(R.string.recording_organize_failed)
                 }
             }
         }
@@ -197,7 +201,6 @@ internal class RecordingController(
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     InfinityLogger.diagnostic("recording.scheduler_failed", mapOf("cause" to failure.javaClass.simpleName))
-                    report(R.string.recording_organize_failed)
                 }
                 delay(3_000)
             }
@@ -232,7 +235,7 @@ internal class RecordingController(
             val item = (resume ?: store.newSession(
                 app.getString(R.string.recording_default_title,
                     SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())),
-            )).copy(phase = RecordingPhase.Recording)
+            )).copy(phase = RecordingPhase.Recording, lastOrganizeFailure = null)
             try {
                 if (fromPause) save(item) else {
                     store.beginCapture(resume, item)
@@ -250,10 +253,11 @@ internal class RecordingController(
             quiet = false
             if (!fromPause) firstLocalDraftAttempted = resume != null
             command.set(CaptureCommand.Continue)
-            organize?.cancel()
+            (_state.value.organizeRun?.sessionId ?: _state.value.organizingId)?.let(::cancelOrganizationFor)
             nextAttempt.remove(item.id)
             if (!fromPause) _waveform.value = RecordingWaveformSamples()
             _state.value = _state.value.copy(activeId = item.id, opening = true,
+                organizeCanceledIds = _state.value.organizeCanceledIds - item.id,
                 appending = if (fromPause) _state.value.appending else resume != null, lastDiscardedId = null, audioOnly = false, partial = "", durationMs = item.durationMs, failure = null)
             capture = io.launch { record(item, onIdle) }
         }
@@ -299,7 +303,7 @@ internal class RecordingController(
                         }
                         val quietChanged = quiet != frame.quiet
                         // 说话一旦恢复，立即中止正在进行的本地 LLM 整理任务，将全部算力归还给实时语音识别。
-                        if (quiet && !frame.quiet && !organizingCloud) organize?.cancel()
+                        if (quiet && !frame.quiet && !organizingCloud) cancelOrganizationFor(item.id)
                         quiet = frame.quiet
                         _state.value = _state.value.copy(
                             partial = frame.partial, durationMs = frame.bytes / 32 / 1000 * 1000,
@@ -348,7 +352,7 @@ internal class RecordingController(
                 activeId = item.id.takeIf { outcome == RecordingPhase.Paused }, opening = false, partial = "", durationMs = final.durationMs,
             )
             if (outcome != RecordingPhase.Paused) {
-                if (_state.value.organizingId == item.id) organize?.cancel()
+                cancelOrganizationFor(item.id)
                 store.clearCapture(item.id)
             }
             val needsDeferredRefine = hasPendingRefinement(final) && outcome in setOf(RecordingPhase.Finished, RecordingPhase.Paused)
@@ -358,6 +362,7 @@ internal class RecordingController(
                 nextAttempt.remove(item.id)
                 publish(item.id)
                 startSpeakerAnalysis(item.id)
+                if (organizationEnabled) scheduleOrganization()
             }
             if (outcome != RecordingPhase.Paused) onIdle()
         }
@@ -371,7 +376,7 @@ internal class RecordingController(
                 if (command.get() == CaptureCommand.Discard) return@withLock
                 command.set(CaptureCommand.Finish)
                 val current = _state.value.activeId?.let(::session)
-                if (current != null && _state.value.organizingId == current.id) organize?.cancel()
+                if (current != null) cancelOrganizationFor(current.id)
                 if (capture?.isActive == true) return@withLock
                 if (current != null) {
                     val finished = current.copy(phase = RecordingPhase.Finished)
@@ -391,6 +396,7 @@ internal class RecordingController(
                         } else {
                             publish(current.id)
                             startSpeakerAnalysis(current.id)
+                            if (organizationEnabled) scheduleOrganization()
                         }
                     }
                 }
@@ -413,7 +419,7 @@ internal class RecordingController(
                     report(R.string.recording_storage_failed)
                     return@withLock
                 }
-                organize?.cancel()
+                cancelOrganizationFor(id)
                 command.set(CaptureCommand.Discard)
                 if (capture?.isActive != true) completeCaptureDiscard(id, onIdle)
             }
@@ -474,11 +480,13 @@ internal class RecordingController(
         else io.launch {
             lock.withLock {
                 val item = session(id) ?: return@withLock
+                cancelOrganizationFor(id)
                 if (!enabled && _state.value.speakerAnalysisId == id) speakerJob?.cancel()
                 val updated = item.copy(distinguishSpeakers = enabled)
                 save(if (enabled && item.speakerAnalyzedBytes != item.audioBytes) updated else updated.forSpeakerOrganization())
                 if (enabled) startSpeakerAnalysis(id)
                 else publish(id)
+                if (organizationEnabled) scheduleOrganization()
             }
         }
     }
@@ -496,7 +504,7 @@ internal class RecordingController(
     }
 
     private fun RecordingSession.forSpeakerOrganization(): RecordingSession =
-        if (manualEdit) this else copy(summaryPending = true, draftBatches = emptyList(), summaryProgress = null)
+        if (manualEdit) this else copy(summaryPending = true, draftBatches = emptyList(), summaryProgress = null, lastOrganizeFailure = null)
 
     @OptIn(DelicateCoroutinesApi::class)
     private fun startSpeakerAnalysis(id: String, force: Boolean = false) {
@@ -506,7 +514,7 @@ internal class RecordingController(
             _state.value.recognizingId != null || speakerJob?.isCompleted == false ||
             (!force && item.speakerAnalyzedBytes == item.audioBytes) ||
             item.phase !in setOf(RecordingPhase.Finished, RecordingPhase.Interrupted)) return
-        if (_state.value.organizingId == id) organize?.cancel()
+        cancelOrganizationFor(id)
         speakerAnalysisFailures.remove(id)
         _state.value = _state.value.copy(speakerAnalysisId = id, speakerProgress = 0f)
         speakerJob = io.launch(start = CoroutineStart.ATOMIC) {
@@ -537,7 +545,10 @@ internal class RecordingController(
                 report(R.string.recording_speaker_analysis_failed)
             } finally {
                 withContext(NonCancellable) {
-                    lock.withLock { _state.value = _state.value.copy(speakerAnalysisId = null, speakerProgress = 0f) }
+                    lock.withLock {
+                        _state.value = _state.value.copy(speakerAnalysisId = null, speakerProgress = 0f)
+                        if (organizationEnabled) scheduleOrganization()
+                    }
                 }
             }
         }
@@ -588,9 +599,10 @@ internal class RecordingController(
         lock.withLock {
             val item = session(id) ?: return@withLock
             try {
-                if (_state.value.organizingId == id) organize?.cancel()
+                cancelOrganizationFor(id)
                 save(transform(item).copy(speakerAssignmentsEdited = true).forSpeakerOrganization())
                 publish(id)
+                if (organizationEnabled) scheduleOrganization()
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -635,11 +647,13 @@ internal class RecordingController(
 
     private suspend fun syncVoiceName(personId: String, name: String?) {
         for (item in _state.value.sessions.filter { item -> item.speakers.any { it.personId == personId } }) {
+            cancelOrganizationFor(item.id)
             save(item.copy(speakers = item.speakers.map {
                 if (it.personId != personId) it else it.copy(name = name.orEmpty(), personId = personId.takeIf { name != null }, confidence = null)
             }).forSpeakerOrganization())
             publish(item.id)
         }
+        if (organizationEnabled) scheduleOrganization()
     }
 
     suspend fun speakerSample(id: String, speakerId: Int): RecordingVoiceSample = withContext(Dispatchers.IO) {
@@ -677,18 +691,21 @@ internal class RecordingController(
         io.launch {
             lock.withLock {
                 val item = session(id)?.takeUnless { it.captureRollbackPending } ?: return@withLock
-                if (_state.value.organizingId == id) organize?.cancel()
+                cancelOrganizationFor(id)
                 val changedSpeakers = item.distinguishSpeakers != speakers
                 if (changedSpeakers && !speakers && _state.value.speakerAnalysisId == id) speakerJob?.cancel()
                 try {
                     val changed = item.copy(mode = mode, outputLanguage = language, liveOrganization = live,
-                        distinguishSpeakers = speakers, cloudConsent = item.cloudConsent.takeIf { mode == item.mode })
+                        distinguishSpeakers = speakers, cloudConsent = item.cloudConsent.takeIf { mode == item.mode },
+                        lastOrganizeFailure = null)
                     save(if (changedSpeakers) changed.forSpeakerOrganization() else changed)
                     nextAttempt.remove(id)
+                    _state.value = _state.value.copy(organizeCanceledIds = _state.value.organizeCanceledIds - id)
                     if (changedSpeakers && speakers) {
                         if (speakerModels.state.value == RecordingAsrModelState.Missing) speakerModels.start()
                         startSpeakerAnalysis(id)
                     }
+                    if (organizationEnabled) scheduleOrganization()
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure
                     report(R.string.recording_storage_failed)
@@ -879,6 +896,7 @@ internal class RecordingController(
                             publish(id)
                             startSpeakerAnalysis(id)
                         }
+                        if (organizationEnabled) scheduleOrganization()
                     }
                 }
             }
@@ -956,7 +974,7 @@ internal class RecordingController(
                 val item = session(id) ?: return@withLock
                 if (!recordingCanRecognize(item, _state.value.activeId, _state.value.recognizingId) ||
                     capture?.isActive == true || recognition?.isCompleted == false || !asr.isInstalled()) return@withLock
-                if (_state.value.organizingId == id) organize?.cancel()
+                cancelOrganizationFor(id)
                 if (_state.value.speakerAnalysisId == id) speakerJob?.cancel()
                 if (_state.value.refiningId == id) refineJob?.cancel()
                 val request = decoderRequest(item)
@@ -1049,6 +1067,9 @@ internal class RecordingController(
                                         speakerAnalyzedBytes = if (current.distinguishSpeakers) 0 else current.speakerAnalyzedBytes,
                                     )
                                 } else next.applySpeakerAnalysis(result.first))
+                                if (rewriteOrganized) {
+                                    _state.value = _state.value.copy(organizeCanceledIds = _state.value.organizeCanceledIds - id)
+                                }
                             }
                             nextAttempt.remove(id)
                             publish(id)
@@ -1059,7 +1080,10 @@ internal class RecordingController(
                     } catch (_: LinkageError) { report(R.string.recording_recognize_failed) }
                     finally {
                         withContext(NonCancellable) {
-                            lock.withLock { _state.value = _state.value.copy(recognizingId = null, recognizeProgress = 0f) }
+                            lock.withLock {
+                                _state.value = _state.value.copy(recognizingId = null, recognizeProgress = 0f)
+                                if (organizationEnabled) scheduleOrganization()
+                            }
                         }
                     }
                 }
@@ -1075,15 +1099,47 @@ internal class RecordingController(
             reprocessThrough = null, reprocessText = "", summaryProgress = null)
     }
 
+    /** 在持锁处解除旧任务所有权，后续调度可立即接棒。 */
+    private fun cancelOrganizationFor(id: String) {
+        if (_state.value.organizingId != id && _state.value.organizeRun?.sessionId != id) return
+        organize?.cancel()
+        organize = null
+        organizingCloud = false
+        completingFirstLocalDraft = false
+        _state.value = _state.value.copy(organizingId = null, organizeRun = null)
+    }
+
+    fun cancelOrganize(id: String) {
+        io.launch {
+            lock.withLock {
+                cancelOrganizationFor(id)
+                _state.value = _state.value.copy(organizeCanceledIds = _state.value.organizeCanceledIds + id)
+                try {
+                    session(id)?.takeUnless { it.captureRollbackPending }?.let { save(it.copy(summaryPending = false)) }
+                } catch (failure: Exception) {
+                    if (failure is CancellationException) throw failure
+                    report(R.string.recording_storage_failed)
+                }
+            }
+        }
+    }
+
+    fun switchToLocalAndRetry(id: String) = edit(id) {
+        it?.copy(mode = RecordingMode.Local, cloudConsent = null, lastOrganizeFailure = null, summaryPending = true,
+            reprocessThrough = null, reprocessText = "", summaryProgress = null)
+    }
+
     private fun edit(id: String?, transform: (RecordingSession?) -> RecordingSession?) {
         io.launch {
             lock.withLock {
-                if (id == _state.value.organizingId) organize?.cancel()
+                if (id != null) cancelOrganizationFor(id)
                 if (id != null) nextAttempt.remove(id)
                 try {
                     transform(id?.let(::session)?.takeUnless { it.captureRollbackPending })?.let { item ->
-                        save(item)
+                        save(item.copy(lastOrganizeFailure = null))
+                        _state.value = _state.value.copy(organizeCanceledIds = _state.value.organizeCanceledIds - item.id)
                         if (item.phase == RecordingPhase.Finished || item.phase == RecordingPhase.Interrupted) publish(item.id)
+                        if (organizationEnabled) scheduleOrganization()
                     }
                     _state.value = _state.value.copy(failure = null)
                 } catch (failure: Exception) {
@@ -1147,7 +1203,7 @@ internal class RecordingController(
     private suspend fun discard(id: String): Boolean = withContext(NonCancellable) {
         try {
             store.delete(id)
-            if (id == _state.value.organizingId) organize?.cancel()
+            cancelOrganizationFor(id)
             if (id == _state.value.recognizingId) recognition?.cancel()
             if (id == _state.value.speakerAnalysisId) speakerJob?.cancel()
             if (id == _state.value.refiningId) refineJob?.cancel()
@@ -1223,7 +1279,9 @@ internal class RecordingController(
             kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                 lock.withLock {
                     cloudJobRunning = false
-                    if (organizingCloud && !isForeground() && _state.value.activeId == null) organize?.cancel()
+                    if (organizingCloud && !isForeground() && _state.value.activeId == null) {
+                        (_state.value.organizeRun?.sessionId ?: _state.value.organizingId)?.let(::cancelOrganizationFor)
+                    }
                 }
             }
         }
@@ -1253,7 +1311,8 @@ internal class RecordingController(
         fun route(candidate: RecordingSession) =
             chooseRecordingRoute(candidate.mode, cloud?.key, candidate.cloudConsent, local != null, candidate.fallback)
         val item = _state.value.sessions.firstOrNull { candidate ->
-            if (candidate.captureRollbackPending || SystemClock.elapsedRealtime() < (nextAttempt[candidate.id] ?: 0L) ||
+            if (candidate.captureRollbackPending || candidate.id in _state.value.organizeCanceledIds ||
+                SystemClock.elapsedRealtime() < (nextAttempt[candidate.id] ?: 0L) ||
                 active != null && candidate.id != active || candidate.id == _state.value.recognizingId ||
                 candidate.id == _state.value.speakerAnalysisId || candidate.id == _state.value.refiningId) return@firstOrNull false
             val selectedRoute = route(candidate)
@@ -1274,7 +1333,6 @@ internal class RecordingController(
         // 仅允许首批本地草稿在语音恢复时继续，后续本地批次仍向实时听写让出资源。
         completingFirstLocalDraft = range?.first == 0 && selectedRoute == RecordingRoute.Local && !firstLocalDraftAttempted
         if (completingFirstLocalDraft) firstLocalDraftAttempted = true
-        _state.value = _state.value.copy(organizingId = item.id)
         val hotwords = effective(item)
         val started = SystemClock.elapsedRealtime()
         val audioAtStart = maxOf(_state.value.durationMs, item.durationMs)
@@ -1288,8 +1346,34 @@ internal class RecordingController(
             progress.overviewCursor < progress.points.size -> "overview"
             else -> "publish"
         }
+        val runEngine = parseRecordingOrganizeEngine(useCloud, if (useCloud) selectedCloud?.label else local?.modelName)
+            ?: RecordingOrganizeEngine(cloud = useCloud, model = "")
+        val pointBatches = if (live) 0 else countRecordingPointBatches(item.segments, useCloud, item.distinguishSpeakers).coerceAtLeast(1)
+        val totalSteps = if (live) 1 else pointBatches + 2
+        val stageEnum = when (stage) {
+            "draft" -> RecordingOrganizeStage.LiveDraft
+            "points" -> RecordingOrganizeStage.Points
+            "overview" -> RecordingOrganizeStage.Overview
+            else -> RecordingOrganizeStage.Publish
+        }
+        val step = when (stageEnum) {
+            RecordingOrganizeStage.LiveDraft -> 1
+            RecordingOrganizeStage.Points -> (requireNotNull(progress).points.size + 1).coerceAtMost(pointBatches)
+            RecordingOrganizeStage.Overview -> pointBatches + 1
+            RecordingOrganizeStage.Publish -> totalSteps
+        }
+        val startedAt = _state.value.organizeRun?.takeIf {
+            it.sessionId == item.id && !live && it.stage != RecordingOrganizeStage.LiveDraft
+        }?.startedAtEpochMs ?: System.currentTimeMillis()
+        val coveredAudioMs = range?.let { item.segments.getOrNull(it.last)?.endMs } ?: 0L
+        val run = RecordingOrganizeRun(item.id, runEngine, stageEnum, step, totalSteps, startedAt,
+            coveredAudioMs, if (live) (audioAtStart - coveredAudioMs).coerceAtLeast(0L) else 0L)
+        _state.value = _state.value.copy(organizingId = item.id, organizeRun = run)
+        lateinit var currentJob: Job
         @OptIn(DelicateCoroutinesApi::class)
         val launched = io.launch(start = CoroutineStart.ATOMIC) {
+            currentJob = requireNotNull(currentCoroutineContext()[Job])
+            var continueNextStep = false
             try {
                 if (range?.first == 0) {
                     InfinityLogger.diagnostic("recording.draft_start", mapOf(
@@ -1314,6 +1398,7 @@ internal class RecordingController(
                 } ?: throw java.util.concurrent.TimeoutException()
                 val inferenceFinished = SystemClock.elapsedRealtime()
                 lock.withLock {
+                    currentCoroutineContext().ensureActive()
                     val current = session(item.id) ?: return@withLock
                     if (command.get() == CaptureCommand.Discard || current.mode != item.mode ||
                         current.cloudConsent != item.cloudConsent || current.outputLanguage != item.outputLanguage ||
@@ -1339,12 +1424,25 @@ internal class RecordingController(
                             current.organized != item.organized || !current.needsFinalSummary()) return@withLock
                         val step = batch
                         if (step != null) {
-                            save(current.copy(summaryProgress = step))
+                            save(current.copy(summaryProgress = step, lastOrganizeFailure = null))
+                            continueNextStep = true
                             return@withLock
                         }
+                        val nowEpoch = System.currentTimeMillis()
                         save(current.copy(organized = result, organizedThrough = current.segments.size, manualEdit = false,
                             publishedLanguage = item.outputLanguage, summaryPending = false, summaryProgress = null,
-                            reprocessThrough = null, reprocessText = "", draftBatches = emptyList()))
+                            reprocessThrough = null, reprocessText = "", draftBatches = emptyList(),
+                            organizedSource = RecordingOrganizeSource(useCloud, runEngine.provider, runEngine.model, nowEpoch, item.outputLanguage),
+                            lastOrganizeFailure = null))
+                        _state.value = _state.value.copy(organizeUpdatedId = current.id,
+                            organizeCanceledIds = _state.value.organizeCanceledIds - current.id)
+                        organizeUpdatedClearJob?.cancel()
+                        organizeUpdatedClearJob = io.launch {
+                            delay(6000)
+                            lock.withLock {
+                                if (_state.value.organizeUpdatedId == current.id) _state.value = _state.value.copy(organizeUpdatedId = null)
+                            }
+                        }
                         InfinityLogger.diagnostic("recording.summary_ready", mapOf("segments" to current.segments.size,
                             "points" to requireNotNull(progress).points.size, "language" to item.outputLanguage.name))
                         publish(current.id)
@@ -1357,16 +1455,37 @@ internal class RecordingController(
                     "stage" to stage, "cause" to failure.javaClass.simpleName, "remote" to useCloud,
                     "elapsed_ms" to (SystemClock.elapsedRealtime() - started),
                 ))
+                val kind = when (failure) {
+                    is java.util.concurrent.TimeoutException -> RecordingOrganizeErrorKind.Timeout
+                    is RecordingOutputLanguageMismatch -> RecordingOrganizeErrorKind.LanguageMismatch
+                    is RecordingEmptyOutputException -> RecordingOrganizeErrorKind.EmptyOutput
+                    is java.io.IOException -> RecordingOrganizeErrorKind.StorageError
+                    else -> RecordingOrganizeErrorKind.ModelError
+                }
                 lock.withLock {
+                    currentCoroutineContext().ensureActive()
                     nextAttempt[item.id] = SystemClock.elapsedRealtime() + if (live) 5_000 else 60_000
-                    report(R.string.recording_organize_failed)
+                    if (!live) session(item.id)?.takeUnless { it.captureRollbackPending }?.let { current ->
+                        val nowEpoch = System.currentTimeMillis()
+                        val failed = current.copy(lastOrganizeFailure = RecordingOrganizeFailure(kind, runEngine,
+                            nowEpoch, SystemClock.elapsedRealtime() - started, nowEpoch + 60_000L))
+                        runCatching { save(failed) }.onFailure { replace(failed) }
+                    }
                 }
             } finally {
+                // 必须在进入 NonCancellable 前读取原任务的取消状态。
+                val activeJob = currentCoroutineContext().isActive
                 withContext(NonCancellable) {
                     lock.withLock {
-                        organizingCloud = false
-                        completingFirstLocalDraft = false
-                        _state.value = _state.value.copy(organizingId = null)
+                        if (organize === currentJob) {
+                            organizingCloud = false
+                            completingFirstLocalDraft = false
+                            organize = null
+                            if (continueNextStep && organizationEnabled && activeJob && currentJob.isActive) scheduleOrganization()
+                        }
+                        if (organize?.isCompleted != false) {
+                            _state.value = _state.value.copy(organizingId = null, organizeRun = null)
+                        }
                     }
                 }
             }

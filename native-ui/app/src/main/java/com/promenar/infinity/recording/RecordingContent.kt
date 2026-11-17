@@ -63,7 +63,6 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.Widgets
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.CircularProgressIndicator
@@ -163,14 +162,13 @@ private class RecordingView(
     val positionMs: Float,
     val playbackEnvelope: List<Float>,
     val asrModel: RecordingAsrModelState,
+    val speakerModel: RecordingAsrModelState,
     val effectiveHotwords: List<RecordingHotword>,
     val waveform: StateFlow<RecordingWaveformSamples>,
 ) {
     val active = current != null && state.activeId == current.id
     val paused = current?.phase == RecordingPhase.Paused
-    val organizing = current != null && state.organizingId == current.id
-    val queued = current != null && !organizing && state.failure == R.string.recording_organize_failed
-    val consent = current != null && route == RecordingRoute.Consent
+    val organizing = current != null && (state.organizeRun?.sessionId == current.id || state.organizingId == current.id)
     val recognizing = current != null && state.recognizingId == current.id
     val canRecognize = asrModel == RecordingAsrModelState.Installed &&
         current?.let { recordingCanRecognize(it, state.activeId, state.recognizingId) } == true
@@ -203,6 +201,9 @@ internal fun RecordingPageContent(
     onFinish: () -> Unit = {},
     onContinue: () -> Unit = {},
     onOrganize: () -> Unit = {},
+    onRetryOrganize: () -> Unit = onOrganize,
+    onCancelOrganize: () -> Unit = {},
+    onSwitchToLocal: () -> Unit = {},
     onDismissFailure: (Int) -> Unit = {},
     asrModel: RecordingAsrModelState = RecordingAsrModelState.Installed,
     effectiveHotwords: List<RecordingHotword> = emptyList(),
@@ -305,7 +306,7 @@ internal fun RecordingPageContent(
                 label = "recording_navigation",
             ) { shown ->
                 val foreground = (shown == null) == (current == null)
-                val view = RecordingView(state, shown, route, playing, positionMs, playbackEnvelope, asrModel, effectiveHotwords, waveform)
+                val view = RecordingView(state, shown, route, playing, positionMs, playbackEnvelope, asrModel, speakerModel, effectiveHotwords, waveform)
                 val transcriptTools: @Composable (Boolean) -> Unit = { titled ->
                     TranscriptPaneHeader(view, titled, onDownloadAsr, onCancelDownload, onTranscriptMenu, onCancelRecognize)
                 }
@@ -349,19 +350,20 @@ internal fun RecordingPageContent(
                             } else if (wide) {
                                 RecordingWideBody(
                                     view, onMode, onEdit, onConsent, transcriptTools, onPlay,
-                                    onTogglePlayback, onSeek, onSeekFinished, onOrganize, onLanguage, editor, speakerTools, onSpeakerSelect,
+                                    onTogglePlayback, onSeek, onSeekFinished, onOrganize, onRetryOrganize, onCancelOrganize, onSwitchToLocal,
+                                    onLanguage, editor, speakerTools, onSpeakerSelect,
                                 )
                             } else {
                                 RecordingNarrowBody(
                                     view, organized, pinned, onMode, onOrganizedChange, onEdit, onConsent,
-                                    transcriptTools, onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onLanguage, editor,
-                                    speakerTools, onSpeakerSelect,
+                                    transcriptTools, onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onRetryOrganize, onCancelOrganize, onSwitchToLocal,
+                                    onLanguage, editor, speakerTools, onSpeakerSelect,
                                 )
                             }
                             if (foreground) {
-                                // 失败提示只在当前页组合，且浮在操作区上方。
+                                // 失败提示只在当前页组合，且浮在操作区上方；整理失败改为页面内状态卡常驻展示。
                                 RecordingFailureNotice(
-                                    failure = state.failure,
+                                    failure = state.failure?.takeUnless { it == R.string.recording_organize_failed },
                                     onDismiss = onDismissFailure,
                                     modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = FailureNoticeMaxWidth),
                                 )
@@ -452,6 +454,9 @@ private fun RecordingNarrowBody(
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
     onOrganize: () -> Unit,
+    onRetryOrganize: () -> Unit,
+    onCancelOrganize: () -> Unit,
+    onSwitchToLocal: () -> Unit,
     onLanguage: () -> Unit,
     editor: RecordingInlineEditor?,
     speakerTools: @Composable () -> Unit,
@@ -459,18 +464,21 @@ private fun RecordingNarrowBody(
 ) {
     val current = requireNotNull(view.current)
     val edge = 16.dp
+    val organizeDot = when {
+        view.organizing -> MaterialTheme.colorScheme.primary
+        current.lastOrganizeFailure != null && view.route != RecordingRoute.Raw -> MaterialTheme.colorScheme.error
+        else -> null
+    }
     val header: @Composable () -> Unit = {
         Column {
             WorkspaceRecorder(view, onTogglePlayback, onSeek, onSeekFinished)
             InfinityPanelTabs(
                 tabs = listOf(InfinityPanelTab(false, stringResource(R.string.recording_raw)),
-                    InfinityPanelTab(true, stringResource(R.string.recording_organized),
-                        dot = MaterialTheme.colorScheme.primary.takeIf { view.organizing })),
+                    InfinityPanelTab(true, stringResource(R.string.recording_organized), dot = organizeDot)),
                 selected = organized, onSelect = onOrganizedChange, bleed = edge,
             )
             if (organized) {
                 OrganizedPaneHeader(view, false, onLanguage, onEdit, editor != null)
-                if (view.consent) RecordingConsentBar(onConsent)
             } else {
                 transcriptTools(false)
                 speakerTools()
@@ -486,8 +494,12 @@ private fun RecordingNarrowBody(
     Column(Modifier.fillMaxSize()) {
         if (pinHeader) Box(Modifier.padding(horizontal = edge)) { header() }
         val pane = Modifier.weight(1f).fillMaxWidth()
-        if (organized) RecordingOrganizedList(view, leading, pinHeader, padding, onMode, pane, onOrganize, onPlay, editor)
-        else RecordingTranscriptList(view, leading, pinHeader, padding, onPlay, pane, onSpeakerSelect)
+        if (organized) {
+            RecordingOrganizedList(
+                view, leading, pinHeader, padding, onMode, pane, onOrganize,
+                onRetryOrganize, onCancelOrganize, onConsent, onSwitchToLocal, onPlay, editor,
+            )
+        } else RecordingTranscriptList(view, leading, pinHeader, padding, onPlay, pane, onSpeakerSelect)
     }
 }
 
@@ -503,6 +515,9 @@ private fun RecordingWideBody(
     onSeek: (Float) -> Unit,
     onSeekFinished: () -> Unit,
     onOrganize: () -> Unit,
+    onRetryOrganize: () -> Unit,
+    onCancelOrganize: () -> Unit,
+    onSwitchToLocal: () -> Unit,
     onLanguage: () -> Unit,
     editor: RecordingInlineEditor?,
     speakerTools: @Composable () -> Unit,
@@ -521,8 +536,10 @@ private fun RecordingWideBody(
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Column(Modifier.weight(1f).fillMaxHeight().padding(start = 16.dp)) {
                 OrganizedPaneHeader(view, true, onLanguage, onEdit, editor != null)
-                if (view.consent) RecordingConsentBar(onConsent)
-                RecordingOrganizedList(view, null, true, padding, onMode, Modifier.weight(1f).fillMaxWidth(), onOrganize, onPlay, editor)
+                RecordingOrganizedList(
+                    view, null, true, padding, onMode, Modifier.weight(1f).fillMaxWidth(),
+                    onOrganize, onRetryOrganize, onCancelOrganize, onConsent, onSwitchToLocal, onPlay, editor,
+                )
             }
         }
     }
@@ -686,31 +703,6 @@ private fun RecordingModeRow(route: RecordingRoute, onMode: () -> Unit) {
             subtitleMaxLines = 2,
             showChevron = true,
         )
-    }
-}
-
-/** 云端整理待确认的提示条：出现在页签上方（外屏）或整理稿一栏顶部（内屏），占位固定。 */
-@Composable
-private fun RecordingConsentBar(onConsent: () -> Unit, modifier: Modifier = Modifier) {
-    val content = MaterialTheme.colorScheme.onSecondaryContainer
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = content,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Row(
-            Modifier
-                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                .padding(start = InfinitySpacing.Large, end = InfinitySpacing.XSmall, top = InfinitySpacing.XSmall, bottom = InfinitySpacing.XSmall),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        ) {
-            Text(stringResource(R.string.recording_route_consent), style = InfinityTypography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = onConsent, colors = ButtonDefaults.textButtonColors(contentColor = content)) {
-                Text(stringResource(R.string.recording_ui_enable), maxLines = 1)
-            }
-        }
     }
 }
 
@@ -918,8 +910,9 @@ private const val LiveIndicatorId = "recording-live-indicator"
 @Composable
 private fun RecordingOrganizedList(
     view: RecordingView, leading: (@Composable () -> Unit)?, fill: Boolean, contentPadding: PaddingValues,
-    onMode: () -> Unit, modifier: Modifier = Modifier, onOrganize: () -> Unit, onPlay: (Long) -> Unit,
-    editor: RecordingInlineEditor?,
+    onMode: () -> Unit, modifier: Modifier = Modifier, onOrganize: () -> Unit,
+    onRetryOrganize: () -> Unit, onCancelOrganize: () -> Unit, onConsent: () -> Unit, onSwitchToLocal: () -> Unit,
+    onPlay: (Long) -> Unit, editor: RecordingInlineEditor?,
 ) {
     val current = view.current ?: return
     if (editor != null) {
@@ -934,24 +927,34 @@ private fun RecordingOrganizedList(
         }
         return
     }
+    val nowMs = rememberRecordingOrganizeNowMs(current, view.state)
+    val organizeState = recordingOrganizeState(current, view.state, view.route, view.speakerModel, nowMs)
+    val cardModel = recordingOrganizeCardModel(
+        state = organizeState,
+        current = current,
+        localReady = view.state.localReady,
+        onRetry = onRetryOrganize,
+        onReorganizeWithConfirm = onOrganize,
+        onCancel = onCancelOrganize,
+        onConsent = onConsent,
+        onSwitchToLocal = onSwitchToLocal,
+        onSettings = onMode,
+    )
     val list = key(current.id, current.distinguishSpeakers) { rememberLazyListState() }
     val blocks = remember(current.organized) { current.organized.split("\n\n").filter(String::isNotBlank) }
     val segmentStarts = remember(current.segments) { current.segments.mapTo(hashSetOf(), RecordingSegment::startMs) }
+    val dimSummary = organizeState is RecordingOrganizeState.RunningRerun
+    val showVersionLabel = current.organized.isNotBlank() && cardModel != null && (
+        organizeState is RecordingOrganizeState.RunningRerun ||
+            organizeState is RecordingOrganizeState.FailedKeptOld ||
+            current.organizedSource != null
+        )
     LazyColumn(state = list, modifier = modifier, contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (leading != null) item(key = "recording_header") { RecordingLeading(leading) }
         if (view.active) {
-            item(key = "draft_status") {
-                val message = when {
-                    view.route == RecordingRoute.Raw -> R.string.recording_mode_raw
-                    view.consent -> R.string.recording_awaiting_consent
-                    view.route == RecordingRoute.Unavailable -> R.string.recording_route_unavailable
-                    !current.liveOrganization -> R.string.recording_draft_after
-                    else -> R.string.recording_draft_live
-                }
-                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                    Text(stringResource(message), Modifier.fillMaxWidth().padding(10.dp), style = InfinityTypography.bodySmall)
-                }
+            if (cardModel != null) {
+                item(key = "organize_status") { RecordingOrganizeStatusCard(cardModel) }
             }
             if (current.liveOrganization && view.route !in setOf(RecordingRoute.Raw, RecordingRoute.Consent, RecordingRoute.Unavailable)) {
                 items(current.draftBatches, key = { it.from }) { batch ->
@@ -962,14 +965,27 @@ private fun RecordingOrganizedList(
                         Text(batch.text, style = InfinityTypography.bodyLarge.forReading())
                     }
                 }
-                if (view.organizing) item { GenerationDots() }
             }
         } else {
-            if (view.organizing) item { Text(stringResource(R.string.recording_final_running), style = InfinityTypography.bodySmall) }
-            else if (current.manualEdit && current.organizedThrough < current.segments.size) item {
-                TextButton(onClick = onOrganize) { Text(stringResource(R.string.recording_append_summary_pending)) }
+            if (cardModel != null) {
+                item(key = "organize_status") { RecordingOrganizeStatusCard(cardModel) }
+            } else if (organizeState is RecordingOrganizeState.Completed &&
+                (organizeState.source != null || organizeState.justUpdated || current.manualEdit)
+            ) {
+                item(key = "organize_provenance") {
+                    RecordingProvenanceRow(organizeState.source, organizeState.justUpdated, current.manualEdit)
+                }
             }
             if (current.organized.isNotBlank()) {
+                if (showVersionLabel) {
+                    item(key = "organize_version") {
+                        RecordingVersionLabel(
+                            isPrevious = organizeState is RecordingOrganizeState.RunningRerun,
+                            source = current.organizedSource,
+                        )
+                    }
+                }
+                val bodyAlpha = if (dimSummary) .5f else 1f
                 itemsIndexed(blocks) { _, block ->
                     val link = recordingSeekLink
                     val times = link.findAll(block).mapNotNull { it.groupValues[2].toLongOrNull() }
@@ -977,16 +993,19 @@ private fun RecordingOrganizedList(
                     when {
                         times.isNotEmpty() && link.replace(block, "").isBlank() -> FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             times.forEach { ms -> TextButton(onClick = { onPlay(ms) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                                Text(recordingTimestamp(ms), style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace), maxLines = 1)
+                                Text(recordingTimestamp(ms), style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = bodyAlpha), maxLines = 1)
                             } }
                         }
-                        block.startsWith("### ") -> Text(block.removePrefix("### "), style = InfinityTypography.titleSmall)
+                        block.startsWith("### ") -> Text(block.removePrefix("### "), style = InfinityTypography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = bodyAlpha))
                         block.startsWith("**") && block.endsWith("**") -> Text(block.removeSurrounding("**"),
-                            color = MaterialTheme.colorScheme.primary, style = InfinityTypography.labelLarge)
-                        else -> Text(block, style = InfinityTypography.bodyLarge.forReading())
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = bodyAlpha), style = InfinityTypography.labelLarge)
+                        else -> Text(block, style = InfinityTypography.bodyLarge.forReading(),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = bodyAlpha))
                     }
                 }
-            } else if (!view.organizing) item {
+            } else if (cardModel == null) item {
                 RecordingEmpty(fill && leading == null) {
                     RecordingEmptyLabel(Icons.Rounded.Description, stringResource(if (view.route == RecordingRoute.Raw) R.string.recording_mode_raw else R.string.recording_no_organized))
                     if (current.segments.isNotEmpty()) {
@@ -1114,11 +1133,21 @@ private fun RecordingWorkspaceHistory(
                         item.segments.isNotEmpty() -> R.string.recording_raw
                         else -> R.string.recording_original_audio
                     }
+                    val organizeBadge = recordingOrganizeHistoryStatus(item, state)
+                    val subtitleSegments = buildList {
+                        add(timeFormat.format(Date(item.createdAt)))
+                        add(stringResource(condition))
+                        when (organizeBadge) {
+                            RecordingOrganizeHistoryBadge.Organizing -> add(stringResource(R.string.recording_organize_history_running))
+                            RecordingOrganizeHistoryBadge.Failed -> add(stringResource(R.string.recording_organize_history_failed))
+                            null -> Unit
+                        }
+                    }
                     val canSelect = item.id in matching
                     val marked = item.id in selected
                     val toggle = { onSelectionChange(if (marked) selected - item.id else selected + item.id) }
                     RecordingHistoryRow(
-                        item, listOf(timeFormat.format(Date(item.createdAt)), stringResource(condition)),
+                        item, subtitleSegments, organizeBadge,
                         modifier = Modifier.bettboxListGroupItem(index, sessions.size),
                         selecting = selecting, checked = marked, enabled = enabled && (!selecting || canSelect),
                         onClick = { if (selecting) toggle() else onSelect(item) },
@@ -1222,7 +1251,7 @@ private fun RecordingHistoryHeader(
 
 @Composable
 private fun RecordingHistoryRow(
-    item: RecordingSession, subtitle: List<String>, modifier: Modifier,
+    item: RecordingSession, subtitle: List<String>, organizeBadge: RecordingOrganizeHistoryBadge?, modifier: Modifier,
     selecting: Boolean, checked: Boolean, enabled: Boolean, onClick: () -> Unit,
     onLongClick: (() -> Unit)?, animationsEnabled: Boolean,
 ) {
@@ -1252,7 +1281,11 @@ private fun RecordingHistoryRow(
                 }, tint = if (checked) scheme.primary else scheme.onSurfaceVariant)
         },
         trailingContent = {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (organizeBadge != null) {
+                    val dotColor = if (organizeBadge == RecordingOrganizeHistoryBadge.Organizing) scheme.primary else scheme.error
+                    Box(Modifier.size(7.dp).background(dotColor, CircleShape).clearAndSetSemantics {})
+                }
                 Text(recordingTimestamp(item.durationMs), style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace))
                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp).graphicsLayer { alpha = 1f - progress.value },
                     tint = scheme.onSurfaceVariant)

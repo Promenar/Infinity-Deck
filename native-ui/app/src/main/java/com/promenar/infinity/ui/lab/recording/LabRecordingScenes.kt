@@ -21,6 +21,7 @@ import com.promenar.infinity.recording.RecordingDialogGroup
 import com.promenar.infinity.recording.RecordingDialogRow
 import com.promenar.infinity.recording.RecordingLanguage
 import com.promenar.infinity.recording.RecordingMode
+import com.promenar.infinity.recording.RecordingOrganizeSource
 import com.promenar.infinity.recording.RecordingPageContent
 import com.promenar.infinity.recording.RecordingPhase
 import com.promenar.infinity.recording.RecordingRoute
@@ -172,6 +173,14 @@ private fun sampleSession(zh: Boolean): RecordingSession = RecordingSession(
         """.trimIndent()
     },
     mode = RecordingMode.Auto,
+    organizedThrough = 4,
+    organizedSource = RecordingOrganizeSource(
+        cloud = true,
+        provider = "DeepSeek",
+        model = LAB_MODEL,
+        completedAt = 1_763_000_120_000L,
+        language = if (zh) RecordingLanguage.Chinese else RecordingLanguage.English,
+    ),
     distinguishSpeakers = true,
     speakers = listOf(
         RecordingSpeaker(0, if (zh) "林妍" else "Lin Yan"),

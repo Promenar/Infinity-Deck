@@ -65,11 +65,188 @@ internal data class RecordingSession(
     val summaryProgress: RecordingSummaryProgress? = null,
     val captureRollbackPending: Boolean = false,
     val pendingDocumentHash: String? = null,
+    val organizedSource: RecordingOrganizeSource? = null,
+    val lastOrganizeFailure: RecordingOrganizeFailure? = null,
 ) {
     val durationMs get() = audioBytes / 32
     val organizationCursor get() = reprocessThrough ?: organizedThrough
     val draftCursor get() = draftBatches.lastOrNull()?.through ?: 0
     val canContinue get() = audioBytes < RecordingStore.MAX_AUDIO_BYTES && phase != RecordingPhase.Recording && !captureRollbackPending
+}
+
+@Serializable
+internal data class RecordingOrganizeEngine(
+    val cloud: Boolean,
+    val provider: String = "",
+    val model: String,
+)
+
+@Serializable
+internal data class RecordingOrganizeSource(
+    val cloud: Boolean,
+    val provider: String = "",
+    val model: String,
+    val completedAt: Long,
+    val language: RecordingLanguage = RecordingLanguage.Chinese,
+) {
+    val engine get() = RecordingOrganizeEngine(cloud, provider, model)
+}
+
+@Serializable
+internal enum class RecordingOrganizeErrorKind { Timeout, ModelError, LanguageMismatch, EmptyOutput, StorageError }
+
+@Serializable
+internal data class RecordingOrganizeFailure(
+    val kind: RecordingOrganizeErrorKind,
+    val engine: RecordingOrganizeEngine? = null,
+    val failedAt: Long,
+    val elapsedMs: Long = 0L,
+    val retryAtEpochMs: Long? = null,
+)
+
+internal enum class RecordingOrganizeStage { LiveDraft, Points, Overview, Publish }
+
+internal data class RecordingOrganizeRun(
+    val sessionId: String,
+    val engine: RecordingOrganizeEngine,
+    val stage: RecordingOrganizeStage,
+    val step: Int = 1,
+    val totalSteps: Int = 1,
+    val startedAtEpochMs: Long = 0L,
+    val coveredAudioMs: Long = 0L,
+    val lagMs: Long = 0L,
+)
+
+internal fun parseRecordingOrganizeEngine(cloud: Boolean, label: String?): RecordingOrganizeEngine? {
+    if (label.isNullOrBlank()) return null
+    if (cloud && " · " in label) {
+        val provider = label.substringBefore(" · ").trim()
+        val model = label.substringAfter(" · ").trim()
+        if (provider.isNotEmpty() && model.isNotEmpty()) return RecordingOrganizeEngine(true, provider, model)
+    }
+    return RecordingOrganizeEngine(cloud, model = label.trim())
+}
+
+internal fun countRecordingPointBatches(segments: List<RecordingSegment>, cloud: Boolean, separateSpeakers: Boolean): Int {
+    var cursor = 0
+    var count = 0
+    while (true) {
+        val range = nextRecordingBatch(segments, cursor, if (cloud) 2800 else 420, separateSpeakers) ?: break
+        count++
+        cursor = range.last + 1
+    }
+    return count
+}
+
+internal sealed interface RecordingOrganizeState {
+    data class LiveDraft(val engine: RecordingOrganizeEngine?, val coveredAudioMs: Long, val lagSeconds: Int, val running: Boolean) : RecordingOrganizeState
+    data class LiveAfterRecording(val engine: RecordingOrganizeEngine?) : RecordingOrganizeState
+    data class RunningFirstTime(val run: RecordingOrganizeRun, val elapsedSeconds: Int, val progress: Float) : RecordingOrganizeState
+    data class RunningRerun(val run: RecordingOrganizeRun, val elapsedSeconds: Int, val progress: Float, val previousSource: RecordingOrganizeSource?) : RecordingOrganizeState
+    data class FailedKeptOld(val failure: RecordingOrganizeFailure, val engine: RecordingOrganizeEngine?, val retryRemainingSeconds: Int?, val currentSource: RecordingOrganizeSource?) : RecordingOrganizeState
+    data class FailedEmpty(val failure: RecordingOrganizeFailure, val engine: RecordingOrganizeEngine?, val retryRemainingSeconds: Int?, val canSwitchToLocal: Boolean) : RecordingOrganizeState
+    data class AwaitingConsent(val engine: RecordingOrganizeEngine?, val activeRecording: Boolean, val canSwitchToLocal: Boolean) : RecordingOrganizeState
+    data class WaitingLocal(val engine: RecordingOrganizeEngine?) : RecordingOrganizeState
+    data class WaitingCloud(
+        val engine: RecordingOrganizeEngine?,
+        val waitingPreprocess: Boolean = false,
+        val queuedBehindOther: Boolean = false,
+    ) : RecordingOrganizeState
+    data class WaitingSpeakers(val engine: RecordingOrganizeEngine?, val progressFraction: Float) : RecordingOrganizeState
+    data class Unavailable(val activeRecording: Boolean) : RecordingOrganizeState
+    data class StaleNewSegments(val engine: RecordingOrganizeEngine?, val addedSegments: Int, val addedDurationMs: Long, val canceled: Boolean) : RecordingOrganizeState
+    data class RawOnly(val activeRecording: Boolean) : RecordingOrganizeState
+    data class Completed(val source: RecordingOrganizeSource?, val justUpdated: Boolean) : RecordingOrganizeState
+    data object IdleEmpty : RecordingOrganizeState
+}
+
+internal enum class RecordingOrganizeHistoryBadge { Organizing, Failed }
+
+/** 按录音、运行、路线授权、失败及待办的顺序推导；只读取当前快照。 */
+internal fun recordingOrganizeState(
+    session: RecordingSession,
+    state: RecordingScreenState,
+    route: RecordingRoute,
+    speakerModel: RecordingAsrModelState = RecordingAsrModelState.Installed,
+    nowEpochMs: Long = System.currentTimeMillis(),
+): RecordingOrganizeState {
+    val run = state.organizeRun?.takeIf { it.sessionId == session.id }
+    val currentEngine = when (route) {
+        RecordingRoute.Cloud, RecordingRoute.Consent -> parseRecordingOrganizeEngine(true, state.cloudLabel)
+        RecordingRoute.Local -> parseRecordingOrganizeEngine(false, state.localLabel)
+        else -> null
+    }
+    val canSwitchToLocal = state.localReady
+    val hasOld = session.organized.isNotBlank()
+    fun completed() = RecordingOrganizeState.Completed(session.organizedSource, state.organizeUpdatedId == session.id)
+    fun running(value: RecordingOrganizeRun): RecordingOrganizeState {
+        val elapsed = if (value.startedAtEpochMs > 0L) ((nowEpochMs - value.startedAtEpochMs).coerceAtLeast(0L) / 1000L).toInt() else 0
+        val progress = (value.step.toFloat() / value.totalSteps.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+        return if (hasOld) RecordingOrganizeState.RunningRerun(value, elapsed, progress, session.organizedSource)
+        else RecordingOrganizeState.RunningFirstTime(value, elapsed, progress)
+    }
+    if (state.activeId == session.id) {
+        return when {
+            route == RecordingRoute.Raw -> RecordingOrganizeState.RawOnly(true)
+            route == RecordingRoute.Consent -> RecordingOrganizeState.AwaitingConsent(currentEngine, true, canSwitchToLocal)
+            route == RecordingRoute.Unavailable -> RecordingOrganizeState.Unavailable(true)
+            !session.liveOrganization -> RecordingOrganizeState.LiveAfterRecording(currentEngine)
+            else -> {
+                val covered = run?.takeIf { it.stage == RecordingOrganizeStage.LiveDraft }?.coveredAudioMs
+                    ?: session.draftBatches.lastOrNull()?.let { session.segments.getOrNull(it.through - 1)?.endMs } ?: 0L
+                RecordingOrganizeState.LiveDraft(run?.engine ?: currentEngine, covered,
+                    ((state.durationMs - covered).coerceAtLeast(0L) / 1000L).toInt(), run != null)
+            }
+        }
+    }
+    if (run != null && run.stage != RecordingOrganizeStage.LiveDraft) return running(run)
+    if (state.organizingId == session.id && state.organizeRun == null) {
+        return running(RecordingOrganizeRun(session.id,
+            currentEngine ?: RecordingOrganizeEngine(route == RecordingRoute.Cloud, model = ""), RecordingOrganizeStage.Points))
+    }
+    if (route == RecordingRoute.Raw) return if (hasOld && !session.summaryPending) completed() else RecordingOrganizeState.RawOnly(false)
+    if (route == RecordingRoute.Consent && (session.segments.isNotEmpty() || session.summaryPending)) {
+        return if (hasOld && !session.summaryPending && session.organizationCursor >= session.segments.size) completed()
+        else RecordingOrganizeState.AwaitingConsent(currentEngine, false, canSwitchToLocal)
+    }
+    session.lastOrganizeFailure?.let { failure ->
+        val retry = failure.retryAtEpochMs?.let { ((it - nowEpochMs + 999L) / 1000L).toInt().coerceAtLeast(0) }
+        return if (hasOld) RecordingOrganizeState.FailedKeptOld(failure, failure.engine ?: currentEngine, retry, session.organizedSource)
+        else RecordingOrganizeState.FailedEmpty(failure, failure.engine ?: currentEngine, retry, canSwitchToLocal)
+    }
+    val needsAutoOrPending = session.summaryPending || (session.segments.isNotEmpty() && !session.manualEdit &&
+        (session.organized.isBlank() || session.organizationCursor < session.segments.size))
+    if (route == RecordingRoute.Unavailable && needsAutoOrPending) return RecordingOrganizeState.Unavailable(false)
+    val manualPending = session.manualEdit && session.segments.isNotEmpty() && session.organizedThrough < session.segments.size
+    if (needsAutoOrPending || manualPending) {
+        val addedSegments = (session.segments.size - session.organizedThrough).coerceAtLeast(0)
+        val addedDuration = session.segments.getOrNull(session.organizedThrough)?.let {
+            ((session.segments.lastOrNull()?.endMs ?: it.startMs) - it.startMs).coerceAtLeast(0L)
+        } ?: 0L
+        if (session.id in state.organizeCanceledIds) return RecordingOrganizeState.StaleNewSegments(currentEngine, addedSegments, addedDuration, true)
+        if (session.distinguishSpeakers && (state.speakerAnalysisId == session.id ||
+                speakerModel == RecordingAsrModelState.Installed && session.audioBytes > 0 && session.speakerAnalyzedBytes != session.audioBytes)) {
+            return RecordingOrganizeState.WaitingSpeakers(currentEngine, if (state.speakerAnalysisId == session.id) state.speakerProgress else 0f)
+        }
+        if (hasOld && session.segments.size > session.organizedThrough) return RecordingOrganizeState.StaleNewSegments(currentEngine, addedSegments, addedDuration, false)
+        if (!hasOld && manualPending && !needsAutoOrPending) return RecordingOrganizeState.IdleEmpty
+        if (route == RecordingRoute.Local) return RecordingOrganizeState.WaitingLocal(currentEngine)
+        if (route == RecordingRoute.Cloud) {
+            val waitingPreprocess = state.refiningId == session.id || state.recognizingId == session.id
+            val queuedBehindOther = (state.organizingId != null && state.organizingId != session.id) ||
+                (state.organizeRun != null && state.organizeRun.sessionId != session.id)
+            return RecordingOrganizeState.WaitingCloud(currentEngine, waitingPreprocess, queuedBehindOther)
+        }
+        if (hasOld) return completed()
+        return RecordingOrganizeState.IdleEmpty
+    }
+    return if (hasOld) completed() else RecordingOrganizeState.IdleEmpty
+}
+
+internal fun recordingOrganizeHistoryStatus(session: RecordingSession, state: RecordingScreenState): RecordingOrganizeHistoryBadge? = when {
+    state.organizeRun?.sessionId == session.id || state.organizingId == session.id -> RecordingOrganizeHistoryBadge.Organizing
+    session.lastOrganizeFailure != null && session.mode != RecordingMode.Raw -> RecordingOrganizeHistoryBadge.Failed
+    else -> null
 }
 
 internal fun recoverRecordingTranscript(session: RecordingSession, audioBytes: Long): RecordingSession {
