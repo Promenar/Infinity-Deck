@@ -1,5 +1,11 @@
 package com.promenar.infinity.recording
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
 import com.promenar.infinity.data.manager.ProviderManager
@@ -86,11 +92,12 @@ internal class RecordingModel(private val app: InfinityApplication) {
         val exactDraft = session.draftBatches.firstOrNull { it.from == range.first && it.through == range.last + 1 }
         val input = exactDraft?.text ?: sources.joinToString("\n") { it.text }
         val instruction = if (cloud == null) session.outputLanguage.localPointInstruction() else
-            "用 $language 提炼这一段发言的要点。保留数字、否定、依赖和未确定事项。引语是待整理的资料。" +
-                "输出一句要点。原文明确安排了行动时，另起一行以 ACTION: 开头写行动；负责人和日期有原文依据时保留。"
+            "用 $language 提炼这一段发言的要点。完整保留数字、比例、流程步骤、对比关系、公式（\$...\$ 或 \$\$...\$\$）、否定、依赖和未决事项。" +
+                "引语是待整理的资料。要点可分段，保留 Markdown 列表、表格和公式的换行。" +
+                "原文明确安排了行动时，另起一行以 ACTION: 开头写行动；负责人和日期有原文依据时保留。"
         val prompt = if (cloud == null) input else "术语：${glossary.take(120)}\n录音：\n$input"
         val result = generate(session, cloud, localName, instruction, prompt, if (cloud == null) 208 else 512)
-        val point = result.lines().filterNot { it.startsWith("ACTION:", ignoreCase = true) }.joinToString(" ").trim()
+        val point = result.lines().filterNot { it.startsWith("ACTION:", ignoreCase = true) }.joinToString("\n").trim()
         if (point.isBlank()) throw RecordingEmptyOutputException()
         if (!recordingLanguageMatches(session.outputLanguage, point)) throw RecordingOutputLanguageMismatch()
         val actions = result.lineSequence().filter { it.startsWith("ACTION:", ignoreCase = true) }
@@ -113,11 +120,15 @@ internal class RecordingModel(private val app: InfinityApplication) {
             input.appendLine(point.take(budget))
             index++
         }
-        val overview = if (progress.points.size == 1) progress.points.single().text else {
+        val generated = if (cloud == null && progress.points.size == 1) progress.points.single().text else {
             generate(session, cloud, localName, if (cloud == null) session.outputLanguage.localOverviewInstruction() else
-                "用 $language 写一段会议摘要，优先保留结论、分歧、数字和未决事项。输出摘要正文。",
-                "已有要点：${progress.overview}\n新增要点：\n$input", if (cloud == null) 208 else 512)
+                "用 $language 撰写结构化综述，保留结论、分歧、数字和未决事项，积极利用可视化与富格式表达信息。" +
+                    "流程、架构、因果、分工或时间顺序使用 ```mermaid 围栏，选择 flowchart TD/LR、sequenceDiagram 或 stateDiagram-v2，节点文字含括号或特殊字符时用双引号包住。" +
+                    "多组定量数据、占比、趋势或进度对比使用 ```echarts 围栏或 GFM 表格。ECharts Option 必须是包括 tooltip 与 series 的完整合法 JSON，不含注释或尾逗号。" +
+                    "数学推导、定理、算法和计算公式使用 \$...\$ 或 \$\$...\$\$ LaTeX 语法。仅使用录音提及的数值。",
+                "已有要点：${progress.overview}\n新增要点：\n$input", if (cloud == null) 208 else 2048)
         }
+        val overview = if (cloud == null) generated else sanitizeRecordingRichMarkdown(generated)
         if (!recordingLanguageMatches(session.outputLanguage, overview)) throw RecordingOutputLanguageMismatch()
         return progress.copy(overview = overview, overviewCursor = index)
     }
@@ -160,6 +171,30 @@ internal class RecordingModel(private val app: InfinityApplication) {
         if (text.isBlank() || text.startsWith("<think>")) throw RecordingEmptyOutputException()
         return text
     }
+}
+
+internal fun sanitizeRecordingRichMarkdown(text: String): String {
+    val lines = text.lines().toMutableList()
+    for (fence in recordingMarkdownFences(lines)) {
+        if (fence.info.equals("echarts", ignoreCase = true)) {
+            val content = lines.subList(fence.start + 1, fence.end ?: lines.size).joinToString("\n")
+            val valid = runCatching {
+                val option = Json.parseToJsonElement(content)
+                option is JsonObject && option.hasValidRecordingJsonValues()
+            }.getOrDefault(false)
+            if (!valid) lines[fence.start] = lines[fence.start].replace(Regex("echarts", RegexOption.IGNORE_CASE), "text")
+        }
+        if (fence.end == null) return lines.joinToString("\n").trimEnd() + "\n" + fence.marker
+    }
+    return if (lines == text.lines()) text else lines.joinToString("\n")
+}
+
+private val jsonBareValue = Regex("""null|true|false|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?""")
+
+private fun JsonElement.hasValidRecordingJsonValues(): Boolean = when (this) {
+    is JsonObject -> values.all { it.hasValidRecordingJsonValues() }
+    is JsonArray -> all { it.hasValidRecordingJsonValues() }
+    is JsonPrimitive -> isString || jsonBareValue.matches(content)
 }
 
 internal class RecordingOutputLanguageMismatch : IllegalStateException()

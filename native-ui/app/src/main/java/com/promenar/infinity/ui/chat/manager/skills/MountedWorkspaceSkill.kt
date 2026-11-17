@@ -5,6 +5,7 @@ import com.promenar.infinity.data.model.ToolResult
 import com.promenar.infinity.data.model.withinHunkBudget
 import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.repository.*
+import com.promenar.infinity.data.storage.ExternalFolderManager
 import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.data.workspace.SessionPrivateWorkspacePaths
 import com.promenar.infinity.data.workspace.SessionPrivateWorkspaceRepository
@@ -100,7 +101,6 @@ class MountedWorkspaceSkill(
                 }
                 val routedArgs = JsonObject(normalized)
                 val repository = MountedWorkspaceRepository(workspace, mounts, context.sessionId, rooted, linuxPaths)
-                val operations = MountedFileOperations(files, mounts, context.sessionId, rooted, privateRoot?.uuid)
                 val sourcePath = pathArgument(routedArgs, context, repository, "uuid", "path")
                 // 根工作区的新建默认落在 `/`，与挂载目录同样走外部写入而不是私有工作区的 Room 事务。
                 val parentPath = pathArgument(routedArgs, context, repository, "parentUuid", "parentPath")
@@ -133,13 +133,21 @@ class MountedWorkspaceSkill(
                         .mapNotNull(::aliasOf)
                     if (usedAliases.any { it !in approvedMountIds }) fail("CONFLICT", "批准目标缺少挂载或工作区身份，请重新审批")
                 }
+                val recordingManager = (mounts as? ExternalFolderManager)
+                    ?: (original as? MountedWorkspaceSkill)?.mounts as? ExternalFolderManager
+                val recordingPath = sourcePath?.takeIf {
+                    sourceMounted && original.id in setOf("write_file", "patch_file") &&
+                        recordingManager?.isWritableKnowledgeRecording(context.sessionId, it) == true
+                }
                 if (ToolExecutionTargets.isPathMutation(original.id)) {
                     val writeMounts = mounts.visible(context.sessionId) + listOfNotNull(mounts.workspaceMount(context.sessionId))
                     listOfNotNull(sourcePath?.takeIf { sourceMounted }, parentPath?.takeIf { parentMounted }, destinationParent?.takeIf { destinationMounted })
-                        .filter { it.external() }.mapNotNull(::aliasOf).distinct().forEach { alias ->
+                        .filter { it.external() && it != recordingPath }.mapNotNull(::aliasOf).distinct().forEach { alias ->
                             writeMounts.singleOrNull { it.alias == alias }?.requireWritable()
                         }
                 }
+                val recordingWrite = if (recordingPath != null && recordingManager != null) recordingPath to recordingManager else null
+                val operations = MountedFileOperations(files, mounts, context.sessionId, rooted, privateRoot?.uuid, recordingWrite)
                 if (original.id in setOf("write_file", "patch_file")) {
                     workspaceVersionError(original.id, routedArgs)?.let { return@bound it }
                 }
@@ -429,6 +437,7 @@ private class MountedFileOperations(
     private val session: String,
     private val rooted: Boolean,
     private val privateRootUuid: String? = null,
+    private val recordingWrite: Pair<String, ExternalFolderManager>? = null,
 ) : IFileOperationRepository {
     /** 根工作区时私有工作区的 uuid 不可达。 */
     private fun isPrivate(uuid: String) = !uuid.startsWith("external:") && (!rooted || privateRootUuid != null || fail("NOT_FOUND", "条目不在当前工作区，请用 list_files 获取最新路径"))
@@ -487,7 +496,7 @@ private class MountedFileOperations(
         val path = path(uuid)
         val bytes = newContent.toByteArray(Charsets.UTF_8)
         WorkspaceTextContentPolicy().validate(path.substringAfterLast('/'), textMime(path), bytes, WorkspaceTextOperation.WRITE)
-        completedHash = mounts.write(session, path, bytes, expectedHash, false).hash
+        completedHash = writeMounted(path, bytes, expectedHash).hash
         return WriteResult.Success(completedHash!!)
     }
     override suspend fun diffFile(workspaceRootUuid: String, uuid: String, basisHash: String?): DiffResult {
@@ -524,10 +533,16 @@ private class MountedFileOperations(
         }
         val newBytes = patched.toByteArray(Charsets.UTF_8)
         WorkspaceTextContentPolicy().validate(path(uuid).substringAfterLast('/'), textMime(path(uuid)), newBytes, WorkspaceTextOperation.PATCH)
-        val updated = mounts.write(session, path(uuid), newBytes, expectedHash, false)
+        val updated = writeMounted(path(uuid), newBytes, expectedHash)
         completedHash = updated.hash
         return PatchResult.Success(updated.hash, operations.size)
     }
+    private suspend fun writeMounted(path: String, bytes: ByteArray, expectedHash: String): FileEntry {
+        // Linux 的通用写路径仍然只读；仅把本次已绑定的录音文档交给统一授权写入入口。
+        val writer = recordingWrite?.takeIf { it.first == path }?.second ?: mounts
+        return writer.write(session, path, bytes, expectedHash, false)
+    }
+
     private suspend fun textMime(path: String) = (mounts as? LinuxSessionExternalWorkspaceAccess)?.textMime(session, path)
 }
 

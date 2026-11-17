@@ -1758,6 +1758,13 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     config?.knowledgeFileAccess != com.promenar.infinity.data.agent.KnowledgeFileAccess.OFF &&
                     config?.memoryPolicy?.allowedCollectionIds == null && session.ragOptions?.selectedCollectionIds == null
             },
+            fileOperations = fileOperationRepository,
+            recordingAudioFile = { id ->
+                if (com.promenar.infinity.recording.hasRecordingSessions(this, listOf(id))) {
+                    com.promenar.infinity.recording.RecordingStore(this).audio(id).takeIf { it.isFile }
+                } else null
+            },
+            onRecordingDocumentSaved = { id, content, hash -> recordings.syncFromLibraryDocument(id, content, hash) },
         )
     }
 

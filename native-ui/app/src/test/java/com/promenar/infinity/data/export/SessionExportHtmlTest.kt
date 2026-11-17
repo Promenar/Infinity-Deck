@@ -102,4 +102,31 @@ class SessionExportHtmlTest {
             assertTrue(snapshot.contains("notes.txt"))
         }
     }
+
+    @Test fun 录音导出渲染富格式和时间戳并转义其它链接() {
+        val fence = "~~~".replace('~', '`')
+        val markdown = "[01:23](recording://seek/83000) [dangerous](javascript:alert(1))\n\n" +
+            "|项目|数量|\n|---|---|\n|样本|2|\n\n公式：\$a^2+b^2\$" +
+            "\n\n${fence}mermaid\nflowchart TD\n A --> B\n$fence" +
+            "\n\n${fence}echarts\n{\"tooltip\":{},\"series\":[{\"type\":\"bar\",\"data\":[2]}]}\n$fence"
+        val renderer = ExportHtmlRenderer(assets)
+        val document = RecordingExportDocument("访谈 & 会议", 1, 2, 83_000, 1, "Qwen 整理", markdown,
+            listOf(RecordingExportSegment("01:23", "主持人", "听写 <全文>")))
+        val html = renderer.renderRecording(document, SessionExportFormat.PNG)
+        for (snippet in listOf("访谈 &amp; 会议", "01:23", "Qwen 整理", "整理稿", "原始转写", "主持人",
+            "听写 &lt;全文&gt;", "<table>", "data-math", "data-diagram=\"mermaid\"", "data-diagram=\"echarts\"",
+            "<span class=\"seek-stamp\">01:23</span>", "recording-export", "unbounded", "scrollWidth")) {
+            assertTrue(html.contains(snippet), snippet)
+        }
+        assertFalse(html.contains("href=\"javascript:"))
+        assertTrue(html.contains("[dangerous](javascript:alert(1))"))
+        assertTrue(renderer.render(doc("[01:23](recording://seek/83000)"), SessionExportFormat.HTML, true)
+            .contains("<span class=\"seek-stamp\">01:23</span>"))
+    }
+
+    @Test fun 超过标准页高的完整块获得加长页() {
+        val blocks = listOf(ExportSlice(90, 280), ExportSlice(150, 305), ExportSlice(350, 380))
+        val pages = splitUnboundedExportPdfHeight(415, blocks, 100)
+        assertEquals(listOf(ExportSlice(0, 90), ExportSlice(90, 305), ExportSlice(305, 405), ExportSlice(405, 415)), pages)
+    }
 }

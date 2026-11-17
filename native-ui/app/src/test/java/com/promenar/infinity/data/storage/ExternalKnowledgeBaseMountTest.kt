@@ -7,9 +7,23 @@ import com.promenar.infinity.data.local.db.dao.ExternalMountDao
 import com.promenar.infinity.data.local.db.entity.ExternalMountEntity
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.rag.FileIndexEventSink
+import com.promenar.infinity.data.workspace.SessionWorkspace
+import com.promenar.infinity.domain.model.SessionRunMode
+import com.promenar.infinity.domain.repository.IFileOperationRepository
 import com.promenar.infinity.domain.repository.IWorkspaceRepository
+import com.promenar.infinity.domain.repository.WriteResult
+import com.promenar.infinity.domain.storage.ExternalFolderBackend
+import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.storage.ExternalFolderException
 import com.promenar.infinity.domain.storage.ExternalMount
+import com.promenar.infinity.recording.LOCAL_RECORDING_MIME
+import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
+import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
+import com.promenar.infinity.ui.chat.manager.skills.FilePatchSkill
+import com.promenar.infinity.ui.chat.manager.skills.FileWriteSkill
+import com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess
+import com.promenar.infinity.ui.chat.manager.skills.LinuxSessionFileSkill
+import com.promenar.infinity.ui.chat.manager.skills.MountedWorkspaceSkill
 import io.mockk.*
 import java.io.File
 import java.nio.file.Files
@@ -18,6 +32,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -166,5 +182,105 @@ class ExternalKnowledgeBaseMountTest {
         }
         assertThat(File(root, "note.md").readText()).isEqualTo("原文")
         assertThat(File(root, "new").exists()).isFalse()
+    }
+
+    @Test fun 虚拟录音音频支持受限读取并保留磁盘同名文件优先级() = runBlocking<Unit> {
+        val audioDirectory = File(temporary, "audio").apply { mkdirs() }
+        val audio = File(audioDirectory, "original.wav").apply { writeBytes(byteArrayOf(82, 73, 70, 70, 42)) }
+        val recording = rootEntry.copy(uuid = "rec", parentUuid = "kb-root", name = "访谈.md",
+            materializedPath = "/访谈.md", isDirectory = false, mimeType = LOCAL_RECORDING_MIME)
+        coEvery { workspace.observeChildren("kb-root", "kb-root") } returns MutableStateFlow(listOf(recording, recording.copy(uuid = "trash",
+            name = "废弃.md", inRecycleBin = true)))
+        val backend = KnowledgeBaseRecordingBackend(fileSystem.backend(root), "kb-root", workspace, { audio }, { fileSystem.backend(it) })
+        assertThat(backend.list("/").map { it.name }).containsExactly("访谈.wav")
+        assertThat(backend.stat("/访谈.wav")?.size).isEqualTo(audio.length())
+        assertThat(backend.stat("/访谈.wav")?.sha256).isEqualTo(externalSha256(audio.readBytes()))
+        assertThat(backend.read("/访谈.wav").toList()).isEqualTo(audio.readBytes().toList())
+        assertThat(backend.readStream("/访谈.wav", 5) { it.readBytes().toList() }).isEqualTo(audio.readBytes().toList())
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { backend.readStream("/访谈.wav", 4) { it.read() } }
+        }.code).isEqualTo("TOO_LARGE")
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { backend.write("/访谈.wav", byteArrayOf()) }
+        }.code).isEqualTo("READ_ONLY")
+        File(root, "访谈.wav").writeText("磁盘文件")
+        assertThat(backend.list("/").map { it.name }).containsExactly("访谈.wav")
+        assertThat(backend.read("/访谈.wav").decodeToString()).isEqualTo("磁盘文件")
+    }
+
+    @Test fun 已授权录音文档使用原子版本写入并回调同步() = runBlocking<Unit> {
+        val markdownFile = File(root, "访谈.md").apply { writeText("原稿") }
+        val path = "/mnt/knowledge/访谈.md"
+        var entry = rootEntry.copy(uuid = "rec", parentUuid = "kb-root", name = markdownFile.name,
+            materializedPath = "/访谈.md", isDirectory = false, mimeType = LOCAL_RECORDING_MIME,
+            hash = externalSha256(markdownFile.readBytes()), sizeBytes = markdownFile.length())
+        coEvery { workspace.getByMaterializedPath("kb-root", any()) } answers { entry.takeIf { it.materializedPath == secondArg<String>() } }
+        coEvery { workspace.getByUuid("kb-root", "rec") } answers { entry }
+        val files = mockk<IFileOperationRepository>()
+        coEvery { files.writeFileAtomicExact("kb-root", "rec", any(), "session", any()) } answers {
+            val expected = arg<String>(4)
+            if (expected != entry.hash) WriteResult.Conflict(entry.hash, expected, "版本冲突") else {
+                markdownFile.writeText(thirdArg())
+                entry = entry.copy(hash = externalSha256(markdownFile.readBytes()), sizeBytes = markdownFile.length())
+                WriteResult.Success(entry.hash)
+            }
+        }
+        val callbacks = mutableListOf<Triple<String, String, String>>()
+        val recordingManager = ExternalFolderManager(context, dao, workspace, FileIndexEventSink.None,
+            knowledgeBaseRoots = { setOf("kb-root") }, knowledgeBaseAllowed = { _, _ -> knowledgeAllowed },
+            backendOverride = { fileSystem.backend(root) }, fileOperations = files,
+            onRecordingDocumentSaved = { id, content, hash -> callbacks += Triple(id, content, hash) })
+        recordingManager.addKnowledgeBase("knowledge", "session", "kb-root")
+        val oldHash = entry.hash
+        assertThat(recordingManager.isWritableKnowledgeRecording("session", path)).isTrue()
+        assertThat(recordingManager.write("session", path, "新稿".toByteArray(), oldHash, false)).isEqualTo(entry)
+        assertThat(callbacks).containsExactly(Triple("rec", "新稿", entry.hash))
+        assertThat(recordingManager.version("session", path, entry.hash)?.decodeToString()).isEqualTo("新稿")
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { recordingManager.write("session", path, "冲突".toByteArray(), oldHash, false) }
+        }.code).isEqualTo("CONFLICT")
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { recordingManager.write("session", path, byteArrayOf(0xc0.toByte()), null, false) }
+        }.code).isEqualTo("INVALID_TEXT")
+        for (action in listOf<suspend () -> Any?>(
+            { recordingManager.write("session", path, byteArrayOf(), null, true) },
+            { recordingManager.write("session", "/mnt/knowledge/访谈.wav", byteArrayOf(), null, false) },
+            { recordingManager.write("session", "/mnt/knowledge/note.md", byteArrayOf(), null, false) },
+            { recordingManager.delete("session", path, null) },
+            { recordingManager.createDirectory("session", "/mnt/knowledge/new") },
+        )) assertThat(assertThrows(ExternalFolderException::class.java) { runBlocking { action() } }.code).isEqualTo("READ_ONLY")
+
+        val privateRoot = rootEntry.copy(uuid = "session-root", workspaceRootUuid = "session-root", physicalRootPath = temporary.path)
+        coEvery { workspace.ensureSessionRoot("session") } returns privateRoot
+        val rootfs = mockk<ExternalFolderBackend> {
+            coEvery { stat("/") } returns ExternalFolderEntry("/", "", true, 0, 1, identity = "linux-rootfs")
+        }
+        val linux = LinuxSessionExternalWorkspaceAccess(recordingManager, workspace, files, { SessionWorkspace.Private }, rootfs)
+        suspend fun runTool(skill: SkillDefinition, mode: SessionRunMode, input: String) {
+            val mounted = MountedWorkspaceSkill(skill, recordingManager, workspace, files, FileIndexEventSink.None, captureFileChanges = false)
+            val routed = LinuxSessionFileSkill(mounted, { mode }, linux, workspace, files, FileIndexEventSink.None, captureFileChanges = false)
+            val invocation = object : SkillExecutionContext {
+                override val sessionId = "session"
+                override val agentId = "agent"
+                override val workspaceRootUuid = privateRoot.uuid
+                override val workspacePath: String? = null
+                override val runMode = mode
+            }
+            val result = routed.execute(Json.parseToJsonElement(input).jsonObject, invocation)
+            assertThat(result.status).isEqualTo("success")
+        }
+        runTool(FileWriteSkill(files, workspace), SessionRunMode.BUILTIN,
+            """{"path":"$path","expectedHash":"${entry.hash}","content":"内置全量编辑"}""")
+        runTool(FilePatchSkill(files, workspace), SessionRunMode.LINUX,
+            """{"path":"$path","expectedHash":"${entry.hash}","operations":[{"action":"replace_lines","startLine":1,"endLine":1,"newContent":"Linux 补丁编辑"}]}""")
+        assertThat(markdownFile.readText()).isEqualTo("Linux 补丁编辑")
+
+        knowledgeAllowed = false
+        assertThat(recordingManager.isWritableKnowledgeRecording("session", path)).isFalse()
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { recordingManager.write("session", path, "越权".toByteArray(), null, false) }
+        }.code).isEqualTo("ACCESS_DENIED")
+        assertThat(markdownFile.readText()).isEqualTo("Linux 补丁编辑")
+        assertThat(callbacks.map { it.second }).containsExactly("新稿", "内置全量编辑", "Linux 补丁编辑").inOrder()
     }
 }

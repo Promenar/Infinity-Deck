@@ -16,6 +16,7 @@ import com.promenar.infinity.data.workspace.workspaceFilePathPresenter
 import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.domain.storage.ExternalFolderPaths
 import com.promenar.infinity.domain.storage.ExternalWorkspaceAccess
+import com.promenar.infinity.recording.LOCAL_RECORDING_MIME
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,14 +34,18 @@ class RoomKnowledgeCatalog(
         val reach = resolver.resolve(session.id, options).documents
         val documents = indexedDocuments(reach)
         roots().filter { root ->
-            reach == DocumentReach.All || (documents.any { it.rootUuid == root.uuid } && database.query(SimpleSQLiteQuery(
-                "SELECT uuid FROM workspace_files WHERE workspace_root_uuid=? AND is_directory=0 AND in_recycle_bin=0", arrayOf(root.uuid),
+            reach == DocumentReach.All || database.query(SimpleSQLiteQuery(
+                "SELECT uuid, mime_type FROM workspace_files WHERE workspace_root_uuid=? AND is_directory=0 AND in_recycle_bin=0", arrayOf(root.uuid),
             )).use { cursor ->
                 val visible = (reach as DocumentReach.Scoped).documentIds
-                var allowed = true
-                while (cursor.moveToNext()) if (cursor.getString(0) !in visible) allowed = false
-                allowed
-            })
+                var hasRecording = false
+                while (cursor.moveToNext()) {
+                    // 整根挂载会列出全部文件，只允许能访问整根的会话挂载。
+                    if (cursor.getString(0) !in visible) return@use false
+                    if (cursor.getString(1) == LOCAL_RECORDING_MIME) hasRecording = true
+                }
+                hasRecording || documents.any { it.rootUuid == root.uuid }
+            }
         }
             .map { root -> KnowledgeBaseSummary(root.uuid, root.title, documents.count { it.rootUuid == root.uuid }, root.isDefault) }
     }

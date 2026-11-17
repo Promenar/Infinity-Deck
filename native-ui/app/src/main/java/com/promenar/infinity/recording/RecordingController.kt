@@ -1218,37 +1218,86 @@ internal class RecordingController(
         }
     }
 
-    fun publish(id: String) {
-        io.launch {
-            publishing.withLock {
-                try {
-                    val item = lock.withLock { session(id)?.takeUnless { it.captureRollbackPending ||
-                        it.phase !in setOf(RecordingPhase.Interrupted, RecordingPhase.Finished) } } ?: return@withLock
-                    val document = publishDocument(item) { base, target ->
-                        lock.withLock {
-                            val current = requireNotNull(session(id))
-                            save(current.copy(documentHash = base, pendingDocumentHash = target))
-                        }
-                    }
-                    lock.withLock {
-                        val current = session(id) ?: return@withLock
-                        save(current.copy(documentId = document.path, documentHash = document.hash, pendingDocumentHash = null))
-                        if (_state.value.failure == R.string.recording_publish_failed) {
-                            _state.value = _state.value.copy(failure = null)
-                        }
-                    }
-                } catch (failure: Exception) {
-                    if (failure is CancellationException) throw failure
-                    report(R.string.recording_publish_failed)
-                }
+    suspend fun syncFromLibraryDocument(
+        id: String,
+        markdownContent: String,
+        newDocumentHash: String,
+        overrideTitle: String? = null,
+    ) {
+        state.first { it.ready }
+        publishing.withLock {
+            lock.withLock sync@ {
+                val current = session(id)?.takeUnless {
+                    it.captureRollbackPending || it.id == _state.value.activeId || it.phase == RecordingPhase.Recording ||
+                        it.phase == RecordingPhase.Paused
+                } ?: return@sync
+                val requestedTitle = overrideTitle?.takeIf(String::isNotBlank)
+                val parsed = parseRecordingMarkdown(markdownContent, requestedTitle ?: current.title)
+                val title = requestedTitle ?: parsed.title
+                if (current.documentHash == newDocumentHash && current.title == title && current.organized == parsed.organized) return@sync
+                val updated = current.copy(
+                    title = title,
+                    organized = parsed.organized,
+                    organizedThrough = current.segments.size,
+                    manualEdit = true,
+                    summaryPending = false,
+                    reprocessThrough = null,
+                    reprocessText = "",
+                    summaryProgress = null,
+                    lastOrganizeFailure = null,
+                    documentHash = newDocumentHash,
+                    pendingDocumentHash = null,
+                    organizedSource = current.organizedSource.takeIf { current.organized == parsed.organized },
+                )
+                save(updated.copy(libraryDocumentSnapshotHash = updated.documentContentHash()))
+                cancelOrganizationFor(id)
+                nextAttempt.remove(id)
             }
         }
     }
 
+    fun publish(id: String) {
+        io.launch {
+            recordingLibraryDocumentLock(id).withLock {
+                publishLocked(id)
+            }
+        }
+    }
+
+    private suspend fun publishLocked(id: String) {
+        publishing.withLock publish@ {
+            try {
+                val item = lock.withLock { session(id)?.takeUnless { it.captureRollbackPending ||
+                    it.phase !in setOf(RecordingPhase.Interrupted, RecordingPhase.Finished) } } ?: return@publish
+                if (item.pendingDocumentHash == null && item.libraryDocumentSnapshotHash == item.documentContentHash()) return@publish
+                val document = publishDocument(item) { base, target ->
+                    lock.withLock {
+                        val current = requireNotNull(session(id))
+                        save(current.copy(documentHash = base, pendingDocumentHash = target))
+                    }
+                }
+                lock.withLock {
+                    val current = session(id) ?: return@withLock
+                    save(current.copy(documentId = document.path, documentHash = document.hash, pendingDocumentHash = null,
+                        libraryDocumentSnapshotHash = null))
+                    if (_state.value.failure == R.string.recording_publish_failed) {
+                        _state.value = _state.value.copy(failure = null)
+                    }
+                }
+            } catch (failure: Exception) {
+                if (failure is CancellationException) throw failure
+                report(R.string.recording_publish_failed)
+            }
+        }
+    }
+
+    private fun RecordingSession.documentContentHash() =
+        com.promenar.infinity.infra.util.Sha256Utils.hash(recordingMarkdown(this).toByteArray())
+
     private fun RecordingSession.needsDocumentPublication() = !captureRollbackPending &&
         (pendingDocumentHash != null || (phase == RecordingPhase.Finished ||
             phase == RecordingPhase.Interrupted && (documentHash != null || publishedLanguage != null)) &&
-            documentHash != com.promenar.infinity.infra.util.Sha256Utils.hash(recordingMarkdown(this).toByteArray()))
+            documentContentHash().let { it != documentHash && it != libraryDocumentSnapshotHash })
 
     fun exportRaw(id: String, destination: Uri) {
         io.launch {

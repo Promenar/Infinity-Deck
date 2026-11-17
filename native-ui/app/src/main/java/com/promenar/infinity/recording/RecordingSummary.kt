@@ -98,7 +98,8 @@ private fun StringBuilder.appendRecordingPoint(
 }
 
 internal fun recordingLanguageMatches(language: RecordingLanguage, text: String): Boolean {
-    val letters = text.filter(Char::isLetter)
+    val cleaned = recordingNaturalLanguage(text)
+    val letters = cleaned.ifBlank { text }.filter(Char::isLetter)
     if (letters.isEmpty()) return false
     val han = letters.count { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HAN }
     val kana = letters.count {
@@ -111,4 +112,24 @@ internal fun recordingLanguageMatches(language: RecordingLanguage, text: String)
         RecordingLanguage.English -> latin >= letters.length * .8
         RecordingLanguage.Japanese -> cjk >= 2 && cjk * 2 >= letters.length
     }
+}
+
+private val recordingInlineCode = Regex("""(`+)[^\n]*?\1""")
+private val recordingBlockMath = Regex("""\$\$[\s\S]*?\$\$""")
+private val recordingInlineMath = Regex("""(?<![\\$])\$(?!\$)[^$\n]+?\$""")
+private val recordingLinkTarget = Regex("""\]\([^)\n]*\)""")
+
+private fun recordingNaturalLanguage(text: String): String {
+    val lines = text.lines()
+    val prose = buildString {
+        var from = 0
+        for (fence in recordingMarkdownFences(lines)) {
+            for (index in from until fence.start) appendLine(lines[index])
+            from = fence.end?.plus(1) ?: lines.size
+        }
+        for (index in from until lines.size) appendLine(lines[index])
+    }
+    return recordingLinkTarget.replace(
+        recordingInlineMath.replace(recordingBlockMath.replace(recordingInlineCode.replace(prose, " "), " "), " "), "]",
+    )
 }

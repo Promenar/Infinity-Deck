@@ -67,6 +67,7 @@ internal data class RecordingSession(
     val pendingDocumentHash: String? = null,
     val organizedSource: RecordingOrganizeSource? = null,
     val lastOrganizeFailure: RecordingOrganizeFailure? = null,
+    val libraryDocumentSnapshotHash: String? = null,
 ) {
     val durationMs get() = audioBytes / 32
     val organizationCursor get() = reprocessThrough ?: organizedThrough
@@ -382,7 +383,7 @@ internal fun recordingRawText(session: RecordingSession): String =
         "${recordingTimestamp(segment.startMs)} ${if (speaker == null) "" else "$speaker  "}${segment.text}"
     }
 
-private fun RecordingSession.exportSpeaker(segment: RecordingSegment): String? =
+internal fun RecordingSession.exportSpeaker(segment: RecordingSegment): String? =
     segment.speakerId?.takeIf { distinguishSpeakers }?.let { speakerName(it) { index -> "说话人 $index" } }
 
 internal fun recordingMarkdown(session: RecordingSession): String = buildString {
@@ -396,4 +397,50 @@ internal fun recordingMarkdown(session: RecordingSession): String = buildString 
             append(segment.text)
         }
     }
+}
+
+internal data class ParsedRecordingMarkdown(val title: String, val organized: String)
+
+internal fun parseRecordingMarkdown(markdown: String, fallbackTitle: String): ParsedRecordingMarkdown {
+    val lines = markdown.replace("\r\n", "\n").split('\n')
+    val first = lines.indexOfFirst(String::isNotBlank)
+    if (first < 0) return ParsedRecordingMarkdown(fallbackTitle, "")
+    val heading = lines[first].takeIf { it.startsWith("# ") }
+    val title = heading?.removePrefix("# ")?.trim()?.ifBlank { fallbackTitle } ?: fallbackTitle
+    var start = first + if (heading == null) 0 else 1
+    while (start < lines.size && lines[start].isBlank()) start++
+    if (lines.getOrNull(start)?.trimEnd() == "## 整理稿") start++
+    val fences = recordingMarkdownFences(lines).iterator()
+    var fence = if (fences.hasNext()) fences.next() else null
+    var end = lines.size
+    for (index in start until lines.size) {
+        while (fence?.end?.let { it < index } == true) fence = if (fences.hasNext()) fences.next() else null
+        if (fence?.let { index >= it.start } == true) continue
+        if (lines[index].trimEnd() == "## 原始转写") {
+            end = index
+            break
+        }
+    }
+    return ParsedRecordingMarkdown(title, lines.subList(start, end).joinToString("\n").trim())
+}
+
+internal data class RecordingMarkdownFence(val start: Int, val end: Int?, val marker: String, val info: String)
+
+private val recordingFenceLine = Regex("""^ {0,3}(`{3,}|~{3,})(.*)$""")
+
+internal fun recordingMarkdownFences(lines: List<String>): List<RecordingMarkdownFence> = buildList {
+    var open: RecordingMarkdownFence? = null
+    lines.forEachIndexed { index, line ->
+        val match = recordingFenceLine.matchEntire(line) ?: return@forEachIndexed
+        val marker = match.groupValues[1]
+        val info = match.groupValues[2].trim()
+        val current = open
+        if (current == null) {
+            if (marker.first() != '`' || '`' !in info) open = RecordingMarkdownFence(index, null, marker, info)
+        } else if (marker.first() == current.marker.first() && marker.length >= current.marker.length && info.isEmpty()) {
+            add(current.copy(end = index))
+            open = null
+        }
+    }
+    open?.let(::add)
 }

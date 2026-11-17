@@ -14,7 +14,13 @@ import com.promenar.infinity.domain.repository.IWorkspaceRepository
 import com.promenar.infinity.domain.repository.RenameResult
 import com.promenar.infinity.domain.repository.RenameIndexTarget
 import com.promenar.infinity.domain.repository.WriteResult
+import com.promenar.infinity.recording.LOCAL_RECORDING_MIME
+import com.promenar.infinity.recording.hasRecordingSessions
+import com.promenar.infinity.recording.recordingLibraryDocumentLock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +29,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicReference
 
 enum class DocEditorPhase {
@@ -103,6 +110,7 @@ class DocEditorViewModel(
     private val workspaceRepository: IWorkspaceRepository,
     private val indexEventSink: com.promenar.infinity.data.rag.FileIndexEventSink? = null,
     private val pendingIndexCoordinator: PendingDocumentIndexCoordinator? = null,
+    private val onRecordingDocumentSaved: (suspend (documentId: String, title: String, content: String, newHash: String) -> Unit)? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DocEditorUiState())
     val uiState: StateFlow<DocEditorUiState> = _uiState.asStateFlow()
@@ -279,19 +287,20 @@ class DocEditorViewModel(
         }
         viewModelScope.launch {
             try {
-                if (snapshot.titleDirty) {
-                    val renamed = renameTitle(snapshot)
-                    if (!renamed) return@launch
-                }
-
-                if (snapshot.contentDirty) {
-                    saveContent(snapshot)
+                val recording = onRecordingDocumentSaved != null &&
+                    workspaceRepository.getByUuid(snapshot.workspaceRootUuid, snapshot.documentId)?.mimeType == LOCAL_RECORDING_MIME
+                if (recording) {
+                    recordingLibraryDocumentLock(snapshot.documentId).withLock {
+                        withContext(NonCancellable) { saveDocument(snapshot, syncRecording = true) }
+                    }
                 } else {
-                    markReadyFor(snapshot)
+                    saveDocument(snapshot, syncRecording = false)
                 }
             } catch (cancelled: CancellationException) {
                 recoverCancelledSave(snapshot)
                 throw cancelled
+            } catch (_: Exception) {
+                updateSameDocument(snapshot) { it.copy(phase = DocEditorPhase.SaveError, failureCode = DocEditorFailureCode.ContentSaveFailed) }
             } finally {
                 activeSaveIdentity.compareAndSet(saveIdentity, null)
                 saveMutex.unlock()
@@ -299,7 +308,25 @@ class DocEditorViewModel(
         }
     }
 
-    private suspend fun renameTitle(snapshot: DocEditorUiState): Boolean = try {
+    private suspend fun saveDocument(snapshot: DocEditorUiState, syncRecording: Boolean) {
+        val renamed = if (snapshot.titleDirty) renameTitle(snapshot) ?: return else null
+        val title = renamed?.name ?: snapshot.persistedTitle
+        if (snapshot.contentDirty) {
+            saveContent(snapshot, title, syncRecording)
+        } else {
+            if (syncRecording && renamed != null) {
+                val content = if (renamed.targetHash == snapshot.currentHash && snapshot.contentAccess == DocEditorContentAccess.Editable) {
+                    snapshot.persistedContent
+                } else {
+                    fileOperationRepository.readFileRange(snapshot.workspaceRootUuid, snapshot.documentId, null, null).content
+                }
+                onRecordingDocumentSaved?.invoke(snapshot.documentId, title, content, renamed.targetHash)
+            }
+            markReadyFor(snapshot)
+        }
+    }
+
+    private suspend fun renameTitle(snapshot: DocEditorUiState): RenameResult.Success? = try {
         when (val result = workspaceRepository.rename(
             workspaceRootUuid = snapshot.workspaceRootUuid,
             uuid = snapshot.documentId,
@@ -338,7 +365,7 @@ class DocEditorViewModel(
                         // 重命名已经提交；精确 target 留在补偿队列中。
                     }
                 }
-                true
+                result
             }
 
             is RenameResult.Conflict -> {
@@ -351,7 +378,7 @@ class DocEditorViewModel(
                         titleConflictCurrentName = result.current,
                     )
                 }
-                false
+                null
             }
 
             RenameResult.NotFound -> {
@@ -364,7 +391,7 @@ class DocEditorViewModel(
                         titleConflictCurrentName = null,
                     )
                 }
-                false
+                null
             }
         }
     } catch (cancelled: CancellationException) {
@@ -377,17 +404,15 @@ class DocEditorViewModel(
                 failureDetail = null,
             )
         }
-        false
+        null
     }
 
-    private suspend fun saveContent(snapshot: DocEditorUiState) {
+    private suspend fun saveContent(snapshot: DocEditorUiState, title: String, syncRecording: Boolean) {
         val result = try {
-            fileOperationRepository.writeFileAtomic(
-                workspaceRootUuid = snapshot.workspaceRootUuid,
-                uuid = snapshot.documentId,
-                newContent = snapshot.content,
-                sessionId = EDITOR_SESSION_ID,
-                expectedHash = snapshot.currentHash,
+            if (syncRecording) fileOperationRepository.writeFileAtomicExact(
+                snapshot.workspaceRootUuid, snapshot.documentId, snapshot.content, EDITOR_SESSION_ID, snapshot.currentHash,
+            ) else fileOperationRepository.writeFileAtomic(
+                snapshot.workspaceRootUuid, snapshot.documentId, snapshot.content, EDITOR_SESSION_ID, snapshot.currentHash,
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -437,6 +462,7 @@ class DocEditorViewModel(
                         indexQueueFailed = pending.isNotEmpty(),
                     )
                 }
+                if (syncRecording) onRecordingDocumentSaved?.invoke(snapshot.documentId, title, snapshot.content, result.newHash)
             }
 
             is WriteResult.Conflict -> updateSameDocument(snapshot) { current ->
@@ -720,6 +746,13 @@ class DocEditorViewModel(
                 fileOperationRepository = app.fileOperationRepository,
                 workspaceRepository = app.workspaceRepository,
                 pendingIndexCoordinator = app.pendingDocumentIndexCoordinator,
+                onRecordingDocumentSaved = { id, title, content, hash ->
+                    withContext(Dispatchers.IO) {
+                        if (hasRecordingSessions(app, listOf(id))) {
+                            app.recordings.syncFromLibraryDocument(id, content, hash, overrideTitle = title)
+                        }
+                    }
+                },
             ) as T
         }
     }
