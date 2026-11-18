@@ -308,6 +308,20 @@ internal class DefaultChatGenerationRuntime(
         session.messages.firstOrNull { it.id == request.userMessageId && it.role == MessageRole.USER }
             ?.takeIf { !it.quotes.isNullOrEmpty() }?.contentForModel() ?: request.userContent
 
+    private fun hasStagedUserEdit(request: GenerationRequest): Boolean =
+        request.userMessageId?.let { messageManager.hasStagedUserEdit(request.sessionId, it) } == true
+
+    private fun hasInvalidatedSummary(request: GenerationRequest, session: com.promenar.infinity.data.model.Session): Boolean =
+        isSummaryInvalidatedByReplacement(session, request.userMessageId, request.messageIdsToReplace) ||
+            (session.messages.any { it.id == request.userMessageId && it.isArchived } && hasStagedUserEdit(request))
+
+    private fun com.promenar.infinity.data.model.Session.forReplacementContext(request: GenerationRequest) =
+        if (hasInvalidatedSummary(request, this)) copy(
+            summary = null,
+            messages = messages.map { if (it.isArchived) it.copy(isArchived = false) else it },
+            stats = stats?.copy(contextUsageBaseline = null),
+        ) else this
+
     private suspend fun compactContext(
         request: GenerationRequest,
         session: com.promenar.infinity.data.model.Session,
@@ -319,7 +333,9 @@ internal class DefaultChatGenerationRuntime(
         recoveryBudget: Int? = null,
     ): ContextCompactionResult {
         val operation: suspend () -> ContextCompactionResult = {
-            val eligible = session.copy(messages = session.messages.filterNot { it.id in request.messageIdsToReplace })
+            val summaryInvalidated = hasInvalidatedSummary(request, session)
+            val contextSession = session.forReplacementContext(request)
+            val eligible = contextSession.copy(messages = contextSession.messages.filterNot { it.id in request.messageIdsToReplace })
             compactionPipeline.compact(
                 ContextCompactionInput(
                     session = eligible,
@@ -333,7 +349,8 @@ internal class DefaultChatGenerationRuntime(
                     inputBudgetOverride = recoveryBudget,
                 ),
                 buildPrompt = { updated ->
-                    val updatedSystem = replaceHistorySummary(systemPrompt, updated.summary, preparedContextSummary)
+                    val previousSummary = if (summaryInvalidated) session.summary ?: preparedContextSummary else preparedContextSummary
+                    val updatedSystem = replaceHistorySummary(systemPrompt, updated.summary, previousSummary)
                     prompt.copy(messages = offloadToolResults(
                         request.sessionId,
                         buildMessagesWithMedia(
@@ -345,7 +362,8 @@ internal class DefaultChatGenerationRuntime(
                 summarizeHistory = { previous, messages ->
                     val estimatedInput = 128L + ApproximateTokenEstimator.estimate(previous.summary.orEmpty()) +
                         messages.sumOf { ApproximateTokenEstimator.estimate(it.contentForModel().take(2000)).toLong() + 8 }
-                    if (!canSpendOnSummary(request, estimatedInput + 1024)) null else {
+                    // 替换成功前保留原摘要与归档状态，失败时可以原样恢复。
+                    if (summaryInvalidated || !canSpendOnSummary(request, estimatedInput + 1024)) null else {
                         if (memoryEnabled(session)) {
                             archiveMessages(request, preparedRoute?.modelId ?: prompt.model, messages)
                         }
@@ -535,7 +553,11 @@ internal class DefaultChatGenerationRuntime(
         latencyPreparationStart = System.nanoTime() / 1_000_000
         toolProgressReminder.start()
         interactionMode = request.interactionMode
-        val input = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == request.userMessageId }
+        val initialSession = requireNotNull(store.getSession(request.sessionId)) { "生成会话不存在" }
+        rollbackBaselineMessageIds = initialSession.messages.mapTo(mutableSetOf()) { it.id }.apply {
+            remove(request.assistantMessageId)
+        }
+        val input = initialSession.messages.firstOrNull { it.id == request.userMessageId }
         if (input?.role == MessageRole.USER && input.name == null && !request.assistantMessageId.startsWith("ask_resume_"))
             sessionMailbox?.resetForUserInput(request.sessionId)
         branchService?.invoke()?.prepareWorkspace(request.sessionId)
@@ -543,9 +565,6 @@ internal class DefaultChatGenerationRuntime(
         sshRuntime?.resumeOwner("agent:${request.sessionId}")
         val session = requireNotNull(store.getSession(request.sessionId)) { "生成会话不存在" }
         currentAssistantMessageId = request.assistantMessageId
-        rollbackBaselineMessageIds = session.messages.mapTo(mutableSetOf()) { it.id }.apply {
-            remove(request.assistantMessageId)
-        }
         require(session.messages.any {
             it.id == assistantMessageId(request) && it.role == MessageRole.ASSISTANT
         }) { "生成目标消息不存在" }
@@ -598,7 +617,7 @@ internal class DefaultChatGenerationRuntime(
             .dropWhile { it.id != request.userMessageId }.drop(1).takeWhile { it.role != MessageRole.USER }
         val hasPreviousAssistant = turnMessages.any { it.role == MessageRole.ASSISTANT && it.id != assistantMessageId(request) && it.id !in request.messageIdsToReplace }
         val originalOwner = com.promenar.infinity.ui.chat.manager.turnContextMetadata(storedUser?.turnContext)?.assistantMessageId
-        val regenerate = request.messageIdsToReplace.isNotEmpty() ||
+        val regenerate = request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request) ||
             (originalOwner != null && originalOwner != request.assistantMessageId && !hasPreviousAssistant)
         val legacyResumption = storedUser?.turnContext == null && hasPreviousAssistant && !regenerate
         if (frozenTurnContext == null && replacementTurnContext == null && regenerate && storedUser != null)
@@ -609,7 +628,7 @@ internal class DefaultChatGenerationRuntime(
             com.promenar.infinity.ui.chat.manager.ContextRetrieval("", emptyList(), "", emptyList(), null, "", emptyList())
         }
         if (reusedRetrieval == null) ui.replaceRagPhases(defaultRagPhases())
-        var session = store.getSession(request.sessionId) ?: error("生成会话不存在")
+        var session = (store.getSession(request.sessionId) ?: error("生成会话不存在")).forReplacementContext(request)
         val savedConfiguration = com.promenar.infinity.ui.chat.manager.turnContextMetadata(savedTurnContext)?.configuration
         val agent = agentRepository.getById(session.agentId)
         val agentConfig = configResolver.resolve(agent)
@@ -745,8 +764,9 @@ internal class DefaultChatGenerationRuntime(
         }
         if (target != null && target.modelId != route.modelId)
             messageManager.persistModelInputs(request.sessionId, target.id, mapOf("modelId" to route.modelId))
-        session = store.getSession(request.sessionId) ?: error("生成会话不存在")
-        val systemPrompt = replaceHistorySummary(context.finalSystemPrompt, session.summary, session.summary)
+        val storedSession = store.getSession(request.sessionId) ?: error("生成会话不存在")
+        session = storedSession.forReplacementContext(request)
+        val systemPrompt = replaceHistorySummary(context.finalSystemPrompt, session.summary, preparedContextSummary)
         val prompt = PromptRequest(
             messages = buildMessagesWithMedia(
                 session,
@@ -786,7 +806,7 @@ internal class DefaultChatGenerationRuntime(
         }
         val compacted = if (refreshingForSend) {
             compactionPipeline.preview(session, prompt.copy(messages = offloadToolResults(request.sessionId, prompt.messages)), route.modelId)
-        } else compactContext(request, session, prompt, systemPrompt)
+        } else compactContext(request, storedSession, prompt, systemPrompt)
         compacted.blockedFloor?.let { blocked ->
             val failure = blocked.failure(hasFullContextDocuments)
             handleDocumentBudgetFailure(request, failure)
@@ -1321,6 +1341,9 @@ internal class DefaultChatGenerationRuntime(
                 approval,
             )
             if (creation == ToolApprovalCreation.CONFLICT) {
+                if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
+                    discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
+                }
                 ui.setFailureSurface(GenerationFailureSurface.OVERLAY)
                 ui.setError(
                     GenerationFailure.busy(
@@ -1463,7 +1486,13 @@ internal class DefaultChatGenerationRuntime(
                     ?: error("插队目标消息不存在")
                 messageManager.markGenerationTerminal(request.sessionId, target.id, target.content,
                     if (target.status == "interrupted") "interrupted" else "success")
-                if (request.messageIdsToReplace.isNotEmpty()) commitReplacement(request)
+                if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
+                    if (target.status == "interrupted") {
+                        discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
+                    } else {
+                        commitReplacement(request)
+                    }
+                }
                 messageManager.addMessage(request.sessionId, com.promenar.infinity.data.model.Message(
                     id = userId, role = MessageRole.USER, content = item.text,
                     userImages = images.takeIf { it.isNotEmpty() }, userDocuments = item.documents.takeIf { it.isNotEmpty() },
@@ -1654,15 +1683,21 @@ internal class DefaultChatGenerationRuntime(
             store.getSession(request.sessionId)
         } else null
         val createdCitationIds = if (citationSession != null) messagesCreatedSincePrepare(request).toSet() else emptySet()
-        if (request.messageIdsToReplace.isNotEmpty()) {
-            if (status == GenerationTerminalStatus.SUCCESS) {
+        if (status == GenerationTerminalStatus.SUCCESS) {
+            try {
                 commitReplacement(request)
-            } else if (!replacementCommitted) {
-                discardPreparedMessagesPreservingSummaryUsage(
-                    request,
-                    messagesCreatedSincePrepare(request),
-                )
+            } catch (failure: Throwable) {
+                if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
+                    try {
+                        discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
+                    } catch (cleanup: Throwable) {
+                        failure.addSuppressed(cleanup)
+                    }
+                }
+                throw failure
             }
+        } else if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
+            discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
         }
         if (citationSession != null && chatCitationRecorder != null) {
             val retained = store.getSession(request.sessionId)?.messages.orEmpty().mapTo(hashSetOf()) { it.id }
@@ -1686,10 +1721,14 @@ internal class DefaultChatGenerationRuntime(
     override suspend fun pauseForUser(request: GenerationRequest, snapshot: GenerationSnapshot) {
         messageManager.markGenerationTerminal(request.sessionId, assistantMessageId(request), snapshot.content, "paused")
         sessionManager.updateSession(request.sessionId, mapOf("loopStatus" to com.promenar.infinity.data.model.LoopStatus.PAUSED))
+        commitReplacement(request)
     }
 
     override suspend fun releaseToolResources(request: GenerationRequest, awaitingApproval: Boolean) {
         try {
+            if (!awaitingApproval && hasStagedUserEdit(request) && !replacementCommitted) {
+                discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
+            }
             val userId = request.userMessageId
             if (store.getSession(request.sessionId)?.messages.orEmpty().any { it.id == userId }) {
                 composerQueueStore?.acceptForUser(request.sessionId, userId)
@@ -1714,8 +1753,8 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override suspend fun cancelBeforeStart(request: GenerationRequest) {
-        if (request.messageIdsToReplace.isNotEmpty()) {
-            messageManager.discardPreparedMessages(request.sessionId, listOf(request.assistantMessageId))
+        if (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request)) {
+            discardPreparedMessagesPreservingSummaryUsage(request, listOf(request.assistantMessageId))
         } else {
             messageManager.markGenerationTerminal(request.sessionId, request.assistantMessageId, "", "cancelled")
             messageManager.flushGenerationTerminal(request.sessionId, request.assistantMessageId)
@@ -1726,15 +1765,17 @@ internal class DefaultChatGenerationRuntime(
     // 网络流与本地推理由任务自身的协程取消；共享 Provider 的取消入口会影响其它会话。
     override fun cancelProvider() = Unit
 
-    /** 删除被本次生成替换的旧回复；只执行一次，删除失败向上抛出以保留旧回复并走持久化失败路径。 */
-    private suspend fun commitReplacement(request: GenerationRequest) {
-        if (replacementCommitted || request.messageIdsToReplace.isEmpty()) return
+    /** 批量删除旧回复与已失效的摘要，再确认暂存的用户编辑。 */
+    private suspend fun commitReplacement(request: GenerationRequest) = withContext(kotlinx.coroutines.NonCancellable) {
+        if (replacementCommitted) return@withContext
+        if (request.messageIdsToReplace.isEmpty() && !hasStagedUserEdit(request)) return@withContext
         val present = store.getSession(request.sessionId)?.messages.orEmpty().mapTo(hashSetOf()) { it.id }
-        request.messageIdsToReplace.filter { it in present }.forEach { replacedId ->
-            if (store.getSession(request.sessionId)?.messages?.any { it.id == replacedId } == true) {
-                messageManager.deleteMessage(request.sessionId, replacedId)
-            }
+        val idsToDelete = request.messageIdsToReplace.filter { it in present }
+        if (idsToDelete.isNotEmpty()) {
+            messageManager.deleteMessages(request.sessionId, idsToDelete, replacementUserMessageId = request.userMessageId)
+            replacementCommitted = true
         }
+        request.userMessageId?.let { messageManager.commitStagedUserMessageEditIfPresent(request.sessionId, it) }
         replacementCommitted = true
     }
 
@@ -1762,7 +1803,7 @@ internal class DefaultChatGenerationRuntime(
     ) {
         if (refreshingForSend) return
         ui.setFailureSurface(
-            if (request.messageIdsToReplace.isEmpty()) {
+            if (request.messageIdsToReplace.isEmpty() && !hasStagedUserEdit(request)) {
                 GenerationFailureSurface.INLINE_MESSAGE
             } else {
                 GenerationFailureSurface.OVERLAY
@@ -1772,7 +1813,7 @@ internal class DefaultChatGenerationRuntime(
         ui.setProviderFailure(failure)
         ui.setGenerating(false)
         ui.onHandledFailure()
-        if (request.messageIdsToReplace.isNotEmpty()) {
+        if (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request)) {
             discardPreparedMessagesPreservingSummaryUsage(
                 request,
                 messagesCreatedSincePrepare(request),
@@ -1804,7 +1845,7 @@ internal class DefaultChatGenerationRuntime(
             settleQuestionResumption(request)
             return
         }
-        if (request.messageIdsToReplace.isNotEmpty()) {
+        if (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request)) {
             discardPreparedMessagesPreservingSummaryUsage(
                 request,
                 messagesCreatedSincePrepare(request),
@@ -1825,32 +1866,38 @@ internal class DefaultChatGenerationRuntime(
         }
     }
 
-    private suspend fun discardPreparedMessagesPreservingSummaryUsage(request: GenerationRequest, messageIds: List<String>) {
-        if (request.messageIdsToReplace.isNotEmpty() && !replacementCommitted) {
-            replacementTurnContext?.let { (userId, original) ->
-                messageManager.persistModelInputs(request.sessionId, userId, mapOf("turnContext" to original))
+    private suspend fun discardPreparedMessagesPreservingSummaryUsage(request: GenerationRequest, messageIds: List<String>) = withContext(kotlinx.coroutines.NonCancellable) {
+        try {
+            if (request.messageIdsToReplace.isNotEmpty() && !replacementCommitted && !hasStagedUserEdit(request)) {
+                replacementTurnContext?.let { (userId, original) ->
+                    messageManager.persistModelInputs(request.sessionId, userId, mapOf("turnContext" to original))
+                }
             }
-        }
-        val session = store.getSession(request.sessionId)
-        val ids = messageIds.toSet()
-        val usageRecords = session?.messages.orEmpty().filter { it.id in ids }.mapNotNull { message ->
-            val tokens = message.tokens ?: return@mapNotNull null
-            if (tokens.summaryInput <= 0 && tokens.summaryOutput <= 0 && tokens.summaryTotal <= 0) return@mapNotNull null
-            RolledBackSummaryUsageRecord(
-                messageId = message.id,
-                sessionId = request.sessionId,
-                modelId = message.modelId ?: session?.modelId ?: "unknown",
-                usage = TokenUsage(tokens.summaryInput, tokens.summaryOutput, tokens.summaryTotal, tokens.summaryEstimated),
-                createdAt = message.createdAt,
-            )
-        }
-        // 无摘要费用时保留原调度；已有费用的补偿重试仍须与统计读取串行。
-        if (usageRecords.isEmpty() && summarySpentTokens == 0L) {
-            messageManager.discardPreparedMessages(request.sessionId, messageIds)
-            return
-        }
-        RolledBackSummaryUsageStore(settings).preserveBeforeDiscard(usageRecords) {
-            messageManager.discardPreparedMessages(request.sessionId, messageIds)
+            val session = store.getSession(request.sessionId)
+            val ids = messageIds.toSet()
+            val usageRecords = session?.messages.orEmpty().filter { it.id in ids }.mapNotNull { message ->
+                val tokens = message.tokens ?: return@mapNotNull null
+                if (tokens.summaryInput <= 0 && tokens.summaryOutput <= 0 && tokens.summaryTotal <= 0) return@mapNotNull null
+                RolledBackSummaryUsageRecord(
+                    messageId = message.id,
+                    sessionId = request.sessionId,
+                    modelId = message.modelId ?: session?.modelId ?: "unknown",
+                    usage = TokenUsage(tokens.summaryInput, tokens.summaryOutput, tokens.summaryTotal, tokens.summaryEstimated),
+                    createdAt = message.createdAt,
+                )
+            }
+            // 无摘要费用时保留原调度；已有费用的补偿重试仍须与统计读取串行。
+            if (usageRecords.isEmpty() && summarySpentTokens == 0L) {
+                messageManager.discardPreparedMessages(request.sessionId, messageIds)
+                return@withContext
+            }
+            RolledBackSummaryUsageStore(settings).preserveBeforeDiscard(usageRecords) {
+                messageManager.discardPreparedMessages(request.sessionId, messageIds)
+            }
+        } finally {
+            if (!replacementCommitted) {
+                request.userMessageId?.let { messageManager.rollbackStagedUserMessageEditIfPresent(request.sessionId, it) }
+            }
         }
     }
 

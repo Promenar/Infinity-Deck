@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.repository
 
+import com.promenar.infinity.data.local.db.dao.ReplacementMessageDeletion
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.TurnMemoryState
 
@@ -11,6 +12,12 @@ interface IMessageRepository {
     suspend fun updatePartial(messageId: String, updates: Map<String, Any?>)
     suspend fun editContentInSession(sessionId: String, messageId: String, content: String) {
         throw MessagePersistenceException("消息仓库不支持事务化正文编辑")
+    }
+    suspend fun writeUserEditCandidate(sessionId: String, message: Message) {
+        throw MessagePersistenceException("消息仓库不支持暂存用户编辑")
+    }
+    suspend fun invalidateContextSummaryForArchivedUser(sessionId: String, userMessageId: String): Boolean {
+        throw MessagePersistenceException("消息仓库不支持清除失效摘要")
     }
     suspend fun delete(messageId: String)
     suspend fun deleteInSession(sessionId: String, messageId: String): Boolean {
@@ -24,6 +31,11 @@ interface IMessageRepository {
         }
         return deleted
     }
+    suspend fun deleteManyForReplacement(
+        sessionId: String,
+        messageIds: List<String>,
+        userMessageId: String,
+    ): ReplacementMessageDeletion = ReplacementMessageDeletion(deleteManyInSession(sessionId, messageIds), false)
     suspend fun deleteBySessionId(sessionId: String)
     suspend fun deleteMessagesAfter(sessionId: String, timestamp: Long)
     suspend fun getById(messageId: String): Message?

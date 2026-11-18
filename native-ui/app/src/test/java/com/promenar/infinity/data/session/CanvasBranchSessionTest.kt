@@ -8,6 +8,13 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.artifact.ArtifactOrigin
+import com.promenar.infinity.data.artifact.FileSessionArtifacts
+import com.promenar.infinity.domain.media.MediaKind
+import com.promenar.infinity.domain.media.MediaRef
+import com.promenar.infinity.domain.media.MediaResolution
+import com.promenar.infinity.domain.media.MediaSource
+import com.promenar.infinity.domain.media.WorkspaceMediaResolver
 import com.promenar.infinity.data.canvas.CanvasStore
 import com.promenar.infinity.data.canvas.FileCanvasStore
 import com.promenar.infinity.data.local.db.InfinityDatabase
@@ -106,6 +113,31 @@ class CanvasBranchSessionTest {
         assertThat(branchItems.single { it.id == first.id }.createdByMessageId).isEqualTo("branch-1")
         store.deleteSession(result.sessionId)
         assertThat(artifacts.readFile(result.sessionId, first.id)).isNull()
+    }
+
+    @Test fun `重生成删除旧回复后会话产物各版本仍可读取`() = runBlocking {
+        var text = "文件第一版"
+        val resolver = object : WorkspaceMediaResolver {
+            override suspend fun resolve(sessionId: String, path: String) = MediaResolution.Available(
+                MediaRef(path, "text/plain", MediaKind.FILE, text.toByteArray().size.toLong()),
+                MediaSource.LocalFile(java.io.File(files.root, "source")),
+            )
+            override suspend fun open(resolution: MediaResolution.Available) = text.byteInputStream()
+        }
+        val artifacts = FileSessionArtifacts(files.newFolder(), canvases, resolver)
+        val canvas = canvases.create("source", "草稿", "<p>画布第一版</p>", "later")
+        canvases.update("source", canvas.metadata.id, html = "<p>画布第二版</p>", expectedVersion = canvas.version)
+        val artifact = artifacts.publishFile("source", "/draft.txt", origin = ArtifactOrigin.DECLARED, messageId = "later")
+        text = "文件第二版"
+        val updated = artifacts.publishFile("source", "/draft.txt", origin = ArtifactOrigin.DECLARED, messageId = "later")
+        assertThat(updated.id).isEqualTo(artifact.id)
+
+        assertThat(database.messageDao().deleteByIdsInSessionWithContextSummary("source", listOf("later"))).isEqualTo(1)
+        assertThat(database.messageDao().getById("later")).isNull()
+        assertThat(canvases.read("source", canvas.metadata.id, version = 1)?.html).isEqualTo("<p>画布第一版</p>")
+        assertThat(canvases.read("source", canvas.metadata.id, version = 2)?.html).isEqualTo("<p>画布第二版</p>")
+        assertThat(artifacts.readFile("source", artifact.id, version = 1)?.file?.readText()).isEqualTo("文件第一版")
+        assertThat(artifacts.readFile("source", artifact.id, version = 2)?.file?.readText()).isEqualTo("文件第二版")
     }
 
     @Test fun `分支Room写入失败补偿删除文件快照`() = runBlocking {

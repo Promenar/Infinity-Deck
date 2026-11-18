@@ -24,6 +24,7 @@ import com.promenar.infinity.data.model.toEntity
 import com.promenar.infinity.data.repository.IMessageRepository
 import com.promenar.infinity.data.repository.ISessionRepository
 import com.promenar.infinity.data.rag.ConversationMemoryLifecycle
+import com.promenar.infinity.data.session.EditedUserMessagePayload
 import com.promenar.infinity.utils.InfinityLogger
 import com.promenar.infinity.ui.chat.ChatStore
 import kotlinx.coroutines.CoroutineScope
@@ -124,6 +125,7 @@ class MessageManager(
     )
 
     private val stateLock = Any()
+    private val pendingUserEditSnapshots = store.pendingUserEditSnapshots
     /** 正在写入记忆的轮次（会话:助手消息）及并发写入数，用于识别残留的“写入中”。 */
     private val activeTurnWrites = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private val lanes = mutableMapOf<String, MessageLane>()
@@ -368,6 +370,77 @@ class MessageManager(
             toolCalls = reply.toolCalls, citations = reply.citations, tokens = reply.tokens,
             isError = reply.isError, errorMessage = reply.errorMessage,
         ) }
+    }
+
+    fun hasStagedUserEdit(sessionId: String, userMessageId: String): Boolean =
+        pendingUserEditSnapshots.containsKey("$sessionId:$userMessageId")
+
+    suspend fun stageUserMessageEditForRegeneration(
+        sessionId: String,
+        userMessageId: String,
+        payload: EditedUserMessagePayload,
+    ) = withContextMutation(sessionId) {
+        val key = "$sessionId:$userMessageId"
+        val visible = store.getSession(sessionId)?.messages?.any {
+            it.id == userMessageId && it.role == MessageRole.USER
+        }
+        check(visible == true) { "待编辑的用户消息不存在" }
+        val persisted = checkNotNull(messageRepository.getById(userMessageId)?.takeIf { it.role == MessageRole.USER }) {
+            "待编辑的用户消息尚未保存"
+        }
+        val candidate = payload.applyTo(persisted)
+        require(candidate.content.isNotBlank() || !candidate.userImages.isNullOrEmpty() ||
+            !candidate.userDocuments.isNullOrEmpty() || !candidate.quotes.isNullOrEmpty()
+        ) { "编辑后的消息需要保留正文、图片、文档或引文" }
+        withContext(NonCancellable) {
+            messageRepository.writeUserEditCandidate(sessionId, candidate)
+            pendingUserEditSnapshots.putIfAbsent(key, persisted)
+            mirrorEditedUserInput(sessionId, candidate)
+        }
+    }
+
+    suspend fun commitStagedUserMessageEditIfPresent(sessionId: String, userMessageId: String) =
+        withContextMutation(sessionId) {
+            val key = "$sessionId:$userMessageId"
+            val original = pendingUserEditSnapshots[key] ?: return@withContextMutation
+            withContext(NonCancellable) {
+                val session = store.getSession(sessionId)
+                val currentArchived = session?.messages?.firstOrNull { it.id == userMessageId }?.isArchived
+                    ?: messageRepository.getById(userMessageId)?.isArchived
+                if ((currentArchived == true || (original.isArchived && session?.summary != null)) &&
+                    messageRepository.invalidateContextSummaryForArchivedUser(sessionId, userMessageId)
+                ) {
+                    mirrorDeletedMessages(sessionId, emptySet(), persistedSnapshot = null, summaryInvalidated = true)
+                }
+                // 批量删除已清理旧回复关联的记忆。保留刚生成的同一用户消息的新轮次记忆。
+                pendingUserEditSnapshots.remove(key)
+            }
+        }
+
+    suspend fun rollbackStagedUserMessageEditIfPresent(sessionId: String, userMessageId: String) =
+        withContextMutation(sessionId) {
+            val key = "$sessionId:$userMessageId"
+            val original = pendingUserEditSnapshots[key] ?: return@withContextMutation
+            withContext(NonCancellable) {
+                messageRepository.writeUserEditCandidate(sessionId, original)
+                mirrorEditedUserInput(sessionId, original)
+                pendingUserEditSnapshots.remove(key)
+            }
+        }
+
+    private fun mirrorEditedUserInput(sessionId: String, input: Message) {
+        store.updateMessageInSession(sessionId, input.id) { current ->
+            current.copy(
+                content = input.content,
+                userImages = input.userImages,
+                userImageReferences = input.userImageReferences,
+                userDocuments = input.userDocuments,
+                quotes = input.quotes,
+                userImageAnnotations = input.userImageAnnotations,
+                userImageAnnotationContext = input.userImageAnnotationContext,
+                turnContext = input.turnContext,
+            )
+        }
     }
 
     /** 用户主动编辑正文；流式更新仍使用 updateMessageContent。 */
@@ -825,17 +898,23 @@ class MessageManager(
         removedIds: Set<String>,
         persistedSnapshot: Session?,
         clearAll: Boolean = false,
+        summaryInvalidated: Boolean = false,
     ) {
         val archivedById = persistedSnapshot?.messages.orEmpty().associate { it.id to it.isArchived }
         store.update { state ->
             state.copy(
                 sessions = state.sessions.map { current ->
                     if (current.id != sessionId) current else current.copy(
-                        summary = if (persistedSnapshot != null) persistedSnapshot.summary else current.summary,
+                        summary = when {
+                            summaryInvalidated -> null
+                            persistedSnapshot != null -> persistedSnapshot.summary
+                            else -> current.summary
+                        },
                         messages = if (clearAll) emptyList() else current.messages
                             .filterNot { it.id in removedIds }
                             .map { message ->
-                                archivedById[message.id]?.let { message.copy(isArchived = it) } ?: message
+                                val archived = if (summaryInvalidated) false else archivedById[message.id] ?: message.isArchived
+                                if (archived == message.isArchived) message else message.copy(isArchived = archived)
                             },
                         lastMessage = if (clearAll) null else current.lastMessage,
                     )
@@ -854,8 +933,9 @@ class MessageManager(
     suspend fun deleteMessages(
         sessionId: String,
         messageIds: List<String>,
-        onAbortGeneration: ((String) -> Unit)? = null
-    ) = deleteMessagesInternal(sessionId, messageIds, onAbortGeneration)
+        onAbortGeneration: ((String) -> Unit)? = null,
+        replacementUserMessageId: String? = null,
+    ) = deleteMessagesInternal(sessionId, messageIds, onAbortGeneration, replacementUserMessageId = replacementUserMessageId)
 
     suspend fun deleteMessagesWithStateUndo(
         sessionId: String,
@@ -863,7 +943,7 @@ class MessageManager(
         onAbortGeneration: ((String) -> Unit)? = null,
     ): List<com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity> {
         var captured = emptyList<com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity>()
-        deleteMessagesInternal(sessionId, messageIds, onAbortGeneration) { captured = it }
+        deleteMessagesInternal(sessionId, messageIds, onAbortGeneration, onStateCaptured = { captured = it })
         return captured
     }
 
@@ -872,13 +952,19 @@ class MessageManager(
         messageIds: List<String>,
         onAbortGeneration: ((String) -> Unit)?,
         onStateCaptured: ((List<com.promenar.infinity.data.local.db.entity.StateBoardVersionEntity>) -> Unit)? = null,
+        replacementUserMessageId: String? = null,
     ) {
         if (messageIds.isEmpty()) return
         withContextMutation(sessionId) {
             val storeMessages = store.getSession(sessionId)?.messages.orEmpty()
             val persistedMessages = messageRepository.getBySession(sessionId)
             val allMessages = (storeMessages + persistedMessages).distinctBy { it.id }
-            val removalIds = messageIds.flatMapTo(linkedSetOf()) { messageRemovalIds(allMessages, it) }.toList()
+            val removalIds = if (replacementUserMessageId != null) {
+                // 替换集合已经包含旧轮次，按父子关系补齐结果即可，避免把新回复当成后续用户轮的子消息。
+                cascadeRemovalIds(allMessages, messageIds).toList()
+            } else {
+                messageIds.flatMapTo(linkedSetOf()) { messageRemovalIds(allMessages, it) }.toList()
+            }
             if (
                 isSessionGenerating(sessionId) &&
                 store.getSession(sessionId)?.messages?.lastOrNull()?.id in removalIds
@@ -888,16 +974,23 @@ class MessageManager(
 
             val purgeKeys = purgeMessageState(sessionId, removalIds)
             try {
-                suspend fun deleteRows() {
-                    check(messageRepository.deleteManyInSession(sessionId, removalIds) > 0) {
-                        "消息不存在或不属于当前会话"
+                if (replacementUserMessageId != null) {
+                    val deleted = messageRepository.deleteManyForReplacement(sessionId, removalIds, replacementUserMessageId)
+                    check(deleted.deletedCount > 0) { "消息不存在或不属于当前会话" }
+                    // 使用同一事务的结果更新内存，提交后无需再读数据库。
+                    mirrorDeletedMessages(sessionId, removalIds.toSet(), persistedSnapshot = null,
+                        summaryInvalidated = deleted.summaryInvalidated)
+                } else {
+                    suspend fun deleteRows() {
+                        check(messageRepository.deleteManyInSession(sessionId, removalIds) > 0) {
+                            "消息不存在或不属于当前会话"
+                        }
                     }
+                    if (onStateCaptured != null && stateBoardRepository != null) {
+                        onStateCaptured(stateBoardRepository.captureDeletion(sessionId, removalIds.toSet()) { deleteRows() })
+                    } else deleteRows()
+                    mirrorDeletedMessages(sessionId, removalIds.toSet(), sessionRepository.getById(sessionId))
                 }
-                if (onStateCaptured != null && stateBoardRepository != null) {
-                    onStateCaptured(stateBoardRepository.captureDeletion(sessionId, removalIds.toSet()) { deleteRows() })
-                } else deleteRows()
-                val persistedSnapshot = sessionRepository.getById(sessionId)
-                mirrorDeletedMessages(sessionId, removalIds.toSet(), persistedSnapshot)
             } finally {
                 finishPurge(purgeKeys)
             }

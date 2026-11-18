@@ -1,23 +1,68 @@
 package com.promenar.infinity.data.session
 
 import androidx.room.withTransaction
+import com.promenar.infinity.data.branch.SessionMessageStore
+import com.promenar.infinity.data.canvas.CanvasStore
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.local.db.dao.MessageDao
 import com.promenar.infinity.data.local.db.dao.SessionDao
 import com.promenar.infinity.data.local.db.entity.MessageEntity
 import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.media.annotation.ImageAnnotationContext
+import com.promenar.infinity.data.model.Message
+import com.promenar.infinity.data.model.MessageDocumentAttachment
+import com.promenar.infinity.data.model.MessageQuote
 import com.promenar.infinity.data.model.ToolCall
+import com.promenar.infinity.data.model.WorkspaceDocumentReference
 import com.promenar.infinity.data.model.decodeMessageQuotesOrNull
+import com.promenar.infinity.data.model.toDomain
+import com.promenar.infinity.data.model.toEntity
+import com.promenar.infinity.domain.media.ImageAnnotation
 import java.util.UUID
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import com.promenar.infinity.data.canvas.CanvasStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+
+data class EditedUserMessagePayload(
+    val content: String,
+    val userImages: List<String>? = null,
+    val userImageReferences: List<WorkspaceDocumentReference?>? = null,
+    val userDocuments: List<MessageDocumentAttachment>? = null,
+    val quotes: List<MessageQuote>? = null,
+    val userImageAnnotations: List<ImageAnnotation?>? = null,
+    val userImageAnnotationContext: ImageAnnotationContext? = null,
+) {
+    internal fun applyTo(original: Message): Message {
+        val retainedIndexes = if (userImages != null && userImages != original.userImages) {
+            val originalIndexes = mutableMapOf<String, ArrayDeque<Int>>()
+            original.userImages.orEmpty().forEachIndexed { index, image ->
+                originalIndexes.getOrPut(image) { ArrayDeque() }.addLast(index)
+            }
+            userImages.map { image -> originalIndexes[image]?.removeFirstOrNull() }
+        } else null
+
+        fun <T : Any> aligned(values: List<T?>?): List<T?>? = values?.let {
+            if (retainedIndexes == null) it else retainedIndexes.map { index -> index?.let(values::getOrNull) }
+        }
+        val annotations = (userImageAnnotations ?: aligned(original.userImageAnnotations))
+            ?.takeIf { values -> values.any { it != null } }
+        return original.copy(
+            content = content,
+            userImages = (userImages ?: original.userImages)?.takeIf { it.isNotEmpty() },
+            userImageReferences = (userImageReferences ?: aligned(original.userImageReferences))?.takeIf { it.isNotEmpty() },
+            userDocuments = (userDocuments ?: original.userDocuments)?.takeIf { it.isNotEmpty() },
+            quotes = (quotes ?: original.quotes)?.takeIf { it.isNotEmpty() },
+            userImageAnnotations = annotations,
+            userImageAnnotationContext = annotations?.let { userImageAnnotationContext ?: original.userImageAnnotationContext },
+            turnContext = null,
+        )
+    }
+}
 
 data class BranchSessionPlan(
     val session: SessionEntity,
@@ -44,17 +89,46 @@ object BranchSessionPlanner {
         newSessionId: String,
         now: Long,
         branchTitle: String = "${source.title} · Branch",
+        editedTargetUser: EditedUserMessagePayload? = null,
         newMessageId: (String) -> String,
     ): BranchSessionPlanResult {
         val targetIndex = sourceMessages.indexOfFirst { it.id == targetMessageId }
         if (targetIndex < 0) {
             return BranchSessionPlanResult.Rejected(BranchSessionRejectReason.TargetNotFound)
         }
-        val selectedMessages = sourceMessages.take(targetIndex + 1)
-        if (!selectedMessages.isStableBranchPrefix()) {
-            return BranchSessionPlanResult.Rejected(BranchSessionRejectReason.TargetNotStable)
+        val target = sourceMessages[targetIndex]
+        val userIndex = if (editedTargetUser != null) {
+            sourceMessages.subList(0, targetIndex + 1).indexOfLast {
+                it.role == "user" && !SessionMessageStore.isInternal(it.name) && !SessionMessageStore.isTimelineRecord(it.name)
+            }.also {
+                if (it < 0) return BranchSessionPlanResult.Rejected(BranchSessionRejectReason.TargetNotFound)
+            }
+        } else targetIndex
+        var selectedMessages = sourceMessages.take(userIndex + 1)
+        val prefixStatus = selectedMessages.branchPrefixStatus()
+        if (prefixStatus != PrefixStatus.Stable) {
+            if (editedTargetUser == null && target.role == "assistant" && prefixStatus == PrefixStatus.AwaitingToolResults) {
+                val closingPrefix = ((targetIndex + 1) until sourceMessages.size).asSequence()
+                    .takeWhile { sourceMessages[it].role != "user" }
+                    .map { sourceMessages.take(it + 1) }
+                    .firstOrNull { it.branchPrefixStatus() == PrefixStatus.Stable }
+                selectedMessages = closingPrefix
+                    ?: return BranchSessionPlanResult.Rejected(BranchSessionRejectReason.TargetNotStable)
+            } else {
+                return BranchSessionPlanResult.Rejected(BranchSessionRejectReason.TargetNotStable)
+            }
         }
-        val target = selectedMessages.last()
+        if (editedTargetUser != null) {
+            val original = selectedMessages.last()
+            val edited = editedTargetUser.applyTo(original.toDomain()).toEntity(newSessionId)
+            selectedMessages = selectedMessages.dropLast(1) + original.copy(
+                content = edited.content,
+                userImages = edited.userImages,
+                files = edited.files,
+                quotes = edited.quotes,
+                turnContext = edited.turnContext,
+            )
+        }
         val idMap = selectedMessages.associate { message -> message.id to newMessageId(message.id) }
         val branchedMessages = selectedMessages.map { message ->
             message.copy(
@@ -77,7 +151,7 @@ object BranchSessionPlanner {
         val branchedSession = source.copy(
             id = newSessionId,
             title = branchTitle,
-            lastMessage = target.content.take(240).takeIf(String::isNotBlank),
+            lastMessage = (editedTargetUser?.content ?: target.content).take(240).takeIf(String::isNotBlank),
             time = null,
             unread = 0,
             isPinned = 0,
@@ -113,27 +187,29 @@ object BranchSessionPlanner {
         return true
     }
 
-    private fun List<MessageEntity>.isStableBranchPrefix(): Boolean {
-        if (any { !it.isStableBranchMessage() }) return false
+    private enum class PrefixStatus { Stable, AwaitingToolResults, Invalid }
+
+    private fun List<MessageEntity>.branchPrefixStatus(): PrefixStatus {
+        if (any { !it.isStableBranchMessage() }) return PrefixStatus.Invalid
         val selectedIds = mapTo(mutableSetOf()) { it.id }
-        if (any { it.parentMessageId != null && it.parentMessageId !in selectedIds }) return false
+        if (any { it.parentMessageId != null && it.parentMessageId !in selectedIds }) return PrefixStatus.Invalid
 
         val declaredToolCalls = mutableMapOf<String, Int>()
         forEachIndexed { index, message ->
             if (message.role != "assistant" || message.toolCalls.isNullOrBlank()) return@forEachIndexed
             val calls = runCatching {
                 JSON.decodeFromString<List<ToolCall>>(message.toolCalls)
-            }.getOrNull() ?: return false
-            if (calls.any { it.id.isBlank() || declaredToolCalls.put(it.id, index) != null }) return false
+            }.getOrNull() ?: return PrefixStatus.Invalid
+            if (calls.any { it.id.isBlank() || declaredToolCalls.put(it.id, index) != null }) return PrefixStatus.Invalid
         }
-        val toolResults = filter { it.role == "tool" }
-        if (toolResults.any { result ->
-                val callId = result.toolCallId ?: return@any true
-                val assistantIndex = declaredToolCalls[callId] ?: return@any true
-                indexOf(result) <= assistantIndex
-            }
-        ) return false
-        return declaredToolCalls.keys == toolResults.mapNotNullTo(mutableSetOf()) { it.toolCallId }
+        val toolResults = mutableSetOf<String>()
+        forEachIndexed { index, message ->
+            if (message.role != "tool") return@forEachIndexed
+            val callId = message.toolCallId ?: return PrefixStatus.Invalid
+            val assistantIndex = declaredToolCalls[callId] ?: return PrefixStatus.Invalid
+            if (index <= assistantIndex || !toolResults.add(callId)) return PrefixStatus.Invalid
+        }
+        return if (declaredToolCalls.keys == toolResults) PrefixStatus.Stable else PrefixStatus.AwaitingToolResults
     }
 
     private val UNSTABLE_STATUSES = setOf(
@@ -161,7 +237,11 @@ class BranchSessionUseCase(
     private val branchTitle: (String) -> String = { title -> "$title · Branch" },
     private val canvasStore: CanvasStore? = null,
 ) {
-    suspend fun branch(sourceSessionId: String, targetMessageId: String): BranchSessionResult = withContext(Dispatchers.IO) {
+    suspend fun branch(
+        sourceSessionId: String,
+        targetMessageId: String,
+        editedTargetUser: EditedUserMessagePayload? = null,
+    ): BranchSessionResult = withContext(Dispatchers.IO) {
         val planned = database.withTransaction {
             val source = sessionDao.getById(sourceSessionId)
                 ?: return@withTransaction BranchSessionPlanResult.Rejected(BranchSessionRejectReason.SourceNotFound)
@@ -172,6 +252,7 @@ class BranchSessionUseCase(
                 newSessionId = newId(),
                 now = now(),
                 branchTitle = branchTitle(source.title),
+                editedTargetUser = editedTargetUser,
                 newMessageId = { newId() },
             )
         }
@@ -202,6 +283,7 @@ class BranchSessionUseCase(
                         newSessionId = plan.session.id,
                         now = plan.session.createdAt,
                         branchTitle = plan.session.title,
+                        editedTargetUser = editedTargetUser,
                         newMessageId = { plan.messageIdMap[it] ?: it },
                     )
                     if (refreshed is BranchSessionPlanResult.Rejected) return@withTransaction BranchSessionResult.Rejected(refreshed.reason)

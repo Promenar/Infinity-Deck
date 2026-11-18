@@ -23,6 +23,8 @@ private const val CACHE_USAGE_COLUMNS = """
     COALESCE(SUM(CASE WHEN role = 'assistant' AND json_type(tokens, '$.cacheReadInput') = 'integer' AND json_extract(tokens, '$.cacheReadInput') > (COALESCE(CAST(json_extract(tokens, '$.input') AS INTEGER), 0) - COALESCE(CAST(json_extract(tokens, '$.summaryInput') AS INTEGER), 0)) THEN 1 ELSE 0 END), 0) AS cache_anomalousRequests
 """
 
+data class ReplacementMessageDeletion(val deletedCount: Int, val summaryInvalidated: Boolean)
+
 @Dao
 interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -68,6 +70,36 @@ interface MessageDao {
         return true
     }
 
+    /** 暂存与回滚只更新用户输入列，保留独立事务维护的归档状态。 */
+    @Query(
+        """UPDATE messages SET content = :content, user_images = :userImages, files = :files,
+           quotes = :quotes, turn_context = :turnContext
+           WHERE session_id = :sessionId AND id = :messageId AND role = 'user'""",
+    )
+    suspend fun writeUserEditCandidate(
+        sessionId: String,
+        messageId: String,
+        content: String,
+        userImages: String?,
+        files: String?,
+        quotes: String?,
+        turnContext: String?,
+    ): Int
+
+    @Transaction
+    suspend fun invalidateContextSummaryForArchivedUser(sessionId: String, userMessageId: String): Boolean {
+        if (!isArchivedUserInSession(sessionId, userMessageId)) return false
+        clearContextSummaries(sessionId)
+        restoreArchivedContextMessages(sessionId)
+        return true
+    }
+
+    @Query(
+        """SELECT EXISTS (SELECT 1 FROM messages
+           WHERE session_id = :sessionId AND id = :userMessageId AND role = 'user' AND is_archived != 0)""",
+    )
+    suspend fun isArchivedUserInSession(sessionId: String, userMessageId: String): Boolean
+
     @Query("DELETE FROM messages WHERE id = :messageId")
     suspend fun deleteById(messageId: String)
 
@@ -111,18 +143,35 @@ interface MessageDao {
     }
 
     @Transaction
-    suspend fun deleteByIdsInSessionWithContextSummary(sessionId: String, messageIds: List<String>): Int {
-        if (messageIds.isEmpty()) return 0
+    suspend fun deleteByIdsInSessionWithContextSummary(sessionId: String, messageIds: List<String>): Int =
+        deleteRowsAndInvalidateSummary(sessionId, messageIds, null).deletedCount
+
+    @Transaction
+    suspend fun deleteMessagesForReplacement(
+        sessionId: String,
+        messageIds: List<String>,
+        userMessageId: String,
+    ): ReplacementMessageDeletion = deleteRowsAndInvalidateSummary(sessionId, messageIds, userMessageId)
+
+    private suspend fun deleteRowsAndInvalidateSummary(
+        sessionId: String,
+        messageIds: List<String>,
+        replacementUserMessageId: String?,
+    ): ReplacementMessageDeletion {
+        if (messageIds.isEmpty()) return ReplacementMessageDeletion(0, false)
         val archivedBefore = countArchivedBySession(sessionId)
         val deleted = messageIds.distinct().chunked(900).sumOf { ids ->
             deleteByIdsInSession(sessionId, ids)
         }
         // 比较实际删除后的归档数量，覆盖数据库 CASCADE 删除的全部后裔。
-        if (countArchivedBySession(sessionId) < archivedBefore || hasDanglingContextSummary(sessionId)) {
+        val summaryInvalidated = countArchivedBySession(sessionId) < archivedBefore ||
+            hasDanglingContextSummary(sessionId) ||
+            (replacementUserMessageId != null && isArchivedUserInSession(sessionId, replacementUserMessageId))
+        if (summaryInvalidated) {
             clearContextSummaries(sessionId)
             restoreArchivedContextMessages(sessionId)
         }
-        return deleted
+        return ReplacementMessageDeletion(deleted, summaryInvalidated)
     }
 
     @Transaction

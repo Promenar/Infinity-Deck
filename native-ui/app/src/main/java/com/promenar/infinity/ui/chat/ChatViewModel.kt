@@ -4,6 +4,10 @@ import com.promenar.infinity.ui.production.observeEntry
 import com.promenar.infinity.ui.common.providerDisplayName
 import android.app.Application
 import android.net.Uri
+import com.promenar.infinity.data.branch.SessionMessageStore
+import com.promenar.infinity.data.session.EditedUserMessagePayload
+import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
+import com.promenar.infinity.domain.generation.GenerationTaskSnapshot
 import com.promenar.infinity.domain.media.ImageAnnotation
 import com.promenar.infinity.domain.media.ImageAnnotationExport
 import com.promenar.infinity.data.media.annotation.ImageAnnotationPreviewCodec
@@ -100,6 +104,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -261,6 +266,7 @@ internal data class PendingPermissionTurn(
     val imageAnnotations: List<ImageAnnotation?> = emptyList(),
     val imageAnnotationContext: ImageAnnotationContext? = null,
     val consumeComposerDraft: Boolean = true,
+    val editedUser: EditedUserMessagePayload? = null,
 )
 
 internal fun ContextBuilderResult.hasPersistableRagContext(): Boolean =
@@ -815,7 +821,8 @@ class ChatViewModel(
     }
 
     /** 隐藏旧回复所对应的生成任务；该任务结束或进入等待审批后恢复展示（成功时旧回复已被删除）。 */
-    private var replacingTaskId: String? = null
+    private val replacingMessagesBySession = ConcurrentHashMap<String, Pair<String, Set<String>>>()
+    private val pendingAutoStartBranchSessions = ConcurrentHashMap.newKeySet<String>()
     private val _deletionUndo = MutableStateFlow<DeletionUndo?>(null)
     /** 最近一次删除的可撤销提示；为空表示没有可撤销的删除。 */
     val deletionUndo: StateFlow<DeletionUndo?> = _deletionUndo
@@ -1091,6 +1098,16 @@ class ChatViewModel(
             }
         }
         viewModelScope.launch {
+            generationCoordinator.sessions.collect {
+                replacingMessagesBySession.forEach { (sessionId, entry) ->
+                    val task = generationCoordinator.sessions.value[sessionId]
+                    if (task?.taskId != entry.first || task.phase in FOREGROUND_STOPPING_PHASES) {
+                        replacingMessagesBySession.remove(sessionId, entry)
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
             _currentSessionId.collectLatest { sessionId ->
                 _generationPhase.value = null
                 if (sessionId == null) return@collectLatest
@@ -1101,12 +1118,7 @@ class ChatViewModel(
                         generationPresentationStore.observe(sessionId),
                     ) { task, presentation -> task to presentation }
                         .collect { (task, presentation) ->
-                        replacingTaskId?.let { replacing ->
-                            if (task == null || task.taskId != replacing || task.phase in FOREGROUND_STOPPING_PHASES) {
-                                replacingTaskId = null
-                                _replacingMessageIds.value = emptySet()
-                            }
-                        }
+                        updateReplacingMessages(sessionId, generationCoordinator.observe(sessionId).value)
                         _generationPhase.value = task?.phase
                         if (task == null) {
                             _isGenerating.value = false
@@ -1843,6 +1855,7 @@ class ChatViewModel(
         imageAnnotations: List<ImageAnnotation?> = emptyList(),
         imageAnnotationContext: ImageAnnotationContext? = null,
         consumeComposerDraft: Boolean = true,
+        editedUser: EditedUserMessagePayload? = null,
     ) {
         when (
             com.promenar.infinity.background.generation.resolveBackgroundGenerationPolicy(
@@ -1863,6 +1876,7 @@ class ChatViewModel(
                     imageAnnotations = imageAnnotations,
                     imageAnnotationContext = imageAnnotationContext,
                     consumeComposerDraft = consumeComposerDraft,
+                    editedUser = editedUser,
                 )
             com.promenar.infinity.background.generation.BackgroundGenerationPolicy.FOREGROUND_ONLY ->
                 enqueuePreparedUserTurnAfterReplacement(
@@ -1878,6 +1892,7 @@ class ChatViewModel(
                     imageAnnotations = imageAnnotations,
                     imageAnnotationContext = imageAnnotationContext,
                     consumeComposerDraft = consumeComposerDraft,
+                    editedUser = editedUser,
                 )
             com.promenar.infinity.background.generation.BackgroundGenerationPolicy.REQUIRES_PERMISSION -> {
                 if (_currentSessionId.value != sessionId) {
@@ -1897,6 +1912,7 @@ class ChatViewModel(
                     imageAnnotations,
                     imageAnnotationContext,
                     consumeComposerDraft,
+                    editedUser,
                 )
                 mutableNotificationPermissionRequest.value = NotificationPermissionRequest(token)
                 _isGenerating.value = false
@@ -1943,12 +1959,14 @@ class ChatViewModel(
                             imageAnnotations = pending.imageAnnotations,
                             imageAnnotationContext = pending.imageAnnotationContext,
                             consumeComposerDraft = pending.consumeComposerDraft,
+                            editedUser = pending.editedUser,
                         )
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
                         if (_currentSessionId.value == pending.sessionId) {
-                            _error.update { "旧回复删除失败，已取消重试" }
+                            _error.value = if (pending.editedUser != null) stringResourceResolver(R.string.chat_message_edit_failed)
+                            else "旧回复删除失败，已取消重试"
                             _generationStatus.update { GenerationStatus.ERROR }
                             _isGenerating.update { false }
                         }
@@ -1978,6 +1996,7 @@ class ChatViewModel(
         imageAnnotations: List<ImageAnnotation?> = emptyList(),
         imageAnnotationContext: ImageAnnotationContext? = null,
         consumeComposerDraft: Boolean = true,
+        editedUser: EditedUserMessagePayload? = null,
     ) {
         if (reuseUserMessageId != null) {
             enqueuePreparedAssistantRetry(
@@ -1987,10 +2006,27 @@ class ChatViewModel(
                 text,
                 backgroundAllowed,
                 assistantMessageIdsToReplace,
+                editedUser,
             )
         } else {
             enqueuePreparedUserTurn(sessionId, session, text, imageDataUrls, documents, backgroundAllowed, quotes, imageAnnotations, imageAnnotationContext, consumeComposerDraft)
         }
+    }
+
+    private fun updateReplacingMessages(sessionId: String, task: GenerationTaskSnapshot?) {
+        val entry = replacingMessagesBySession[sessionId]
+        val ids = if (entry != null && task?.taskId == entry.first && task.phase !in FOREGROUND_STOPPING_PHASES) {
+            entry.second
+        } else {
+            if (entry != null) replacingMessagesBySession.remove(sessionId, entry)
+            emptySet()
+        }
+        if (_currentSessionId.value == sessionId) _replacingMessageIds.value = ids
+    }
+
+    private fun clearReplacingMessages(sessionId: String) {
+        replacingMessagesBySession.remove(sessionId)
+        if (_currentSessionId.value == sessionId) _replacingMessageIds.value = emptySet()
     }
 
     private suspend fun enqueuePreparedAssistantRetry(
@@ -2000,59 +2036,80 @@ class ChatViewModel(
         text: String,
         backgroundAllowed: Boolean,
         assistantMessageIdsToReplace: Set<String>,
+        editedUser: EditedUserMessagePayload? = null,
     ): Boolean = store.turnAdmission.withLock(sessionId) {
         val assistantMessageId = IdGenerator.message("ai")
-        messageManager.addMessage(
-            sessionId,
-            Message(
-                id = assistantMessageId,
-                role = MessageRole.ASSISTANT,
-                content = "",
-                modelId = session.modelId,
-                parentMessageId = userMessageId,
-                createdAt = System.currentTimeMillis(),
-            ),
-        )
-        _replacingMessageIds.value = assistantMessageIdsToReplace
-        val start = try {
-            generateMessage(
-                sessionId = sessionId,
-                interventionContent = "",
-                isResumption = false,
-                existingAssistantMsgId = assistantMessageId,
-                userMsgId = userMessageId,
-                userContent = text,
-                backgroundAllowed = backgroundAllowed,
-                rollbackUserOnPreparationFailure = false,
-                assistantMessageIdsToReplace = assistantMessageIdsToReplace,
+        var editStaged = false
+        var admitted = false
+        try {
+            // 权限裁决完成后才暂存，切会话或取消权限请求时数据库无需恢复。
+            if (editedUser != null) {
+                editStaged = true
+                messageManager.stageUserMessageEditForRegeneration(sessionId, userMessageId, editedUser)
+            }
+            messageManager.addMessage(
+                sessionId,
+                Message(
+                    id = assistantMessageId,
+                    role = MessageRole.ASSISTANT,
+                    content = "",
+                    modelId = session.modelId,
+                    parentMessageId = userMessageId,
+                    createdAt = System.currentTimeMillis(),
+                ),
             )
-        } catch (failure: Throwable) {
-            _replacingMessageIds.value = emptySet()
+            currentCoroutineContext().ensureActive()
             withContext(NonCancellable) {
-                runCatching {
-                    messageManager.discardPreparedMessages(sessionId, listOf(assistantMessageId))
-                }.exceptionOrNull()?.let(failure::addSuppressed)
+                val result = generateMessage(
+                    sessionId = sessionId,
+                    interventionContent = "",
+                    isResumption = false,
+                    existingAssistantMsgId = assistantMessageId,
+                    userMsgId = userMessageId,
+                    userContent = text,
+                    backgroundAllowed = backgroundAllowed,
+                    rollbackUserOnPreparationFailure = false,
+                    assistantMessageIdsToReplace = assistantMessageIdsToReplace,
+                )
+                val taskId = when (result) {
+                    is com.promenar.infinity.domain.generation.StartGenerationResult.Started -> result.taskId
+                    is com.promenar.infinity.domain.generation.StartGenerationResult.Queued -> result.taskId
+                    else -> null
+                }
+                admitted = taskId != null
+                if (taskId != null && assistantMessageIdsToReplace.isNotEmpty()) {
+                    replacingMessagesBySession[sessionId] = taskId to assistantMessageIdsToReplace
+                    updateReplacingMessages(sessionId, generationCoordinator.observe(sessionId).value)
+                }
+            }
+            if (admitted) return@withLock true
+        } catch (failure: Throwable) {
+            if (!admitted) {
+                try {
+                    discardUnstartedRetry(sessionId, assistantMessageId, userMessageId.takeIf { editStaged })
+                } catch (cleanup: Throwable) {
+                    failure.addSuppressed(cleanup)
+                }
             }
             throw failure
         }
-        replacingTaskId = when (start) {
-            is com.promenar.infinity.domain.generation.StartGenerationResult.Started -> start.taskId
-            is com.promenar.infinity.domain.generation.StartGenerationResult.Queued -> start.taskId
-            else -> null
-        }
-        if (replacingTaskId == null) _replacingMessageIds.value = emptySet()
-        if (
-            start is com.promenar.infinity.domain.generation.StartGenerationResult.Busy ||
-            start is com.promenar.infinity.domain.generation.StartGenerationResult.Rejected ||
-            start == null
-        ) {
-            messageManager.discardPreparedMessages(sessionId, listOf(assistantMessageId))
+        discardUnstartedRetry(sessionId, assistantMessageId, userMessageId.takeIf { editStaged })
+        if (_currentSessionId.value == sessionId) {
             _isGenerating.value = false
             _generationStatus.value = GenerationStatus.ERROR
-            return@withLock false
         }
-        return@withLock true
+        false
     }
+
+    private suspend fun discardUnstartedRetry(sessionId: String, assistantMessageId: String, editedUserId: String?) =
+        withContext(NonCancellable) {
+            clearReplacingMessages(sessionId)
+            try {
+                messageManager.discardPreparedMessages(sessionId, listOf(assistantMessageId))
+            } finally {
+                editedUserId?.let { messageManager.rollbackStagedUserMessageEditIfPresent(sessionId, it) }
+            }
+        }
 
     private fun uriToDataUrl(uri: Uri, annotated: Boolean = false): String? =
         if (annotated) {
@@ -2578,6 +2635,7 @@ class ChatViewModel(
                 }
             }
             viewModelScope.launch { restoreFailedComposerDraft(sessionId) }
+            autoStartBranchIfPending(sessionId)
             return
         }
 
@@ -2610,6 +2668,7 @@ class ChatViewModel(
                     if (!reattaching) restoreComposerAttachments(sessionId)
                     _currentSessionId.update { sessionId }
                     updateAgentName(hydrated.agentId)
+                    autoStartBranchIfPending(sessionId)
                     messageManager.reconcileTurnMemory(sessionId)
                     // 同步当前会话的 ragOptions 到缓存
                     hydrated.ragOptions?.let { _currentRagOptions.value = it }
@@ -2641,7 +2700,6 @@ class ChatViewModel(
 
     private fun resetSessionTransientState() {
         submittedDraft = null
-        replacingTaskId = null
         _replacingMessageIds.value = emptySet()
         _deletionUndo.value = null
         _streamingContent.value = ""
@@ -2800,7 +2858,9 @@ class ChatViewModel(
 
     fun retryLastMessage() {
         val sessionId = _currentSessionId.value ?: return
-        val lastUserMsg = store.getSession(sessionId)?.messages?.lastOrNull { it.role == MessageRole.USER } ?: return
+        val lastUserMsg = store.getSession(sessionId)?.messages?.lastOrNull {
+            it.role == MessageRole.USER && it.isConversationMessage()
+        } ?: return
         regenerateMessage(lastUserMsg.id)
     }
 
@@ -3550,31 +3610,108 @@ class ChatViewModel(
         }
     }
 
+    private fun Message.isConversationMessage(): Boolean =
+        !isWorkspaceSwitchNotice && !SessionMessageStore.isInternal(name) && !SessionMessageStore.isTimelineRecord(name)
+
+    private fun List<Message>.userTurnIndex(messageId: String): Int {
+        val messageIndex = indexOfFirst { it.id == messageId }
+        if (messageIndex < 0) return -1
+        return subList(0, messageIndex + 1).indexOfLast { it.role == MessageRole.USER }
+    }
+
+    fun countSubsequentUserTurns(messageId: String): Int {
+        val messages = _currentSessionId.value?.let { store.getSession(it) }?.messages.orEmpty()
+            .filter { it.isConversationMessage() }
+        val userIndex = messages.userTurnIndex(messageId)
+        return if (userIndex < 0) 0 else messages.drop(userIndex + 1).count { it.role == MessageRole.USER }
+    }
+
+    fun canEditUserMessage(messageId: String): Boolean =
+        _currentSessionId.value?.let { store.getSession(it) }?.messages.orEmpty().any {
+            it.id == messageId && it.role == MessageRole.USER && it.isConversationMessage()
+        }
+
+    fun editAndRegenerateMessage(
+        messageId: String,
+        newContent: String,
+        userImages: List<String>? = null,
+        userDocuments: List<MessageDocumentAttachment>? = null,
+        quotes: List<MessageQuote>? = null,
+    ) {
+        val sessionId = _currentSessionId.value ?: return
+        val original = store.getSession(sessionId)?.messages?.firstOrNull {
+            it.id == messageId && it.role == MessageRole.USER && it.isConversationMessage()
+        } ?: return
+        if (!hasEditedUserInput(newContent, userImages ?: original.userImages, userDocuments ?: original.userDocuments,
+                quotes ?: original.quotes)) return
+
+        cancelCurrentSessionGeneration()
+        generationJobs[sessionId] = viewModelScope.launch {
+            sendPreparationMutex(sessionId).withLock {
+                try {
+                    // 等上一任务完成回滚后再读原消息，连续编辑共用同一份已提交历史。
+                    generationCoordinator.cancelAndJoinSession(sessionId, com.promenar.infinity.domain.generation.CancellationReason.USER)
+                    closePendingApprovalBeforeNewTurn(sessionId)
+                    val session = store.getSession(sessionId) ?: return@withLock
+                    val index = session.messages.indexOfFirst { it.id == messageId && it.role == MessageRole.USER && it.isConversationMessage() }
+                    if (index < 0) return@withLock
+                    val user = session.messages[index]
+                    val payload = EditedUserMessagePayload(newContent, userImages = userImages, userDocuments = userDocuments, quotes = quotes)
+                    val candidate = payload.applyTo(user)
+                    if (!hasEditedUserInput(candidate.content, candidate.userImages, candidate.userDocuments, candidate.quotes)) return@withLock
+                    val replacedIds = session.messages.drop(index + 1).mapTo(linkedSetOf()) { it.id }
+                    applyBackgroundPolicyGate(
+                        sessionId,
+                        session,
+                        candidate.content,
+                        candidate.userImages.orEmpty(),
+                        candidate.userDocuments.orEmpty(),
+                        quotes = candidate.quotes.orEmpty(),
+                        assistantMessageIdsToReplace = replacedIds,
+                        reuseUserMessageId = user.id,
+                        consumeComposerDraft = false,
+                        editedUser = payload,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    clearReplacingMessages(sessionId)
+                    if (_currentSessionId.value == sessionId) {
+                        _error.value = stringResourceResolver(R.string.chat_message_edit_failed)
+                        _generationStatus.value = GenerationStatus.ERROR
+                        _isGenerating.value = false
+                    }
+                }
+            }
+        }
+    }
+
+    private fun hasEditedUserInput(
+        content: String,
+        images: List<String>?,
+        documents: List<MessageDocumentAttachment>?,
+        quotes: List<MessageQuote>?,
+    ): Boolean = content.isNotBlank() || !images.isNullOrEmpty() || !documents.isNullOrEmpty() || !quotes.isNullOrEmpty()
+
     /**
      * 从 [messageId] 所在轮次的用户消息重新生成。该用户消息之后的全部消息先隐藏，
      * 新回复成功（或进入等待审批）后才删除；启动失败、准备失败或取消时旧消息原样恢复。
      */
     fun regenerateMessage(messageId: String) {
         val sessionId = _currentSessionId.value ?: return
-        val initial = store.getSession(sessionId) ?: return
-        val index = initial.messages.indexOfFirst { it.id == messageId }
-        if (index < 0) return
-        val userIndex = if (initial.messages[index].role == MessageRole.USER) {
-            index
-        } else {
-            initial.messages.subList(0, index).indexOfLast { it.role == MessageRole.USER }
-        }
-        if (userIndex < 0) return
-        val userMessage = initial.messages[userIndex]
+        val visible = store.getSession(sessionId)?.messages.orEmpty().filter { it.isConversationMessage() }
+        val userMessageId = visible.getOrNull(visible.userTurnIndex(messageId))?.id ?: return
 
         cancelCurrentSessionGeneration()
         generationJobs[sessionId] = viewModelScope.launch {
             sendPreparationMutex(sessionId).withLock {
                 try {
+                    generationCoordinator.cancelAndJoinSession(sessionId, com.promenar.infinity.domain.generation.CancellationReason.USER)
                     closePendingApprovalBeforeNewTurn(sessionId)
                     val session = store.getSession(sessionId) ?: return@withLock
-                    val currentIndex = session.messages.indexOfFirst { it.id == userMessage.id }
+                    val currentIndex = session.messages.indexOfFirst { it.id == userMessageId }
                     if (currentIndex < 0) return@withLock
+                    val userMessage = session.messages[currentIndex]
                     val replacedIds = session.messages.drop(currentIndex + 1).mapTo(linkedSetOf()) { it.id }
                     applyBackgroundPolicyGate(
                         sessionId,
@@ -3589,13 +3726,14 @@ class ChatViewModel(
                         imageAnnotationContext = userMessage.userImageAnnotationContext,
                     )
                 } catch (cancelled: CancellationException) {
-                    _replacingMessageIds.value = emptySet()
                     throw cancelled
                 } catch (_: Exception) {
-                    _replacingMessageIds.value = emptySet()
-                    _error.update { "旧回复删除失败，已取消重试" }
-                    _generationStatus.update { GenerationStatus.ERROR }
-                    _isGenerating.update { false }
+                    clearReplacingMessages(sessionId)
+                    if (_currentSessionId.value == sessionId) {
+                        _error.value = "旧回复删除失败，已取消重试"
+                        _generationStatus.value = GenerationStatus.ERROR
+                        _isGenerating.value = false
+                    }
                 }
             }
         }
@@ -3644,7 +3782,10 @@ class ChatViewModel(
         return useCase.export(sessionId, format)
     }
 
-    suspend fun branchFromMessage(messageId: String): BranchSessionResult {
+    suspend fun branchFromMessage(
+        messageId: String,
+        editedUser: EditedUserMessagePayload? = null,
+    ): BranchSessionResult {
         val sessionId = _currentSessionId.value
             ?: return BranchSessionResult.Rejected(
                 com.promenar.infinity.data.session.BranchSessionRejectReason.SourceNotFound,
@@ -3653,7 +3794,21 @@ class ChatViewModel(
             ?: return BranchSessionResult.Rejected(
                 com.promenar.infinity.data.session.BranchSessionRejectReason.SourceNotFound,
             )
-        return useCase.branch(sessionId, messageId)
+        val result = useCase.branch(sessionId, messageId, editedUser)
+        if (result is BranchSessionResult.Success &&
+            sessionRepository.getById(result.sessionId)?.messages?.lastOrNull()?.let {
+                it.role == MessageRole.USER && it.isConversationMessage()
+            } == true
+        ) {
+            pendingAutoStartBranchSessions.add(result.sessionId)
+        }
+        return result
+    }
+
+    private fun autoStartBranchIfPending(sessionId: String) {
+        if (_currentSessionId.value != sessionId || !pendingAutoStartBranchSessions.remove(sessionId)) return
+        val last = store.getSession(sessionId)?.messages?.lastOrNull()
+        if (!_isGenerating.value && last?.role == MessageRole.USER && last.isConversationMessage()) retryLastMessage()
     }
 
     /** 点击发送即清空输入框与附件，保留副本直到生成接受或回滚；持久化草稿在接受后才清除。 */

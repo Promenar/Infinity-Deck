@@ -346,13 +346,18 @@ class ChatGenerationContentStrategyTest {
             Message("new", MessageRole.ASSISTANT, ""),
         ))
 
+        assertThat(isSummaryInvalidatedByReplacement(session, null, setOf("replaced"))).isTrue()
+        assertThat(isSummaryInvalidatedByReplacement(session, "current", setOf("new"))).isTrue()
+        assertThat(isSummaryInvalidatedByReplacement(session, "current", emptySet())).isFalse()
+        assertThat(isSummaryInvalidatedByReplacement(session, "new", setOf("missing"))).isFalse()
+
         val prompt = strategy().buildProtocolMessages(session, "system", "current", setOf("replaced"))
 
-        assertThat(prompt.map { it.role }).containsExactly("system", "user").inOrder()
+        assertThat(prompt.map { it.role }).containsExactly("system", "user", "user").inOrder()
         assertThat(prompt.last().content).contains("重新回答此问题")
         assertThat(prompt.last().content).contains(document.content)
         assertThat(prompt.last().content).contains("<<<INFINITY_DOCUMENT_BEGIN current-doc>>>")
-        assertThat(prompt.joinToString { it.content }).doesNotContain("其它已摘要历史")
+        assertThat(prompt.joinToString { it.content }).contains("其它已摘要历史")
         assertThat(prompt.joinToString { it.content }).doesNotContain("待替换的旧回复")
         assertThat(session.messages.first { it.id == "current" }.isArchived).isTrue()
     }

@@ -1,9 +1,11 @@
 package com.promenar.infinity.ui.chat
 
 import com.promenar.infinity.data.model.LoopStatus
+import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.Session
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.concurrent.ConcurrentHashMap
 
 data class ChatState(
     val sessions: List<Session> = emptyList(),
@@ -14,6 +16,8 @@ data class ChatState(
 
 class ChatStore {
     val turnAdmission = com.promenar.infinity.data.generation.GenerationTurnAdmission()
+    // 界面与应用级运行器各自持有 MessageManager，共享同一会话的编辑快照。
+    internal val pendingUserEditSnapshots = ConcurrentHashMap<String, Message>()
     private val loading = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
     private val _state = MutableStateFlow(ChatState())
     val state: StateFlow<ChatState> = _state
@@ -116,6 +120,7 @@ class ChatStore {
     }
 
     fun clear() {
+        pendingUserEditSnapshots.clear()
         update { ChatState() }
     }
 }

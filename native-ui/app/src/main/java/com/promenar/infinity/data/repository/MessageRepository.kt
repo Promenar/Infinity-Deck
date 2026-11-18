@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.repository
 
 import com.promenar.infinity.data.local.db.dao.MessageDao
+import com.promenar.infinity.data.local.db.dao.ReplacementMessageDeletion
 import com.promenar.infinity.data.local.db.entity.MessageEntity
 import com.promenar.infinity.data.model.Citation
 import com.promenar.infinity.data.model.ExecutionStep
@@ -53,6 +54,16 @@ open class MessageRepository(
         }
     }
 
+    override suspend fun writeUserEditCandidate(sessionId: String, message: Message) {
+        val row = message.toEntity(sessionId)
+        checkUpdated(message.id, messageDao.writeUserEditCandidate(
+            sessionId, row.id, row.content, row.userImages, row.files, row.quotes, row.turnContext,
+        ))
+    }
+
+    override suspend fun invalidateContextSummaryForArchivedUser(sessionId: String, userMessageId: String): Boolean =
+        messageDao.invalidateContextSummaryForArchivedUser(sessionId, userMessageId)
+
     override suspend fun delete(messageId: String) {
         messageDao.deleteByIdWithContextSummary(messageId)
     }
@@ -62,6 +73,12 @@ open class MessageRepository(
 
     override suspend fun deleteManyInSession(sessionId: String, messageIds: List<String>): Int =
         if (messageIds.isEmpty()) 0 else messageDao.deleteByIdsInSessionWithContextSummary(sessionId, messageIds)
+
+    override suspend fun deleteManyForReplacement(
+        sessionId: String,
+        messageIds: List<String>,
+        userMessageId: String,
+    ): ReplacementMessageDeletion = messageDao.deleteMessagesForReplacement(sessionId, messageIds, userMessageId)
 
     override suspend fun deleteBySessionId(sessionId: String) {
         messageDao.deleteBySessionIdWithContextSummary(sessionId)

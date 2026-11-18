@@ -3,6 +3,9 @@ package com.promenar.infinity.data.session
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.local.db.entity.MessageEntity
 import com.promenar.infinity.data.local.db.entity.SessionEntity
+import com.promenar.infinity.data.media.annotation.ImageAnnotationContext
+import com.promenar.infinity.domain.media.ImageAnnotation
+import com.promenar.infinity.domain.media.ImageAnnotationKind
 import org.junit.Test
 import com.promenar.infinity.data.model.*
 
@@ -179,6 +182,93 @@ class BranchSessionPlannerTest {
         assertThat(
             BranchSessionPlanner.plan(source, listOf(assistant, tool), "m2", "new", 2L) { it },
         ).isInstanceOf(BranchSessionPlanResult.Ready::class.java)
+    }
+
+    @Test
+    fun `从助手建分支延伸到同一轮中配对工具结果的首个稳定边界`() {
+        val user = message("m1", "user", "问题")
+        val assistant = Message("m2", MessageRole.ASSISTANT, "开始读取",
+            toolCalls = listOf(ToolCall("call-1", "read_file", "{}"))).toEntity("source")
+        val tool = message("m3", "tool", "结果", parentMessageId = "m2", toolCallId = "call-1")
+        val later = message("m4", "assistant", "总结")
+        val next = message("m5", "user", "下一轮")
+
+        val result = BranchSessionPlanner.plan(session(), listOf(user, assistant, tool, later, next), "m2", "new", 2) { "copy-$it" }
+        val plan = (result as BranchSessionPlanResult.Ready).plan
+        assertThat(plan.messages.map { it.id }).containsExactly("copy-m1", "copy-m2", "copy-m3").inOrder()
+        assertThat(plan.messages.last().parentMessageId).isEqualTo("copy-m2")
+        assertThat(plan.session.lastMessage).isEqualTo("开始读取")
+
+        val acrossTurn = BranchSessionPlanner.plan(session(), listOf(user, assistant, next, tool), "m2", "new", 2) { it }
+        assertThat(acrossTurn).isEqualTo(BranchSessionPlanResult.Rejected(BranchSessionRejectReason.TargetNotStable))
+    }
+
+    @Test
+    fun `同一工具调用出现重复结果时拒绝分支`() {
+        val assistant = Message("m1", MessageRole.ASSISTANT, "读取两份文件",
+            toolCalls = listOf(ToolCall("a", "read_file", "{}"), ToolCall("b", "read_file", "{}"))).toEntity("source")
+        val first = message("m2", "tool", "第一份", toolCallId = "a")
+        val duplicate = message("m3", "tool", "重复的第一份", toolCallId = "a")
+        val second = message("m4", "tool", "第二份", toolCallId = "b")
+
+        val result = BranchSessionPlanner.plan(session(), listOf(assistant, first, duplicate, second), "m1", "new", 2) { it }
+
+        assertThat(result).isEqualTo(BranchSessionPlanResult.Rejected(BranchSessionRejectReason.TargetNotStable))
+    }
+
+    @Test
+    fun `编辑分支重排图片时对齐引用和标注并在清空图片后清空元数据`() {
+        val first = WorkspaceDocumentReference("/甲.png", 0, 1)
+        val second = WorkspaceDocumentReference("/乙.png", 0, 1)
+        val mark = ImageAnnotation(ImageAnnotationKind.MARKUP, 4, 4, "/乙标注.png", second.path)
+        val context = ImageAnnotationContext("source", linuxNamespace = false)
+        val original = Message("m1", MessageRole.USER, "原问题", userImages = listOf("甲", "乙"),
+            userImageReferences = listOf(first, second), userImageAnnotations = listOf(null, mark),
+            userImageAnnotationContext = context).toEntity("source")
+
+        fun cloneWith(images: List<String>): Message {
+            val plan = BranchSessionPlanner.plan(session(), listOf(original), original.id, "branch", 2,
+                editedTargetUser = EditedUserMessagePayload("新问题", userImages = images)) { "copy-$it" }
+            return (plan as BranchSessionPlanResult.Ready).plan.messages.single().toDomain()
+        }
+
+        val reordered = cloneWith(listOf("乙", "甲"))
+        assertThat(reordered.userImageReferences).containsExactly(second, first).inOrder()
+        assertThat(reordered.userImageAnnotations).containsExactly(mark, null).inOrder()
+        assertThat(reordered.userImageAnnotationContext).isEqualTo(context)
+        val cleared = cloneWith(emptyList())
+        assertThat(cleared.userImageReferences).isNull()
+        assertThat(cleared.userImageAnnotations).isNull()
+        assertThat(cleared.userImageAnnotationContext).isNull()
+    }
+
+    @Test
+    fun `编辑分支截断到用户消息并清空附件和旧上下文且重映射引文`() {
+        val reference = WorkspaceDocumentReference("/旧图.png", 0, 1)
+        val document = MessageDocumentAttachment("doc", "旧文档", "text/plain", "原文", 6, "hash", 1)
+        val original = Message("m2", MessageRole.USER, "旧问题", userImages = listOf("旧图"),
+            userImageReferences = listOf(reference), userDocuments = listOf(document),
+            quotes = listOf(MessageQuote("obsolete", "原引文", "")), turnContext = "旧轮次上下文").toEntity("source")
+        val messages = listOf(message("m1", "assistant", "来源"), original,
+            message("m3", "assistant", "生成中", status = "streaming"))
+        val payload = EditedUserMessagePayload(
+            "新问题", userImages = emptyList(), userImageReferences = emptyList(), userDocuments = emptyList(),
+            quotes = listOf(MessageQuote("m1", "来源", "新批注")), userImageAnnotations = emptyList(),
+        )
+
+        val result = BranchSessionPlanner.plan(session(), messages, "m3", "new", 2, editedTargetUser = payload) { "copy-$it" }
+        val plan = (result as BranchSessionPlanResult.Ready).plan
+        assertThat(plan.messages.map { it.id }).containsExactly("copy-m1", "copy-m2").inOrder()
+        val edited = plan.messages.last().toDomain()
+        assertThat(edited.content).isEqualTo("新问题")
+        assertThat(edited.userImages.orEmpty()).isEmpty()
+        assertThat(edited.userImageReferences.orEmpty()).isEmpty()
+        assertThat(edited.userDocuments.orEmpty()).isEmpty()
+        assertThat(edited.userImageAnnotationContext).isNull()
+        assertThat(edited.turnContext).isNull()
+        assertThat(edited.quotes).containsExactly(MessageQuote("copy-m1", "来源", "新批注"))
+        assertThat(plan.session.lastMessage).isEqualTo("新问题")
+        assertThat(original.toDomain().userDocuments).containsExactly(document)
     }
 
     @Test

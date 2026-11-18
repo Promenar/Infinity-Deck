@@ -86,6 +86,14 @@ internal fun sanitizeProtocolHistory(messages: List<Message>): List<Message> {
     return result
 }
 
+internal fun isSummaryInvalidatedByReplacement(
+    session: Session,
+    pinnedUserMessageId: String?,
+    excludedMessageIds: Set<String>,
+): Boolean = excludedMessageIds.isNotEmpty() && session.messages.any {
+    it.isArchived && (it.id in excludedMessageIds || it.id == pinnedUserMessageId)
+}
+
 data class GenerationContentNormalization(
     val content: String,
     val syntheticSteps: List<ExecutionStep> = emptyList(),
@@ -138,9 +146,12 @@ class DefaultChatGenerationContentStrategy(
             ((currentStart + 1) until visibleMessages.size)
                 .firstOrNull { visibleMessages[it].role == MessageRole.USER } ?: visibleMessages.size
         }
-        // 重新生成可复用已摘要的用户消息；当前轮始终保留，其它已摘要历史不重复发送。
-        val protocolMessages = visibleMessages.filterIndexed { index, message ->
-            !message.isArchived || (currentStart >= 0 && index in currentStart until currentEnd)
+        val protocolMessages = if (isSummaryInvalidatedByReplacement(session, pinnedUserMessageId, excludedMessageIds)) {
+            visibleMessages
+        } else {
+            visibleMessages.filterIndexed { index, message ->
+                !message.isArchived || (currentStart >= 0 && index in currentStart until currentEnd)
+            }
         }
         val history = sanitizeProtocolHistory(protocolMessages)
         val currentTurnStart = history.indexOfLast { it.role == MessageRole.USER }

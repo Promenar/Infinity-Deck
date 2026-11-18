@@ -466,6 +466,7 @@ class ChatViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
 
     private lateinit var viewModel: ChatViewModel
+    private lateinit var messageBranchUseCase: com.promenar.infinity.data.session.BranchSessionUseCase
     private lateinit var presentationStore: com.promenar.infinity.data.generation.GenerationPresentationStore
     private val panelEvents = mutableListOf<Triple<String, PanelMessageOrigin, Boolean>>()
     private val panelListener = object : PanelMessageListener {
@@ -743,6 +744,17 @@ class ChatViewModelTest {
                 }
             }
         }
+        override suspend fun writeUserEditCandidate(sessionId: String, message: Message) {
+            val index = savedMessages.indexOfFirst { it.second == sessionId && it.first.id == message.id }
+            check(index >= 0) { "测试消息不存在" }
+            savedMessages[index] = message to sessionId
+            val sessionIndex = savedSessions.indexOfFirst { it.id == sessionId }
+            val session = savedSessions[sessionIndex]
+            savedSessions[sessionIndex] = session.copy(messages = session.messages.map {
+                if (it.id == message.id) message else it
+            })
+        }
+
         override suspend fun delete(messageId: String) {
             deletedMessages.add(messageId)
             savedMessages.removeIf { it.first.id == messageId }
@@ -1224,6 +1236,7 @@ class ChatViewModelTest {
         )
 
         val documentReader = io.mockk.mockk<FullContextDocumentReader>()
+        messageBranchUseCase = io.mockk.mockk()
         viewModel = ChatViewModel(
             application = app,
             sessionRepository = stubSessionRepo,
@@ -1236,6 +1249,7 @@ class ChatViewModelTest {
             configResolver = configResolver,
             sessionToolResolver = generationToolResolver,
             fullContextDocumentReader = documentReader,
+            branchSessionUseCase = messageBranchUseCase,
             generationCoordinatorOverride = generationCoordinator,
             generationPresentationStoreOverride = presentationStore,
             composerQueueStoreOverride = queuePort,
@@ -3780,6 +3794,154 @@ class ChatViewModelTest {
         assertThat(savedMessages.map { it.first.id }).containsNoneOf("a1", "t1", "a2")
         val sent = requireNotNull(lastPromptRequest).messages.filterNot { it.role == "system" }
         assertThat(sent.map { it.content }).containsExactly("查一下")
+    }
+
+    @Test
+    fun `只统计目标轮次之后的普通用户消息`() = runTest {
+        val internal = Message("wake", MessageRole.USER, "内部唤醒",
+            name = com.promenar.infinity.data.branch.SessionMessageStore.WAKE_MESSAGE_NAME)
+        val timeline = Message("sent", MessageRole.USER, "派发记录",
+            name = com.promenar.infinity.data.branch.SessionMessageStore.SENT_MESSAGE_NAME)
+        seedSession(messages = multiMessageTurn() + listOf(
+            internal, timeline, com.promenar.infinity.data.workspace.WorkspaceSwitchNotice.create("切换工作区"),
+            Message("u2", MessageRole.USER, "后续问题"),
+        ))
+        advanceUntilIdle()
+
+        assertThat(viewModel.countSubsequentUserTurns("a2")).isEqualTo(1)
+        assertThat(viewModel.countSubsequentUserTurns("u2")).isEqualTo(0)
+        assertThat(viewModel.canEditUserMessage("u1")).isTrue()
+        assertThat(viewModel.canEditUserMessage("wake")).isFalse()
+        assertThat(viewModel.canEditUserMessage("missing")).isFalse()
+    }
+
+    @Test
+    fun `切回正在重生成的会话仍隐藏旧回复`() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        seedSession("other")
+        advanceUntilIdle()
+        seedSession(messages = multiMessageTurn())
+        advanceUntilIdle()
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("生成中"))
+        holdStreamOpen = true
+
+        viewModel.regenerateMessage("u1")
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.messages.map { it.id }).containsNoneOf("a1", "t1", "a2")
+        viewModel.loadSession("other")
+        advanceUntilIdle()
+        viewModel.loadSession("s1")
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.messages.map { it.id }).containsNoneOf("a1", "t1", "a2")
+
+        viewModel.stopGeneration()
+        advanceUntilIdle()
+        assertThat(viewModel.uiState.value.messages.map { it.id })
+            .containsExactly("u1", "a1", "t1", "a2").inOrder()
+    }
+
+    @Test
+    fun `打开以用户消息结尾的新分支只生成一次首轮回复`() = runTest {
+        val user = Message("branch-user", MessageRole.USER, "分支问题", createdAt = 2000)
+        seedSession(messages = multiMessageTurn())
+        advanceUntilIdle()
+        val branch = savedSessions.single().copy(id = "branch-new", messages = listOf(user))
+        savedSessions.add(branch)
+        savedMessages.add(user to branch.id)
+        io.mockk.coEvery { messageBranchUseCase.branch("s1", "u1", null) } returns
+            com.promenar.infinity.data.session.BranchSessionResult.Success(branch.id)
+        fakeStreamChunks = listOf(
+            StreamChunk.TextDelta("分支回复"),
+            StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN),
+        )
+
+        viewModel.branchFromMessage("u1")
+        assertThat(protocolRequestCount).isEqualTo(0)
+        viewModel.loadSession(branch.id)
+        advanceUntilIdle()
+
+        assertThat(savedMessages.filter { it.second == branch.id }.map { it.first.content })
+            .containsExactly("分支问题", "分支回复").inOrder()
+        viewModel.loadSession(branch.id)
+        advanceUntilIdle()
+        assertThat(protocolRequestCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `归档消息编辑请求旁路旧摘要且取消后原样恢复`() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        val previous = Message("older", MessageRole.USER, "归档问题", isArchived = true, createdAt = 1900)
+        val original = multiMessageTurn().first().copy(isArchived = true, turnContext = "原上下文")
+        val oldMessages = listOf(previous, original) + multiMessageTurn().drop(1)
+        seedSession(messages = oldMessages)
+        advanceUntilIdle()
+        val app = ApplicationProvider.getApplicationContext<TestInfinityApplication>()
+        val summary = "应旁路的旧摘要"
+        val sessionIndex = savedSessions.indexOfFirst { it.id == "s1" }
+        savedSessions[sessionIndex] = savedSessions[sessionIndex].copy(summary = summary)
+        app.chatStore.updateSession("s1") { it.copy(summary = summary) }
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("生成中"))
+        holdStreamOpen = true
+
+        viewModel.editAndRegenerateMessage(original.id, "新问题")
+        advanceUntilIdle()
+        val sent = requireNotNull(lastPromptRequest).messages
+        assertThat(sent.filter { it.role == "user" }.map { it.content }).containsExactly("归档问题", "新问题").inOrder()
+        assertThat(sent.joinToString { it.content }).doesNotContain(summary)
+        assertThat(sent.joinToString { it.content }).doesNotContain("旧回答")
+        assertThat(app.chatStore.getSession("s1")?.summary).isEqualTo(summary)
+
+        viewModel.stopGeneration()
+        advanceUntilIdle()
+        assertThat(savedMessages.map { it.first }).containsExactlyElementsIn(oldMessages).inOrder()
+        assertThat(app.chatStore.getSession("s1")?.summary).isEqualTo(summary)
+        assertThat(viewModel.uiState.value.messages.map { it.id }).containsExactlyElementsIn(oldMessages.map { it.id }).inOrder()
+    }
+
+    @Test
+    fun `插队中断编辑重生成时恢复旧轮次并继续处理新输入`() = runTest {
+        val original = multiMessageTurn()
+        seedSession(messages = original)
+        advanceUntilIdle()
+        streamGate = CompletableDeferred()
+        fakeStreamChunks = listOf(StreamChunk.TextDelta("候选回复"))
+        viewModel.editAndRegenerateMessage("u1", "候选问题")
+        advanceUntilIdle()
+        assertThat(savedMessages.first { it.first.id == "u1" }.first.content).isEqualTo("候选问题")
+        viewModel.sendMessage("插队问题")
+        advanceUntilIdle()
+        val queued = viewModel.composerQueue.value.items.single()
+        streamGate = null
+        fakeStreamChunks = listOf(
+            StreamChunk.TextDelta("插队回复"),
+            StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN),
+        )
+
+        viewModel.steerQueuedMessage(queued.id)
+        awaitReal { savedMessages.any { it.first.content == "插队回复" } }
+
+        val messages = savedMessages.map { it.first }
+        assertThat(messages.take(original.size)).containsExactlyElementsIn(original).inOrder()
+        assertThat(messages.map { it.content }).contains("插队问题")
+        assertThat(messages.map { it.content }).containsNoneOf("候选问题", "候选回复")
+    }
+
+    @Test
+    fun `编辑无回复的用户消息生成成功后确认暂存`() = runTest {
+        val user = Message("u1", MessageRole.USER, "原问题", createdAt = 2000)
+        seedSession(messages = listOf(user))
+        advanceUntilIdle()
+        fakeStreamChunks = listOf(
+            StreamChunk.TextDelta("新回答"),
+            StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN),
+        )
+
+        viewModel.editAndRegenerateMessage(user.id, "修改后问题")
+        advanceUntilIdle()
+
+        assertThat(savedMessages.map { it.first.content }).containsExactly("修改后问题", "新回答").inOrder()
+        val app = ApplicationProvider.getApplicationContext<TestInfinityApplication>()
+        assertThat(app.chatStore.pendingUserEditSnapshots).isEmpty()
     }
 
     @Test

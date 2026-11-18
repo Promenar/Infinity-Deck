@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 修复分支工具结果配对、切换会话后的重发状态及归档轮次重发时的旧摘要污染。编辑重生成在失败或取消时恢复原消息，旧回复替换后保留原会话产物版本。
+
 ## [0.62.0-beta] - 2026-11-18
 
 - **录音整理稿支持富格式排版、实时预览编辑与可视化自动梳理**：
