@@ -406,6 +406,10 @@
     <string name="chat_menu_session_settings">Session Settings</string>
     <string name="chat_action_copy">Copy</string>
     <string name="chat_action_edit">Edit</string>
+    <string name="chat_edit_message_title">Edit message</string>
+    <string name="chat_edit_branch_and_generate">Branch &amp; generate</string>
+    <string name="chat_edit_regenerate_here">Regenerate here</string>
+    <string name="chat_edit_subsequent_turns_hint">%1$d subsequent turns will be replaced if regenerated here. Or branch into a new chat; workspace files on disk remain intact.</string>
     <string name="chat_action_delete">Delete</string>
     <string name="chat_action_resend">Resend</string>
     <string name="chat_action_regenerate">Regenerate</string>

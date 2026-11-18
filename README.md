@@ -135,7 +135,7 @@
 
 - **Requirements**: Android 12 (API 31) or later. Built-in Linux and on-device GGUF inference require `arm64-v8a`; Alpine base occupies ~64 MB, or ~470 MB with the default toolchain (`git`, `ripgrep`, Python, Node.js, FFmpeg, each optional at install time).
 - **App updates**: Check **Settings › About › Check for updates** to query the latest GitHub Release and open the download page; nothing downloads or installs silently in the background.
-- **Current release**: `v0.62.0-beta` (`versionCode` `171`), upgrading recording summaries with rich-format ECharts/Mermaid/KaTeX/GFM table rendering and inline Edit/Preview switching, unbounded `1440px+` 1:1 single-image PNG & adaptive vector PDF export, bidirectional CAS library document sync, and authorized workspace access to recording `.md` documents and read-only virtual `.wav` audio under `/mnt/knowledge`. [Releases](https://github.com/Promenar/Infinity-Deck/releases)
+- **Current release**: `v0.63.0-beta` (`versionCode` `172`), adding inline editing for sent user messages (text rewrite plus removing attached images, documents, or quotes) with atomic snapshot rollback on failure/cancellation and choice between in-place regeneration or branching into a new session on historical turns, while preserving workspace files and Canvas artifact versions and fixing tool-trailing branch target pairing, cross-session regeneration tracking, and stale summary invalidation. [Releases](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### Build from Source
 

@@ -156,4 +156,32 @@ class ChatRouteContractTest {
         assertThat(pipelineFunction).doesNotContain("findModelSpec(")
         assertThat(pipelineFunction).doesNotContain("resolveModelDisplayName(")
     }
+
+    @Test
+    fun `末轮重生成免二次确认且用户消息编辑与分支通过 route 完整接线`() {
+        val route = routeSource.readText()
+        val screen = chatSource.readText()
+        val pipeline = pipelineSource.readText()
+
+        val regenerateBlock = route
+            .substringAfter("onRegenerateMessage = { messageId ->")
+            .substringBefore("onRetryLastMessage =")
+        assertThat(regenerateBlock).contains("chatViewModel.countSubsequentUserTurns(messageId) > 0")
+        assertThat(regenerateBlock).contains("requestOverlay(ChatOverlay.Truncate(messageId))")
+        assertThat(regenerateBlock).contains("chatViewModel.regenerateMessage(messageId)")
+
+        assertThat(route).contains("onEditUserMessage = { messageId, payload ->")
+        assertThat(route).contains("chatViewModel.editAndRegenerateMessage(")
+        assertThat(route).contains("onBranchWithEditMessage = { messageId, payload -> launchBranch(messageId, payload) }")
+        assertThat(screen).contains("onEditUserMessage = actions.onEditUserMessage")
+        assertThat(screen).contains("onBranchWithEdit = actions.onBranchWithEditMessage")
+        assertThat(screen).contains("subsequentUserTurns =")
+
+        assertThat(pipeline).contains("UiTags.CHAT_MESSAGE_EDIT")
+        assertThat(pipeline).contains("UiTags.CHAT_USER_EDIT_CARD")
+        assertThat(pipeline).contains("UiTags.CHAT_USER_EDIT_INPUT")
+        assertThat(pipeline).contains("UiTags.CHAT_USER_EDIT_CANCEL")
+        assertThat(pipeline).contains("UiTags.CHAT_USER_EDIT_BRANCH")
+        assertThat(pipeline).contains("UiTags.CHAT_USER_EDIT_SUBMIT")
+    }
 }

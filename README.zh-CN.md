@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.62.0-beta`（versionCode `171`）。录音整理稿支持 ECharts / Mermaid / KaTeX / 表格富格式自动梳理与「编辑 / 预览」双模式，支持 `1440px+` 基准宽高无上限 1:1 单张 PNG 与自适应矢量 PDF 导出，并打通资料库录音文档双向同步及授权会话在 `/mnt/knowledge` 下读写录音 `.md`、只读访问原始 `.wav` 音频。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.63.0-beta`（versionCode `172`）。新增已发送用户消息内联编辑与重生成（支持修改文本及删减附图/文档/引用，失败或取消时原子回滚原消息，历史轮次可选择「就地重新生成」或「新建分支并生成」，磁盘工作区文件不主动回退并保留会话产物版本），同时修复带工具尾部气泡分支遗漏 `tool` 结果、切换会话丢失重发状态与归档摘要污染问题。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 

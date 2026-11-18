@@ -10,8 +10,10 @@ import com.promenar.infinity.ui.common.InfinityHapticEvent
 import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import androidx.compose.animation.*
 import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.forReading
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +22,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.Icon
@@ -39,7 +42,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
@@ -48,11 +54,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -65,7 +75,9 @@ import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.turnMemory
 import com.promenar.infinity.data.model.TurnMemoryState
 import com.promenar.infinity.data.model.MessageDocumentAttachment
+import com.promenar.infinity.data.model.MessageQuote
 import com.promenar.infinity.data.model.MessageRole
+import com.promenar.infinity.data.session.EditedUserMessagePayload
 import com.promenar.infinity.data.local.db.recovery.LegacyAttachmentCodec
 import com.promenar.infinity.data.local.db.recovery.LegacyAttachmentItem
 import com.promenar.infinity.data.local.db.recovery.LegacyAttachmentOpenResult
@@ -198,6 +210,9 @@ fun PipelineBubble(
     onRegenerate: ((String) -> Unit)? = null,
     onDelete: ((String) -> Unit)? = null,
     onBranch: ((String) -> Unit)? = null,
+    subsequentUserTurns: Int = 0,
+    onEditUserMessage: ((String, EditedUserMessagePayload) -> Unit)? = null,
+    onBranchWithEdit: ((String, EditedUserMessagePayload) -> Unit)? = null,
     modifier: Modifier = Modifier,
     hasRagContent: Boolean = false,
     onMessageContentChange: ((String, String) -> Unit)? = null,
@@ -246,10 +261,13 @@ fun PipelineBubble(
             message = msg,
             fontSize = fontSize,
             modifier = modifier,
+            subsequentUserTurns = subsequentUserTurns,
             onDelete = { onDelete?.invoke(msg.id) },
             onCopy = messageCopyOverride(onCopy, msg.content),
             onRegenerate = onRegenerate?.let { handler -> { handler(msg.id) } },
             onBranch = onBranch?.let { handler -> { handler(msg.id) } },
+            onEditSubmit = onEditUserMessage?.let { handler -> { payload -> handler(msg.id, payload) } },
+            onBranchWithEdit = onBranchWithEdit?.let { handler -> { payload -> handler(msg.id, payload) } },
         )
         return
     }
@@ -428,6 +446,7 @@ fun PipelineBubble(
                 }
                 val memoryOwner = if (onOpenTurnMemory == null) null
                     else group.assistantMessages.lastOrNull { it.turnMemory != null || it.id in turnGraphStates }
+                val branchTargetId = group.messages.lastOrNull()?.id ?: lastMsg.id
                 AssistantActionRow(
                     modelDisplayName = modelDisplayName,
                     timestamp = timestamp,
@@ -441,7 +460,7 @@ fun PipelineBubble(
                         { onCopy?.invoke(text) ?: copyToClipboard(context, text) }
                     },
                     onRegenerate = onRegenerate?.let { handler -> { handler(lastMsg.id) } },
-                    onBranch = onBranch?.let { handler -> { handler(lastMsg.id) } },
+                    onBranch = onBranch?.let { handler -> { handler(branchTargetId) } },
                     onDelete = onDelete?.let { handler -> { handler(lastMsg.id) } },
                     modifier = Modifier.padding(top = 8.dp),
                 )
@@ -1900,15 +1919,22 @@ fun UserMessageBubble(
     message: Message,
     fontSize: Int,
     modifier: Modifier = Modifier,
+    subsequentUserTurns: Int = 0,
     onDelete: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     onRegenerate: (() -> Unit)? = null,
     onBranch: (() -> Unit)? = null,
+    onEditSubmit: ((EditedUserMessagePayload) -> Unit)? = null,
+    onBranchWithEdit: ((EditedUserMessagePayload) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
     val menuTouch = rememberInfinityMenuTouch()
     var showSelection by remember { mutableStateOf(false) }
+    var isEditing by rememberSaveable(message.id) { mutableStateOf(false) }
+    LaunchedEffect(onEditSubmit == null) {
+        if (onEditSubmit == null) isEditing = false
+    }
     val timestamp = remember(message.createdAt) {
         java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(message.createdAt))
     }
@@ -1924,66 +1950,431 @@ fun UserMessageBubble(
         // 后台线程的写入若恰好落在组合读取之间，变更通知会丢失，附件区永远停在空列表。
         withContext(Dispatchers.Main.immediate) { value = parsed }
     }
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val bubbleMaxWidth = maxWidth * 0.82f
-        Box(modifier = Modifier.align(Alignment.TopEnd).widthIn(max = bubbleMaxWidth)) {
-            Column(
-                modifier = Modifier.infinityMenuTouch(menuTouch).combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = { showMenu = true }),
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                if (!message.userDocuments.isNullOrEmpty()) MessageDocumentSummary(message.userDocuments.orEmpty())
-                if (!message.userImages.isNullOrEmpty()) {
-                    Row(
-                        modifier = Modifier.widthIn(max = bubbleMaxWidth).horizontalScroll(rememberScrollState()).testTag("CHAT_USER_IMAGES"),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    AnimatedContent(
+        targetState = isEditing && onEditSubmit != null,
+        transitionSpec = {
+            (fadeIn(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) +
+                expandVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)))
+                .togetherWith(
+                    fadeOut(tween(InfinityMotion.DurationShort)) +
+                        shrinkVertically(tween(InfinityMotion.DurationShort)),
+                )
+        },
+        modifier = modifier.fillMaxWidth(),
+        label = "user_message_edit_transition",
+    ) { editing ->
+        if (editing && onEditSubmit != null) {
+            UserMessageInlineEditorCard(
+                message = message,
+                fontSize = fontSize,
+                subsequentUserTurns = subsequentUserTurns,
+                onCancel = { isEditing = false },
+                onSubmit = { payload ->
+                    isEditing = false
+                    onEditSubmit(payload)
+                },
+                onBranchAndGenerate = onBranchWithEdit?.let { handler ->
+                    { payload ->
+                        isEditing = false
+                        handler(payload)
+                    }
+                },
+            )
+        } else {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val bubbleMaxWidth = maxWidth * 0.82f
+                Box(modifier = Modifier.align(Alignment.TopEnd).widthIn(max = bubbleMaxWidth)) {
+                    Column(
+                        modifier = Modifier.infinityMenuTouch(menuTouch).combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = { showMenu = true }),
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        message.userImages.orEmpty().forEach { dataUrl ->
-                            ChatImageThumbnail(
-                                imageModel = dataUrl,
-                                contentDescription = stringResource(R.string.chat_cd_attached_image),
-                                modifier = Modifier.size(160.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                                contentScale = ContentScale.Crop,
-                            )
+                        if (!message.userDocuments.isNullOrEmpty()) MessageDocumentSummary(message.userDocuments.orEmpty())
+                        if (!message.userImages.isNullOrEmpty()) {
+                            Row(
+                                modifier = Modifier.widthIn(max = bubbleMaxWidth).horizontalScroll(rememberScrollState()).testTag("CHAT_USER_IMAGES"),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                message.userImages.orEmpty().forEach { dataUrl ->
+                                    ChatImageThumbnail(
+                                        imageModel = dataUrl,
+                                        contentDescription = stringResource(R.string.chat_cd_attached_image),
+                                        modifier = Modifier.size(160.dp).clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                }
+                            }
+                        }
+                        if (legacyAttachments.isNotEmpty()) LegacyAttachmentSummary(legacyAttachments)
+                        UserMessageQuotes(message.quotes.orEmpty(), maxWidth = bubbleMaxWidth, fontSize = fontSize)
+                        if (message.content.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.widthIn(max = bubbleMaxWidth).testTag("CHAT_USER_BUBBLE"),
+                            ) {
+                                Text(
+                                    text = message.content,
+                                    style = InfinityTypography.bodyLarge.copy(fontSize = fontSize.sp, lineHeight = (fontSize * 1.5).sp).forReading(),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                )
+                            }
                         }
                     }
-                }
-                if (legacyAttachments.isNotEmpty()) LegacyAttachmentSummary(legacyAttachments)
-                UserMessageQuotes(message.quotes.orEmpty(), maxWidth = bubbleMaxWidth, fontSize = fontSize)
-                if (message.content.isNotBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.widthIn(max = bubbleMaxWidth).testTag("CHAT_USER_BUBBLE"),
-                    ) {
-                        Text(
-                            text = message.content,
-                            style = InfinityTypography.bodyLarge.copy(fontSize = fontSize.sp, lineHeight = (fontSize * 1.5).sp).forReading(),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        )
-                    }
+                    MessageContextMenu(
+                        expanded = showMenu,
+                        onDismiss = { showMenu = false },
+                        touch = menuTouch,
+                        onCopy = { onCopy?.invoke() ?: copyToClipboard(context, message.content); showMenu = false },
+                        onSelectText = if (message.content.isNotBlank()) ({ showSelection = true }) else null,
+                        onEdit = if (onEditSubmit != null) ({ isEditing = true }) else null,
+                        onRegenerate = onRegenerate,
+                        onBranch = onBranch,
+                        onDelete = { onDelete?.invoke(); showMenu = false },
+                        isUser = true,
+                        timestamp = timestamp,
+                    )
                 }
             }
-            MessageContextMenu(
-                expanded = showMenu,
-                onDismiss = { showMenu = false },
-                touch = menuTouch,
-                onCopy = { onCopy?.invoke() ?: copyToClipboard(context, message.content); showMenu = false },
-                onSelectText = if (message.content.isNotBlank()) ({ showSelection = true }) else null,
-                onRegenerate = onRegenerate,
-                onBranch = onBranch,
-                onDelete = { onDelete?.invoke(); showMenu = false },
-                isUser = true,
-                timestamp = timestamp,
-            )
         }
     }
     MessageTextSelectionSheet(
         show = showSelection, text = message.content, sourceMessageId = message.id, fontSize = fontSize,
         onDismiss = { showSelection = false },
     )
+}
+
+@Composable
+private fun UserMessageInlineEditorCard(
+    message: Message,
+    fontSize: Int,
+    subsequentUserTurns: Int,
+    onCancel: () -> Unit,
+    onSubmit: (EditedUserMessagePayload) -> Unit,
+    onBranchAndGenerate: ((EditedUserMessagePayload) -> Unit)?,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val focusRequester = remember { FocusRequester() }
+    var fieldValue by remember(message.id) {
+        mutableStateOf(TextFieldValue(text = message.content, selection = TextRange(message.content.length)))
+    }
+    var retainedImages by remember(message.id) { mutableStateOf(message.userImages.orEmpty()) }
+    var retainedDocuments by remember(message.id) { mutableStateOf(message.userDocuments.orEmpty()) }
+    var retainedQuotes by remember(message.id) { mutableStateOf(message.quotes.orEmpty()) }
+
+    LaunchedEffect(message.id) {
+        focusRequester.requestFocus()
+    }
+
+    val hasAnyPayload = fieldValue.text.isNotBlank() ||
+        retainedImages.isNotEmpty() ||
+        retainedDocuments.isNotEmpty() ||
+        retainedQuotes.isNotEmpty()
+
+    fun buildPayload() = EditedUserMessagePayload(
+        content = fieldValue.text,
+        userImages = retainedImages,
+        userDocuments = retainedDocuments,
+        quotes = retainedQuotes,
+    )
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = scheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, scheme.primary.copy(alpha = 0.42f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(UiTags.CHAT_USER_EDIT_CARD),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = null,
+                    tint = scheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = stringResource(R.string.chat_edit_message_title),
+                    style = InfinityTypography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.onSurface,
+                )
+            }
+
+            if (retainedImages.isNotEmpty() || retainedDocuments.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    retainedImages.forEachIndexed { idx, dataUrl ->
+                        Box(
+                            modifier = Modifier
+                                .size(width = 92.dp, height = 64.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(scheme.surfaceContainerHighest)
+                                .border(0.5.dp, scheme.outlineVariant, RoundedCornerShape(12.dp)),
+                        ) {
+                            ChatImageThumbnail(
+                                imageModel = dataUrl,
+                                contentDescription = stringResource(R.string.chat_cd_attached_image),
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                            val removeImageCd = stringResource(R.string.chat_cd_remove_image)
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(32.dp)
+                                    .clickable(role = Role.Button, onClickLabel = removeImageCd) {
+                                        retainedImages = retainedImages.filterIndexed { i, _ -> i != idx }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(scheme.surfaceContainerHighest.copy(alpha = 0.9f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = removeImageCd,
+                                        tint = scheme.onSurface,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    retainedDocuments.forEach { doc ->
+                        EditableUserDocumentChip(
+                            document = doc,
+                            onRemove = { retainedDocuments = retainedDocuments.filterNot { it.id == doc.id } },
+                        )
+                    }
+                }
+            }
+
+            retainedQuotes.forEachIndexed { idx, quote ->
+                EditableUserQuoteCard(
+                    quote = quote,
+                    onRemove = { retainedQuotes = retainedQuotes.filterIndexed { i, _ -> i != idx } },
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = scheme.surfaceContainerLowest,
+                border = BorderStroke(0.5.dp, scheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                BasicTextField(
+                    value = fieldValue,
+                    onValueChange = { fieldValue = it },
+                    textStyle = InfinityTypography.bodyLarge.copy(
+                        fontSize = fontSize.sp,
+                        lineHeight = (fontSize * 1.5).sp,
+                        color = scheme.onSurface,
+                    ).forInput(),
+                    cursorBrush = SolidColor(scheme.primary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 68.dp, max = 220.dp)
+                        .focusRequester(focusRequester)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .testTag(UiTags.CHAT_USER_EDIT_INPUT),
+                )
+            }
+
+            if (subsequentUserTurns > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(scheme.surfaceContainer)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.chat_edit_subsequent_turns_hint, subsequentUserTurns),
+                        style = InfinityTypography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            InfinityPillRow(
+                modifier = Modifier.fillMaxWidth(),
+                spacing = 8.dp,
+                stackedSpacing = 8.dp,
+                reverseWhenStacked = true,
+            ) {
+                InfinityPillButton(
+                    text = stringResource(R.string.common_btn_cancel),
+                    onClick = onCancel,
+                    tone = InfinityPillTone.NEUTRAL,
+                    modifier = Modifier.testTag(UiTags.CHAT_USER_EDIT_CANCEL),
+                )
+                if (subsequentUserTurns > 0 && onBranchAndGenerate != null) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.chat_edit_branch_and_generate),
+                        onClick = { onBranchAndGenerate(buildPayload()) },
+                        tone = InfinityPillTone.NEUTRAL,
+                        icon = Icons.Rounded.ForkRight,
+                        enabled = hasAnyPayload,
+                        modifier = Modifier.testTag(UiTags.CHAT_USER_EDIT_BRANCH),
+                    )
+                }
+                InfinityPillButton(
+                    text = stringResource(
+                        if (subsequentUserTurns > 0) R.string.chat_edit_regenerate_here else R.string.chat_action_regenerate,
+                    ),
+                    onClick = { onSubmit(buildPayload()) },
+                    tone = InfinityPillTone.PRIMARY,
+                    icon = Icons.Rounded.Refresh,
+                    enabled = hasAnyPayload,
+                    modifier = Modifier.testTag(UiTags.CHAT_USER_EDIT_SUBMIT),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditableUserDocumentChip(
+    document: MessageDocumentAttachment,
+    onRemove: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val reference = document.workspaceReference
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = scheme.surfaceContainerLowest,
+        border = BorderStroke(0.5.dp, scheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (reference != null) Icons.Rounded.Folder else Icons.Rounded.Description,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            Column(modifier = Modifier.widthIn(max = 150.dp)) {
+                Text(
+                    text = document.name,
+                    style = InfinityTypography.labelMedium,
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = reference?.let {
+                        com.promenar.infinity.data.workspace.workspaceFileRelativePath(it.path).removePrefix("/")
+                    } ?: formatMessageDocumentBytes(document.sizeBytes),
+                    style = InfinityTypography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.MiddleEllipsis,
+                )
+            }
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.chat_cd_remove_document),
+                    tint = scheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditableUserQuoteCard(
+    quote: MessageQuote,
+    onRemove: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = scheme.surfaceContainer,
+        border = BorderStroke(0.5.dp, scheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.FormatQuote,
+                contentDescription = null,
+                tint = scheme.primary,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .size(16.dp),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = quote.text,
+                    style = InfinityTypography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (quote.annotation.isNotBlank()) {
+                    Text(
+                        text = quote.annotation,
+                        style = InfinityTypography.labelMedium,
+                        color = scheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.ux2_quote_remove_cd),
+                    tint = scheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
 }
 
 /** 用户气泡的长按留给消息菜单，自由选字放进底部面板：长按或双击文字即可选择；选中后可以引用，引用后面板收起。 */
@@ -2184,6 +2575,7 @@ fun MessageContextMenu(
     onDismiss: () -> Unit,
     onCopy: () -> Unit,
     onSelectText: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
     onRegenerate: (() -> Unit)? = null,
     onBranch: (() -> Unit)? = null,
     onDelete: () -> Unit,
@@ -2231,6 +2623,24 @@ fun MessageContextMenu(
                 text = { Text(stringResource(R.string.chat_action_select_text), style = InfinityTypography.labelLarge) },
                 onClick = {
                     onSelectText()
+                    onDismiss()
+                },
+            )
+        }
+        if (onEdit != null) {
+            InfinityMenuItem(
+                modifier = Modifier.testTag(UiTags.CHAT_MESSAGE_EDIT),
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+                text = { Text(stringResource(R.string.chat_action_edit), style = InfinityTypography.labelLarge) },
+                onClick = {
+                    onEdit()
                     onDismiss()
                 },
             )

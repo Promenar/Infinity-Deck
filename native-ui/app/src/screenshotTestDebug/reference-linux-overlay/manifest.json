@@ -5,16 +5,16 @@
       "linux_sha256": "4964895a95bf5b89290b8f00b528dd4203e0139d049397186a01d0230a1b80a7"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingConsentPreview_云端待确认 浅中360_2b71ee42_0.png": {
-      "base_sha256": "a3ca3a78bc404896182d9a1e4e8a8c9282cd5642e7b5f058f309a66019247fd2",
-      "linux_sha256": "5a01080365f5ebba38dc89a54eb7215e207c7c37334ecd796d96dda5698eae9a"
+      "base_sha256": "cdd9b5c3ac70e59023c0a8e9c3d70f84e65e68f36b1630353a2f3414d20e5d3a",
+      "linux_sha256": "cdd9b5c3ac70e59023c0a8e9c3d70f84e65e68f36b1630353a2f3414d20e5d3a"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingConsentPreview_云端待确认 浅英360 大字_8a9c0adf_0.png": {
-      "base_sha256": "048db6a392d6a5a20996c9dea3d056a462d33107b244519847a8c30e2ac8cdb0",
-      "linux_sha256": "048db6a392d6a5a20996c9dea3d056a462d33107b244519847a8c30e2ac8cdb0"
+      "base_sha256": "b71e14cc3bce5b94e2e756fd08b2bceabf19217184bff0a04d02e296d2c60924",
+      "linux_sha256": "b71e14cc3bce5b94e2e756fd08b2bceabf19217184bff0a04d02e296d2c60924"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingIdlePreview_待录音 深中360_34d16f92_0.png": {
-      "base_sha256": "eca0cdd9df442838217de2c57c8fd1fd73cf4d382aed3abb4b8f34c88d4b9260",
-      "linux_sha256": "eca0cdd9df442838217de2c57c8fd1fd73cf4d382aed3abb4b8f34c88d4b9260"
+      "base_sha256": "2fd2682527c9d578dc668b549c245393837187abd645dc1052b855cb74db32d1",
+      "linux_sha256": "2fd2682527c9d578dc668b549c245393837187abd645dc1052b855cb74db32d1"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingListeningPreview_录音刚开始 浅中360_e1578e33_0.png": {
       "base_sha256": "8167d2662db16ee17d8198d8dbc030d6abf6fb9c910ad47a3d06a572a2002d5b",
@@ -29,16 +29,16 @@
       "linux_sha256": "52221440ee035d5291b6e931a5a81ed85e6597e6902a2ec4dc329aac6a6bedd1"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingRawOnlyPreview_仅转写 整理稿 浅中360_843f0370_0.png": {
-      "base_sha256": "84481487aa3eb1a704b24b5fde189086c32c2c7482fe06b168c9b4a0d9631faf",
-      "linux_sha256": "e93c73e3db6906bbd0adf65d501cff2594876c670f14cb4413e420fdb236761c"
+      "base_sha256": "24fc242e71d615bbdfac70b9b34f14a257d368c538ce8c3b660b97bca61223f1",
+      "linux_sha256": "24fc242e71d615bbdfac70b9b34f14a257d368c538ce8c3b660b97bca61223f1"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingRunningPreview_录音中 深中360_86955e8c_0.png": {
       "base_sha256": "8e1706c5718a7ad2c3795d6ba9d8e93e1ddc0c1d16a7b8acdad36be6d1a60980",
       "linux_sha256": "d2afe9670a0dc6312c00b9164c5b1987d1aae9700b04b20f767f2757c1378591"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingRunningPreview_录音中 深中840 内屏_bdcae837_0.png": {
-      "base_sha256": "2108dfe8e70e5e9660b0b0ac8d73e9cbdce3f8a3a7317ac790788e635f447c89",
-      "linux_sha256": "7d4d2b59b2f0d728e36bef08849ea21b8188ee1c98cf3451ffa43be7673fa6d6"
+      "base_sha256": "88b678c354ffce50eebf41f5fcb89122347ec807605000129417bcda6288a7aa",
+      "linux_sha256": "88b678c354ffce50eebf41f5fcb89122347ec807605000129417bcda6288a7aa"
     },
     "com/promenar/infinity/recording/RecordingScreenshotTestKt/recordingRunningPreview_录音中 深英360 大字_82ec8b4b_0.png": {
       "base_sha256": "af024a7f0300d07253b556f4c5742395761a33092a31a55a20328131be295082",

@@ -394,6 +394,8 @@ data class ChatScreenActions(
     /** 打开 Tailscale 设置；为 null 时失败提示不显示设置与登录入口。 */
     val onOpenTailscaleSettings: (() -> Unit)? = null,
     val onBranchMessage: (String) -> Unit = {},
+    val onEditUserMessage: (String, com.promenar.infinity.data.session.EditedUserMessagePayload) -> Unit = { _, _ -> },
+    val onBranchWithEditMessage: (String, com.promenar.infinity.data.session.EditedUserMessagePayload) -> Unit = { _, _ -> },
     /** 打开某轮回复的“本轮记忆”面板，参数为记忆状态所在的助手消息 ID。 */
     val onOpenTurnMemory: (String) -> Unit = {},
     val onApprove: (com.promenar.infinity.data.model.ApprovalRequest) -> Unit = {},
@@ -1236,6 +1238,15 @@ fun ChatScreenContent(
                             onDelete = actions.onDeleteMessage,
                             onRegenerate = actions.onRegenerateMessage,
                             onBranch = actions.onBranchMessage,
+                            subsequentUserTurns = if (group.isUser) {
+                                pipelineGroups.drop(idx + 1).count {
+                                    it.isUser &&
+                                        it.messages.firstOrNull()?.systemTrigger == null &&
+                                        it.messages.firstOrNull()?.name != com.promenar.infinity.data.branch.BranchPlanLedger.PLAN_MESSAGE_NAME
+                                }
+                            } else 0,
+                            onEditUserMessage = actions.onEditUserMessage.takeIf { !uiState.isGenerating && !hasPendingApproval },
+                            onBranchWithEdit = actions.onBranchWithEditMessage.takeIf { !uiState.isGenerating && !hasPendingApproval },
                             onOpenTurnMemory = actions.onOpenTurnMemory.takeIf { uiState.session?.let { (it.ragOptions ?: RagOptions()).enableMemory } == true },
                             turnGraphStates = state.turnGraphStates,
                             failureActions = if (idx == pipelineGroups.lastIndex && !uiState.isGenerating) {

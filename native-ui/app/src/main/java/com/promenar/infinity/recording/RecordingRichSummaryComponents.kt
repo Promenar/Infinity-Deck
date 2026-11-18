@@ -103,6 +103,7 @@ import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.forInput
 import kotlin.math.max
 
 private val StandaloneSeekLineRegex = Regex("""^\s*(?:\[([^\]\n]+)\]\(recording://seek/(\d+)\)\s*)+$""")
@@ -610,7 +611,7 @@ internal fun RecordingRichInlineEditor(
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraftChange,
-                textStyle = InfinityTypography.bodyMedium.copy(fontFamily = InfinityMonospace),
+                textStyle = InfinityTypography.bodyMedium.copy(fontFamily = InfinityMonospace).forInput(),
                 minLines = 6,
                 maxLines = if (fillHeight) Int.MAX_VALUE else 14,
                 shape = RoundedCornerShape(16.dp),

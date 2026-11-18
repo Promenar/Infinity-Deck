@@ -971,6 +971,35 @@ fun ChatRoute(
             null
         },
     ) {
+        val launchBranch: (String, com.promenar.infinity.data.session.EditedUserMessagePayload?) -> Unit = { messageId, editedUser ->
+            scope.launch {
+                val result = try {
+                    chatViewModel.branchFromMessage(messageId, editedUser)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    snackbarData = InfinitySnackbarData(branchFailedLabel, SnackbarType.ERROR)
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar(branchFailedLabel, duration = SnackbarDuration.Long)
+                    return@launch
+                }
+                when (result) {
+                    is com.promenar.infinity.data.session.BranchSessionResult.Success ->
+                        onNavigateToSession(result.sessionId)
+                    is com.promenar.infinity.data.session.BranchSessionResult.Rejected -> {
+                        val message = if (
+                            result.reason == com.promenar.infinity.data.session.BranchSessionRejectReason.TargetNotStable
+                        ) branchUnstableLabel else branchFailedLabel
+                        snackbarData = InfinitySnackbarData(message, SnackbarType.ERROR)
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(
+                            message = message,
+                            duration = SnackbarDuration.Long,
+                        )
+                    }
+                }
+            }
+        }
         ChatScreenContent(
             state = ChatScreenState(
                 uiState = uiState,
@@ -1077,39 +1106,27 @@ fun ChatRoute(
                     }
                 },
                 onDeleteMessage = chatViewModel::deleteMessage,
-                onRegenerateMessage = { requestOverlay(ChatOverlay.Truncate(it)) },
+                onRegenerateMessage = { messageId ->
+                    if (chatViewModel.countSubsequentUserTurns(messageId) > 0) {
+                        requestOverlay(ChatOverlay.Truncate(messageId))
+                    } else {
+                        chatViewModel.regenerateMessage(messageId)
+                    }
+                },
                 onRetryLastMessage = chatViewModel::retryLastMessage,
                 onOpenTailscaleSettings = onOpenTailscaleSettings,
                 onOpenTurnMemory = { requestOverlay(ChatOverlay.TurnMemory(it)) },
-                onBranchMessage = { messageId ->
-                    scope.launch {
-                        val result = try {
-                            chatViewModel.branchFromMessage(messageId)
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                            snackbarData = InfinitySnackbarData(branchFailedLabel, SnackbarType.ERROR)
-                            snackbarHostState.currentSnackbarData?.dismiss()
-                            snackbarHostState.showSnackbar(branchFailedLabel, duration = SnackbarDuration.Long)
-                            return@launch
-                        }
-                        when (result) {
-                            is com.promenar.infinity.data.session.BranchSessionResult.Success ->
-                                onNavigateToSession(result.sessionId)
-                            is com.promenar.infinity.data.session.BranchSessionResult.Rejected -> {
-                                val message = if (
-                                    result.reason == com.promenar.infinity.data.session.BranchSessionRejectReason.TargetNotStable
-                                ) branchUnstableLabel else branchFailedLabel
-                                snackbarData = InfinitySnackbarData(message, SnackbarType.ERROR)
-                                snackbarHostState.currentSnackbarData?.dismiss()
-                                snackbarHostState.showSnackbar(
-                                    message = message,
-                                    duration = SnackbarDuration.Long,
-                                )
-                            }
-                        }
-                    }
+                onBranchMessage = { messageId -> launchBranch(messageId, null) },
+                onEditUserMessage = { messageId, payload ->
+                    chatViewModel.editAndRegenerateMessage(
+                        messageId = messageId,
+                        newContent = payload.content,
+                        userImages = payload.userImages,
+                        userDocuments = payload.userDocuments,
+                        quotes = payload.quotes,
+                    )
                 },
+                onBranchWithEditMessage = { messageId, payload -> launchBranch(messageId, payload) },
                 onApprove = { request -> chatViewModel.approveRequest(request) },
                 onApproveAll = chatViewModel::approveAllRequests,
                 onApproveTimed = chatViewModel::approveWithTimedGrant,

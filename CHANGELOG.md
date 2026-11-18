@@ -14,7 +14,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-- 修复分支工具结果配对、切换会话后的重发状态及归档轮次重发时的旧摘要污染。编辑重生成在失败或取消时恢复原消息，旧回复替换后保留原会话产物版本。
+## [0.63.0-beta] - 2026-11-18
+
+- **支持修改已发送消息并重新生成或新建分支**：
+  - 用户气泡新增「编辑」入口，在原位置展开内联编辑卡 [PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)，支持改写文本及移除已附加图片、文档和引用；
+  - 末轮用户消息支持直接「重新生成」（失败、取消或中途打断时通过暂存快照原子回滚原消息；工作区磁盘文件保持不回退，并保留会话 Canvas / 产物版本）；历史中间用户消息提示后续受影响轮次数量，提供「新建分支并生成」与「就地重新生成」两种去向。
+- **修复分支会话、重发状态与归档摘要一致**：
+  - [BranchSessionUseCase.kt](native-ui/app/src/main/java/com/promenar/infinity/data/session/BranchSessionUseCase.kt) 与 [PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt) 修复从带尾随工具结果的助手气泡创建分支时遗漏配对 `tool` 结果消息的问题，并在新分支仅含前置用户消息时自动触发首轮回复；
+  - [DefaultChatGenerationRuntime.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/DefaultChatGenerationRuntime.kt)、[MessageDao.kt](native-ui/app/src/main/java/com/promenar/infinity/data/local/dao/MessageDao.kt) 与 [ChatViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatViewModel.kt) 修复切换会话后重发状态丢失、`commitReplacement` 未清理受影响轮次对应的历史归档摘要污染，以及末轮直接重发仍弹截断确认框的问题。
+- **静态门禁与截图基线修复**：补齐 [RecordingRichSummaryComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingRichSummaryComponents.kt) 内联编辑框的 `.forInput()` 输入换行约束，并同步 Linux 截图覆盖清单。
 
 ## [0.62.0-beta] - 2026-11-18
 
