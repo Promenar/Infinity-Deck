@@ -81,6 +81,7 @@ private fun LabSceneScope.RecordingWorkbenchScene(showSettings: Boolean) {
             onOrganizedChange = { organized = it },
             onTogglePlayback = { playing = !playing },
             asrModel = RecordingAsrModelState.Installed,
+            onExport = {},
         )
     }
 
@@ -133,13 +134,37 @@ private fun sampleSession(zh: Boolean): RecordingSession = RecordingSession(
 
         **林妍**
 
-        本周明确了 SenseVoice 二遍精修与 X-ASR 流式转写在不同内存机型上的自动分级参数。热词库与本地声纹库已完成加密导出整合，导入前将校验声纹向量完整性。
+        本周明确了 SenseVoice 二遍精修与 X-ASR 流式转写在不同内存机型上的自动分级参数。热词库与本地声纹库已完成加密导出整合，授权会话中的 Agent 可读写 `/mnt/knowledge` 下的录音文档与只读音频。
 
         [00:00](recording://seek/0) [00:49](recording://seek/49000)
 
+        | 档位 | 二遍精修策略 | 熔断阈值 |
+        |---|---|---|
+        | 旗舰内存 | 句末精修 ＋ 兜底 | $\text{RTF} > 0.65$ |
+        | 中端内存 | 停顿后延迟精修 | 连续 2 段熔断 |
+        | 入门机型 | 纯流式转写 | — |
+
+        ```mermaid
+        flowchart LR
+            A[X-ASR 流式转写] --> B{内存与 RTF 门限}
+            B -->|达标| C[SenseVoice 精修]
+            B -->|连续超限| D[回退纯流式]
+            C --> E[云端富格式梳理 ＋ 1:1 导出]
+        ```
+
+        ```echarts
+        {
+          "title": { "text": "各环节平均耗时（ms）" },
+          "xAxis": { "data": ["流式首包", "二遍精修", "声纹聚合", "富格式导出"] },
+          "series": [{ "type": "bar", "data": [110, 240, 145, 290] }]
+        }
+        ```
+
+        $$\text{ExportWidth}_{\text{px}} = \max\!\left(1440,\; 2 \times W_{\text{scroll}}\right), \quad \text{Scale} = 1:1$$
+
         **陈默**
 
-        当连续两段计算 RTF 超过 0.65 时，系统会自动熔断并退回纯流式模式，保证长时间会议持续录制不发热卡顿。
+        当连续两段计算 RTF 超过 `0.65` 时，系统自动熔断并退回纯流式模式，保证长时间会议持续录制不发热卡顿。
 
         [00:24](recording://seek/24000)
 
@@ -155,13 +180,37 @@ private fun sampleSession(zh: Boolean): RecordingSession = RecordingSession(
 
         **Lin Yan**
 
-        Confirmed automatic RAM-tier thresholds for SenseVoice two-pass refinement and X-ASR streaming fallback. Hotword glossaries and on-device voiceprints are now bundled into encrypted backups with vector validation.
+        Confirmed automatic RAM-tier thresholds for SenseVoice two-pass refinement and X-ASR streaming fallback. Hotwords and voiceprints are bundled into encrypted backups, and authorized agents can access recording documents and virtual `.wav` audio under `/mnt/knowledge`.
 
         [00:00](recording://seek/0) [00:49](recording://seek/49000)
 
+        | Tier | Refinement Mode | Breaker |
+        |---|---|---|
+        | Flagship | Sentence-end ＋ fallback | $\text{RTF} > 0.65$ |
+        | Mid-tier | Idle pause deferred | 2 slow chunks |
+        | Entry | Streaming only | — |
+
+        ```mermaid
+        flowchart LR
+            A[X-ASR Stream] --> B{RAM & RTF Gate}
+            B -->|Pass| C[SenseVoice Refine]
+            B -->|Tripped| D[Streaming Fallback]
+            C --> E[Rich Organize ＋ 1:1 Export]
+        ```
+
+        ```echarts
+        {
+          "title": { "text": "Stage Latency (ms)" },
+          "xAxis": { "data": ["Stream", "Refine", "Voice", "Export"] },
+          "series": [{ "type": "bar", "data": [110, 240, 145, 290] }]
+        }
+        ```
+
+        $$\text{ExportWidth}_{\text{px}} = \max\!\left(1440,\; 2 \times W_{\text{scroll}}\right), \quad \text{Scale} = 1:1$$
+
         **Chen Mo**
 
-        If two consecutive segments exceed RTF 0.65, refinement trips a circuit breaker and falls back to streaming-only so long sessions stay smooth and cool.
+        If two consecutive segments exceed RTF `0.65`, refinement trips a circuit breaker and falls back to streaming-only so long sessions stay smooth and cool.
 
         [00:24](recording://seek/24000)
 

@@ -1,5 +1,6 @@
 package com.promenar.infinity.recording
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,6 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
+import com.promenar.infinity.domain.export.SessionExportEstimate
+import com.promenar.infinity.domain.export.SessionExportFormat
 import com.promenar.infinity.ui.theme.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -415,4 +418,132 @@ fun recordingVoiceLibraryPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
         model = RecordingAsrModelState.Installed, ready = true, onBack = {}, onPerson = {}, onEnroll = {},
         onDownload = {}, onCancelDownload = {},
     )
+}
+
+@PreviewTest
+@Preview(name = "富格式整理稿集成 深中360", widthDp = 360, heightDp = 1200, locale = "zh-rCN")
+@Preview(name = "富格式整理稿集成 深中840 内屏", widthDp = 840, heightDp = 960, locale = "zh-rCN")
+@Composable
+fun recordingRichOrganizedPreview() = RecordingFrame(InfinityThemeMode.DARK) {
+    val richMarkdown = """
+        ### 架构与交付同步
+
+        授权开启后 Agent 可读写录音文档 `.md` 并只读访问原始 `.wav`；导出支持 `1440px` 基准宽无上限 `1:1` 长图。
+
+        [00:00](recording://seek/0) [00:26](recording://seek/26000)
+
+        | 模块 | 状态 | 规格 |
+        |---|---|---|
+        | 资料库同步 | 已就绪 | CAS 写 |
+        | 长图编码 | 已验证 | `1440px+` |
+
+        ```mermaid
+        flowchart LR
+            A[录音听写] --> B[富格式整理]
+            B --> C[无上限导出]
+        ```
+
+        ```echarts
+        {
+          "title": { "text": "阶段耗时（ms）" },
+          "xAxis": { "data": ["转写", "整理", "同步", "导出"] },
+          "series": [{ "type": "bar", "data": [180, 420, 95, 260] }]
+        }
+        ```
+
+        $$\text{ExportWidth}_{\text{px}} = \max(1440,\; 2 \times W)$$
+    """.trimIndent()
+    val sample = recordingSample(
+        organized = richMarkdown,
+        organizedSource = RecordingOrganizeSource(cloud = true, provider = "OpenAI", model = "gpt-5.4", completedAt = 1_763_000_000_000L),
+    )
+    RecordingPageContent(
+        state = RecordingScreenState(sessions = listOf(sample), durationMs = sample.durationMs, ready = true, cloudLabel = "OpenAI · gpt-5.4"),
+        current = sample,
+        organized = true,
+        route = RecordingRoute.Cloud,
+        waveform = remember { MutableStateFlow(RecordingWaveformSamples(List(80) { .35f }, 80)) },
+        onExport = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "整理稿内联编辑预览 深中360 大字", widthDp = 360, heightDp = 880, locale = "zh-rCN", fontScale = 1.3f)
+@Composable
+fun recordingRichEditorPreviewMode() = RecordingFrame(InfinityThemeMode.DARK) {
+    RecordingRichInlineEditor(
+        draft = "### 核对结论\n\n见 [00:00](recording://seek/0)。\n\n| 项目 | 结果 |\n|---|---|\n| 单图 | `1440px+` |\n\n" +
+            "\$\$\\text{Memory} \\approx 4W\$\$",
+        onDraftChange = {},
+        validSegmentStarts = setOf(0L),
+        onPlayAtMs = {},
+        onCancel = {},
+        onSave = {},
+        modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal),
+        initialPreviewMode = true,
+    )
+}
+
+@PreviewTest
+@Preview(name = "整理稿内联编辑源码 浅英360", widthDp = 360, heightDp = 560, locale = "en")
+@Composable
+fun recordingRichEditorEditMode() = RecordingFrame(InfinityThemeMode.LIGHT) {
+    RecordingRichInlineEditor(
+        draft = "### Summary\n\nSee [00:00](recording://seek/0).",
+        onDraftChange = {},
+        validSegmentStarts = setOf(0L),
+        onPlayAtMs = {},
+        onCancel = {},
+        onSave = {},
+        modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal),
+        initialPreviewMode = false,
+    )
+}
+
+@PreviewTest
+@Preview(name = "录音导出面板 PNG 浅中360", widthDp = 360, heightDp = 700, locale = "zh-rCN")
+@Composable
+fun recordingExportSheetPngPreview() = RecordingFrame(InfinityThemeMode.LIGHT) {
+    Column(Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+        RecordingExportSheetContent(
+            state = RecordingExportSheetState(
+                visible = true,
+                sessionTitle = "产品架构与音频权限评审",
+                durationLabel = "14:32",
+                segmentCount = 48,
+                format = SessionExportFormat.PNG,
+                scope = RecordingExportScope.ORGANIZED_AND_RAW,
+                estimate = SessionExportEstimate(primaryFileCount = 1, attachmentArchive = false, approxBytes = 2_650_000L),
+            ),
+            onFormatChange = {},
+            onScopeChange = {},
+            onSave = {},
+            onShare = {},
+            onCancelExport = {},
+        )
+    }
+}
+
+@PreviewTest
+@Preview(name = "录音导出面板 PDF 深英360", widthDp = 360, heightDp = 700, locale = "en")
+@Composable
+fun recordingExportSheetPdfPreview() = RecordingFrame(InfinityThemeMode.DARK) {
+    Column(Modifier.fillMaxWidth().padding(InfinitySpacing.ScreenHorizontal), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+        RecordingExportSheetContent(
+            state = RecordingExportSheetState(
+                visible = true,
+                sessionTitle = "Audio Pipeline Sync",
+                durationLabel = "14:32",
+                segmentCount = 48,
+                format = SessionExportFormat.PDF,
+                scope = RecordingExportScope.ORGANIZED_AND_RAW,
+                estimate = SessionExportEstimate(primaryFileCount = 1, attachmentArchive = false, approxBytes = 420_000L, approxPages = 4),
+            ),
+            onFormatChange = {},
+            onScopeChange = {},
+            onSave = {},
+            onShare = {},
+            onCancelExport = {},
+        )
+    }
 }

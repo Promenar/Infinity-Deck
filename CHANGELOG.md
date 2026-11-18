@@ -14,6 +14,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.62.0-beta] - 2026-11-18
+
+- **录音整理稿支持富格式排版、实时预览编辑与可视化自动梳理**：
+  - 提示词与语言判定适配：引导云端整理模型在适合场景主动使用 GFM 表格、Mermaid 流程图、ECharts 图表 JSON 与 LaTeX 公式（保留 `[mm:ss](recording://seek/<ms>)` 跳转与说话人归属）；`recordingLanguageMatches` 在语言核验时剔除图表 JSON、公式与代码块中的英文标识符，`sanitizeRecordingRichMarkdown` 自动闭合截断围栏并将非法 ECharts JSON 降级为普通代码块；
+  - 富格式正文与「编辑 / 预览」双模式编辑器：新增 [RecordingRichSummaryComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingRichSummaryComponents.kt) 并接入 [RecordingContent.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingContent.kt)，正文经 `MarkdownText` 承载交互式 ECharts、Mermaid、KaTeX、表格与独立时间戳播放胶囊；内联编辑器支持「编辑 / 预览」分段切换并对齐全站 `InfinityMonospace` 与 `InfinityPillButton` 规范。
+- **录音文档无上限 1:1 全分辨率 PNG 与自适应矢量 PDF 导出**：
+  - [RecordingExporter.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingExporter.kt) 与 [ExportWebViewRenderer.kt](native-ui/app/src/main/java/com/promenar/infinity/data/export/ExportWebViewRenderer.kt) 将导出基准画布升级为 `1440px`（`720px` 逻辑排版 × `2x`），按内容自动拓展画布宽高不设上限，通过分带流式编码器 [PngStreamEncoder.kt](native-ui/app/src/main/java/com/promenar/infinity/data/export/PngStreamEncoder.kt) 输出单张 1:1 全分辨率 PNG；PDF 采用自适应宽/高分页并在分页时保持完整图表、公式与代码块不被切断；
+  - [RecordingActivity.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingActivity.kt) 与 [file_paths.xml](native-ui/app/src/main/res/xml/file_paths.xml) 接入 `RecordingExportSheet`（支持 `PNG / PDF / MD / HTML / TXT` 五种格式与 `仅整理稿 / 整理稿 + 转写 / 仅原始转写` 三档范围、SAF 另存为及 `FileProvider` 分享）。
+- **资料库双向同步与 Agent 授权访问录音文档和原始音频**：
+  - [RecordingController.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingController.kt)、[RecordingLibrary.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingLibrary.kt) 与 [DocEditorViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/rag/DocEditorViewModel.kt) 新增 `parseRecordingMarkdown` 与基于文档快照哈希的原子 CAS 回流，外部编辑资料库录音 `.md` 后自动同步回录音工作台；
+  - [ExternalFolderManager.kt](native-ui/app/src/main/java/com/promenar/infinity/data/storage/ExternalFolderManager.kt) 中的 `KnowledgeBaseRecordingBackend` 与 [MountedWorkspaceSkill.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/MountedWorkspaceSkill.kt) 允许开启知识库授权的会话安全读写 `LOCAL_RECORDING_MIME` 录音文档（触发同步回调）并只读访问映射到 `/mnt/knowledge` 的同名虚拟 `.wav` 原始音频，且保留磁盘实体文件优先与越权拦截。
+
 ## [0.61.3-beta] - 2026-11-18
 
 - **录音听写整理稿生成状态系统性重设计**：

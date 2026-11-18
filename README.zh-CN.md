@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.61.3-beta`（versionCode `170`）。系统性重构录音听写整理稿生成状态机与来源追溯（跨步骤进度条与阶段展示、云端/本地模型来源行与已更新标记、失败原因分类与 60 秒自动重试倒计时、保留旧稿对照与外屏页签/历史列表圆点），并包含 Visual Lab 场景扩展与新版中英文截图资产。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.62.0-beta`（versionCode `171`）。录音整理稿支持 ECharts / Mermaid / KaTeX / 表格富格式自动梳理与「编辑 / 预览」双模式，支持 `1440px+` 基准宽高无上限 1:1 单张 PNG 与自适应矢量 PDF 导出，并打通资料库录音文档双向同步及授权会话在 `/mnt/knowledge` 下读写录音 `.md`、只读访问原始 `.wav` 音频。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 
@@ -189,7 +189,8 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 - 端侧流式语音识别（X-ASR 中英），支持自定义热词加权、暂停续录、Android 快捷设置磁贴一键启动及每 30 分钟长录确认提醒
 - 可选独立下载 `SenseVoice-Small int8` 二遍精修模型（237 MB），支持手机硬件自动评估分级（实时句末+兜底、停顿后精修、纯流式）与连续慢段 RTF > 0.65 运行时熔断退避
 - 端侧说话人分段与声纹识别（支持本地声纹库管理与加密备份迁移），支持按时间戳回听与修正段落归属
-- 录制期间分批生成整理草稿，支持指定输出语言（中、英、日等）、双栏对照及原位编辑标题与正文；支持录音列表多选与搜索结果批量删除
+- 录制期间分批生成整理草稿，支持指定输出语言（中、英、日等）与以 ECharts、Mermaid、LaTeX 公式及表格呈现富格式结构化整理稿，内置「编辑 / 预览」双栏或切换编辑；支持导出 `1440px+` 基准画布双向无上限 1:1 单张长图 PNG、自适应矢量 PDF、Markdown、HTML 与 TXT；支持录音列表多选与搜索结果批量删除
+- 开启会话知识库访问授权后，智能体可在 `/mnt/knowledge` 安全读写录音整理 `.md`（双向 CAS 同步回录音工作台）并只读访问映射的 `.wav` 原始音频
 
 **知识库与文档**
 

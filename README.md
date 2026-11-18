@@ -135,7 +135,7 @@
 
 - **Requirements**: Android 12 (API 31) or later. Built-in Linux and on-device GGUF inference require `arm64-v8a`; Alpine base occupies ~64 MB, or ~470 MB with the default toolchain (`git`, `ripgrep`, Python, Node.js, FFmpeg, each optional at install time).
 - **App updates**: Check **Settings › About › Check for updates** to query the latest GitHub Release and open the download page; nothing downloads or installs silently in the background.
-- **Current release**: `v0.61.3-beta` (`versionCode` `170`), adding the redesigned recording organization status state machine and provenance tracking (stepped progress, route/model attribution, structured error classification with 60s auto-retry countdown, previous-draft preservation, and tab/history indicators) on top of the Visual Lab and bilingual showcase updates. [Releases](https://github.com/Promenar/Infinity-Deck/releases)
+- **Current release**: `v0.62.0-beta` (`versionCode` `171`), upgrading recording summaries with rich-format ECharts/Mermaid/KaTeX/GFM table rendering and inline Edit/Preview switching, unbounded `1440px+` 1:1 single-image PNG & adaptive vector PDF export, bidirectional CAS library document sync, and authorized workspace access to recording `.md` documents and read-only virtual `.wav` audio under `/mnt/knowledge`. [Releases](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### Build from Source
 
@@ -188,7 +188,9 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/app-
 - On-device streaming ASR (`X-ASR` Chinese/English) with weighted custom hotwords, pause/resume, Android Quick Settings tile trigger, and 30-minute long-recording prompts
 - Optional `SenseVoice-Small int8` two-pass refiner (237 MB) with device-tier strategy (`END_OF_UTTERANCE_AND_FALLBACK`, `PAUSE_REFINEMENT`, `STREAMING_ONLY`) and RTF > 0.65 circuit breaker
 - On-device speaker diarization and local voiceprint library (included in encrypted backups) with timestamped audio scrubbing and inline speaker reassignment
-- Real-time batch drafting during recording, selectable output languages (Chinese, English, Japanese, etc.), side-by-side transcript/summary editor, and multi-select / search-result batch deletion
+- Real-time batch drafting during recording, selectable output languages (Chinese, English, Japanese, etc.), rich-format summaries with GFM tables, Mermaid diagrams, ECharts charts, and LaTeX math, inline Edit/Preview switching, and multi-select / search-result batch deletion
+- Multi-format recording export (`PNG`, `PDF`, `MD`, `HTML`, `TXT` across Summary only, Both, or Transcript only) featuring unbounded `1440px+` canvas expansion for 1:1 single-PNG export and adaptive vector PDF pagination
+- Authorized sessions accessing `/mnt/knowledge` can read/write recording Markdown documents (synced atomically via CAS back to the recording workbench) and read virtual `.wav` entries backed by the original audio files
 
 **Library & Knowledge Graph**
 

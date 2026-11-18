@@ -187,4 +187,27 @@
     <string name="recording_organize_history_running">正在整理</string>
     <string name="recording_organize_history_failed">整理失败</string>
     <string name="recording_organize_unknown_model">模型待定</string>
+    <string name="recording_editor_mode_edit">编辑</string>
+    <string name="recording_editor_mode_preview">预览</string>
+    <string name="recording_rich_format_hint">支持标题、表格、LaTeX 公式、Mermaid 流程图、ECharts 图表，以及 [mm:ss](recording://seek/毫秒) 时间戳。</string>
+    <string name="recording_export_action">导出录音文档</string>
+    <string name="recording_export_sheet_title">导出录音文档</string>
+    <string name="recording_export_subtitle">%1$s · %2$s · %3$d 段转写</string>
+    <string name="recording_export_section_scope">导出内容</string>
+    <string name="recording_export_scope_organized">仅整理稿</string>
+    <string name="recording_export_scope_both">整理稿 + 转写</string>
+    <string name="recording_export_scope_raw">仅原始转写</string>
+    <string name="recording_export_footer_png">按内容自动拓展画布宽高，%1$dpx 基准起 1:1 导出单张完整长图。</string>
+    <string name="recording_export_footer_pdf">A4 / 自适应宽幅矢量 PDF，自动避开图表、公式与代码块分页。</string>
+    <string name="recording_export_footer_md">保留完整 Markdown、ECharts/Mermaid 图表源码与时间链接。</string>
+    <string name="recording_export_footer_html">离线自包含网页，可直接在浏览器打开交互查看图表与公式。</string>
+    <string name="recording_export_footer_txt">纯文本格式，不包含富格式图表与公式排版。</string>
+    <string name="recording_export_estimate_single_png">1 张 1:1 全分辨率完整长图（≥%1$dpx 宽），约 %2$s</string>
+    <plurals name="recording_export_estimate_pages">
+        <item quantity="other">自适应矢量分页，约 %d 页</item>
+    </plurals>
+    <string name="recording_export_share_chooser">分享录音文档</string>
+    <string name="recording_preview_sample_echarts">数据图表（真机矢量渲染）</string>
+    <string name="recording_preview_sample_mermaid">流程图（真机矢量渲染）</string>
+    <string name="recording_preview_sample_latex">数学公式（KaTeX 排版）</string>
 </resources>

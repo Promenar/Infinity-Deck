@@ -192,4 +192,28 @@
     <string name="recording_organize_history_running">Cleaning up</string>
     <string name="recording_organize_history_failed">Cleanup failed</string>
     <string name="recording_organize_unknown_model">Model pending</string>
+    <string name="recording_editor_mode_edit">Edit</string>
+    <string name="recording_editor_mode_preview">Preview</string>
+    <string name="recording_rich_format_hint">Supports Markdown, tables, LaTeX math, Mermaid diagrams, ECharts charts, and [mm:ss](recording://seek/ms) timestamps.</string>
+    <string name="recording_export_action">Export document</string>
+    <string name="recording_export_sheet_title">Export recording</string>
+    <string name="recording_export_subtitle">%1$s · %2$s · %3$d segments</string>
+    <string name="recording_export_section_scope">Content</string>
+    <string name="recording_export_scope_organized">Summary only</string>
+    <string name="recording_export_scope_both">Both</string>
+    <string name="recording_export_scope_raw">Transcript only</string>
+    <string name="recording_export_footer_png">Expands canvas width &amp; height without bounds for 1:1 full-resolution single-image export (%1$dpx+ base).</string>
+    <string name="recording_export_footer_pdf">Vector-crisp PDF with adaptive page sizing, keeping charts and equations intact across page breaks.</string>
+    <string name="recording_export_footer_md">Preserves Markdown syntax, ECharts/Mermaid code blocks, and timestamp links.</string>
+    <string name="recording_export_footer_html">Self-contained offline HTML page with interactive charts and math.</string>
+    <string name="recording_export_footer_txt">Plain text output without diagram or formula styling.</string>
+    <string name="recording_export_estimate_single_png">1 full-resolution PNG (≥%1$dpx wide), about %2$s</string>
+    <plurals name="recording_export_estimate_pages">
+        <item quantity="one">Adaptive PDF, about %d page</item>
+        <item quantity="other">Adaptive PDF, about %d pages</item>
+    </plurals>
+    <string name="recording_export_share_chooser">Share recording</string>
+    <string name="recording_preview_sample_echarts">Data chart (SVG on device)</string>
+    <string name="recording_preview_sample_mermaid">Flowchart (SVG on device)</string>
+    <string name="recording_preview_sample_latex">Math formula (KaTeX)</string>
 </resources>

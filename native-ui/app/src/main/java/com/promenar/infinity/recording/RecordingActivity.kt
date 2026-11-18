@@ -1,16 +1,21 @@
 package com.promenar.infinity.recording
 
 import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
@@ -22,9 +27,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -36,6 +42,12 @@ import androidx.lifecycle.withResumed
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.domain.export.SessionExportEstimate
+import com.promenar.infinity.domain.export.SessionExportFile
+import com.promenar.infinity.domain.export.SessionExportFormat
+import com.promenar.infinity.domain.export.SessionExportResult
+import com.promenar.infinity.ui.chat.export.ContentResolverExportWriter
+import com.promenar.infinity.ui.chat.export.buildSessionExportShareIntent
 import com.promenar.infinity.ui.common.InfinityEmbeddedNoteCard
 import com.promenar.infinity.ui.common.InfinityEmbeddedNoteRow
 import com.promenar.infinity.ui.common.InfinitySegment
@@ -46,8 +58,12 @@ import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.util.LocaleHelper
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class RecordingActivity : ComponentActivity() {
@@ -249,6 +265,114 @@ private fun RecordingScreen(
         }
     }
     val activityContext = LocalContext.current
+    val resources = LocalResources.current
+    val coroutineScope = rememberCoroutineScope()
+    val exporter = remember(activityContext) { RecordingExporter(activityContext) }
+    val exportWriter = remember(activityContext) { ContentResolverExportWriter(activityContext) }
+    var exportVisible by rememberSaveable { mutableStateOf(false) }
+    var exportFormat by rememberSaveable { mutableStateOf(SessionExportFormat.PNG) }
+    var exportScope by rememberSaveable { mutableStateOf(RecordingExportScope.ORGANIZED_AND_RAW) }
+    var exportEstimate by remember { mutableStateOf<SessionExportEstimate?>(null) }
+    var exportEstimating by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
+    var exportError by remember { mutableStateOf<String?>(null) }
+    var exportJob by remember { mutableStateOf<Job?>(null) }
+    var pendingSaveResult by remember { mutableStateOf<SessionExportResult?>(null) }
+    var activeShareResult by remember { mutableStateOf<SessionExportResult?>(null) }
+
+    DisposableEffect(exporter) {
+        onDispose {
+            exportJob?.cancel()
+            pendingSaveResult?.let(exporter::release)
+            activeShareResult?.let(exporter::release)
+        }
+    }
+
+    val saveDocument = rememberLauncherForActivityResult(CreateRecordingExportDocument()) { uri ->
+        val result = pendingSaveResult
+        pendingSaveResult = null
+        if (uri == null || result == null) {
+            result?.let(exporter::release)
+            exporting = false
+            return@rememberLauncherForActivityResult
+        }
+        exportJob = coroutineScope.launch {
+            try {
+                exportWriter.write(result, uri)
+                exportVisible = false
+                exportError = null
+                Toast.makeText(
+                    activityContext,
+                    resources.getString(R.string.session_export_saved, result.files.single().displayName),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                exportError = resources.getString(R.string.session_export_save_failed)
+            } finally {
+                exporting = false
+                exporter.release(result)
+            }
+        }
+    }
+
+    val openExport: () -> Unit = {
+        current?.let { item ->
+            dialog = null
+            val hasOrg = item.organized.isNotBlank()
+            val hasRaw = item.segments.isNotEmpty()
+            exportScope = when {
+                hasOrg && hasRaw -> RecordingExportScope.ORGANIZED_AND_RAW
+                hasOrg -> RecordingExportScope.ORGANIZED_ONLY
+                else -> RecordingExportScope.RAW_ONLY
+            }
+            exportError = null
+            exportVisible = true
+        }
+    }
+
+    LaunchedEffect(active, current?.id) {
+        if (active || current == null) {
+            exportJob?.cancel()
+            exportJob = null
+            exporting = false
+            exportVisible = false
+        }
+    }
+
+    val effectiveExportScope = current?.let { item ->
+        val hasOrg = item.organized.isNotBlank()
+        val hasRaw = item.segments.isNotEmpty()
+        when (exportScope) {
+            RecordingExportScope.ORGANIZED_ONLY -> if (hasOrg) RecordingExportScope.ORGANIZED_ONLY else RecordingExportScope.RAW_ONLY
+            RecordingExportScope.RAW_ONLY -> if (hasRaw) RecordingExportScope.RAW_ONLY else RecordingExportScope.ORGANIZED_ONLY
+            RecordingExportScope.ORGANIZED_AND_RAW -> when {
+                hasOrg && hasRaw -> RecordingExportScope.ORGANIZED_AND_RAW
+                hasOrg -> RecordingExportScope.ORGANIZED_ONLY
+                else -> RecordingExportScope.RAW_ONLY
+            }
+        }
+    } ?: exportScope
+
+    LaunchedEffect(exportVisible, current?.id, current?.organized, current?.segments?.size, exportFormat, effectiveExportScope) {
+        val item = current?.takeIf { exportVisible } ?: run {
+            exportEstimate = null
+            exportEstimating = false
+            return@LaunchedEffect
+        }
+        exportEstimating = true
+        exportEstimate = try {
+            withContext(Dispatchers.Default) {
+                exporter.estimate(item, exportFormat, effectiveExportScope)
+            }
+        } catch (e: Throwable) {
+            if (e is CancellationException) throw e
+            null
+        } finally {
+            exportEstimating = false
+        }
+    }
+
     RecordingPageContent(
         state = state,
         current = current,
@@ -271,6 +395,7 @@ private fun RecordingScreen(
         onRecordMenu = { dialog = "actions" },
         onRename = { dialog = "rename" },
         onLanguage = { pendingLanguage = null; dialog = "language" },
+        onExport = if (!active && current != null && (current.organized.isNotBlank() || current.segments.isNotEmpty())) openExport else null,
         onDiscard = { dialog = "discard" },
         onReturnActive = { selected = state.activeId; organized = false },
         editor = if (!editing || current == null) null else RecordingInlineEditor(editorText, { editorText = it },
@@ -411,6 +536,9 @@ private fun RecordingScreen(
                 if (!active && current.documentId == null) RecordingDialogRow(stringResource(R.string.recording_save_library), {
                     controller.publish(current.id); dialog = null
                 }, icon = Icons.Rounded.Save)
+                if (!active && (current.organized.isNotBlank() || current.segments.isNotEmpty())) {
+                    RecordingDialogRow(stringResource(R.string.recording_export_action), openExport, icon = Icons.Rounded.IosShare)
+                }
                 if (!active) RecordingDialogRow(stringResource(R.string.recording_ui_delete), { dialog = "delete" },
                     icon = Icons.Rounded.Delete, destructive = true)
             }
@@ -515,6 +643,118 @@ private fun RecordingScreen(
             dialog = null
         }
     }
+
+    if (exportVisible && current != null) {
+        val startExportSave = {
+            if (!exporting) {
+                exportJob?.cancel()
+                exportError = null
+                exporting = true
+                exportJob = coroutineScope.launch {
+                    var result: SessionExportResult? = null
+                    try {
+                        result = exporter.export(current, exportFormat, effectiveExportScope)
+                        pendingSaveResult?.let(exporter::release)
+                        pendingSaveResult = result
+                        saveDocument.launch(result.files.single())
+                    } catch (e: Throwable) {
+                        if (e is CancellationException) throw e
+                        result?.let(exporter::release)
+                        pendingSaveResult = null
+                        exporting = false
+                        exportError = if (e is ActivityNotFoundException) {
+                            resources.getString(R.string.session_export_no_target)
+                        } else {
+                            resources.getString(R.string.session_export_failed)
+                        }
+                    }
+                }
+            }
+        }
+        val startExportShare = {
+            if (!exporting) {
+                exportJob?.cancel()
+                exportError = null
+                exporting = true
+                exportJob = coroutineScope.launch {
+                    var result: SessionExportResult? = null
+                    try {
+                        result = exporter.export(current, exportFormat, effectiveExportScope)
+                        activeShareResult?.let(exporter::release)
+                        activeShareResult = result
+                        activityContext.startActivity(
+                            Intent.createChooser(
+                                buildSessionExportShareIntent(activityContext, result),
+                                resources.getString(R.string.recording_export_share_chooser),
+                            ),
+                        )
+                        exporting = false
+                        exportVisible = false
+                    } catch (e: Throwable) {
+                        if (e is CancellationException) throw e
+                        result?.let(exporter::release)
+                        if (activeShareResult === result) activeShareResult = null
+                        exporting = false
+                        exportError = when (e) {
+                            is ActivityNotFoundException -> resources.getString(R.string.session_export_no_target)
+                            else -> resources.getString(R.string.session_export_failed)
+                        }
+                    }
+                }
+            }
+        }
+        val cancelExport = {
+            exportJob?.cancel()
+            exportJob = null
+            pendingSaveResult?.let(exporter::release)
+            pendingSaveResult = null
+            exporting = false
+        }
+        RecordingExportSheet(
+            state = RecordingExportSheetState(
+                visible = true,
+                sessionTitle = current.title,
+                durationLabel = recordingTimestamp(current.durationMs),
+                segmentCount = current.segments.size,
+                hasOrganized = current.organized.isNotBlank(),
+                hasRaw = current.segments.isNotEmpty(),
+                format = exportFormat,
+                scope = effectiveExportScope,
+                estimate = exportEstimate,
+                estimating = exportEstimating,
+                exporting = exporting,
+                error = exportError,
+            ),
+            onDismiss = {
+                if (!exporting) {
+                    exportVisible = false
+                    exportError = null
+                }
+            },
+            onFormatChange = {
+                exportFormat = it
+                exportError = null
+            },
+            onScopeChange = {
+                exportScope = it
+                exportError = null
+            },
+            onSave = startExportSave,
+            onShare = startExportShare,
+            onCancelExport = cancelExport,
+        )
+    }
+}
+
+private class CreateRecordingExportDocument : ActivityResultContract<SessionExportFile, Uri?>() {
+    override fun createIntent(context: Context, input: SessionExportFile): Intent =
+        Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType(input.mimeType)
+            .putExtra(Intent.EXTRA_TITLE, input.displayName)
+
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
+        intent.takeIf { resultCode == Activity.RESULT_OK }?.data
 }
 
 @Composable

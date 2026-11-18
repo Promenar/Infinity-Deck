@@ -24,6 +24,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Search
@@ -218,6 +219,7 @@ internal fun RecordingPageContent(
     onRecordMenu: () -> Unit = onMode,
     onRename: () -> Unit = onEdit,
     onLanguage: () -> Unit = {},
+    onExport: (() -> Unit)? = null,
     onTranscriptMenu: () -> Unit = onRecognize,
     onDiscard: () -> Unit = {},
     onReturnActive: () -> Unit = onHistory,
@@ -351,13 +353,13 @@ internal fun RecordingPageContent(
                                 RecordingWideBody(
                                     view, onMode, onEdit, onConsent, transcriptTools, onPlay,
                                     onTogglePlayback, onSeek, onSeekFinished, onOrganize, onRetryOrganize, onCancelOrganize, onSwitchToLocal,
-                                    onLanguage, editor, speakerTools, onSpeakerSelect,
+                                    onLanguage, onExport, editor, speakerTools, onSpeakerSelect,
                                 )
                             } else {
                                 RecordingNarrowBody(
                                     view, organized, pinned, onMode, onOrganizedChange, onEdit, onConsent,
                                     transcriptTools, onPlay, onTogglePlayback, onSeek, onSeekFinished, onOrganize, onRetryOrganize, onCancelOrganize, onSwitchToLocal,
-                                    onLanguage, editor, speakerTools, onSpeakerSelect,
+                                    onLanguage, onExport, editor, speakerTools, onSpeakerSelect,
                                 )
                             }
                             if (foreground) {
@@ -458,6 +460,7 @@ private fun RecordingNarrowBody(
     onCancelOrganize: () -> Unit,
     onSwitchToLocal: () -> Unit,
     onLanguage: () -> Unit,
+    onExport: (() -> Unit)?,
     editor: RecordingInlineEditor?,
     speakerTools: @Composable () -> Unit,
     onSpeakerSelect: (RecordingSpeakerSelection) -> Unit,
@@ -478,7 +481,7 @@ private fun RecordingNarrowBody(
                 selected = organized, onSelect = onOrganizedChange, bleed = edge,
             )
             if (organized) {
-                OrganizedPaneHeader(view, false, onLanguage, onEdit, editor != null)
+                OrganizedPaneHeader(view, false, onLanguage, onEdit, onExport, editor != null)
             } else {
                 transcriptTools(false)
                 speakerTools()
@@ -519,6 +522,7 @@ private fun RecordingWideBody(
     onCancelOrganize: () -> Unit,
     onSwitchToLocal: () -> Unit,
     onLanguage: () -> Unit,
+    onExport: (() -> Unit)?,
     editor: RecordingInlineEditor?,
     speakerTools: @Composable () -> Unit,
     onSpeakerSelect: (RecordingSpeakerSelection) -> Unit,
@@ -535,7 +539,7 @@ private fun RecordingWideBody(
             }
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Column(Modifier.weight(1f).fillMaxHeight().padding(start = 16.dp)) {
-                OrganizedPaneHeader(view, true, onLanguage, onEdit, editor != null)
+                OrganizedPaneHeader(view, true, onLanguage, onEdit, onExport, editor != null)
                 RecordingOrganizedList(
                     view, null, true, padding, onMode, Modifier.weight(1f).fillMaxWidth(),
                     onOrganize, onRetryOrganize, onCancelOrganize, onConsent, onSwitchToLocal, onPlay, editor,
@@ -750,7 +754,14 @@ private fun TranscriptPaneHeader(
 }
 
 @Composable
-private fun OrganizedPaneHeader(view: RecordingView, titled: Boolean, onLanguage: () -> Unit, onEdit: () -> Unit, editing: Boolean) {
+private fun OrganizedPaneHeader(
+    view: RecordingView,
+    titled: Boolean,
+    onLanguage: () -> Unit,
+    onEdit: () -> Unit,
+    onExport: (() -> Unit)?,
+    editing: Boolean,
+) {
     val current = view.current ?: return
     RecordingPaneHeader(if (titled) stringResource(R.string.recording_organized) else null) {
         if (!editing) {
@@ -762,6 +773,9 @@ private fun OrganizedPaneHeader(view: RecordingView, titled: Boolean, onLanguage
             }
             if (!view.active && !view.organizing && current.organized.isNotBlank()) {
                 IconButton(onClick = onEdit) { Icon(Icons.Rounded.Edit, stringResource(R.string.recording_edit_summary)) }
+            }
+            if (!view.active && onExport != null && (current.organized.isNotBlank() || current.segments.isNotEmpty())) {
+                IconButton(onClick = onExport) { Icon(Icons.Rounded.IosShare, stringResource(R.string.recording_export_action)) }
             }
         }
     }
@@ -915,16 +929,18 @@ private fun RecordingOrganizedList(
     onPlay: (Long) -> Unit, editor: RecordingInlineEditor?,
 ) {
     val current = view.current ?: return
+    val segmentStarts = remember(current.segments) { current.segments.mapTo(hashSetOf(), RecordingSegment::startMs) }
     if (editor != null) {
-        Column(modifier.padding(contentPadding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(editor.text, editor.onChange, Modifier.fillMaxWidth().weight(1f),
-                textStyle = InfinityTypography.bodyLarge.forInput(), label = { Text(stringResource(R.string.recording_edit_summary)) })
-            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InfinityPillButton(stringResource(R.string.recording_cancel), editor.onCancel)
-                InfinityPillButton(stringResource(R.string.recording_save), editor.onSave,
-                    enabled = editor.text.isNotBlank(), tone = InfinityPillTone.PRIMARY)
-            }
-        }
+        RecordingRichInlineEditor(
+            draft = editor.text,
+            onDraftChange = editor.onChange,
+            validSegmentStarts = segmentStarts,
+            onPlayAtMs = onPlay,
+            onCancel = editor.onCancel,
+            onSave = editor.onSave,
+            modifier = modifier.padding(contentPadding).imePadding(),
+            fillHeight = true,
+        )
         return
     }
     val nowMs = rememberRecordingOrganizeNowMs(current, view.state)
@@ -941,8 +957,6 @@ private fun RecordingOrganizedList(
         onSettings = onMode,
     )
     val list = key(current.id, current.distinguishSpeakers) { rememberLazyListState() }
-    val blocks = remember(current.organized) { current.organized.split("\n\n").filter(String::isNotBlank) }
-    val segmentStarts = remember(current.segments) { current.segments.mapTo(hashSetOf(), RecordingSegment::startMs) }
     val dimSummary = organizeState is RecordingOrganizeState.RunningRerun
     val showVersionLabel = current.organized.isNotBlank() && cardModel != null && (
         organizeState is RecordingOrganizeState.RunningRerun ||
@@ -986,24 +1000,13 @@ private fun RecordingOrganizedList(
                     }
                 }
                 val bodyAlpha = if (dimSummary) .5f else 1f
-                itemsIndexed(blocks) { _, block ->
-                    val link = recordingSeekLink
-                    val times = link.findAll(block).mapNotNull { it.groupValues[2].toLongOrNull() }
-                        .filter { it in segmentStarts }.toList()
-                    when {
-                        times.isNotEmpty() && link.replace(block, "").isBlank() -> FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            times.forEach { ms -> TextButton(onClick = { onPlay(ms) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                                Text(recordingTimestamp(ms), style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = bodyAlpha), maxLines = 1)
-                            } }
-                        }
-                        block.startsWith("### ") -> Text(block.removePrefix("### "), style = InfinityTypography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = bodyAlpha))
-                        block.startsWith("**") && block.endsWith("**") -> Text(block.removeSurrounding("**"),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = bodyAlpha), style = InfinityTypography.labelLarge)
-                        else -> Text(block, style = InfinityTypography.bodyLarge.forReading(),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = bodyAlpha))
-                    }
+                item(key = "organized_rich_body") {
+                    RecordingRichSummaryBody(
+                        markdown = current.organized,
+                        validSegmentStarts = segmentStarts,
+                        onPlayAtMs = onPlay,
+                        alpha = bodyAlpha,
+                    )
                 }
             } else if (cardModel == null) item {
                 RecordingEmpty(fill && leading == null) {
@@ -1018,8 +1021,6 @@ private fun RecordingOrganizedList(
         }
     }
 }
-
-private val recordingSeekLink = Regex("\\[(\\d+:[\\d:]+)]\\(recording://seek/(\\d+)\\)")
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

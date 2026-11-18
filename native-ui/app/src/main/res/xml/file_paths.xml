@@ -6,4 +6,6 @@
     <cache-path name="workspace_media_share" path="workspace-media-share/" />
     <!-- 会话导出的主文件与附件包，分享后保留以供接收方延后读取。 -->
     <cache-path name="session_export" path="session-export/" />
+    <!-- 录音文档导出的全分辨率长图、自适应 PDF 与富文本页面。 -->
+    <cache-path name="recording_export" path="recording-export/" />
 </paths>
