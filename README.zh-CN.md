@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.63.0-beta`（versionCode `172`）。新增已发送用户消息内联编辑与重生成（支持修改文本及删减附图/文档/引用，失败或取消时原子回滚原消息，历史轮次可选择「就地重新生成」或「新建分支并生成」，磁盘工作区文件不主动回退并保留会话产物版本），同时修复带工具尾部气泡分支遗漏 `tool` 结果、切换会话丢失重发状态与归档摘要污染问题。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.63.1-beta`（versionCode `173`）。重构全站中文句读防孤字与数字单位不断行引擎，完成录音整理状态卡动静分离（左下角等宽数字重试倒计时 + 去除重复时间戳）与会话/录音导出面板 `InfinityMetaLine` 原子分段改造，并将云端录音摘要与综述整理预算提升至 `4096` tokens 以兼容思考型模型（基于 `v0.63.0-beta` 已发送用户消息内联编辑与分支重生成能力）。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 

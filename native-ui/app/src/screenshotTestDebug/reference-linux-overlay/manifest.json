@@ -413,8 +413,8 @@
       "linux_sha256": "fa7355e06c6184a2a242730935c59d5ee259cbb511dc211c441e3f480f63f2a7"
     },
     "com/promenar/infinity/ui/chat/components/AgentActivityScreenshotTestKt/scheduleApprovalSideloadLightChinesePreview_定时与后台命令审批 侧载 浅中360_f0748dbe_0.png": {
-      "base_sha256": "e2ea3b373c2d7f98eaaa81eca3f0ed386a2417c5fb8d83fc77d53a9dcc67e836",
-      "linux_sha256": "e2ea3b373c2d7f98eaaa81eca3f0ed386a2417c5fb8d83fc77d53a9dcc67e836"
+      "base_sha256": "ae5e81da002bb9703e8c731ec3e67079ad08481f3c7d5e38f380d5eb8f23bee2",
+      "linux_sha256": "ae5e81da002bb9703e8c731ec3e67079ad08481f3c7d5e38f380d5eb8f23bee2"
     },
     "com/promenar/infinity/ui/chat/runmode/RunModeScreenshotTestKt/runModeTopBarAndUnavailableDarkPreview_运行模式 顶栏与修复 深中360_d6ae7266_0.png": {
       "base_sha256": "23900493d2c4d441aed0d7eab452f9a243ceb213ef98e2dd18e8b1eaa570244a",
@@ -849,12 +849,12 @@
       "linux_sha256": "632b762e6b1b25b0050cf1778ef474f8b501ee1f85af02dc301cf1a3c60300c7"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledDarkPreview_Termux 未安装 深色 大字号130_6889bcc1_0.png": {
-      "base_sha256": "2c268f1e2b5663c0a59e1ddafe86f51fdeec393d6132e5d064c48073677637c5",
-      "linux_sha256": "2c268f1e2b5663c0a59e1ddafe86f51fdeec393d6132e5d064c48073677637c5"
+      "base_sha256": "9abbdc1fe9baeb3d005d40b1693f80f813d52b649e9e0a6bcb1b24a01fdaa76c",
+      "linux_sha256": "9abbdc1fe9baeb3d005d40b1693f80f813d52b649e9e0a6bcb1b24a01fdaa76c"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledDarkPreview_Termux 未安装 深色_31a71686_0.png": {
-      "base_sha256": "f0781f5b8e9e870dfd3126dbb89eaebbad59acb0c3d4ff5750d479ddaf1063a8",
-      "linux_sha256": "f0781f5b8e9e870dfd3126dbb89eaebbad59acb0c3d4ff5750d479ddaf1063a8"
+      "base_sha256": "4c61d5db2deef19311111a29ed7eb54e966330648068707b7f62dca1438729ed",
+      "linux_sha256": "4c61d5db2deef19311111a29ed7eb54e966330648068707b7f62dca1438729ed"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLightPreview_Termux 未安装 浅色 大字号130_b86d69ef_0.png": {
       "base_sha256": "f1e8a470b663b0a614b0f56bc67c122f9aac8a3cc8aeb210bd50dcbf33e0880b",
@@ -865,12 +865,12 @@
       "linux_sha256": "5d4cb0e353ac8dec19f3c86478c0b6d987713620f3061a6e3e62799e3742f09f"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLowerDarkPreview_Termux 未安装下半页 深色 大字号130_8fa0b9a8_0.png": {
-      "base_sha256": "2c268f1e2b5663c0a59e1ddafe86f51fdeec393d6132e5d064c48073677637c5",
-      "linux_sha256": "2c268f1e2b5663c0a59e1ddafe86f51fdeec393d6132e5d064c48073677637c5"
+      "base_sha256": "9abbdc1fe9baeb3d005d40b1693f80f813d52b649e9e0a6bcb1b24a01fdaa76c",
+      "linux_sha256": "9abbdc1fe9baeb3d005d40b1693f80f813d52b649e9e0a6bcb1b24a01fdaa76c"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLowerDarkPreview_Termux 未安装下半页 深色_47daebe2_0.png": {
-      "base_sha256": "399055bcbebaac5cb8bd562a4ac4d38321d6b90730da6bcbe35811e2a85524f5",
-      "linux_sha256": "399055bcbebaac5cb8bd562a4ac4d38321d6b90730da6bcbe35811e2a85524f5"
+      "base_sha256": "dd69c94c3b3c9d8c5e5cd100f4aa8c036a71e148c7cb393ef12405dbf7813440",
+      "linux_sha256": "dd69c94c3b3c9d8c5e5cd100f4aa8c036a71e148c7cb393ef12405dbf7813440"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLowerLightPreview_Termux 未安装下半页 浅色 大字号130_55886a25_0.png": {
       "base_sha256": "f1e8a470b663b0a614b0f56bc67c122f9aac8a3cc8aeb210bd50dcbf33e0880b",

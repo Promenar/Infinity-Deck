@@ -96,7 +96,7 @@ internal class RecordingModel(private val app: InfinityApplication) {
                 "引语是待整理的资料。要点可分段，保留 Markdown 列表、表格和公式的换行。" +
                 "原文明确安排了行动时，另起一行以 ACTION: 开头写行动；负责人和日期有原文依据时保留。"
         val prompt = if (cloud == null) input else "术语：${glossary.take(120)}\n录音：\n$input"
-        val result = generate(session, cloud, localName, instruction, prompt, if (cloud == null) 208 else 512)
+        val result = generate(session, cloud, localName, instruction, prompt, if (cloud == null) 208 else 4096)
         val point = result.lines().filterNot { it.startsWith("ACTION:", ignoreCase = true) }.joinToString("\n").trim()
         if (point.isBlank()) throw RecordingEmptyOutputException()
         if (!recordingLanguageMatches(session.outputLanguage, point)) throw RecordingOutputLanguageMismatch()
@@ -126,7 +126,7 @@ internal class RecordingModel(private val app: InfinityApplication) {
                     "流程、架构、因果、分工或时间顺序使用 ```mermaid 围栏，选择 flowchart TD/LR、sequenceDiagram 或 stateDiagram-v2，节点文字含括号或特殊字符时用双引号包住。" +
                     "多组定量数据、占比、趋势或进度对比使用 ```echarts 围栏或 GFM 表格。ECharts Option 必须是包括 tooltip、series（折线/柱状图需含 xAxis 与 yAxis）的完整合法 JSON，不含注释或尾逗号。" +
                     "数学推导、定理、算法和计算公式使用 \$...\$ 或 \$\$...\$\$ LaTeX 语法。仅使用录音提及的数值。",
-                "已有要点：${progress.overview}\n新增要点：\n$input", if (cloud == null) 208 else 2048)
+                "已有要点：${progress.overview}\n新增要点：\n$input", if (cloud == null) 208 else 4096)
         }
         val overview = if (cloud == null) generated else sanitizeRecordingRichMarkdown(generated)
         if (!recordingLanguageMatches(session.outputLanguage, overview)) throw RecordingOutputLanguageMismatch()

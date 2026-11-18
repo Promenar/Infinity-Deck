@@ -32,6 +32,21 @@ class TextLineBreakPolicyTest {
     }
 
     @Test
+    fun `cjk multi-sentence tail and number units stay unbroken and idempotent`() {
+        val multi = "此后还有 3 轮对话，就地重新生成会替换这些后续内容；也可新建分支探索，磁盘工作区文件不受影响。"
+        val formatted = multi.keepCjkTailTogether()
+        assertThat(formatted).isEqualTo(
+            "此后还有 3\u00A0轮对话，就地重新生成会替换这些后续内\u2060容；也可新建分支探索，磁盘工作区文件不受影\u2060响。",
+        )
+        assertThat(formatted.keepCjkTailTogether()).isEqualTo(formatted)
+
+        assertThat("约 0.99 MB".keepCjkTailTogether()).isEqualTo("约 0.99\u00A0MB")
+        assertThat("≥1440px 宽".keepCjkTailTogether()).isEqualTo("≥1440px\u00A0宽")
+        assertThat("55 秒后自动重试".keepCjkTailTogether()).isEqualTo("55\u00A0秒后自动重\u2060试")
+        assertThat("约 2 页".keepCjkTailTogether()).isEqualTo("约 2\u00A0页")
+    }
+
+    @Test
     fun `every typography role declares an explicit line break policy`() {
         val roles = with(InfinityTypography) {
             listOf(

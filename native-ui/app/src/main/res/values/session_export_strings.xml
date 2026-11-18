@@ -39,10 +39,12 @@
         <item quantity="one">%d long image</item>
         <item quantity="other">%d long images</item>
     </plurals>
+    <string name="session_export_estimate_pdf_layout">A4 portrait</string>
     <plurals name="session_export_estimate_pages">
-        <item quantity="one">A4 portrait, about %d page</item>
-        <item quantity="other">A4 portrait, about %d pages</item>
+        <item quantity="one">about %d page</item>
+        <item quantity="other">about %d pages</item>
     </plurals>
+    <string name="session_export_estimate_zip_segment">1 .zip with same name</string>
     <string name="session_export_estimate_with_zip">%1$s plus a .zip with the same name</string>
     <string name="session_export_estimate_size">about %1$s</string>
     <string name="session_export_estimate_join">%1$s, %2$s</string>

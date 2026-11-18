@@ -37,6 +37,7 @@ import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 
 /**
  * 会话中打开工作区选择器时的会话状态：运行模式与权限模式两个只读标签、通往“智能体可达范围”的链接，
@@ -135,7 +136,7 @@ private fun WorkspaceSwitchHintStrip(hint: SwitchHint, onStop: (() -> Unit)?) {
             modifier = Modifier.size(18.dp),
         )
         Text(
-            text = stringResource(if (failed) R.string.workspace_switch_failed else R.string.agent_reach_switch_busy_hint),
+            text = stringResource(if (failed) R.string.workspace_switch_failed else R.string.agent_reach_switch_busy_hint).keepCjkTailTogether(),
             style = MaterialTheme.typography.bodySmall.forReading(),
             color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.forReading
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import kotlin.math.roundToInt
 
 @Composable
@@ -63,7 +64,7 @@ fun InfinityValuePickerContent(
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Text(title, style = MaterialTheme.typography.titleMedium)
         if (description != null) {
-            Text(description, style = MaterialTheme.typography.bodySmall.forReading(), color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(description.keepCjkTailTogether(), style = MaterialTheme.typography.bodySmall.forReading(), color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp))
         }
         Spacer(Modifier.height(8.dp))

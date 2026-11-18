@@ -66,6 +66,7 @@ import com.promenar.infinity.ui.theme.InfinityThemePreferences
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Calendar
@@ -86,6 +87,8 @@ internal data class RecordingOrganizeCardModel(
     val metaSegments: List<String> = emptyList(),
     val progress: Float? = null,
     val note: String? = null,
+    val footerStatus: String? = null,
+    val footerIcon: ImageVector? = null,
     val primaryAction: RecordingOrganizeCardAction? = null,
     val secondaryAction: RecordingOrganizeCardAction? = null,
     val spinning: Boolean = false,
@@ -222,9 +225,7 @@ internal fun recordingOrganizeCardModel(
         )
 
         is RecordingOrganizeState.RunningRerun -> {
-            val prevNote = state.previousSource?.let {
-                stringResource(R.string.recording_organize_rerun_note, recordingOrganizeSourceLabel(it))
-            } ?: stringResource(R.string.recording_organize_rerun_note_default)
+            // 下方版本标签已展示既有整理稿时间与模型，状态卡说明保持简洁不重复。
             RecordingOrganizeCardModel(
                 tone = RecordingOrganizeTone.Running,
                 icon = null,
@@ -242,18 +243,14 @@ internal fun recordingOrganizeCardModel(
                     }
                 },
                 progress = state.progress,
-                note = prevNote,
+                note = stringResource(R.string.recording_organize_rerun_note_default),
                 primaryAction = RecordingOrganizeCardAction(stringResource(R.string.recording_cancel), onCancel),
                 spinning = true,
             )
         }
 
         is RecordingOrganizeState.FailedKeptOld -> {
-            val keptText = state.currentSource?.let {
-                stringResource(R.string.recording_organize_failed_kept_note, formatRecordingOrganizeTime(it.completedAt, includeTodayPrefix = true))
-            } ?: stringResource(R.string.recording_organize_failed_kept_default)
-            val retrySuffix = failureRetryNote(state.retryRemainingSeconds)
-            val noteText = if (retrySuffix != null) "$keptText $retrySuffix" else keptText
+            val retryStatus = failureRetryNote(state.retryRemainingSeconds)
             val failedWaitSec = (state.failure.elapsedMs / 1000L).toInt()
             RecordingOrganizeCardModel(
                 tone = RecordingOrganizeTone.Error,
@@ -268,7 +265,9 @@ internal fun recordingOrganizeCardModel(
                     if (failTime.isNotBlank()) add(failTime)
                     if (failedWaitSec > 0) add(stringResource(R.string.recording_organize_failed_wait_sec, failedWaitSec))
                 },
-                note = noteText,
+                note = stringResource(R.string.recording_organize_failed_kept_default),
+                footerStatus = retryStatus,
+                footerIcon = Icons.Rounded.Schedule.takeIf { retryStatus != null },
                 primaryAction = RecordingOrganizeCardAction(stringResource(R.string.recording_organize_retry), onRetry),
                 secondaryAction = if (canSwitchLocal) {
                     RecordingOrganizeCardAction(stringResource(R.string.recording_organize_switch_local), onSwitchToLocal)
@@ -283,8 +282,7 @@ internal fun recordingOrganizeCardModel(
                 if (state.canSwitchToLocal && canSwitchLocal) R.string.recording_organize_failed_empty_note_switch
                 else R.string.recording_organize_failed_empty_note,
             )
-            val retrySuffix = failureRetryNote(state.retryRemainingSeconds)
-            val noteText = if (retrySuffix != null) "$baseNote $retrySuffix" else baseNote
+            val retryStatus = failureRetryNote(state.retryRemainingSeconds)
             val failedWaitSec = (state.failure.elapsedMs / 1000L).toInt()
             RecordingOrganizeCardModel(
                 tone = RecordingOrganizeTone.Error,
@@ -299,7 +297,9 @@ internal fun recordingOrganizeCardModel(
                     if (failTime.isNotBlank()) add(failTime)
                     if (failedWaitSec > 0) add(stringResource(R.string.recording_organize_failed_wait_sec, failedWaitSec))
                 },
-                note = noteText,
+                note = baseNote,
+                footerStatus = retryStatus,
+                footerIcon = Icons.Rounded.Schedule.takeIf { retryStatus != null },
                 primaryAction = RecordingOrganizeCardAction(stringResource(R.string.recording_organize_retry), onRetry),
                 secondaryAction = if (state.canSwitchToLocal && canSwitchLocal) {
                     RecordingOrganizeCardAction(stringResource(R.string.recording_organize_switch_local), onSwitchToLocal)
@@ -506,28 +506,56 @@ internal fun RecordingOrganizeStatusCard(
                 )
             }
             model.note?.let {
-                Text(it, style = InfinityTypography.bodySmall.forReading(), color = bodyColor)
+                Text(it.keepCjkTailTogether(), style = InfinityTypography.bodySmall.forReading(), color = bodyColor)
             }
-            if (model.primaryAction != null || model.secondaryAction != null) {
-                FlowRow(
+            if (model.footerStatus != null || model.primaryAction != null || model.secondaryAction != null) {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    model.secondaryAction?.let {
-                        InfinityPillButton(it.label, it.onClick, compact = true)
+                    if (model.footerStatus != null) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            model.footerIcon?.let {
+                                Icon(
+                                    imageVector = it,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = bodyColor.copy(alpha = 0.85f),
+                                )
+                            }
+                            Text(
+                                text = model.footerStatus.keepCjkTailTogether(),
+                                style = InfinityTypography.labelMedium.copy(fontFeatureSettings = "tnum"),
+                                color = bodyColor,
+                            )
+                        }
+                    } else {
+                        Spacer(Modifier.weight(1f))
                     }
-                    model.primaryAction?.let {
-                        InfinityPillButton(
-                            text = it.label,
-                            onClick = it.onClick,
-                            compact = true,
-                            tone = if (model.tone == RecordingOrganizeTone.Running) {
-                                InfinityPillTone.NEUTRAL
-                            } else {
-                                InfinityPillTone.PRIMARY
-                            },
-                        )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        model.secondaryAction?.let {
+                            InfinityPillButton(it.label, it.onClick, compact = true)
+                        }
+                        model.primaryAction?.let {
+                            InfinityPillButton(
+                                text = it.label,
+                                onClick = it.onClick,
+                                compact = true,
+                                tone = if (model.tone == RecordingOrganizeTone.Running) {
+                                    InfinityPillTone.NEUTRAL
+                                } else {
+                                    InfinityPillTone.PRIMARY
+                                },
+                            )
+                        }
                     }
                 }
             }

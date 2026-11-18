@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 
 /** 状态条的四种语义色。 */
 enum class InfinityStatusKind { Success, Error, Info, Warning }
@@ -83,7 +84,7 @@ fun InfinityStatusStrip(
                 Icon(statusStripIcon(kind), contentDescription = null, modifier = Modifier.size(18.dp))
             }
             Text(
-                text = message,
+                text = message.keepCjkTailTogether(),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f),
             )

@@ -8,6 +8,7 @@ import androidx.compose.animation.*
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityHapticEvent
 import com.promenar.infinity.ui.theme.forReading
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -1050,7 +1051,7 @@ internal fun approvalKindDetail(toolName: String, executionTarget: String?): App
 internal fun ApprovalKindDetail(toolName: String, executionTarget: String? = null) {
     val detail = approvalKindDetail(toolName, executionTarget) ?: return
     Text(
-        stringResource(detail.resId, *detail.args.toTypedArray()),
+        stringResource(detail.resId, *detail.args.toTypedArray()).keepCjkTailTogether(),
         style = MaterialTheme.typography.bodySmall.forReading(),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1066,7 +1067,7 @@ internal fun ApprovalRiskLine(text: String) {
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier.padding(top = 2.dp).size(14.dp),
         )
-        Text(text, style = MaterialTheme.typography.bodySmall.forReading(), color = MaterialTheme.colorScheme.error)
+        Text(text.keepCjkTailTogether(), style = MaterialTheme.typography.bodySmall.forReading(), color = MaterialTheme.colorScheme.error)
     }
 }
 
@@ -1075,7 +1076,7 @@ private fun ApprovalReason(description: String) {
     val reason = approvalRequestReason(description)
     if (reason.isNotBlank()) {
         Text(
-            text = reason,
+            text = reason.keepCjkTailTogether(),
             style = MaterialTheme.typography.bodySmall.forReading(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.testTag("CHAT_APPROVAL_REASON"),

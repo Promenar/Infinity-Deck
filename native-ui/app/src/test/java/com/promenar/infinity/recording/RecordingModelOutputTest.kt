@@ -1,7 +1,10 @@
 package com.promenar.infinity.recording
 
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.remote.ResolvedProviderModel
+import com.promenar.infinity.data.remote.protocol.LlmProtocol
 import com.promenar.infinity.data.remote.protocol.LocalProtocol
+import com.promenar.infinity.data.remote.protocol.PromptRequest
 import com.promenar.infinity.data.remote.protocol.StreamChunk
 import com.promenar.infinity.domain.generation.CompletionReason
 import io.mockk.*
@@ -48,5 +51,38 @@ class RecordingModelOutputTest {
         assertEquals(1, progress.cursor)
         assertEquals("项目将在周五发布。", progress.points.single().text)
         assertEquals(listOf("明天完成检查"), progress.actions)
+    }
+
+    @Test fun cloudOrganizeUses4096TokenBudgetWhileLocalKeeps208() = runBlocking {
+        val localPrompts = mutableListOf<PromptRequest>()
+        coEvery { anyConstructed<LocalProtocol>().sendPrompt(capture(localPrompts)) } returns flowOf(
+            StreamChunk.TextDelta("本地要点"),
+            StreamChunk.Completed(CompletionReason.END_TURN),
+        )
+        val model = RecordingModel(app)
+        val localPoints = model.summarizeBatch(session, RecordingSummaryProgress(fingerprint = "test"), null, "local", "")
+        model.advanceOverview(
+            session,
+            localPoints.copy(points = localPoints.points + RecordingSummaryPoint(null, "第二条要点", listOf(1000L))),
+            null,
+            "local",
+        )
+        assertEquals(listOf(208, 208), localPrompts.map { it.maxTokens })
+
+        val cloudPrompts = mutableListOf<PromptRequest>()
+        val cloudProtocol = mockk<LlmProtocol>()
+        coEvery { cloudProtocol.sendPrompt(capture(cloudPrompts)) } returns flowOf(
+            StreamChunk.TextDelta("云端结构化整理要点"),
+            StreamChunk.Completed(CompletionReason.END_TURN),
+        )
+        val route = mockk<ResolvedProviderModel>(relaxed = true)
+        every { route.remoteModelId } returns "deepseek-v4.1-flash"
+        every { app.createRoutedModelProtocol(route) } returns cloudProtocol
+        val cloud = RecordingModel.Cloud(key = "cloud-key", label = "NEWAPI · deepseek-v4.1-flash", route = route)
+        val cloudSession = session.copy(cloudConsent = "cloud-key")
+
+        val cloudPoints = model.summarizeBatch(cloudSession, RecordingSummaryProgress(fingerprint = "test"), cloud, null, "")
+        model.advanceOverview(cloudSession, cloudPoints, cloud, null)
+        assertEquals(listOf(4096, 4096), cloudPrompts.map { it.maxTokens })
     }
 }

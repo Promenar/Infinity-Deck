@@ -14,6 +14,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.63.1-beta] - 2026-11-18
+
+- **全站中文排版防孤字（Widow）与数字单位不断行治理**：
+  - [Type.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/Type.kt) 升级 `keepCjkTailTogether()`：覆盖句内句末标点（`。！？；`）及闭合引号/括号前最后两个相邻 CJK 字符插入 `U+2060` 词连接符，并将数值与相邻单位/量词（如 `kB / MB / px / 秒 / 页 / 张 / 轮 / px 宽`）间的普通空格自动转为不换行空格 `U+00A0`；
+  - 在 [InfinityHelperContainer.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityHelperContainer.kt)、[InfinityConfirmDialog.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityConfirmDialog.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)、[InfinityStatusStrip.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityStatusStrip.kt)、[WorkspaceSwitchStatus.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/workspace/WorkspaceSwitchStatus.kt)、[ChatInlineComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInlineComponents.kt) 与 [InfinityValuePickerSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityValuePickerSheet.kt) 统一接入。
+- **录音整理状态卡与导出面板结构重构**：
+  - [RecordingOrganizeStatus.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingOrganizeStatus.kt) 实现「动静分离」与信息去重：将失败自动重试倒计时从正文句尾迁至底部操作栏左侧（搭配时钟图标与 `tnum` 等宽数字），并与下方版本行去除重复时间戳展示；
+  - [RecordingRichSummaryComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingRichSummaryComponents.kt) 与 [SessionExportSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/export/SessionExportSheet.kt) 将「预计输出」改造为 `InfinityMetaLine` 原子分段（配合 `\u00A0` 避免 `0.99\nMB` 断行），录音导出格式说明统一收编进 `InfinitySectionFooterCard`，并修复非图片/PDF 导出扩展名格式串重复点号问题。
+- **修复云端思考型模型录音整理中断**：[RecordingModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingModel.kt) 将 `summarizeBatch` 与 `advanceOverview` 的云端 `maxTokens` 预算由 `512 / 2048` 提升至 `4096`，避免思考型模型（如 `deepseek-v4.1-flash`）因推理耗尽输出预算触发 `length` 提前中断报错。
+
 ## [0.63.0-beta] - 2026-11-18
 
 - **支持修改已发送消息并重新生成或新建分支**：

@@ -48,6 +48,7 @@ import com.promenar.infinity.domain.export.SessionExportEstimate
 import com.promenar.infinity.domain.export.SessionExportFormat
 import com.promenar.infinity.domain.export.SessionExportOptions
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
@@ -56,6 +57,7 @@ import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.SettingsSectionHeader
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 
 /** 导出面板正在执行的操作。 */
 enum class SessionExportAction { SAVE, SHARE }
@@ -222,7 +224,7 @@ fun SessionExportSheetContent(
         }
         state.format.footerRes()?.let { footer ->
             Text(
-                text = stringResource(footer),
+                text = stringResource(footer).keepCjkTailTogether(),
                 style = InfinityTypography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = InfinitySpacing.Small),
@@ -304,33 +306,37 @@ private fun EstimateBox(state: SessionExportSheetState, onCancel: () -> Unit) {
                 color = colors.onSurface,
                 modifier = Modifier.padding(top = InfinitySpacing.XSmall),
             )
-            Text(
-                text = estimateText(state.format, state.estimate),
-                style = InfinityTypography.bodySmall,
-                color = colors.onSurfaceVariant,
+            InfinityMetaLine(
+                segments = estimateSegments(state.format, state.estimate),
+                style = InfinityTypography.bodyMedium,
+                color = colors.onSurface,
                 modifier = Modifier.padding(bottom = InfinitySpacing.XSmall),
             )
         }
     }
 }
 
-/** “1 个 .md 文件，约 38 KB”“3 张长图，约 4.2 MB”“1 个 .pdf 文件，A4 竖版，约 14 页，约 1.1 MB”。 */
+/** 原子分段：“1 个 .md 文件 · 约 38 KB”“3 张长图 · 约 4.2 MB”“1 个 .pdf 文件 · A4 竖版 · 约 14 页 · 约 1.1 MB”。 */
 @Composable
-private fun estimateText(format: SessionExportFormat, state: SessionExportEstimateState): String {
+private fun estimateSegments(format: SessionExportFormat, state: SessionExportEstimateState): List<String> {
     val estimate = when (state) {
-        SessionExportEstimateState.Loading -> return stringResource(R.string.session_export_estimate_loading)
-        SessionExportEstimateState.Unavailable -> return stringResource(R.string.session_export_estimate_unavailable)
+        SessionExportEstimateState.Loading -> return listOf(stringResource(R.string.session_export_estimate_loading))
+        SessionExportEstimateState.Unavailable -> return listOf(stringResource(R.string.session_export_estimate_unavailable))
         is SessionExportEstimateState.Ready -> state.estimate
     }
-    var text = if (format == SessionExportFormat.PNG) {
-        pluralStringResource(R.plurals.session_export_estimate_images, estimate.primaryFileCount, estimate.primaryFileCount)
-    } else {
-        pluralStringResource(R.plurals.session_export_estimate_files, estimate.primaryFileCount, estimate.primaryFileCount, format.extension)
-    }
-    if (estimate.attachmentArchive) text = stringResource(R.string.session_export_estimate_with_zip, text)
-    estimate.approxPages?.takeIf { format == SessionExportFormat.PDF }?.let { pages ->
-        text = stringResource(R.string.session_export_estimate_join, text, pluralStringResource(R.plurals.session_export_estimate_pages, pages, pages))
-    }
-    val size = stringResource(R.string.session_export_estimate_size, Formatter.formatShortFileSize(LocalContext.current, estimate.approxBytes))
-    return stringResource(R.string.session_export_estimate_join, text, size)
+    return buildList {
+        add(
+            if (format == SessionExportFormat.PNG) {
+                pluralStringResource(R.plurals.session_export_estimate_images, estimate.primaryFileCount, estimate.primaryFileCount)
+            } else {
+                pluralStringResource(R.plurals.session_export_estimate_files, estimate.primaryFileCount, estimate.primaryFileCount, format.extension)
+            },
+        )
+        if (estimate.attachmentArchive) add(stringResource(R.string.session_export_estimate_zip_segment))
+        estimate.approxPages?.takeIf { format == SessionExportFormat.PDF }?.let { pages ->
+            add(stringResource(R.string.session_export_estimate_pdf_layout))
+            add(pluralStringResource(R.plurals.session_export_estimate_pages, pages, pages))
+        }
+        add(stringResource(R.string.session_export_estimate_size, Formatter.formatShortFileSize(LocalContext.current, estimate.approxBytes)))
+    }.map(String::keepCjkTailTogether)
 }

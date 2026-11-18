@@ -136,8 +136,8 @@
     <string name="recording_organize_live_note">录音结束后生成完整整理稿与发言人要点。</string>
     <string name="recording_organize_running_title">正在生成整理稿</string>
     <string name="recording_organize_rerun_title">正在重新整理</string>
-    <string name="recording_organize_rerun_note">完成后替换下方整理稿（%1$s 生成）。</string>
-    <string name="recording_organize_rerun_note_default">完成后替换下方已有整理稿。</string>
+    <string name="recording_organize_rerun_note">生成完成后将自动替换下方已有整理稿（%1$s）。</string>
+    <string name="recording_organize_rerun_note_default">生成完成后将自动替换下方已有整理稿。</string>
     <string name="recording_organize_failed_title">整理失败</string>
     <string name="recording_organize_error_timeout">请求超时</string>
     <string name="recording_organize_error_model">模型返回错误</string>
@@ -146,11 +146,11 @@
     <string name="recording_organize_error_storage">保存整理稿失败</string>
     <string name="recording_organize_failed_wait_sec">等待 %1$d 秒无响应</string>
     <string name="recording_organize_failed_kept_note">下方仍是 %1$s 生成的整理稿，未被替换。</string>
-    <string name="recording_organize_failed_kept_default">下方仍是已有整理稿，未被替换。</string>
-    <string name="recording_organize_failed_empty_note_switch">逐字稿已完整保存，还没有整理稿。可以重试，或改用本地模型整理。</string>
-    <string name="recording_organize_failed_empty_note">逐字稿已完整保存，还没有整理稿。可以重试，或检查整理设置。</string>
-    <string name="recording_organize_retry_countdown_sec">%1$d 秒后自动重试。</string>
-    <string name="recording_organize_retry_pending_soon">即将自动重试。</string>
+    <string name="recording_organize_failed_kept_default">下方已有整理稿未被替换。</string>
+    <string name="recording_organize_failed_empty_note_switch">逐字稿已完整保存，可重试或改用本地整理。</string>
+    <string name="recording_organize_failed_empty_note">逐字稿已完整保存，可重试或检查整理设置。</string>
+    <string name="recording_organize_retry_countdown_sec">%1$d 秒后自动重试</string>
+    <string name="recording_organize_retry_pending_soon">即将自动重试</string>
     <string name="recording_organize_retry">重试</string>
     <string name="recording_organize_switch_local">改用本地</string>
     <string name="recording_organize_go_settings">整理设置</string>
@@ -202,9 +202,11 @@
     <string name="recording_export_footer_md">保留完整 Markdown、ECharts/Mermaid 图表源码与时间链接。</string>
     <string name="recording_export_footer_html">离线自包含网页，可直接在浏览器打开交互查看图表与公式。</string>
     <string name="recording_export_footer_txt">纯文本格式，不包含富格式图表与公式排版。</string>
-    <string name="recording_export_estimate_single_png">1 张 1:1 全分辨率完整长图（≥%1$dpx 宽），约 %2$s</string>
+    <string name="recording_export_estimate_png_label">1 张 1:1 全分辨率完整长图</string>
+    <string name="recording_export_estimate_png_min_width">≥%1$dpx 宽</string>
+    <string name="recording_export_estimate_pdf_label">自适应矢量分页</string>
     <plurals name="recording_export_estimate_pages">
-        <item quantity="other">自适应矢量分页，约 %d 页</item>
+        <item quantity="other">约 %d 页</item>
     </plurals>
     <string name="recording_export_share_chooser">分享录音文档</string>
     <string name="recording_preview_sample_echarts">数据图表（真机矢量渲染）</string>

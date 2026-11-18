@@ -169,16 +169,49 @@ fun String.breakableIdentifier(): String = buildString(length + length / 4) {
 private const val IDENTIFIER_BREAK_BEFORE_LETTER = "-_.:?&=@"
 
 /**
- * 末字连写：在最后两个相邻的中日韩文字之间插入词连接符（U+2060），自动折行时末行至少保留两个字，
- * 用于段落换行策略下的说明文字（段落策略不平衡行长，窄屏大字号会留下单字末行）。末尾标点不计入；
- * 末两字之间已有空格或非中日韩文字时原样返回。可选择文本复制时会带上该不可见字符，但只作用于末尾中日韩字符，
- * 不影响地址、命令等 ASCII 标识符；不得用于比较或存储。
+ * 末字连写与数字单位绑定：
+ * 1. 将“数字 + 空格 + 单位/量词”（以及 `1440px 宽`）中的普通空格替换为不换行空格（U+00A0），避免数值与单位被拆成两行；
+ * 2. 在句末标点（`。！？；`）前及整段末尾最后两个相邻的中日韩文字之间插入词连接符（U+2060），自动折行时句尾至少保留两个字，
+ * 避免段落策略在大字号窄屏下留下单字末行。末尾标点与闭合引号/括号不计入，幂等且不影响 ASCII 标识符；仅用于显示，不得用于比较或存储。
  */
 fun String.keepCjkTailTogether(): String {
-    val last = indexOfLast { !it.isWhitespace() && !it.isPunctuationLike() }
-    if (last < 1 || !this[last].isCjkGlyph() || !this[last - 1].isCjkGlyph()) return this
-    return substring(0, last) + '\u2060' + substring(last)
+    if (length < 2) return this
+    val boundUnits = NUMBER_UNIT_SPACE_REGEX.replace(this) { match ->
+        val token = match.groupValues[1].ifEmpty { match.groupValues[2] }
+        "$token\u00A0"
+    }
+    val sb = StringBuilder(boundUnits)
+    var i = 2
+    while (i < sb.length) {
+        val ch = sb[i]
+        if (ch == '。' || ch == '！' || ch == '？' || ch == '；') {
+            var prev = i - 1
+            while (prev > 0 && sb[prev].isClosingQuoteOrBracket()) prev--
+            if (prev >= 1 && sb[prev].isCjkGlyph() && sb[prev - 1].isCjkGlyph()) {
+                sb.insert(prev, WORD_JOINER)
+                i += 2
+                continue
+            }
+        }
+        i++
+    }
+    var end = sb.length - 1
+    while (end >= 0 && (sb[end].isWhitespace() || sb[end].isPunctuationLike())) end--
+    if (end >= 1 && sb[end].isCjkGlyph() && sb[end - 1].isCjkGlyph()) {
+        sb.insert(end, WORD_JOINER)
+    }
+    return sb.toString()
 }
+
+private const val WORD_JOINER = '\u2060'
+
+private val NUMBER_UNIT_SPACE_REGEX = Regex(
+    """(\d+(?:,\d{3})*(?:\.\d+)?) (?=(?:kB|KB|MB|GB|TB|B|ms|s|px|dp|sp|%|％|秒|分钟|分|小时|天|页|张|条|轮|段|行|个|项|次|步|位)(?![A-Za-z]))|(\d+(?:,\d{3})*(?:\.\d+)?(?:px|dp|sp)) (?=宽)""",
+)
+
+private fun Char.isClosingQuoteOrBracket(): Boolean =
+    this == '”' || this == '’' || this == '」' || this == '』' ||
+        this == '）' || this == ')' || this == '】' || this == ']' || this == '》'
 
 private fun Char.isCjkGlyph(): Boolean = when (Character.UnicodeScript.of(code)) {
     Character.UnicodeScript.HAN,

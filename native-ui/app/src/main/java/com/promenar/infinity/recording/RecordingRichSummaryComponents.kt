@@ -85,10 +85,12 @@ import com.promenar.infinity.domain.export.SessionExportEstimate
 import com.promenar.infinity.domain.export.SessionExportFormat
 import com.promenar.infinity.ui.common.ContentSegment
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityPopoverSpec
+import com.promenar.infinity.ui.common.InfinitySectionFooterCard
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySheetHeight
@@ -104,6 +106,7 @@ import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import kotlin.math.max
 
 private val StandaloneSeekLineRegex = Regex("""^\s*(?:\[([^\]\n]+)\]\(recording://seek/(\d+)\)\s*)+$""")
@@ -826,10 +829,9 @@ internal fun RecordingExportSheetContent(
 
         val footer = recordingExportFooterText(state.format)
         if (footer != null) {
-            Text(
-                text = footer,
-                style = InfinityTypography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            InfinitySectionFooterCard(
+                text = footer.keepCjkTailTogether(),
+                selectable = false,
             )
         }
 
@@ -905,43 +907,38 @@ private fun ExportSectionCard(
 @Composable
 private fun RecordingExportEstimateBox(state: RecordingExportSheetState) {
     val context = LocalContext.current
-    val text = when {
-        state.estimating -> stringResource(R.string.session_export_estimate_loading)
-        state.estimate == null -> stringResource(R.string.session_export_estimate_unavailable)
+    val segments: List<String> = when {
+        state.estimating -> listOf(stringResource(R.string.session_export_estimate_loading))
+        state.estimate == null -> listOf(stringResource(R.string.session_export_estimate_unavailable))
         else -> {
             val approxBytes = state.estimate.approxBytes
             val sizeText = Formatter.formatShortFileSize(context, approxBytes)
             when (state.format) {
-                SessionExportFormat.PNG -> stringResource(
-                    R.string.recording_export_estimate_single_png,
-                    EXPORT_BASE_WIDTH_PX,
-                    sizeText,
+                SessionExportFormat.PNG -> listOf(
+                    stringResource(R.string.recording_export_estimate_png_label),
+                    stringResource(R.string.recording_export_estimate_png_min_width, EXPORT_BASE_WIDTH_PX),
+                    stringResource(R.string.session_export_estimate_size, sizeText),
                 )
                 SessionExportFormat.PDF -> {
                     val pages = (state.estimate.approxPages ?: 1).coerceAtLeast(1)
-                    val primary = pluralStringResource(R.plurals.recording_export_estimate_pages, pages, pages)
-                    stringResource(
-                        R.string.session_export_estimate_join,
-                        primary,
+                    listOf(
+                        stringResource(R.string.recording_export_estimate_pdf_label),
+                        pluralStringResource(R.plurals.recording_export_estimate_pages, pages, pages),
                         stringResource(R.string.session_export_estimate_size, sizeText),
                     )
                 }
-                else -> {
-                    val primary = pluralStringResource(
+                else -> listOf(
+                    pluralStringResource(
                         R.plurals.session_export_estimate_files,
                         state.estimate.primaryFileCount,
                         state.estimate.primaryFileCount,
-                        ".${state.format.extension}",
-                    )
-                    stringResource(
-                        R.string.session_export_estimate_join,
-                        primary,
-                        stringResource(R.string.session_export_estimate_size, sizeText),
-                    )
-                }
+                        state.format.extension,
+                    ),
+                    stringResource(R.string.session_export_estimate_size, sizeText),
+                )
             }
         }
-    }
+    }.map(String::keepCjkTailTogether)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -957,8 +954,8 @@ private fun RecordingExportEstimateBox(state: RecordingExportSheetState) {
                 style = InfinityTypography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = text,
+            InfinityMetaLine(
+                segments = segments,
                 style = InfinityTypography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )

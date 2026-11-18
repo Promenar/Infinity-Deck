@@ -12,6 +12,7 @@ import androidx.compose.animation.*
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.forReading
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -2216,8 +2217,8 @@ private fun UserMessageInlineEditorCard(
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        text = stringResource(R.string.chat_edit_subsequent_turns_hint, subsequentUserTurns),
-                        style = InfinityTypography.bodySmall,
+                        text = stringResource(R.string.chat_edit_subsequent_turns_hint, subsequentUserTurns).keepCjkTailTogether(),
+                        style = InfinityTypography.bodySmall.forReading(),
                         color = scheme.onSurfaceVariant,
                     )
                 }

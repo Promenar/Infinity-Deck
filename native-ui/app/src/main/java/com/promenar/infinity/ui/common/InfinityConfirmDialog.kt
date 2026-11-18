@@ -55,6 +55,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.theme.InfinityShapes
 import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import kotlinx.coroutines.launch
 
 /**
@@ -204,7 +205,7 @@ internal fun InfinityConfirmDialogCard(
             } else if (message.isNotEmpty()) {
                 if (title.isNotBlank()) Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = message,
+                    text = message.keepCjkTailTogether(),
                     style = InfinityTypography.bodyMedium,
                     color = scheme.onSurfaceVariant,
                 )

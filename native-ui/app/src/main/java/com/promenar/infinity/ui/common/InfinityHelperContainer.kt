@@ -174,8 +174,8 @@ fun InfinityEmbeddedNoteCard(
                         tint = if (row.tone == InfinityNoteTone.PRIMARY) scheme.primary else tint,
                     )
                     Text(
-                        text = row.text,
-                        style = MaterialTheme.typography.bodySmall,
+                        text = row.text.keepCjkTailTogether(),
+                        style = MaterialTheme.typography.bodySmall.forReading(),
                         color = tint,
                     )
                 }
