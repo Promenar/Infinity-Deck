@@ -124,7 +124,7 @@ internal class RecordingModel(private val app: InfinityApplication) {
             generate(session, cloud, localName, if (cloud == null) session.outputLanguage.localOverviewInstruction() else
                 "用 $language 撰写结构化综述，保留结论、分歧、数字和未决事项，积极利用可视化与富格式表达信息。" +
                     "流程、架构、因果、分工或时间顺序使用 ```mermaid 围栏，选择 flowchart TD/LR、sequenceDiagram 或 stateDiagram-v2，节点文字含括号或特殊字符时用双引号包住。" +
-                    "多组定量数据、占比、趋势或进度对比使用 ```echarts 围栏或 GFM 表格。ECharts Option 必须是包括 tooltip 与 series 的完整合法 JSON，不含注释或尾逗号。" +
+                    "多组定量数据、占比、趋势或进度对比使用 ```echarts 围栏或 GFM 表格。ECharts Option 必须是包括 tooltip、series（折线/柱状图需含 xAxis 与 yAxis）的完整合法 JSON，不含注释或尾逗号。" +
                     "数学推导、定理、算法和计算公式使用 \$...\$ 或 \$\$...\$\$ LaTeX 语法。仅使用录音提及的数值。",
                 "已有要点：${progress.overview}\n新增要点：\n$input", if (cloud == null) 208 else 2048)
         }

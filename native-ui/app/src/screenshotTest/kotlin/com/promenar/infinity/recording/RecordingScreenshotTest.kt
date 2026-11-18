@@ -446,7 +446,9 @@ fun recordingRichOrganizedPreview() = RecordingFrame(InfinityThemeMode.DARK) {
         ```echarts
         {
           "title": { "text": "阶段耗时（ms）" },
-          "xAxis": { "data": ["转写", "整理", "同步", "导出"] },
+          "tooltip": {},
+          "xAxis": { "type": "category", "data": ["转写", "整理", "同步", "导出"] },
+          "yAxis": { "type": "value" },
           "series": [{ "type": "bar", "data": [180, 420, 95, 260] }]
         }
         ```

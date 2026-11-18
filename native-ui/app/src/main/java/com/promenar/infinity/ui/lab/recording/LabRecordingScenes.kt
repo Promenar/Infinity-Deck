@@ -140,7 +140,7 @@ private fun sampleSession(zh: Boolean): RecordingSession = RecordingSession(
 
         | 档位 | 二遍精修策略 | 熔断阈值 |
         |---|---|---|
-        | 旗舰内存 | 句末精修 ＋ 兜底 | $\text{RTF} > 0.65$ |
+        | 旗舰内存 | 句末精修 ＋ 兜底 | `RTF > 0.65` |
         | 中端内存 | 停顿后延迟精修 | 连续 2 段熔断 |
         | 入门机型 | 纯流式转写 | — |
 
@@ -155,7 +155,9 @@ private fun sampleSession(zh: Boolean): RecordingSession = RecordingSession(
         ```echarts
         {
           "title": { "text": "各环节平均耗时（ms）" },
-          "xAxis": { "data": ["流式首包", "二遍精修", "声纹聚合", "富格式导出"] },
+          "tooltip": {},
+          "xAxis": { "type": "category", "data": ["流式首包", "二遍精修", "声纹聚合", "富格式导出"] },
+          "yAxis": { "type": "value" },
           "series": [{ "type": "bar", "data": [110, 240, 145, 290] }]
         }
         ```
@@ -186,7 +188,7 @@ private fun sampleSession(zh: Boolean): RecordingSession = RecordingSession(
 
         | Tier | Refinement Mode | Breaker |
         |---|---|---|
-        | Flagship | Sentence-end ＋ fallback | $\text{RTF} > 0.65$ |
+        | Flagship | Sentence-end ＋ fallback | `RTF > 0.65` |
         | Mid-tier | Idle pause deferred | 2 slow chunks |
         | Entry | Streaming only | — |
 
@@ -201,7 +203,9 @@ private fun sampleSession(zh: Boolean): RecordingSession = RecordingSession(
         ```echarts
         {
           "title": { "text": "Stage Latency (ms)" },
-          "xAxis": { "data": ["Stream", "Refine", "Voice", "Export"] },
+          "tooltip": {},
+          "xAxis": { "type": "category", "data": ["Stream", "Refine", "Voice", "Export"] },
+          "yAxis": { "type": "value" },
           "series": [{ "type": "bar", "data": [110, 240, 145, 290] }]
         }
         ```
