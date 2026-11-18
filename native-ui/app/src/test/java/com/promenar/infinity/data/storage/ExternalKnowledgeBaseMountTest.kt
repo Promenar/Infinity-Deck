@@ -283,4 +283,40 @@ class ExternalKnowledgeBaseMountTest {
         assertThat(markdownFile.readText()).isEqualTo("Linux 补丁编辑")
         assertThat(callbacks.map { it.second }).containsExactly("新稿", "内置全量编辑", "Linux 补丁编辑").inOrder()
     }
+
+    @Test fun 父级系统符号链接不影响知识库与录音虚拟音频访问且直连符号链接仍被拒绝() = runBlocking<Unit> {
+        val realData = File(temporary, "data-data").apply { mkdirs() }
+        val userZeroLink = Files.createSymbolicLink(File(temporary, "user-0").toPath(), realData.toPath()).toFile()
+        val realKb = File(realData, "rag_workspace").apply { mkdirs() }
+        val linkedKbView = File(userZeroLink, "rag_workspace")
+        File(realKb, "笔记.md").writeText("正文")
+
+        val directRootLink = Files.createSymbolicLink(File(temporary, "direct-root-link").toPath(), realKb.toPath()).toFile()
+        rootEntry = rootEntry.copy(physicalRootPath = directRootLink.path)
+        assertThat(assertThrows(ExternalFolderException::class.java) {
+            runBlocking { manager.addKnowledgeBase("knowledge", "session", "kb-root") }
+        }.code).isEqualTo("UNAVAILABLE")
+
+        rootEntry = rootEntry.copy(physicalRootPath = linkedKbView.path)
+        assertThat(manager.addKnowledgeBase("knowledge", "session", "kb-root").sourceId).isEqualTo("kb-root")
+        val audioParentReal = File(realData, "recording-sessions/rec-1").apply { mkdirs() }
+        val audioReal = File(audioParentReal, "recording.wav").apply { writeBytes(byteArrayOf(82, 73, 70, 70, 99)) }
+        val linkedAudioView = File(userZeroLink, "recording-sessions/rec-1/recording.wav")
+        val recording = rootEntry.copy(uuid = "rec-1", parentUuid = "kb-root", name = "访谈.md",
+            materializedPath = "/访谈.md", isDirectory = false, mimeType = LOCAL_RECORDING_MIME)
+        coEvery { workspace.observeChildren("kb-root", "kb-root") } returns MutableStateFlow(listOf(recording))
+
+        val backend = KnowledgeBaseRecordingBackend(fileSystem.backend(linkedKbView.canonicalFile), "kb-root", workspace, { linkedAudioView }, { fileSystem.backend(it) })
+        assertThat(backend.list("/").map { it.name }).containsExactly("笔记.md", "访谈.wav")
+        assertThat(backend.stat("/访谈.wav")?.size).isEqualTo(audioReal.length())
+        assertThat(backend.read("/访谈.wav").toList()).isEqualTo(audioReal.readBytes().toList())
+
+        val symlinkAudio = Files.createSymbolicLink(File(realData, "linked.wav").toPath(), audioReal.toPath()).toFile()
+        val symlinkParentDir = Files.createSymbolicLink(File(realData, "linked-session").toPath(), audioParentReal.toPath()).toFile()
+        for (badAudio in listOf(symlinkAudio, File(symlinkParentDir, "recording.wav"))) {
+            val guarded = KnowledgeBaseRecordingBackend(fileSystem.backend(realKb), "kb-root", workspace, { badAudio }, { fileSystem.backend(it) })
+            assertThat(guarded.list("/").map { it.name }).containsExactly("笔记.md")
+            assertThat(guarded.stat("/访谈.wav")).isNull()
+        }
+    }
 }

@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.63.3-beta`（versionCode `175`）。解除云端录音整理客户端硬编码 `maxTokens` 限制并启用 `ReasoningEffort.LOW` 轻量思考，将云端综述单次要点聚合窗口扩容至 `28,000` 字并在窗口内按说话人分组提炼以适配数小时多人长会议，同时对齐单步超时预算与 `TIMEOUT` 结构化错误诊断；延续 `v0.63.2-beta` 的全站 LLM 统一路由会话头治理、`v0.63.1-beta` 的防孤字与状态卡/导出面板重构及 `v0.63.0-beta` 的消息编辑与分支能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.63.4-beta`（versionCode `176`）。修复真机上知识库根与录音虚拟音频后端在 `/data/user/0` 系统符号链接下被 `RealPathExternalFolderBackend` 拒绝访问的问题，并保持对直连符号链接的严格拦截；延续 `v0.63.3-beta` 长会议录音云端整理适配、`v0.63.2-beta` 全站 LLM 统一路由会话头治理、`v0.63.1-beta` 防孤字与状态卡/导出面板重构及 `v0.63.0-beta` 消息编辑与分支能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 

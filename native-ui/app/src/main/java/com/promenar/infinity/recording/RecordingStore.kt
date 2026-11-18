@@ -13,7 +13,8 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.util.UUID
 
-private fun recordingRoot(context: Context) = File(context.filesDir, "recording-sessions")
+// Android 的 filesDir 位于 /data/user/0 系统符号链接下；先取 filesDir 真实路径，录音子目录与音频文件仍按不跟随链接核验。
+private fun recordingRoot(context: Context) = File(context.filesDir.canonicalFile, "recording-sessions")
 
 /** 本机是否存有这些 id 中任一条录音；只读目录，不创建录音控制器。 */
 internal fun hasRecordingSessions(context: Context, ids: Collection<String>): Boolean {

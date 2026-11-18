@@ -663,8 +663,10 @@ class ExternalFolderManager(
             !root.isDirectory || root.materializedPath != "/" || root.inRecycleBin || root.physicalRootPath.isBlank()
         ) fail("UNAVAILABLE", "知识库工作区根身份无效")
         val physicalRoot = File(root.physicalRootPath)
-        if (!physicalRoot.isAbsolute) fail("UNAVAILABLE", "知识库工作区根路径无效")
-        return physicalRoot
+        if (!physicalRoot.isAbsolute || java.nio.file.Files.isSymbolicLink(physicalRoot.toPath())) {
+            fail("UNAVAILABLE", "知识库工作区根路径无效")
+        }
+        return physicalRoot.canonicalFile
     }
     private fun takeGrant(uri: Uri, flags: Int) {
         val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -713,8 +715,13 @@ internal class KnowledgeBaseRecordingBackend(
 
     private fun FileEntry.wavName() = (if (name.endsWith(".md", ignoreCase = true)) name.dropLast(3) else name) + ".wav"
 
-    private fun source(entry: FileEntry) = audioFile(entry.uuid)?.takeIf(File::isFile)
-        ?.let { audioBackend(it.parentFile!!) to "/${it.name}" }
+    private fun audioSourceFile(entry: FileEntry): File? = audioFile(entry.uuid)?.takeIf { file ->
+        file.isFile && !java.nio.file.Files.isSymbolicLink(file.toPath()) &&
+            file.parentFile?.let { parent -> parent.isDirectory && !java.nio.file.Files.isSymbolicLink(parent.toPath()) } == true
+    }
+
+    private fun source(entry: FileEntry) = audioSourceFile(entry)
+        ?.let { audioBackend(it.parentFile!!.canonicalFile) to "/${it.name}" }
 
     private suspend fun virtualSource(path: String): Pair<ExternalFolderBackend, String>? {
         val name = path.removePrefix("/")
@@ -736,7 +743,7 @@ internal class KnowledgeBaseRecordingBackend(
         val virtual = recordings().mapNotNull { entry ->
             val name = entry.wavName()
             if (name in names) return@mapNotNull null
-            val file = audioFile(entry.uuid)?.takeIf(File::isFile) ?: return@mapNotNull null
+            val file = audioSourceFile(entry) ?: return@mapNotNull null
             names.add(name)
             ExternalFolderEntry("/$name", name, false, file.length(), file.lastModified())
         }.toList()

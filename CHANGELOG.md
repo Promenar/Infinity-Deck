@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.63.4-beta] - 2026-11-18
+
+- **修复真机 `/mnt/knowledge` 经过系统符号链接导致文件工具拒绝访问的问题**：
+  - [ExternalFolderManager.kt](native-ui/app/src/main/java/com/promenar/infinity/data/storage/ExternalFolderManager.kt)：`knowledgeBaseRoot` 与 `KnowledgeBaseRecordingBackend`（`audioSourceFile` / `source`）在核验根目录、录音音频文件及其直接父目录本身均非符号链接后取 `.canonicalFile` 消解 `/data/user/0` 系统符号链接，消除 `RealPathExternalFolderBackend` 逐级 `O_NOFOLLOW` 打开目录时误报 `INVALID_PATH：不允许通过符号链接访问目录` 的问题；
+  - [RecordingStore.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingStore.kt)：`recordingRoot` 对 `context.filesDir` 取 `.canonicalFile` 后再拼接 `recording-sessions`，与技能目录和自选项目工作区保持一致。
+
 ## [0.63.3-beta] - 2026-11-18
 
 - **录音整理长会议扩展、云端推理适配与结构化失败诊断**：
