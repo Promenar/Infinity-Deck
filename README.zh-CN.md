@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.63.1-beta`（versionCode `173`）。重构全站中文句读防孤字与数字单位不断行引擎，完成录音整理状态卡动静分离（左下角等宽数字重试倒计时 + 去除重复时间戳）与会话/录音导出面板 `InfinityMetaLine` 原子分段改造，并将云端录音摘要与综述整理预算提升至 `4096` tokens 以兼容思考型模型（基于 `v0.63.0-beta` 已发送用户消息内联编辑与分支重生成能力）。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.63.2-beta`（versionCode `174`）。将全站非聊天旁路 LLM 调用统一收口至 `ProviderRequestRouter.createProtocol`（`SessionHeaderRoutedProtocol`），业务方统一传 `sessionId` 或作用域标识并由路由层自动决定会话头注入，覆盖录音云端整理、问资料、知识图谱、查询改写、桌宠台词与设置模型校验，并延续 `v0.63.1-beta` 的全站防孤字与状态卡/导出面板重构及 `v0.63.0-beta` 的消息编辑与分支能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 

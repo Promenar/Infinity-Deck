@@ -36,6 +36,7 @@ class PetLineGenerator(
                             model = modelId,
                             maxTokens = 256,
                             stream = false,
+                            sessionId = "pet-lines",
                         ),
                     ) { usage = it }
                     if (result != null) {

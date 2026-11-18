@@ -51,6 +51,7 @@ class KgApplicationRoutingTest {
         every { app.llmProvider } returns mockk { every { protocol } returns defaultProtocol }
         every { app.providerRequestRouter } returns router
         every { router.resolve("owner::remote") } returns ProviderResolution.Success(resolved)
+        every { router.createProtocol(any(), any(), any()) } answers { callOriginal() }
         coEvery { router.sessionHeaders(any(), any()) } returns null
         coEvery { defaultProtocol.sendPromptSync(any()) } returns PromptResponse(EMPTY)
         coEvery { ownerProtocol.sendPromptSync(any()) } returns PromptResponse(EMPTY)

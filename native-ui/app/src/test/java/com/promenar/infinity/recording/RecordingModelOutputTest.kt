@@ -1,12 +1,15 @@
 package com.promenar.infinity.recording
 
 import com.promenar.infinity.InfinityApplication
+import com.promenar.infinity.data.remote.ProviderResolution
 import com.promenar.infinity.data.remote.ResolvedProviderModel
+import com.promenar.infinity.data.remote.SessionHeaderWiringEndpoint
 import com.promenar.infinity.data.remote.protocol.LlmProtocol
 import com.promenar.infinity.data.remote.protocol.LocalProtocol
 import com.promenar.infinity.data.remote.protocol.PromptRequest
 import com.promenar.infinity.data.remote.protocol.StreamChunk
 import com.promenar.infinity.domain.generation.CompletionReason
+import io.ktor.http.HttpStatusCode
 import io.mockk.*
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -84,5 +87,40 @@ class RecordingModelOutputTest {
         val cloudPoints = model.summarizeBatch(cloudSession, RecordingSummaryProgress(fingerprint = "test"), cloud, null, "")
         model.advanceOverview(cloudSession, cloudPoints, cloud, null)
         assertEquals(listOf(4096, 4096), cloudPrompts.map { it.maxTokens })
+        assertEquals(listOf(cloudSession.id, cloudSession.id), cloudPrompts.map { it.sessionId })
+    }
+
+    @Test fun cloudOrganizeInjectsSessionHeadersOnWireWhenRouterEnablesThem() = runBlocking {
+        SessionHeaderWiringEndpoint(enabled = true).use { endpoint ->
+            endpoint.reply = {
+                HttpStatusCode.OK to SessionHeaderWiringEndpoint.textStream("讨论要点：已完成会话头全站收敛。")
+            }
+            val resolved = (endpoint.router.resolve(SessionHeaderWiringEndpoint.MODEL) as ProviderResolution.Success).value
+            every { app.providerRequestRouter } returns endpoint.router
+            every { app.createRoutedModelProtocol(resolved) } answers {
+                endpoint.router.createProtocol(resolved) { endpoint.protocol }
+            }
+            val cloud = RecordingModel.Cloud(key = "cloud-key", label = "NEWAPI · model", route = resolved)
+            val cloudSession = session.copy(id = "rec-session-42", cloudConsent = "cloud-key")
+
+            val model = RecordingModel(app)
+            val points = model.summarizeBatch(cloudSession, RecordingSummaryProgress(fingerprint = "test"), cloud, null, "")
+            model.advanceOverview(cloudSession, points, cloud, null)
+            assertEquals(2, endpoint.requests.size)
+            endpoint.requests.forEach { request ->
+                assertEquals(endpoint.identifier("rec-session-42"), request.headers["x-opencode-session"])
+                assertTrue(request.headers["User-Agent"]?.startsWith("Infinity-Deck/") == true)
+            }
+
+            endpoint.enabled = false
+            val disabledResolved = (endpoint.router.resolve(SessionHeaderWiringEndpoint.MODEL) as ProviderResolution.Success).value
+            every { app.createRoutedModelProtocol(disabledResolved) } answers {
+                endpoint.router.createProtocol(disabledResolved) { endpoint.protocol }
+            }
+            val disabledCloud = RecordingModel.Cloud(key = "cloud-key", label = "NEWAPI · model", route = disabledResolved)
+            model.summarizeBatch(cloudSession, RecordingSummaryProgress(fingerprint = "test"), disabledCloud, null, "")
+            assertNull(endpoint.requests.last().headers["x-opencode-session"])
+            assertFalse(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true)
+        }
     }
 }

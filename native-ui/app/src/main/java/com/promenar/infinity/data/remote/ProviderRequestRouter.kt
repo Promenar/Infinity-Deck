@@ -5,15 +5,23 @@ import com.promenar.infinity.data.manager.ProviderManager
 import com.promenar.infinity.data.model.ProviderConfig
 import com.promenar.infinity.data.model.ProviderListItem
 import com.promenar.infinity.data.remote.middleware.LlmMiddleware
+import com.promenar.infinity.data.remote.protocol.LlmProtocol
+import com.promenar.infinity.data.remote.protocol.PromptRequest
+import com.promenar.infinity.data.remote.protocol.PromptResponse
+import com.promenar.infinity.data.remote.protocol.ProtocolFactory
 import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.remote.protocol.ProviderEndpointOperation
 import com.promenar.infinity.data.remote.protocol.ProviderEndpointResolver
 import com.promenar.infinity.data.remote.protocol.ProviderEndpointTarget
+import com.promenar.infinity.data.remote.protocol.StreamChunk
 import com.promenar.infinity.data.remote.protocol.UnsupportedProviderProtocolException
 import com.promenar.infinity.data.remote.protocol.VERTEX_DEFAULT_LOCATION
 import com.promenar.infinity.data.remote.provider.VertexCredentialParser
 import com.promenar.infinity.data.remote.provider.VertexCredentialException
 import com.promenar.infinity.data.model.ModelInfo
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import java.net.URI
 
 data class ResolvedProviderModel(
@@ -57,7 +65,57 @@ interface ProviderRequestRouter {
     fun resolve(modelId: String, allowDisabledModel: Boolean): ProviderResolution = resolve(modelId)
 
     fun createClient(resolved: ResolvedProviderModel): UnifiedLlmClient
+
+    /** 返回统一包裹会话头自动解析的 [LlmProtocol]；所有非聊天工具流的模型推理均经此出口。 */
+    fun createProtocol(
+        resolved: ResolvedProviderModel,
+        defaultSessionId: String? = null,
+        rawProtocolFactory: (ResolvedProviderModel) -> LlmProtocol = { route ->
+            val config = route.config
+            ProtocolFactory.create(
+                type = config.protocolType,
+                baseUrl = config.baseUrl,
+                apiKey = config.apiKey,
+                model = route.remoteModelId,
+                serviceAccountJson = config.serviceAccountJson,
+                projectId = config.projectId,
+                location = config.location,
+            )
+        },
+    ): LlmProtocol = if (resolved.config.protocolType == ProtocolType.Local) {
+        rawProtocolFactory(resolved)
+    } else {
+        SessionHeaderRoutedProtocol(rawProtocolFactory(resolved), resolved, this, defaultSessionId)
+    }
+
     suspend fun sessionHeaders(resolved: ResolvedProviderModel, sessionId: String?): SessionRequestHeaders? = null
+}
+
+/**
+ * 统一路由协议装饰器：各业务方仅传入 `sessionId`（或作用域默认值），由路由层按提供商与模型配置
+ * 自动决定是否注入会话请求头与客户端 `User-Agent`。
+ */
+internal class SessionHeaderRoutedProtocol(
+    private val delegate: LlmProtocol,
+    private val resolved: ResolvedProviderModel,
+    private val router: ProviderRequestRouter,
+    private val defaultSessionId: String? = null,
+) : LlmProtocol by delegate {
+    private suspend fun PromptRequest.withResolvedSessionHeaders(): PromptRequest {
+        if (sessionHeaders != null) return this
+        val effectiveSessionId = sessionId?.takeIf(String::isNotBlank)
+            ?: defaultSessionId?.takeIf(String::isNotBlank)
+            ?: return this
+        val resolvedHeaders = router.sessionHeaders(resolved, effectiveSessionId)
+        return copy(sessionId = effectiveSessionId, sessionHeaders = resolvedHeaders)
+    }
+
+    override suspend fun sendPrompt(request: PromptRequest): Flow<StreamChunk> = flow {
+        emitAll(delegate.sendPrompt(request.withResolvedSessionHeaders()))
+    }
+
+    override suspend fun sendPromptSync(request: PromptRequest): PromptResponse =
+        delegate.sendPromptSync(request.withResolvedSessionHeaders())
 }
 
 fun stableModelId(providerId: String, remoteModelId: String): String =

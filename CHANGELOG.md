@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.63.2-beta] - 2026-11-18
+
+- **全站 LLM 推理调用收口至统一路由协议层（自动会话头治理）**：
+  - [ProviderRequestRouter.kt](native-ui/app/src/main/java/com/promenar/infinity/data/remote/ProviderRequestRouter.kt) 新增 `createProtocol` 与 `SessionHeaderRoutedProtocol` 装饰器，[InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt) 的 `createRoutedModelProtocol` 统一经此出口返回带自动会话头解析的协议实例；各业务调用方只需传入 `sessionId`（或作用域默认值），由路由层依据提供商与模型设置自动决定是否注入 `sessionHeaderName` 与 `User-Agent: Infinity-Deck/<versionName>`；
+  - 统一补齐并对齐全站所有旁路 LLM 推理调用方：[RecordingModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingModel.kt)（传录音 `session.id`，修复需要会话头的 `opencode go` 等上游网关云端录音整理秒败问题）、资料页「问资料」（`library-ask`）、[KgRequestClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/rag/KgRequestClient.kt)（无会话后台图谱抽取统一回退 `kg-extraction`）、[QueryRewriter.kt](native-ui/app/src/main/java/com/promenar/infinity/data/rag/QueryRewriter.kt)（`rag-query-rewrite`）、[PetLineGenerator.kt](native-ui/app/src/main/java/com/promenar/infinity/data/pet/PetLineGenerator.kt)（`pet-lines`），并将 [SettingsViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/SettingsViewModel.kt) 的首包测速与 Onboarding 验证统一接入路由器。
+
 ## [0.63.1-beta] - 2026-11-18
 
 - **全站中文排版防孤字（Widow）与数字单位不断行治理**：

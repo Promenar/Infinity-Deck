@@ -40,7 +40,8 @@ class QueryRewriter(
                 messages = listOf(ProtocolMessage(role = "user", content = prompt)),
                 model = route?.remoteModelId ?: modelIdOverride ?: modelId ?: "default",
                 temperature = 0.7,
-                stream = false
+                stream = false,
+                sessionId = "rag-query-rewrite",
             )
 
             val response = (route?.let(protocolFactory) ?: protocol).sendPromptSync(request)

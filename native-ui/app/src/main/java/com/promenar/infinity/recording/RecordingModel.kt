@@ -148,6 +148,7 @@ internal class RecordingModel(private val app: InfinityApplication) {
             messages = listOf(ProtocolMessage("system", instruction),
                 ProtocolMessage("user", input)),
             stream = true, maxTokens = limit,
+            sessionId = session.id,
         )
         val result = StringBuilder()
         var finished = false

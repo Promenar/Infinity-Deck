@@ -243,7 +243,7 @@ internal class ProviderModelTestCoordinator(
                 model = resolved.remoteModelId,
                 streamTimeout = timeoutMillis,
             ),
-            config = StreamConfig(),
+            config = StreamConfig(sessionId = "model-probe:${resolved.modelId}"),
         ).mapNotNull { chunk ->
             when (chunk) {
                 is StreamChunk.Error -> ProbeOutcome.Failed(ModelTestState.Error(chunk.code, chunk.retryAfterSeconds))
@@ -598,25 +598,12 @@ class SettingsViewModel(
                         is ProviderResolution.Success -> result.value
                         is ProviderResolution.Failure -> throw IllegalStateException(result.reason.name)
                     }
-                    val config = resolved.config
                     val remoteModelId = resolved.remoteModelId
-                    val provider = if (config.protocolType is ProtocolType.Local) {
-                        com.promenar.infinity.data.remote.provider.LlmProvider.local(
-                            app.localInferenceEngine,
-                            remoteModelId,
-                        )
-                    } else {
-                        com.promenar.infinity.data.remote.provider.LlmProvider.builder()
-                            .protocolType(config.protocolType)
-                            .baseUrl(config.baseUrl)
-                            .apiKey(config.apiKey)
-                            .serviceAccountJson(config.serviceAccountJson)
-                            .projectId(config.projectId)
-                            .location(config.location)
-                            .model(remoteModelId)
-                            .build()
-                    }
-                    provider.sendPromptSync(
+                    val protocol = app.createRoutedModelProtocol(
+                        resolved = resolved,
+                        defaultSessionId = "model-verify:${resolved.modelId}",
+                    )
+                    protocol.sendPromptSync(
                         com.promenar.infinity.data.remote.protocol.PromptRequest(
                             messages = listOf(
                                 com.promenar.infinity.data.remote.protocol.ProtocolMessage(
@@ -628,6 +615,7 @@ class SettingsViewModel(
                             maxTokens = 1,
                             tools = null,
                             stream = false,
+                            sessionId = "model-verify:${resolved.modelId}",
                         )
                     )
                 }

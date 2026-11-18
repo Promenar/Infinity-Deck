@@ -13,7 +13,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 
 class SessionHeaderRagWiringTest {
-    @Test fun `会话图谱从队列任务传入身份而文档图谱没有身份`() = runTest {
+    @Test fun `会话图谱使用会话身份而无会话文档图谱使用统一作用域身份`() = runTest {
         SessionHeaderWiringEndpoint().use { endpoint ->
             endpoint.reply = { HttpStatusCode.ServiceUnavailable to "{}" }
             val client = KgRequestClient(endpoint.router, { endpoint.protocol }, Dispatchers.IO)
@@ -33,6 +33,11 @@ class SessionHeaderRagWiringTest {
             assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
             assertThat(SessionHeaderWiringEndpoint.body(endpoint.requests.last())).isEqualTo(SessionHeaderWiringEndpoint.body(endpoint.requests.first()))
             endpoint.enabled = true
+            extractor.extractCandidate("文档文本")
+            assertThat(endpoint.requests.last().headers["x-opencode-session"]).isEqualTo(endpoint.identifier("kg-extraction"))
+            assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNotEqualTo(endpoint.identifier("rag-session"))
+            assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isTrue()
+            endpoint.enabled = false
             extractor.extractCandidate("文档文本")
             assertThat(endpoint.requests.last().headers["x-opencode-session"]).isNull()
             assertThat(endpoint.requests.last().headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()

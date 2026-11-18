@@ -1857,7 +1857,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             answerStream = { modelId, prompt ->
                 kotlinx.coroutines.flow.flow {
                     val route = providerRequestRouter.requireModelRoute(modelId, ::modelRouteError)
-                    val protocol = createRoutedModelProtocol(route)
+                    val protocol = createRoutedModelProtocol(route, defaultSessionId = "library-ask")
                     var completed = false
                     protocol.sendPrompt(com.promenar.infinity.data.remote.protocol.PromptRequest(
                         model = route.remoteModelId,
@@ -1867,6 +1867,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                         ),
                         maxTokens = 1024,
                         stream = true,
+                        sessionId = "library-ask",
                     )).collect { chunk ->
                         when (chunk) {
                             is com.promenar.infinity.data.remote.protocol.StreamChunk.TextDelta -> emit(chunk.content)
@@ -3021,7 +3022,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                         ::modelRouteError,
                     )
                 },
-                protocolFactory = ::createRoutedModelProtocol,
+                protocolFactory = { createRoutedModelProtocol(it, defaultSessionId = "rag-query-rewrite") },
             ),
             ragConfig = ragConfigPersistence.loadFullConfig()  // P0: 从用户保存的配置读取，不再硬编码默认值
         ).also { _memoryManager = it }
@@ -3052,22 +3053,31 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         protocolFactory = ::createRoutedModelProtocol,
     )
 
-    internal fun createRoutedModelProtocol(resolved: com.promenar.infinity.data.remote.ResolvedProviderModel): com.promenar.infinity.data.remote.protocol.LlmProtocol {
-        val config = resolved.config
-        if (config.protocolType == ProtocolType.Local) {
-            return generationLocalProviders.create(resolved.remoteModelId).protocol
+    internal fun createRoutedModelProtocol(
+        resolved: com.promenar.infinity.data.remote.ResolvedProviderModel,
+    ): com.promenar.infinity.data.remote.protocol.LlmProtocol =
+        createRoutedModelProtocol(resolved, defaultSessionId = null)
+
+    internal fun createRoutedModelProtocol(
+        resolved: com.promenar.infinity.data.remote.ResolvedProviderModel,
+        defaultSessionId: String?,
+    ): com.promenar.infinity.data.remote.protocol.LlmProtocol =
+        providerRequestRouter.createProtocol(resolved, defaultSessionId) { route ->
+            val config = route.config
+            if (config.protocolType == ProtocolType.Local) {
+                generationLocalProviders.create(route.remoteModelId).protocol
+            } else {
+                com.promenar.infinity.data.remote.protocol.ProtocolFactory.create(
+                    type = config.protocolType,
+                    baseUrl = config.baseUrl,
+                    apiKey = config.apiKey,
+                    model = route.remoteModelId,
+                    serviceAccountJson = config.serviceAccountJson,
+                    projectId = config.projectId,
+                    location = config.location,
+                )
+            }
         }
-        return com.promenar.infinity.data.remote.protocol.ProtocolFactory.create(
-            type = config.protocolType,
-            baseUrl = config.baseUrl,
-            apiKey = config.apiKey,
-            model = resolved.remoteModelId,
-            serviceAccountJson = config.serviceAccountJson,
-            projectId = config.projectId,
-            location = config.location,
-            localEngine = if (config.protocolType == ProtocolType.Local) localInferenceEngine else null,
-        )
-    }
 
     private var _microGraphExtractor: MicroGraphExtractor? = null
     val microGraphExtractor: MicroGraphExtractor

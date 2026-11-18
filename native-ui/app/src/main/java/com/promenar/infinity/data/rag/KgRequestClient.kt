@@ -59,7 +59,12 @@ class KgRequestClient(
                             KgExtractionStatus.PROVIDER_ERROR, "知识图谱模型解析失败：${resolution.reason}",
                         )
                     }
-                    val protocol = protocolFactory(resolved)
+                    val effectiveSessionId = sessionId?.takeIf(String::isNotBlank) ?: "kg-extraction"
+                    val protocol = router.createProtocol(
+                        resolved = resolved,
+                        defaultSessionId = effectiveSessionId,
+                        rawProtocolFactory = protocolFactory,
+                    )
                     attemptedModelId = stableId
                     val response = protocol.sendPromptSync(PromptRequest(
                         messages = listOf(
@@ -70,8 +75,7 @@ class KgRequestClient(
                         temperature = 0.0,
                         maxTokens = maxOutputTokens,
                         stream = false,
-                        sessionId = sessionId,
-                        sessionHeaders = sessionId?.let { router.sessionHeaders(resolved, it) },
+                        sessionId = effectiveSessionId,
                     ))
                     reportedUsage = response.usage?.let {
                         KgTokenUsage(it.input.coerceAtLeast(0).toLong(), it.output.coerceAtLeast(0).toLong())

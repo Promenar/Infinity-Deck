@@ -103,6 +103,76 @@ class SessionHeaderTransportTest {
     }
 
     @Test
+    fun `统一路由协议自动注入显式或默认作用域会话头并在关闭或本地协议时跳过`() = runTest {
+        val captured = mutableListOf<HttpRequestData>()
+        val http = HttpClient(MockEngine { data ->
+            captured += data
+            val sync = !data.headers[HttpHeaders.Accept].orEmpty().contains("text/event-stream")
+            respond(
+                if (sync) syncBody("generic") else streamBody("generic"),
+                headers = headersOf(HttpHeaders.ContentType, if (sync) "application/json" else "text/event-stream"),
+            )
+        })
+        try {
+            fun resolvedFor(mode: SessionHeaderMode, enabled: Boolean, local: Boolean = false): Pair<ProviderRequestRouter, ResolvedProviderModel> {
+                val r = DefaultProviderRequestRouter(
+                    modelResolver = {
+                        ModelInfo(
+                            "OpenCode Go", "gateway::opencode-go", "", true,
+                            providerId = "gateway", remoteModelId = "opencode-go", sessionHeaderMode = mode,
+                        )
+                    },
+                    providerResolver = {
+                        ProviderListItem(
+                            id = "gateway",
+                            protocolType = if (local) ProtocolType.Local else ProtocolType.Generic_OpenAI_Compat,
+                        )
+                    },
+                    configResolver = {
+                        ProviderConfig(
+                            protocolType = if (local) ProtocolType.Local else ProtocolType.Generic_OpenAI_Compat,
+                            baseUrl = "https://newapi.invalid/v1",
+                            apiKey = "synthetic-key",
+                            sessionHeadersEnabled = enabled,
+                        )
+                    },
+                    sessionIdentifier = { SessionHeaderPolicy.identifier("salt", it) },
+                    localInferenceAvailable = { true },
+                )
+                return r to (r.resolve("gateway::opencode-go") as ProviderResolution.Success).value
+            }
+
+            val (routerOn, resolvedOn) = resolvedFor(SessionHeaderMode.ON, enabled = false)
+            val protoWithDefault = routerOn.createProtocol(resolvedOn, defaultSessionId = "library-ask") {
+                protocol("generic", http)
+            }
+            protoWithDefault.sendPromptSync(request)
+            assertThat(captured.last().headers["x-opencode-session"]).isEqualTo(SessionHeaderPolicy.identifier("salt", "library-ask"))
+            assertThat(captured.last().headers[HttpHeaders.UserAgent]).isEqualTo("Infinity-Deck/${BuildConfig.VERSION_NAME}")
+
+            protoWithDefault.sendPrompt(request.copy(stream = true, sessionId = "internal-session")).toList()
+            assertThat(captured.last().headers["x-opencode-session"]).isEqualTo(identifier)
+
+            val (routerOff, resolvedOff) = resolvedFor(SessionHeaderMode.OFF, enabled = true)
+            val protoOff = routerOff.createProtocol(resolvedOff, defaultSessionId = "library-ask") { protocol("generic", http) }
+            protoOff.sendPromptSync(request.copy(sessionId = "internal-session"))
+            assertThat(captured.last().headers["x-opencode-session"]).isNull()
+
+            val (routerLocal, resolvedLocal) = resolvedFor(SessionHeaderMode.ON, enabled = true, local = true)
+            val localDelegate = object : LlmProtocol {
+                override val protocolType = ProtocolType.Local
+                override suspend fun sendPrompt(request: PromptRequest) = kotlinx.coroutines.flow.emptyFlow<StreamChunk>()
+                override suspend fun sendPromptSync(request: PromptRequest) = PromptResponse("ok")
+                override fun cancel() = Unit
+            }
+            val protoLocal = routerLocal.createProtocol(resolvedLocal, defaultSessionId = "library-ask") { localDelegate }
+            assertThat(protoLocal).isSameInstanceAs(localDelegate)
+        } finally {
+            http.close()
+        }
+    }
+
+    @Test
     fun `传输元数据永不进入序列化请求体`() {
         val baseline = Json.encodeToString(request)
         assertThat(Json.encodeToString(request.copy(sessionId = "secret-internal-id", sessionHeaders = SessionRequestHeaders("x-session", identifier, "Infinity-Deck/test")))).isEqualTo(baseline)
