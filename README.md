@@ -135,7 +135,7 @@
 
 - **Requirements**: Android 12 (API 31) or later. Built-in Linux and on-device GGUF inference require `arm64-v8a`; Alpine base occupies ~64 MB, or ~470 MB with the default toolchain (`git`, `ripgrep`, Python, Node.js, FFmpeg, each optional at install time).
 - **App updates**: Check **Settings › About › Check for updates** to query the latest GitHub Release and open the download page; nothing downloads or installs silently in the background.
-- **Current release**: `v0.63.2-beta` (`versionCode` `174`), unifying all routed LLM inference entry points behind `ProviderRequestRouter.createProtocol` (`SessionHeaderRoutedProtocol`) so callers pass only a conversation, recording, or scoped `sessionId` and session/client headers are applied uniformly across recording cloud organize, Library Ask, KG extraction, query rewriting, pet lines, and model verification. Builds on `v0.63.1-beta` (`versionCode` `173`) and `v0.63.0-beta` (`versionCode` `172`). [Releases](https://github.com/Promenar/Infinity-Deck/releases)
+- **Current release**: `v0.63.3-beta` (`versionCode` `175`), lifting hardcoded client `maxTokens` limits on cloud recording organization while setting `ReasoningEffort.LOW`, expanding cloud overview aggregation to `28,000` chars (`CLOUD_OVERVIEW_CHAR_BUDGET`), grouping multi-speaker turns per batch window via `speakerCursor` for multi-hour recordings, and aligning step timeouts and diagnostic failure classification (`TIMEOUT` -> `TimeoutException`). Builds on `v0.63.2-beta` (`versionCode` `174`), `v0.63.1-beta` (`versionCode` `173`), and `v0.63.0-beta` (`versionCode` `172`). [Releases](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### Build from Source
 

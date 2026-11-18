@@ -38,10 +38,17 @@ class RecordingOrganizeStateTest {
         val input = List(7) { RecordingSegment(it * 1000L, (it + 1) * 1000L, "字".repeat(400), it % 2) }
         assertEquals(1, countRecordingPointBatches(input, true, false))
         assertEquals(7, countRecordingPointBatches(input, false, false))
-        assertEquals(7, countRecordingPointBatches(input, true, true))
+        assertEquals(2, countRecordingPointBatches(input, true, true))
+        assertEquals(4, countRecordingPointBatches(input + input, true, true))
         assertEquals(2, countRecordingPointBatches(input + input.first(), true, false))
         assertEquals(0, countRecordingPointBatches(emptyList(), false, true))
         assertEquals(1, countRecordingPointBatches(listOf(input.first().copy(text = "字".repeat(5000))), false, false))
+
+        val points = List(4) { RecordingSummaryPoint(null, "点".repeat(10_000), listOf(it * 1000L)) }
+        assertEquals(2 to 0, countRecordingOverviewBatches(points, overviewCursor = 0, cloud = true))
+        assertEquals(2 to 1, countRecordingOverviewBatches(points, overviewCursor = 2, cloud = true))
+        assertEquals(1 to 0, countRecordingOverviewBatches(listOf(points.first()), overviewCursor = 0, cloud = false))
+        assertEquals(2 to 1, countRecordingOverviewBatches(listOf(points[0], points[1]), overviewCursor = 1, cloud = false))
     }
 
     @Test fun activeRecordingRoutesTakePriorityOverFailuresAndRuns() {

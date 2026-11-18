@@ -29,6 +29,7 @@ internal data class RecordingSummaryProgress(
     val fingerprint: String,
     val overviewCursor: Int = 0,
     val overview: String = "",
+    val speakerCursor: Int = 0,
 )
 
 internal fun RecordingSession.summaryFingerprint(glossary: String, route: String): String {

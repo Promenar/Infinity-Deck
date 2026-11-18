@@ -128,15 +128,52 @@ internal fun parseRecordingOrganizeEngine(cloud: Boolean, label: String?): Recor
     return RecordingOrganizeEngine(cloud, model = label.trim())
 }
 
+internal const val CLOUD_POINT_BATCH_CHAR_BUDGET = 2800
+internal const val LOCAL_POINT_BATCH_CHAR_BUDGET = 420
+internal const val CLOUD_OVERVIEW_CHAR_BUDGET = 28_000
+internal const val LOCAL_OVERVIEW_CHAR_BUDGET = 640
+
 internal fun countRecordingPointBatches(segments: List<RecordingSegment>, cloud: Boolean, separateSpeakers: Boolean): Int {
+    val budget = if (cloud) CLOUD_POINT_BATCH_CHAR_BUDGET else LOCAL_POINT_BATCH_CHAR_BUDGET
     var cursor = 0
     var count = 0
     while (true) {
-        val range = nextRecordingBatch(segments, cursor, if (cloud) 2800 else 420, separateSpeakers) ?: break
-        count++
+        val range = nextRecordingBatch(segments, cursor, budget, separateSpeakers = false) ?: break
+        count += if (separateSpeakers) {
+            range.map { segments[it].speakerId }.distinct().size.coerceAtLeast(1)
+        } else 1
         cursor = range.last + 1
     }
     return count
+}
+
+internal fun countRecordingOverviewBatches(
+    points: List<RecordingSummaryPoint>,
+    overviewCursor: Int = 0,
+    cloud: Boolean,
+): Pair<Int, Int> {
+    if (!cloud && points.size <= 1) {
+        return 1 to (if (overviewCursor > 0) 1 else 0)
+    }
+    if (points.isEmpty()) return 1 to 0
+    val budget = if (cloud) CLOUD_OVERVIEW_CHAR_BUDGET else LOCAL_OVERVIEW_CHAR_BUDGET
+    var index = 0
+    var batches = 0
+    var completed = 0
+    while (index < points.size) {
+        var used = 0
+        val start = index
+        while (index < points.size) {
+            val point = points[index].text
+            if (index > start && used + point.length > budget) break
+            used += point.take(budget).length + 1
+            index++
+        }
+        batches++
+        if (index <= overviewCursor) completed++
+    }
+    val total = batches.coerceAtLeast(1)
+    return total to completed.coerceAtMost(total - 1)
 }
 
 internal sealed interface RecordingOrganizeState {

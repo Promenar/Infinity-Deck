@@ -1398,7 +1398,12 @@ internal class RecordingController(
         val runEngine = parseRecordingOrganizeEngine(useCloud, if (useCloud) selectedCloud?.label else local?.modelName)
             ?: RecordingOrganizeEngine(cloud = useCloud, model = "")
         val pointBatches = if (live) 0 else countRecordingPointBatches(item.segments, useCloud, item.distinguishSpeakers).coerceAtLeast(1)
-        val totalSteps = if (live) 1 else pointBatches + 2
+        val (overviewBatches, completedOverviewBatches) = if (live) {
+            0 to 0
+        } else {
+            countRecordingOverviewBatches(progress?.points.orEmpty(), progress?.overviewCursor ?: 0, useCloud)
+        }
+        val totalSteps = if (live) 1 else pointBatches + overviewBatches + 1
         val stageEnum = when (stage) {
             "draft" -> RecordingOrganizeStage.LiveDraft
             "points" -> RecordingOrganizeStage.Points
@@ -1408,7 +1413,7 @@ internal class RecordingController(
         val step = when (stageEnum) {
             RecordingOrganizeStage.LiveDraft -> 1
             RecordingOrganizeStage.Points -> (requireNotNull(progress).points.size + 1).coerceAtMost(pointBatches)
-            RecordingOrganizeStage.Overview -> pointBatches + 1
+            RecordingOrganizeStage.Overview -> pointBatches + completedOverviewBatches + 1
             RecordingOrganizeStage.Publish -> totalSteps
         }
         val startedAt = _state.value.organizeRun?.takeIf {
@@ -1433,7 +1438,13 @@ internal class RecordingController(
                 var batch: RecordingSummaryProgress? = null
                 var firstOutput = 0L
                 val inferenceStarted = SystemClock.elapsedRealtime()
-                val result = withTimeoutOrNull(if (live) 30_000 else 75_000) {
+                val stepTimeoutMs = if (live) 30_000L else maxOf(
+                    180_000L,
+                    com.promenar.infinity.data.remote.ModelRequestTimeouts.socketMillis(
+                        com.promenar.infinity.data.remote.ModelTimeoutKind.LLM,
+                    ) * 2L,
+                )
+                val result = withTimeoutOrNull(stepTimeoutMs) {
                     if (range != null) model.organize(item, range, selectedCloud, local?.modelName, glossary) {
                         firstOutput = SystemClock.elapsedRealtime() - inferenceStarted
                     }

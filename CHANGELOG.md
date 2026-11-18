@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.63.3-beta] - 2026-11-18
+
+- **录音整理长会议扩展、云端推理适配与结构化失败诊断**：
+  - [RecordingModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingModel.kt)：取消对云端整理请求（校对、要点提炼与综述）硬编码的客户端 `maxTokens` 上限（传 `null`，仅本地 0.6B 模型保留 `160 / 208`），并统一传入 `reasoningEffort = ReasoningEffort.LOW` 避免推理链耗尽预算；将云端 `advanceOverview` 要点聚合窗口由 `3,000` 字扩容至 `28,000` 字（`CLOUD_OVERVIEW_CHAR_BUDGET`），让数小时长会议一次纵览全局生成富格式摘要与图表；
+  - [RecordingSummary.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingSummary.kt) 与 [RecordingPolicy.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingPolicy.kt)：`RecordingSummaryProgress` 新增兼容字段 `speakerCursor`，开启「区分说话人」时在每个字数预算窗口（云端 `2,800` 字 / 本地 `420` 字）内按说话人分组提炼，避免多人会议来回插话导致批次碎片化膨胀，并新增 `countRecordingOverviewBatches` 动态计算综述与总步数；
+  - [RecordingModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingModel.kt) 与 [RecordingController.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingController.kt)：整理流失败时记录 `recording.model_error`（含错误码 `code` 与 `retry_after_s`），将 `GenerationFailureCode.TIMEOUT` 准确映射为 `TimeoutException`，并将非实时单步超时从硬编码 75 秒对齐至 `maxOf(180_000L, socketMillis(LLM) * 2L)`。
+
 ## [0.63.2-beta] - 2026-11-18
 
 - **全站 LLM 推理调用收口至统一路由协议层（自动会话头治理）**：
