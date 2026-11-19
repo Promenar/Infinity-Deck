@@ -14,4 +14,4 @@
 - Termux 集成的启用开关和 MCP 服务器的 Bearer 令牌属于当前设备的授权，不随应用备份迁移（包括选中密钥层的加密备份）；另一台设备需要单独配置与启用。
 - 内置 Tailscale 的节点状态写入不进备份的应用私有目录，auth key 存于 `SecretStore`；两者不进入备份、日志、命令行与模型上下文，换设备需要重新登录。本机代理只监听 `127.0.0.1` 并只接受每次启动随机生成的凭据；该凭据经代理环境变量交给 `shell_exec`/`python_exec` 子进程，命令可读取，Infinity Deck 退出后失效。
 - 网络安全配置的 base-config 允许明文 HTTP，提供商、WebDAV、MCP 服务器与 Linux 自定义镜像都可以使用 http 地址。地址离开本机且不经 tailnet（既非回环地址、也非 tailnet 地址）时，提供商、首次引导、MCP、WebDAV 与 Linux 自定义镜像的地址输入框显示“未加密”提示：http 以明文传输，同一网络中的其他设备可能看到内容。本机 HTTP MCP 建议配置 Bearer 令牌，因为同机其它应用也可能访问该端口。
-- Release 诊断事件与会话轨迹导出不得写入 Prompt、模型输出、请求/响应正文、完整 URL、Authorization、API Key、SQL 参数或完整异常堆栈；全局诊断日志上限为 2 MiB（`4 × 512 KiB` 分片滚动 JSONL），支持应用内主动导出全局诊断包或单会话 Trace JSONL，以及仅本地 USB ADB + 系统 `DUMP` 权限 + 开发者模式与调试桥开关三重门禁下的 `DiagnosticDumpProvider` 只读抓取。
+- 诊断事件与会话轨迹采用分层脱敏架构：落盘 2 MiB（`4 × 512 KiB`）分片滚动 JSONL 及应用内主动分享导出默认采用严格隐私投影（`STRICT_SHAREABLE`，剔除普通消息正文、业务参数值、完整 URL、Authorization、API Key、SQL 参数与完整异常堆栈）；本地 USB ADB 调试桥（`DiagnosticDumpProvider`，受系统 `DUMP` 权限、开发者模式与调试桥开关三重门禁保护，Debug 变体的 `--sessions` 与 `--trace` 同样校验应用内开关）在强制清洗全部凭据、令牌、JWT、私钥、敏感请求头、URL 账密及查询参数与敏感文件路径后，按独立有界预算（单参数最大 6 KiB / 5 层 / 40 项 / 500 代码点）提供结构化工具入参、截断会话标题、报错正文与错误轮次 `errorPreview`。

@@ -37,10 +37,10 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 ### ADB 调试桥与会话轨迹诊断
 
-Infinity Deck 没有面向最终用户、与 Android UI 等价的 CLI。开发者调试与设备诊断采用两类脱敏通道（均严格剔除 API Key、请求头凭据、消息正文、Prompt 与完整堆栈）：
+Infinity Deck 没有面向最终用户、与 Android UI 等价的 CLI。开发者调试与设备诊断采用两类分层脱敏通道（全局均强制清洗 API Key、授权头与凭据、JWT、私钥、URL 账密与敏感路径）：
 
-- **开发者选项页（「诊断与调试桥」）**：可按会话导出单条执行轨迹（Trace JSONL，串联会话元数据、消息与工具调用生命周期及关联诊断事件），或导出全局 2 MiB（`4 × 512 KiB` 分片滚动）运行诊断包；并配有「ADB 实时调试桥」开关（关闭后与关闭「开发者模式」同步停用 Release 环境的调试桥输出）。
-- **免 GUI ADB 调试桥（`DiagnosticDumpProvider`）**：通过 Android 系统 `DUMP` 权限保护的未导出 ContentProvider 提供桌面端实时抓取；在 USB ADB 连接且开发者模式与调试桥开关同时开启时生效：
+- **开发者选项页（「诊断与调试桥」）**：可按会话导出单条执行轨迹（`STRICT_SHAREABLE` 模式下的 Trace JSONL，严格省略消息正文、工具入参内容与非白名单报错），或导出全局 2 MiB（`4 × 512 KiB` 分片滚动）运行诊断包；并配有「ADB 实时调试桥」开关（关闭后与关闭「开发者模式」同步停用 Release 环境调试桥以及 Debug 变体的 `--sessions`/`--trace` 输出）。
+- **免 GUI ADB 调试桥（`DiagnosticDumpProvider`）**：通过 Android 系统 `DUMP` 权限保护的未导出 ContentProvider 提供桌面端实时抓取；在 USB ADB 连接且开发者模式与调试桥开关同时开启时以 `ADB_LOCAL` 模式运行，在严格执行硬凭据脱敏的前提下保留有界结构化工具入参（6 KiB / 5 层 / 40 项 / 500 代码点）、截断会话标题、真实报错正文与仅限错误轮次的 `errorPreview`：
 
 ```bash
 adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --recent --since 0
@@ -51,7 +51,7 @@ adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.D
 
 `--threads` 用于排查生成停滞与线程池饥饿。输出为 JSONL，首行汇总 JVM 线程数量及状态，后续记录按优先级列出脱敏线程名和截断后的栈帧摘要。停止生成时，`--recent` 输出里的 `generation.cleanup_timeout` 事件可定位超过等待时限的清理阶段。
 
-Debug 变体的调试后缀包名对应调整组件路径前缀（例如 `com.promenar.infinity.debug/.startup.diagnostics.DiagnosticDumpProvider`）；Release 构建同样支持上述脱敏诊断事件、会话轨迹导出与三重门禁保护下的 `dumpsys` 拉取。
+Debug 变体的调试后缀包名对应调整组件路径前缀（例如 `com.promenar.infinity.debug/.startup.diagnostics.DiagnosticDumpProvider`）；Release 构建同样支持上述脱敏诊断事件、严格模式会话轨迹导出与三重门禁保护下的 `dumpsys` 拉取（Debug 的 `--sessions` 与 `--trace` 同样校验应用内开发者模式及调试桥开关）。
 
 ## 技术栈
 
