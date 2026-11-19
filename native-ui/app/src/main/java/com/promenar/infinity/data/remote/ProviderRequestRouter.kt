@@ -22,6 +22,7 @@ import com.promenar.infinity.data.model.ModelInfo
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 import java.net.URI
 
 data class ResolvedProviderModel(
@@ -111,11 +112,34 @@ internal class SessionHeaderRoutedProtocol(
     }
 
     override suspend fun sendPrompt(request: PromptRequest): Flow<StreamChunk> = flow {
-        emitAll(delegate.sendPrompt(request.withResolvedSessionHeaders()))
+        val diagnostic = request.diagnostic()
+        diagnostic.record {
+            val source = delegate.sendPrompt(request.withObservedRoute(diagnostic)).onEach { chunk ->
+                diagnostic.observeFirstToken(chunk)
+                diagnostic.observeTerminal(chunk)
+            }
+            emitAll(source)
+            diagnostic.observeStreamEnd()
+        }
     }
 
-    override suspend fun sendPromptSync(request: PromptRequest): PromptResponse =
-        delegate.sendPromptSync(request.withResolvedSessionHeaders())
+    override suspend fun sendPromptSync(request: PromptRequest): PromptResponse {
+        val diagnostic = request.diagnostic()
+        return diagnostic.record {
+            delegate.sendPromptSync(request.withObservedRoute(diagnostic))
+        }
+    }
+
+    private fun PromptRequest.diagnostic() = LlmRequestDiagnostic(
+        sessionId?.takeIf(String::isNotBlank) ?: defaultSessionId?.takeIf(String::isNotBlank),
+        resolved.providerId,
+        resolved.modelId.takeIf { model == resolved.remoteModelId } ?: model,
+    )
+
+    private suspend fun PromptRequest.withObservedRoute(diagnostic: LlmRequestDiagnostic): PromptRequest =
+        withResolvedSessionHeaders().also { routed ->
+            diagnostic.route(resolved.config.protocolType, routed.sessionHeaders?.name)
+        }
 }
 
 fun stableModelId(providerId: String, remoteModelId: String): String =
@@ -285,7 +309,7 @@ class DefaultProviderRequestRouter(
     }
 
     override fun createClient(resolved: ResolvedProviderModel): UnifiedLlmClient =
-        clientFactory(resolved.config)
+        clientFactory(resolved.config).withDiagnosticRoute(resolved.providerId, resolved.modelId)
 
     override suspend fun sessionHeaders(resolved: ResolvedProviderModel, sessionId: String?): SessionRequestHeaders? =
         resolveSessionRequestHeaders(resolved.config.sessionHeaderName, sessionId, sessionIdentifier)

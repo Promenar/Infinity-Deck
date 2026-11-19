@@ -10,12 +10,12 @@
 # 发行版只剥离普通调试输出，logError 的私有诊断写入必须保留。
 -assumenosideeffects class com.promenar.infinity.utils.InfinityLogger {
     public void log(java.lang.String);
-    public void metro(java.lang.String, java.lang.String);
 }
 
 # 精确覆盖统一日志器内部使用的平台日志重载，避免未来残留调用进入 Release。
 -assumenosideeffects class android.util.Log {
     public static int d(java.lang.String, java.lang.String);
+    public static int d(java.lang.String, java.lang.String, java.lang.Throwable);
     public static int e(java.lang.String, java.lang.String);
     public static int e(java.lang.String, java.lang.String, java.lang.Throwable);
 }
@@ -23,6 +23,8 @@
 # Release 禁止直接打印异常堆栈；源码契约测试同时禁止业务源码出现该调用。
 -assumenosideeffects class java.lang.Throwable {
     public void printStackTrace();
+    public void printStackTrace(java.io.PrintStream);
+    public void printStackTrace(java.io.PrintWriter);
 }
 
 # XMLBeans/OOXML 类型系统入口会根据 .xsb 元数据加载。

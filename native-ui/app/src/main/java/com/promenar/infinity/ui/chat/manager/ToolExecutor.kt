@@ -10,6 +10,7 @@ import com.promenar.infinity.data.model.UpdateMessageOptions
 import com.promenar.infinity.data.model.withinHunkBudget
 import com.promenar.infinity.data.generation.SessionToolResolver
 import com.promenar.infinity.domain.repository.ITaskRepository
+import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.data.repository.ToolExecutionKey
 import com.promenar.infinity.data.repository.ToolExecutionLedger
 import com.promenar.infinity.data.repository.ToolExecutionOutcome
@@ -34,10 +35,17 @@ import com.promenar.infinity.ui.chat.manager.registry.toProtocolTool
 import com.promenar.infinity.domain.tool.ToolArgumentsValidation
 import com.promenar.infinity.domain.tool.ToolArgumentsValidator
 import com.promenar.infinity.data.remote.protocol.ProtocolTool
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import com.promenar.infinity.data.linux.LinuxExecutionStatus
+import com.promenar.infinity.data.linux.observeLinuxExecution
 import kotlinx.serialization.encodeToString
 import com.promenar.infinity.utils.SensitiveDataRedactor
 import com.promenar.infinity.utils.HttpsUrlValidator
+import com.promenar.infinity.utils.InfinityLogger
 import java.util.Base64
 import java.security.MessageDigest
 
@@ -96,26 +104,43 @@ class ToolExecutor internal constructor(
         reason: String,
     ) {
         if (com.promenar.infinity.startup.StartupWriteBarrier.isSubsystemIsolated(com.promenar.infinity.startup.StartupSubsystem.TOOL_LEDGER)) {
-            for (call in toolCalls.distinctBy { it.id }) messageManager.addMessage(sessionId, Message(
-                id = "diagnostic_rejected_${java.util.UUID.randomUUID()}", role = MessageRole.TOOL, toolCallId = call.id,
-                parentMessageId = assistantMessageId, name = call.name, content = reason, createdAt = System.currentTimeMillis(),
-            ))
+            val runMode = store.getSession(sessionId)?.runMode
+            for (call in toolCalls.distinctBy { it.id }) {
+                ToolCallDiagnostic(ToolExecutionKey(sessionId, assistantMessageId, call.id), call.name, runMode).track {
+                    messageManager.addMessage(sessionId, Message(
+                        id = "diagnostic_rejected_${java.util.UUID.randomUUID()}", role = MessageRole.TOOL, toolCallId = call.id,
+                        parentMessageId = assistantMessageId, name = call.name, content = reason, createdAt = System.currentTimeMillis(),
+                    ))
+                    finish("REJECTED", "RUNTIME_REJECTED")
+                }
+            }
             return
         }
         val activeLedger = ledger ?: return
-        val targetMsg = store.getSession(sessionId)?.messages?.find { it.id == assistantMessageId } ?: return
+        val session = store.getSession(sessionId) ?: return
+        val targetMsg = session.messages.find { it.id == assistantMessageId } ?: return
         for (tc in toolCalls.distinctBy { it.id }) {
             val key = ToolExecutionKey(sessionId, assistantMessageId, tc.id)
             val persisted = activeLedger.invocationIdentity(key)
             if (persisted != null) {
-                if (activeLedger.state(key) !in setOf(ToolLedgerState.PENDING_APPROVAL, ToolLedgerState.APPROVED, ToolLedgerState.RUNNING)) continue
-                activeLedger.terminalizeWithResults(setOf(ToolTerminalRequest(key, tc.name, targetMsg.thoughtSignature,
-                    interruptionReason = reason)), ToolLedgerState.CANCELLED)
-                    .forEach { messageManager.mirrorPersistedMessage(sessionId, it) }
+                val state = activeLedger.state(key)
+                if (state !in setOf(ToolLedgerState.PENDING_APPROVAL, ToolLedgerState.APPROVED, ToolLedgerState.RUNNING)) continue
+                ToolCallDiagnostic(key, tc.name, session.runMode).track {
+                    val results = activeLedger.terminalizeWithResults(setOf(ToolTerminalRequest(key, tc.name, targetMsg.thoughtSignature,
+                        interruptionReason = reason)), ToolLedgerState.CANCELLED)
+                    if (results.isNotEmpty()) {
+                        if (state == ToolLedgerState.PENDING_APPROVAL) approval("CANCELLED", "CANCELLED")
+                        finish("CANCELLED", "RUNTIME_REJECTED")
+                    }
+                    results.forEach { messageManager.mirrorPersistedMessage(sessionId, it) }
+                }
             } else {
-                finishInvalidCall(activeLedger, key, targetMsg, tc, ToolPreflight.Invalid(
-                    identity = rejectedIdentity(tc), persistedIdentity = null, feedback = reason,
-                ))
+                ToolCallDiagnostic(key, tc.name, session.runMode).track {
+                    finishInvalidCall(activeLedger, key, targetMsg, tc, ToolPreflight.Invalid(
+                        identity = rejectedIdentity(tc), persistedIdentity = null, feedback = reason,
+                    ))
+                    finish("REJECTED", "RUNTIME_REJECTED")
+                }
             }
         }
     }
@@ -148,12 +173,15 @@ class ToolExecutor internal constructor(
         val admittedCalls = toolCalls.filter { call ->
             if (session.options.toolsEnabled || sessionAllowedTools.any { it.function.name == call.name }) true
             else {
-                messageManager.addMessage(sessionId, Message(
-                    id = "tool_shield_${java.util.UUID.randomUUID()}", role = MessageRole.TOOL,
-                    toolCallId = call.id, parentMessageId = targetMsg.id, name = call.name,
-                    content = disabledToolsMessage(sessionAllowedTools.any { it.function.name == "web_search" }),
-                    thoughtSignature = targetMsg.thoughtSignature, createdAt = System.currentTimeMillis(),
-                ))
+                ToolCallDiagnostic(ToolExecutionKey(sessionId, targetMsg.id, call.id), call.name, session.runMode).track {
+                    messageManager.addMessage(sessionId, Message(
+                        id = "tool_shield_${java.util.UUID.randomUUID()}", role = MessageRole.TOOL,
+                        toolCallId = call.id, parentMessageId = targetMsg.id, name = call.name,
+                        content = disabledToolsMessage(sessionAllowedTools.any { it.function.name == "web_search" }),
+                        thoughtSignature = targetMsg.thoughtSignature, createdAt = System.currentTimeMillis(),
+                    ))
+                    finish("REJECTED", "TOOLS_DISABLED")
+                }
                 false
             }
         }
@@ -172,60 +200,75 @@ class ToolExecutor internal constructor(
                 break
             }
             val key = ToolExecutionKey(sessionId, targetMsgId, tc.id)
-            val persistedIdentity = activeLedger.invocationIdentity(key)
-            val preflight = preflight(
-                call = tc,
-                persistedIdentity = persistedIdentity,
-                preparedTools = preparedTools,
-                requiresApproval = tc.id !in allowedToolCallIds,
-            )
-            if (preflight is ToolPreflight.Invalid) {
+            val diagnostic = ToolCallDiagnostic(key, tc.name, session.runMode)
+            diagnostic.track {
+                val persistedIdentity = activeLedger.invocationIdentity(key)
+                val preflight = preflight(
+                    call = tc,
+                    persistedIdentity = persistedIdentity,
+                    preparedTools = preparedTools,
+                    requiresApproval = tc.id !in allowedToolCallIds,
+                )
                 try {
-                    finishInvalidCall(activeLedger, key, targetMsg, tc, preflight)
+                    if (preflight is ToolPreflight.Invalid) {
+                        finishInvalidCall(activeLedger, key, targetMsg, tc, preflight)
+                        finish("FAILED", preflight.code?.name ?: "PREFLIGHT_FAILED")
+                        return@track
+                    }
+                    preflight as ToolPreflight.Valid
+                    val registeredState = when (val registration = activeLedger.register(key, preflight.identity)) {
+                        ToolRegistrationResult.Conflict -> {
+                            finish("SKIPPED", "LEDGER_CONFLICT")
+                            return@track
+                        }
+                        is ToolRegistrationResult.Registered -> registration.state
+                        is ToolRegistrationResult.Existing -> registration.state
+                    }
+                    // 只记录已经读到的台账状态。审批决定仍由审批管理器负责。
+                    when (registeredState) {
+                        ToolLedgerState.PENDING_APPROVAL -> {
+                            approval("PENDING", "PENDING_APPROVAL")
+                            finish("PENDING_APPROVAL")
+                        }
+                        ToolLedgerState.REJECTED -> {
+                            approval("REJECTED", "REJECTED")
+                            finish("REJECTED", "APPROVAL_REJECTED")
+                        }
+                        else -> Unit
+                    }
+                    if (tc.id !in allowedToolCallIds) return@track
+                    val expectedIdentity = activeLedger.invocationIdentity(key)
+                        ?.takeIf { it == preflight.identity }
+                        ?: return@track
+                    if (!activeLedger.claim(key, expectedIdentity)) return@track
+                    if (expectedIdentity.requiresApproval) approval("APPROVED", "RUNNING")
+                    executeClaimedTool(
+                        sessionId = sessionId,
+                        targetMsgId = targetMsgId,
+                        targetMsg = targetMsg,
+                        call = tc,
+                        arguments = preflight.arguments,
+                        key = key,
+                        expectedIdentity = expectedIdentity,
+                        activeLedger = activeLedger,
+                        expectedGrantTargets = expectedGrantTargets,
+                        timedGrantTargets = timedGrantTargets,
+                        diagnostic = diagnostic,
+                    )
                 } catch (cancelled: CancellationException) {
                     terminalizeInvocationCancellation(
                         activeLedger = activeLedger,
                         key = key,
                         call = tc,
                         targetMsg = targetMsg,
-                        expectedIdentity = preflight.persistedIdentity ?: preflight.identity,
+                        expectedIdentity = when (preflight) {
+                            is ToolPreflight.Valid -> preflight.identity
+                            is ToolPreflight.Invalid -> preflight.persistedIdentity ?: preflight.identity
+                        },
                         cancelled = cancelled,
                     )
                     throw cancelled
                 }
-                continue
-            }
-            preflight as ToolPreflight.Valid
-            try {
-                val registration = activeLedger.register(key, preflight.identity)
-                if (registration == ToolRegistrationResult.Conflict) continue
-                if (tc.id !in allowedToolCallIds) continue
-                val expectedIdentity = activeLedger.invocationIdentity(key)
-                    ?.takeIf { it == preflight.identity }
-                    ?: continue
-                if (!activeLedger.claim(key, expectedIdentity)) continue
-                executeClaimedTool(
-                    sessionId = sessionId,
-                    targetMsgId = targetMsgId,
-                    targetMsg = targetMsg,
-                    call = tc,
-                    arguments = preflight.arguments,
-                    key = key,
-                    expectedIdentity = expectedIdentity,
-                    activeLedger = activeLedger,
-                    expectedGrantTargets = expectedGrantTargets,
-                    timedGrantTargets = timedGrantTargets,
-                )
-            } catch (cancelled: CancellationException) {
-                terminalizeInvocationCancellation(
-                    activeLedger = activeLedger,
-                    key = key,
-                    call = tc,
-                    targetMsg = targetMsg,
-                    expectedIdentity = preflight.identity,
-                    cancelled = cancelled,
-                )
-                throw cancelled
             }
         }
     }
@@ -239,21 +282,28 @@ class ToolExecutor internal constructor(
     ) {
         val available = toolResolver.resolveForExecution(session)
         for (call in calls.distinctBy { it.id }) {
-            val preflight = preflight(call, null, preparedTools, requiresApproval = false)
-            val valid = preflight as? ToolPreflight.Valid
-            val skill = valid?.identity?.runtimeToolId?.let { skillRegistry?.getSkillByRuntimeToolId(it) }
-            val tool = available.singleOrNull { it.function.name == call.name && it.runtimeToolId == valid?.identity?.runtimeToolId }
-            val exact = tool?.let(ToolInvocationIdentityFactory::definitionDigest) as? ToolDefinitionDigestResolution.Valid
-            val result = if (skill?.name == "app_diagnostics" && skill.runtimeToolId == "app_diagnostics" &&
-                skill.sourceId == "builtin" && skill.risk == com.promenar.infinity.domain.tool.ToolRisk.SAFE_READ &&
-                valid != null && exact?.digest == valid.identity.definitionDigest) {
-                executeSkill(skill, valid.arguments, call, session, null, false, "diagnostic_${call.id}", targetMessage.id)
-            } else ToolResult(call.id, unavailableLedgerMessage(), "error")
-            messageManager.addMessage(session.id, Message(
-                id = "diagnostic_${java.util.UUID.randomUUID()}", role = MessageRole.TOOL, toolCallId = call.id,
-                parentMessageId = targetMessage.id, name = call.name, content = result.content,
-                thoughtSignature = targetMessage.thoughtSignature, createdAt = System.currentTimeMillis(),
-            ))
+            val diagnostic = ToolCallDiagnostic(ToolExecutionKey(session.id, targetMessage.id, call.id), call.name, session.runMode)
+            diagnostic.track {
+                val preflight = preflight(call, null, preparedTools, requiresApproval = false)
+                val valid = preflight as? ToolPreflight.Valid
+                val skill = valid?.identity?.runtimeToolId?.let { skillRegistry?.getSkillByRuntimeToolId(it) }
+                val tool = available.singleOrNull { it.function.name == call.name && it.runtimeToolId == valid?.identity?.runtimeToolId }
+                val exact = tool?.let(ToolInvocationIdentityFactory::definitionDigest) as? ToolDefinitionDigestResolution.Valid
+                val result = if (skill?.name == "app_diagnostics" && skill.runtimeToolId == "app_diagnostics" &&
+                    skill.sourceId == "builtin" && skill.risk == com.promenar.infinity.domain.tool.ToolRisk.SAFE_READ &&
+                    valid != null && exact?.digest == valid.identity.definitionDigest) {
+                    executeSkill(skill, valid.arguments, call, session, null, false, "diagnostic_${call.id}", targetMessage.id, diagnostic)
+                } else {
+                    finish("FAILED", "LEDGER_UNAVAILABLE")
+                    ToolResult(call.id, unavailableLedgerMessage(), "error")
+                }
+                messageManager.addMessage(session.id, Message(
+                    id = "diagnostic_${java.util.UUID.randomUUID()}", role = MessageRole.TOOL, toolCallId = call.id,
+                    parentMessageId = targetMessage.id, name = call.name, content = result.content,
+                    thoughtSignature = targetMessage.thoughtSignature, createdAt = System.currentTimeMillis(),
+                ))
+                finishResult(result.status != "success")
+            }
         }
     }
 
@@ -268,8 +318,10 @@ class ToolExecutor internal constructor(
         activeLedger: ToolExecutionLedger,
         expectedGrantTargets: Map<String, String>,
         timedGrantTargets: Map<String, String?>,
+        diagnostic: ToolCallDiagnostic,
     ) {
         val currentSession = store.getSession(sessionId)
+        diagnostic.runMode = currentSession?.runMode
         val currentResolvedTool = currentSession?.let { toolResolver.resolveForExecution(it) }
             ?.singleOrNull { tool ->
                 com.promenar.infinity.data.generation.SessionToolAvailability.allows(currentSession, tool) &&
@@ -296,6 +348,7 @@ class ToolExecutor internal constructor(
                 toolName = call.name,
                 thoughtSignature = targetMsg.thoughtSignature,
             )
+            diagnostic.finish("FAILED", "DEFINITION_CHANGED")
             return
         }
 
@@ -337,6 +390,8 @@ class ToolExecutor internal constructor(
                     failureMessage = "工具执行失败：目标授权已失效，已安全终止。",
                     failureReason = "目标授权无效",
                 )
+                diagnostic.approval("INVALIDATED", "FAILED")
+                diagnostic.finish("FAILED", "GRANT_INVALID")
                 return
             }
         }
@@ -351,7 +406,10 @@ class ToolExecutor internal constructor(
         val timedGrant = call.id in timedGrantTargets
         val approvedTarget = if (timedGrant) timedGrantTargets[call.id] else expectedGrantTargets[call.id] ?: approvedCall?.executionTarget
         val approvalBound = timedGrant || call.id in expectedGrantTargets || expectedIdentity.requiresApproval || approvedCall != null
-        val result = executeSkill(currentSkill, arguments, call, currentSession, approvedTarget, approvalBound, stepId, targetMsgId)
+        if (!expectedIdentity.requiresApproval && (timedGrant || call.id in expectedGrantTargets)) {
+            diagnostic.approval("APPROVED", "RUNNING")
+        }
+        val result = executeSkill(currentSkill, arguments, call, currentSession, approvedTarget, approvalBound, stepId, targetMsgId, diagnostic)
         hooks.afterSkillExecution()
         val failed = result.status != "success"
         val safeResultData = sanitizeResultData(result.data, failed, currentSkill)
@@ -405,7 +463,12 @@ class ToolExecutor internal constructor(
             images = safeResultData?.takeIf { it.startsWith("data:image/") },
             viewedMedia = if (failed) null else result.viewedMedia,
         )
-        toolMessage?.let { messageManager.mirrorPersistedMessage(sessionId, it) }
+        if (toolMessage != null) {
+            messageManager.mirrorPersistedMessage(sessionId, toolMessage)
+            diagnostic.finishResult(failed)
+        } else {
+            diagnostic.finish("SKIPPED", "LEDGER_RESULT_NOT_WRITTEN")
+        }
     }
 
     private suspend fun terminalizeInvocationCancellation(
@@ -442,43 +505,54 @@ class ToolExecutor internal constructor(
         approvalBound: Boolean,
         stepId: String,
         ownerMessageId: String,
+        diagnostic: ToolCallDiagnostic,
     ): ToolResult {
         val sink = liveOutput?.open(stepId) ?: com.promenar.infinity.domain.tool.ToolLiveOutputSink.None
         return try {
             withContext(com.promenar.infinity.data.exec.ToolCallControlContext(session.id, tc.id, stepId)) {
-            val execute: suspend () -> ToolResult = { skill.execute(
-                arguments,
-                object : SkillExecutionContext {
-                    override val sessionId = session.id
-                    override val runMode = session.runMode
-                    override val agentId = session.agentId
-                    override val assistantMessageId = ownerMessageId
-                    override val workspacePath = session.workspacePath
-                    override val approvedExecutionTarget = approvedTarget
-                    override val isApprovalBoundExecution = approvalBound
-                    override val liveOutput = sink
-                    override val toolStepId = stepId
-                    override val workspaceRootUuid = session.workspaceRootUuid
-                        ?: throw SecurityException("Session workspace root is missing")
+                val execute: suspend () -> ToolResult = {
+                    skill.execute(arguments, object : SkillExecutionContext {
+                        override val sessionId = session.id
+                        override val runMode = session.runMode
+                        override val agentId = session.agentId
+                        override val assistantMessageId = ownerMessageId
+                        override val workspacePath = session.workspacePath
+                        override val approvedExecutionTarget = approvedTarget
+                        override val isApprovalBoundExecution = approvalBound
+                        override val liveOutput = sink
+                        override val toolStepId = stepId
+                        override val workspaceRootUuid = session.workspaceRootUuid
+                            ?: throw SecurityException("Session workspace root is missing")
+                    })
                 }
-            ) }
-            val cooperative = skill.sourceId == "builtin" && skill.name in setOf(
-                "shell_exec", "python_exec", "termux_exec", "ssh_exec", "job_wait", "agent_task", "agent_wait",
-            )
-            if (cooperative) execute() else when (val outcome = com.promenar.infinity.data.exec.interruptOnSteering(
-                kotlinx.coroutines.currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext], execute,
-            )) {
-                is com.promenar.infinity.data.exec.SteeringStep.Completed -> outcome.value
-                com.promenar.infinity.data.exec.SteeringStep.Interrupted -> ToolResult(tc.id, "用户插队打断了此工具调用。", "error")
-            }
+                val builtin = skill.sourceId == "builtin"
+                if (builtin && (skill.name == "shell_exec" || skill.name == "python_exec")) {
+                    val background = (arguments["background"] as? JsonPrimitive)?.booleanOrNull == true
+                    if (session.runMode == SessionRunMode.LINUX && !background) {
+                        observeLinuxExecution(session.id, { result -> diagnostic.commandStatus(result) }, execute)
+                    } else execute()
+                } else if (builtin && skill.name in cooperativeTools) {
+                    execute()
+                } else when (val outcome = com.promenar.infinity.data.exec.interruptOnSteering(
+                    kotlinx.coroutines.currentCoroutineContext()[com.promenar.infinity.data.exec.SteeringContext], execute,
+                )) {
+                    is com.promenar.infinity.data.exec.SteeringStep.Completed -> outcome.value
+                    com.promenar.infinity.data.exec.SteeringStep.Interrupted -> {
+                        diagnostic.finish("FAILED", "INTERRUPTED")
+                        ToolResult(tc.id, "用户插队打断了此工具调用。", "error")
+                    }
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (invalid: IllegalArgumentException) {
+            diagnostic.finish("FAILED", "INVALID_ARGUMENT")
             ToolResult(id = tc.id, content = executionFailureDetail(invalid), status = "error")
         } catch (invalid: IllegalStateException) {
+            diagnostic.finish("FAILED", "INVALID_STATE")
             ToolResult(id = tc.id, content = executionFailureDetail(invalid), status = "error")
         } catch (error: Exception) {
+            diagnostic.finish("FAILED", "EXCEPTION")
             ToolResult(id = tc.id, content = "工具内部错误（${error::class.java.simpleName}）", status = "error")
         } finally {
             liveOutput?.close(stepId, sink)
@@ -617,6 +691,7 @@ class ToolExecutor internal constructor(
         ),
         persistedIdentity = persistedIdentity,
         feedback = invalidCallFeedback(code, detail),
+        code = code,
     )
 
     /** 回传给模型的预检失败说明：给出可纠错的具体原因，不回显参数原文。 */
@@ -639,6 +714,7 @@ class ToolExecutor internal constructor(
             val identity: ToolInvocationIdentity,
             val persistedIdentity: ToolInvocationIdentity?,
             val feedback: String,
+            val code: ToolInvocationIdentityErrorCode? = null,
         ) : ToolPreflight
     }
 
@@ -777,6 +853,83 @@ class ToolExecutor internal constructor(
         val SENSITIVE_BINARY_MARKER_REGEX = Regex(
             "(?i)(?:authorization|bearer\\s|sk-|api[_-]?key|/(?:Users|home|private|var|tmp)/|[A-Z]:\\\\)",
         )
+    }
+}
+
+private val cooperativeTools = setOf("termux_exec", "ssh_exec", "job_wait", "agent_task", "agent_wait")
+
+/** 记录单次调用处理，包括登记待审批和恢复执行两个独立阶段。 */
+private class ToolCallDiagnostic(
+    private val key: ToolExecutionKey,
+    toolName: String,
+    var runMode: SessionRunMode?,
+) {
+    private val toolName = toolName.takeIf { TOOL_NAME.matches(it) }
+    private val startedAt = System.nanoTime()
+    private var approvalOutcome: String? = null
+    private var status = "SKIPPED"
+    private var errorCode: String? = null
+
+    inline fun track(block: ToolCallDiagnostic.() -> Unit) {
+        emit("tool.start", "STARTED")
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            finish("CANCELLED", "CANCELLED")
+            throw cancelled
+        } catch (error: Exception) {
+            finish("FAILED", "EXCEPTION")
+            throw error
+        } finally {
+            emit("tool.end", status)
+        }
+    }
+
+    fun approval(outcome: String, status: String) {
+        approvalOutcome = outcome
+        emit("tool.approval", status)
+    }
+
+    fun finish(status: String, errorCode: String? = null) {
+        this.status = status
+        this.errorCode = errorCode
+    }
+
+    fun commandStatus(result: ToolResult): LinuxExecutionStatus {
+        // 命令工具使用固定结果协议；仅提取状态标量，stdout 和 stderr 不进入事件。
+        val metadata = Json.parseToJsonElement(result.content) as? JsonObject
+        val code = metadata?.get("error_code") as? JsonPrimitive
+        if (result.status != "success" && code?.isString == true) {
+            errorCode = code.content.takeIf { COMMAND_ERROR.matches(it) }
+        }
+        return LinuxExecutionStatus(
+            (metadata?.get("exit_code") as? JsonPrimitive)?.intOrNull,
+            (metadata?.get("timed_out") as? JsonPrimitive)?.booleanOrNull,
+        )
+    }
+
+    fun finishResult(failed: Boolean) {
+        if (failed) finish("FAILED", errorCode ?: "TOOL_FAILED")
+        else finish("SUCCEEDED")
+    }
+
+    private fun emit(event: String, status: String) {
+        InfinityLogger.diagnostic(event, mapOf(
+            "sessionId" to key.sessionId,
+            "messageId" to key.assistantMessageId,
+            "callId" to key.toolCallId,
+            "toolName" to toolName,
+            "runMode" to runMode?.name,
+            "approvalOutcome" to approvalOutcome,
+            "status" to status,
+            "errorCode" to errorCode,
+            "elapsedMs" to (System.nanoTime() - startedAt) / 1_000_000,
+        ))
+    }
+
+    private companion object {
+        val TOOL_NAME = Regex("[A-Za-z0-9_.-]{1,64}")
+        val COMMAND_ERROR = Regex("[A-Z][A-Z0-9_]{0,63}")
     }
 }
 

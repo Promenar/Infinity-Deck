@@ -52,7 +52,7 @@ class AppDiagnosticRecorderTest {
         repeat(50) { recorder.recordError("next-$it", java.io.IOException("private-body-$it")) }
 
         val recent = recorder.recent()
-        val files = directory.listFiles().orEmpty().filter(File::isFile)
+        val files = directory.listFiles().orEmpty().filter { it.name.startsWith("events-") }
 
         assertThat(files.size).isAtLeast(2)
         assertThat(files.sumOf(File::length)).isAtMost(1_536L)
@@ -72,7 +72,7 @@ class AppDiagnosticRecorderTest {
             }
         }
         recorder.recordError("私有步骤🔐".repeat(10_000), error)
-        val bytes = directory.listFiles().orEmpty().flatMap { it.readBytes().toList() }.toByteArray()
+        val bytes = directory.listFiles().orEmpty().filter { it.name.startsWith("events-") }.flatMap { it.readBytes().toList() }.toByteArray()
         val decoded = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
@@ -173,7 +173,7 @@ class AppDiagnosticRecorderTest {
         val directory = temporaryFolder.newFolder()
         val recorder = AppDiagnosticRecorder(directory)
         recorder.recordError("WorkspaceJournal", IllegalStateException("移动类 journal 文件布局冲突"))
-        directory.listFiles().orEmpty().first().appendText(
+        directory.listFiles().orEmpty().first { it.name.startsWith("events-") }.appendText(
             "\nprivate-file-body\n" +
                 """{"timestamp":0,"step":"private-step","exceptionType":"private-type","summary":"private-embedded-body","frames":["private-stack-body"]}""" + "\n",
         )
