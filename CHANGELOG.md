@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.64.0-beta] - 2026-11-19
+
 - **统一发行版诊断日志、单会话轨迹导出与 ADB 调试桥**：
   - 统一 `InfinityLogger.diagnostic()` 与 `AppDiagnostics`（[AppDiagnosticRecorder.kt](native-ui/app/src/main/java/com/promenar/infinity/startup/diagnostics/AppDiagnosticRecorder.kt)、[AppDiagnostics.kt](native-ui/app/src/main/java/com/promenar/infinity/startup/diagnostics/AppDiagnostics.kt)、[InfinityLogger.kt](native-ui/app/src/main/java/com/promenar/infinity/utils/InfinityLogger.kt)）为同一套 `4 × 512 KiB`（2 MiB）`NOFOLLOW_LINKS` 分片滚动 JSONL 存储；下线 RN 时代遗留的 `MetroLogInterceptor`、`MetroLoggingMiddleware`、`infinity_logs.txt` 及 `scripts/infinity-metro-tui.js`，同步更新 `proguard-rules.pro` 与 `ReleaseLoggingSourceContractTest`（保留非 Android JVM 单测的脱敏 `System.err` 输出）；
   - 补齐 `ProviderRequestRouter` / `UnifiedLlmClient`、`ToolExecutor`、`LinuxRuntimeProcess`、`reconcileSessionHome` 与 [MountedWorkspaceSkill.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/MountedWorkspaceSkill.kt) / [LinuxSessionFileSkill.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/LinuxSessionFileSkill.kt) 的 `file.op` Release 结构化埋点；

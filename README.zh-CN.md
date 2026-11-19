@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.63.4-beta`（versionCode `176`）。修复真机上知识库根与录音虚拟音频后端在 `/data/user/0` 系统符号链接下被 `RealPathExternalFolderBackend` 拒绝访问的问题，并保持对直连符号链接的严格拦截；延续 `v0.63.3-beta` 长会议录音云端整理适配、`v0.63.2-beta` 全站 LLM 统一路由会话头治理、`v0.63.1-beta` 防孤字与状态卡/导出面板重构及 `v0.63.0-beta` 消息编辑与分支能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.64.0-beta`（versionCode `177`）。统一发行版 `4 × 512 KiB`（2 MiB）脱敏 JSONL 诊断与单会话轨迹导出，落地受开发者模式、开关与系统 `DUMP` 权限三重门禁的 `DiagnosticDumpProvider` ADB 实时调试桥（下线 RN Metro 日志桥）及开发者选项「诊断与调试桥」界面；收敛 `search_files` / `list_files` 容错、符号链接路径段提示与 `read_file(mode="stat")` 流式 SHA-256；扩展知识库 `/mnt/knowledge` `read_only` / `read_write` 分级授权审批、受管文档增删改移闭环及分级标识 UI；延续 `v0.63.4-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 
