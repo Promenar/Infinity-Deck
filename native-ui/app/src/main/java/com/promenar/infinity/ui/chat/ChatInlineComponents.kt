@@ -992,15 +992,31 @@ internal fun ApprovalTag(text: String, modifier: Modifier = Modifier) {
 
 /** 卡片标题：待批准时写成“需要批准：动作”；下一行是可复制的原始工具 ID。 */
 @Composable
-internal fun ApprovalCallTitle(name: String, pending: Boolean) {
+internal fun ApprovalCallTitle(
+    name: String,
+    pending: Boolean,
+    titleOverride: String? = null,
+    trailingBadge: (@Composable () -> Unit)? = null,
+) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        val title = approvalToolTitle(name)
-        Text(
-            text = if (pending) stringResource(R.string.chat_approval_title_required, title) else title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        val title = titleOverride ?: approvalToolTitle(name)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = if (pending) stringResource(R.string.chat_approval_title_required, title) else title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = if (trailingBadge != null) Modifier.weight(1f) else Modifier,
+            )
+            if (trailingBadge != null) {
+                Spacer(Modifier.width(8.dp))
+                trailingBadge()
+            }
+        }
         SelectionContainer {
             Text(
                 text = name,
@@ -1114,7 +1130,12 @@ private fun ApprovalCallBody(call: ApprovalDisplayCall, description: String, pen
         ?: preview?.target?.takeIf(String::isNotBlank)
     call.knowledgeAccess?.let { access ->
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            ApprovalCallTitle(call.name, pending)
+            ApprovalCallTitle(
+                name = call.name,
+                pending = pending,
+                titleOverride = if (access.readWrite) stringResource(R.string.chat_approval_title_knowledge_access_rw) else null,
+                trailingBadge = { KnowledgeAccessModeBadge(readWrite = access.readWrite) },
+            )
             KnowledgeAccessApprovalBody(access)
         }
         return
@@ -1368,6 +1389,11 @@ fun ApprovalCard(
                 if (isExecuted) {
                     Text(statusLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
+                    val knowledgeApproveLabel = if (remainingCount == 0) {
+                        currentCall?.knowledgeAccess?.takeIf { it.allowed }?.let { access ->
+                            stringResource(if (access.readWrite) R.string.knowledge_access_approve_rw else R.string.knowledge_access_approve_ro)
+                        }
+                    } else null
                     ApprovalActionBar(
                         remainingCount = remainingCount,
                         totalCount = calls.size,
@@ -1377,6 +1403,7 @@ fun ApprovalCard(
                         onApprove = onApprove,
                         onDecline = onDecline,
                         onApproveAll = onApproveAll?.takeIf { remainingCount > 0 },
+                        approveLabel = knowledgeApproveLabel,
                         timedGrantLabel = currentCall?.timedGrantLabel,
                         onApproveTimed = onApproveTimed?.takeIf { currentCall?.timedGrantLabel != null },
                         oneShotOnly = currentCall?.oneShotOnly == true,

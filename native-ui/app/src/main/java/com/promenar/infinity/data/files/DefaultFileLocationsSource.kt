@@ -139,8 +139,14 @@ internal class DefaultFileLocationsSource(
             is SessionWorkspace.Directory -> workspaceLocation(workspace.workspace, session.id, linux, workspace, git)
             is SessionWorkspace.Unavailable -> null
         }
-        listOfNotNull(current) + attached.filter { it.sourceType in setOf("saf_tree", "real_path", "knowledge_base") }
-            .distinctBy { it.id }.map(::externalLocation)
+        listOfNotNull(current) + attached.filter {
+            it.sourceType in setOf(
+                "saf_tree",
+                "real_path",
+                com.promenar.infinity.data.storage.ExternalMountPaths.KNOWLEDGE_BASE_SOURCE,
+                com.promenar.infinity.data.storage.ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE,
+            )
+        }.distinctBy { it.id }.map(::externalLocation)
     }
 
     override fun observeLinuxHome(): Flow<FileLocation?> = linuxReady.map { if (it) linuxLocation() else null }

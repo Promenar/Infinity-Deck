@@ -79,6 +79,17 @@ class KnowledgeSearchUiLogicTest {
         assertThat(access.targets).containsExactly(target)
         assertThat(access.allowed).isTrue()
         assertThat(access.deniedReason).isNull()
+        assertThat(access.readWrite).isFalse()
+    }
+
+    @Test
+    fun `读写模式授权目标正确识别为可读写审批状态`() {
+        val target = KnowledgeAccessTarget("root", "默认知识库", 11, "knowledge", "/mnt/knowledge", readOnly = false)
+        val preview = KnowledgeAccessPreview("s1", allowed = true, knowledgeBases = listOf(target), accessMode = "read_write")
+        val access = knowledgeAccessApproval(REQUEST_KNOWLEDGE_ACCESS_TOOL, Json.encodeToString(preview), "需要新建并归档笔记")!!
+        assertThat(access.allowed).isTrue()
+        assertThat(access.readWrite).isTrue()
+        assertThat(access.targets.single().readOnly).isFalse()
     }
 
     @Test

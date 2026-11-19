@@ -2,12 +2,16 @@ package com.promenar.infinity.utils
 
 import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.startup.diagnostics.AppDiagnostics
+import com.promenar.infinity.startup.diagnostics.SessionTraceExporter
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.coroutineContext
 
 object InfinityLogger {
     private const val TAG = "InfinityLogger"
@@ -44,19 +48,42 @@ object InfinityLogger {
         (context.applicationContext as? InfinityApplication)?.startupIssueManager?.formatIssues().orEmpty(),
     )
 
+    suspend fun prepareSessionTraceExport(context: Context, sessionId: String): File? {
+        val app = context.applicationContext as? InfinityApplication ?: return null
+        val lines = SessionTraceExporter(
+            app.database.sessionDao(),
+            app.database.messageDao(),
+            app.database.toolExecutionLedgerDao(),
+            snapshotTransaction = { read -> app.database.withTransaction { read() } },
+        ).export(sessionId) ?: return null
+        return AppDiagnostics.writeJsonlExport(context.filesDir, "infinity_session_trace-") { writer ->
+            for (line in lines) {
+                coroutineContext.ensureActive()
+                writer.appendLine(line)
+            }
+        }
+    }
+
     fun log(message: String) {
         if (!com.promenar.infinity.BuildConfig.DEBUG) return
-        if (isAndroid) Log.d(TAG, SensitiveDataRedactor.redactMessage(message))
+        val safeMessage = SensitiveDataRedactor.redactMessage(message)
+        if (!isAndroid) {
+            println("[$TAG] $safeMessage")
+            return
+        }
+        Log.d(TAG, safeMessage)
     }
 
     fun logError(tag: String, throwable: Throwable) {
         AppDiagnostics.recordError(tag, throwable)
         if (!com.promenar.infinity.BuildConfig.DEBUG) return
-        if (isAndroid) {
-            val safeTag = SensitiveDataRedactor.redactMessage(tag).take(80)
-            val safeError = SensitiveDataRedactor.safeThrowable(throwable, debug = true)
-            Log.e(TAG, "$safeTag: $safeError")
+        val safeTag = SensitiveDataRedactor.redactMessage(tag).take(80)
+        val safeError = SensitiveDataRedactor.safeThrowable(throwable, debug = true)
+        if (!isAndroid) {
+            System.err.println("[$TAG] ERROR [$safeTag]: $safeError")
+            return
         }
+        Log.e(TAG, "$safeTag: $safeError")
     }
 }
 

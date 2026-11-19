@@ -5,6 +5,7 @@ import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.workspace.LinuxWorkspaceLocation
 import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isKnowledgeBaseSource
 import com.promenar.infinity.data.termux.TermuxAvailability
 import com.promenar.infinity.domain.model.ExecutionMode
 import com.promenar.infinity.domain.network.AgentNetworkSnapshot
@@ -38,8 +39,9 @@ internal data class ReachMount(
     /** 设备路径来源可被命令以真实路径访问；系统授权来源只对文件工具可见。 */
     val commandAccessible: Boolean,
     val unavailable: Boolean,
-    /** 只读挂载的知识库；路径区以“知识库 · 只读”标签代替授权方式。 */
+    /** 知识库挂载；路径区按 [readOnly] 显示“知识库 · 只读”或“知识库 · 读写授权”标签。 */
     val knowledgeBase: Boolean = false,
+    val readOnly: Boolean = true,
 )
 
 internal enum class ReachBackendKind { BUILTIN, SANDBOX, LINUX, TERMUX, SSH }
@@ -104,7 +106,8 @@ internal fun ExternalMount.toReach(): ReachMount = ReachMount(
     source = if (sourceType == "real_path") ReachMountSource.PATH else ReachMountSource.SAF,
     commandAccessible = commandAccessible,
     unavailable = unavailableReason != null,
-    knowledgeBase = sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE,
+    knowledgeBase = isKnowledgeBaseSource,
+    readOnly = readOnly || sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE,
 )
 
 /** Linux 就绪且开启时 shell_exec 在 Alpine 中运行。只在会话尚未保存运行模式时用来推断。 */

@@ -41,6 +41,24 @@ internal class SessionTraceExporter(
             }
         }
 
+    suspend fun recentSessionSummaries(limit: Int = 20): List<TraceSessionSummary> {
+        val list = recentSessions(limit)
+        val context = coroutineContext
+        return list.map { session ->
+            context.ensureActive()
+            val toolCalls = messages.getBySession(session.id).sumOf { message ->
+                if (message.role == "assistant") decodeList<ToolCall>(message.toolCalls).size else 0
+            }
+            TraceSessionSummary(
+                sessionId = session.id,
+                title = session.title.ifBlank { session.id.take(8) },
+                runMode = SessionRunMode.fromStored(session.runMode)?.name,
+                updatedAt = session.updatedAt,
+                toolCallCount = toolCalls,
+            )
+        }
+    }
+
     suspend fun export(sessionId: String, page: TracePage? = null): List<String>? {
         val snapshot = snapshotTransaction { loadSnapshot(sessionId, page) } ?: return null
         val session = snapshot.session
@@ -179,6 +197,14 @@ internal class SessionTraceExporter(
 }
 
 internal data class TracePage(val limit: Int, val beforeMessageId: String? = null)
+
+data class TraceSessionSummary(
+    val sessionId: String,
+    val title: String,
+    val runMode: String?,
+    val updatedAt: Long,
+    val toolCallCount: Int,
+)
 
 internal data class TraceSnapshot(
     val session: SessionEntity, val turns: List<TraceTurn>, val nextBeforeMessageId: String?,

@@ -67,4 +67,27 @@ class AppDiagnosticsTest {
         assertThat(output.toString(Charsets.UTF_8.name())).contains("移动类 journal 文件布局冲突")
         assertThat(output.toString(Charsets.UTF_8.name())).doesNotContain("private-issue-message")
     }
+
+    @Test
+    fun `file_op 事件通过白名单脱敏写入并保留结构字段`() = runTest {
+        AppDiagnostics.initialize(temporaryFolder.newFolder())
+        InfinityLogger.diagnostic(
+            "file.op",
+            mapOf(
+                "sessionId" to "raw-session-secret",
+                "toolName" to "search_files",
+                "routeKind" to "LINUX",
+                "status" to "error",
+                "errorCode" to "ACCESS_DENIED",
+                "content" to "用户文件内容不得泄露",
+            ),
+        )
+        val events = AppDiagnostics.readEvents()
+        val fileOp = events.single { it.event == "file.op" }
+        assertThat(fileOp.fields["toolName"].toString()).isEqualTo("\"search_files\"")
+        assertThat(fileOp.fields["routeKind"].toString()).isEqualTo("\"LINUX\"")
+        assertThat(fileOp.fields["errorCode"].toString()).isEqualTo("\"ACCESS_DENIED\"")
+        assertThat(fileOp.fields.containsKey("content")).isFalse()
+        assertThat(fileOp.toJsonLine()).doesNotContain("用户文件内容不得泄露")
+    }
 }

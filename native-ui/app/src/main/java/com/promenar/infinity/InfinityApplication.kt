@@ -1783,6 +1783,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 } else null
             },
             onRecordingDocumentSaved = { id, content, hash -> recordings.syncFromLibraryDocument(id, content, hash) },
+            onRecordingDocumentsDeleted = { ids ->
+                if (com.promenar.infinity.recording.hasRecordingSessions(this, ids)) {
+                    recordings.deleteForDocuments(ids)
+                }
+            },
         )
     }
 
@@ -2192,8 +2197,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     suspend fun knowledgeAccessApprovalTarget(session: com.promenar.infinity.data.model.Session, name: String, arguments: String): String? {
         if (name != "request_knowledge_access") return null
         val args = (com.promenar.infinity.domain.tool.ToolArgumentsValidator().validate(arguments) as? com.promenar.infinity.domain.tool.ToolArgumentsValidation.Valid)?.arguments ?: return null
-        val base = (args["knowledge_base"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-        return com.promenar.infinity.data.model.json.encodeToString(knowledgeAccessPlanner.preview(session.id, base))
+        val (base, accessMode) = com.promenar.infinity.data.knowledge.parseKnowledgeAccessArguments(args) ?: return null
+        return com.promenar.infinity.data.model.json.encodeToString(knowledgeAccessPlanner.preview(session.id, base, accessMode))
     }
 
     private fun knowledgeAccessAllowedForTools(current: com.promenar.infinity.data.model.Session): Boolean =

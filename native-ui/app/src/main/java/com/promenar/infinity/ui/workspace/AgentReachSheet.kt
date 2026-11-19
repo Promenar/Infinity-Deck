@@ -380,7 +380,9 @@ private fun PathSection(state: AgentReachState, mode: SessionRunMode) {
                         subtitle = null,
                         subtitleSegments = attributes,
                         path = entry.path,
-                        trailing = if (mount.knowledgeBase) ({ KnowledgeReadOnlyTag() }) else null,
+                        trailing = if (mount.knowledgeBase) ({
+                            if (mount.readOnly) KnowledgeReadOnlyTag() else KnowledgeReadWriteTag()
+                        }) else null,
                         modifier = Modifier.testTag("agent_reach_path_mount"),
                     )
                 }

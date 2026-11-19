@@ -167,6 +167,12 @@ class RoomKnowledgeCatalogTest {
         val mounted = catalog.documentLocation("a1", RagReference(documentId = "f-kb"))!!
         assertThat(mounted.kind).isEqualTo(KnowledgeDocumentLocationKind.KNOWLEDGE_BASE_MOUNTED)
         assertThat(mounted.path).isEqualTo("/mnt/knowledge/f-kb.md")
+        mounts.clear()
+        mounts += ExternalMount("kb-rw", "knowledge", ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE, "root-kb", "a1", 1, readOnly = false)
+        val mountedRw = catalog.documentLocation("a1", RagReference(documentId = "f-kb"))!!
+        assertThat(mountedRw.kind).isEqualTo(KnowledgeDocumentLocationKind.KNOWLEDGE_BASE_MOUNTED)
+        assertThat(mountedRw.path).isEqualTo("/mnt/knowledge/f-kb.md")
+        assertThat(catalog.snapshot(session, RagOptions()).groups.first { it.rootUuid == "root-kb" }.mounted).isTrue()
         val other = catalog.documentLocation("a1", RagReference(documentId = "f-b1"))!!
         assertThat(other.kind).isEqualTo(KnowledgeDocumentLocationKind.SNIPPET_ONLY)
         assertThat(other.path).isNull()

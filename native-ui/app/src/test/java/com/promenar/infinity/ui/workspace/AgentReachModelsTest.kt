@@ -52,7 +52,9 @@ class AgentReachModelsTest {
         )
         val reach = reachMounts(mounts)
         assertThat(reach.map { it.alias }).containsExactly("broken", "downloads", "termux-home").inOrder()
-        assertThat(reach.first { it.alias == "downloads" }).isEqualTo(ReachMount("downloads", ReachMountSource.PATH, commandAccessible = true, unavailable = false))
+        assertThat(reach.first { it.alias == "downloads" }).isEqualTo(
+            ReachMount("downloads", ReachMountSource.PATH, commandAccessible = true, unavailable = false, readOnly = false),
+        )
         assertThat(reach.first { it.alias == "termux-home" }.commandAccessible).isFalse()
         assertThat(reach.first { it.alias == "broken" }.unavailable).isTrue()
     }

@@ -113,37 +113,45 @@ object AppDiagnostics {
 
     internal suspend fun prepareJsonlExport(filesDir: File, issueSummary: String): File {
         val snapshot = flushedRecorder()?.snapshot().orEmpty()
-        return withContext(Dispatchers.IO) {
-            exportMutex.withLock {
-                val file = Files.createTempFile(filesDir.toPath(), "infinity_diagnostics_export-", ".jsonl")
-                try {
-                    Files.newOutputStream(file, StandardOpenOption.WRITE, NOFOLLOW_LINKS)
-                        .bufferedWriter(Charsets.UTF_8).use { writer ->
-                            writer.appendLine(buildJsonObject {
-                                put("event", "app.build")
-                                diagnosticBuildFields().forEach { (key, value) -> put(key, value) }
-                            }.toString())
-                            for (record in snapshot) {
-                                coroutineContext.ensureActive()
-                                writer.appendLine(record.toJsonLine())
-                            }
-                            writer.appendLine(buildJsonObject {
-                                put("event", "app.startup_summary")
-                                put("summary", DiagnosticRedactor.sanitizeIssueSummary(issueSummary))
-                            }.toString())
-                        }
-                } catch (error: Exception) {
-                    runCatching { Files.deleteIfExists(file) }
-                    throw error
-                }
-                // 每次分享拥有独立的 URI，最近导出可保留供已打开的分享目标使用。
-                filesDir.listFiles().orEmpty().asSequence()
-                    .filter { it.toPath() != file && exportName.matches(it.name) && Files.isRegularFile(it.toPath(), NOFOLLOW_LINKS) }
-                    .sortedByDescending(File::lastModified)
-                    .drop(3)
-                    .forEach { runCatching { Files.deleteIfExists(it.toPath()) } }
-                file.toFile()
+        return writeJsonlExport(filesDir, "infinity_diagnostics_export-", exportName) { writer ->
+            writer.appendLine(buildJsonObject {
+                put("event", "app.build")
+                diagnosticBuildFields().forEach { (key, value) -> put(key, value) }
+            }.toString())
+            for (record in snapshot) {
+                coroutineContext.ensureActive()
+                writer.appendLine(record.toJsonLine())
             }
+            writer.appendLine(buildJsonObject {
+                put("event", "app.startup_summary")
+                put("summary", DiagnosticRedactor.sanitizeIssueSummary(issueSummary))
+            }.toString())
+        }
+    }
+
+    /** 以安全临时文件写出 JSONL 导出并按前缀保留最近 3 份，路径位于 filesDir 内以匹配 FileProvider。 */
+    internal suspend fun writeJsonlExport(
+        filesDir: File,
+        prefix: String,
+        retentionPattern: Regex = Regex("${Regex.escape(prefix)}[0-9]+\\.jsonl"),
+        writeLines: suspend (java.io.BufferedWriter) -> Unit,
+    ): File = withContext(Dispatchers.IO) {
+        exportMutex.withLock {
+            val file = Files.createTempFile(filesDir.toPath(), prefix, ".jsonl")
+            try {
+                Files.newOutputStream(file, StandardOpenOption.WRITE, NOFOLLOW_LINKS)
+                    .bufferedWriter(Charsets.UTF_8).use { writer -> writeLines(writer) }
+            } catch (error: Exception) {
+                runCatching { Files.deleteIfExists(file) }
+                throw error
+            }
+            // 每次分享拥有独立的 URI，最近导出可保留供已打开的分享目标使用。
+            filesDir.listFiles().orEmpty().asSequence()
+                .filter { it.toPath() != file && retentionPattern.matches(it.name) && Files.isRegularFile(it.toPath(), NOFOLLOW_LINKS) }
+                .sortedByDescending(File::lastModified)
+                .drop(3)
+                .forEach { runCatching { Files.deleteIfExists(it.toPath()) } }
+            file.toFile()
         }
     }
 

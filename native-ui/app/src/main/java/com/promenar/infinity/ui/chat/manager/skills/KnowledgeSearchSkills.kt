@@ -154,7 +154,7 @@ class RequestKnowledgeAccessSkill(
                 mounts.joinToString("\n") {
                     val access = if (it.readOnly) "只读（录音整理稿 .md 可带 expectedHash 编辑并同步录音工作台）"
                         else "读写（可通过文件工具整理资料文档，录音原始音频只读）"
-                    "/mnt/${it.alias} · 知识库 · $access"
+                    "/mnt/${it.alias} · 知识库 · $access" // wrap-check: allow 工具返回文本，非界面排版
                 }, data = json.encodeToString(approved))
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: ExternalFolderException) { workspaceTraversalFailure(id, failure) }

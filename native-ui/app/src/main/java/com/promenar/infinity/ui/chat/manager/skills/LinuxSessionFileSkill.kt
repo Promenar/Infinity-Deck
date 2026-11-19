@@ -61,7 +61,10 @@ class LinuxSessionFileSkill(
                     result.copy(content = "路径: $path\n${result.content}")
                 } else result
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: ExternalFolderException) { workspaceTraversalFailure(original.id, failure) }
+            catch (failure: ExternalFolderException) {
+                recordFileOpError(context.sessionId, original.id, true, failure.code)
+                workspaceTraversalFailure(original.id, failure)
+            }
         }
     }
 }

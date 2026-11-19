@@ -12,9 +12,28 @@
     <string name="devmode_entry_desc">视觉实验室与调试工具</string>
     <string name="devmode_title">开发者选项</string>
     <string name="devmode_toggle_title">开发者模式</string>
-    <string name="devmode_toggle_desc">关闭后设置中不再显示本页</string>
+    <string name="devmode_toggle_desc">关闭后设置中不再显示本页，并同步停止 Release 环境 ADB 调试桥输出</string>
     <string name="devmode_section_tools">工具</string>
+    <string name="devmode_section_diagnostics">诊断与调试桥</string>
     <string name="devmode_section_mode">模式</string>
+    <string name="devmode_trace_title">导出会话执行轨迹</string>
+    <string name="devmode_trace_empty">暂无可导出的对话会话</string>
+    <plurals name="devmode_trace_calls_count">
+        <item quantity="other">%1$d 步工具调用</item>
+    </plurals>
+    <string name="devmode_trace_export_failed">所选会话暂无可导出的轨迹数据</string>
+    <string name="devmode_diag_pack_title">导出全局运行诊断包</string>
+    <string name="devmode_diag_pack_seg_snapshot">分片 JSONL 快照</string>
+    <string name="devmode_diag_pack_seg_size">最近 2 MiB</string>
+    <string name="devmode_diag_pack_seg_scope">启动与工具/LLM 事件</string>
+    <string name="devmode_adb_bridge_title">ADB 实时调试桥</string>
+    <string name="devmode_adb_bridge_desc">在 Release 仅本地 USB ADB 与开发者模式开启时响应 dumpsys，严格脱敏凭据与正文</string>
+    <string name="devmode_adb_footer">USB 连接后可免界面直接采集结构化日志：\nadb shell dumpsys activity provider %1$s/.startup.diagnostics.DiagnosticDumpProvider --recent --since 0\nadb shell dumpsys activity provider %1$s/.startup.diagnostics.DiagnosticDumpProvider --trace latest</string>
+    <string name="devmode_trace_sheet_title">选择要导出轨迹的测试会话</string>
+    <string name="devmode_trace_share">分享 Trace JSONL</string>
+    <string name="devmode_trace_cancel">取消</string>
+    <string name="devmode_trace_chooser">导出会话执行轨迹</string>
+    <string name="devmode_diag_chooser">导出运行诊断包</string>
 
     <!-- 视觉实验室目录 -->
     <string name="lab_title">视觉实验室</string>

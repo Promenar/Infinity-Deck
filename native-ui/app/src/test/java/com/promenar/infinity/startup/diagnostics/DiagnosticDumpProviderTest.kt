@@ -24,6 +24,22 @@ class DiagnosticDumpProviderTest {
     }
 
     @Test
+    fun `正式版单独关闭ADB调试桥时同样阻断并标明原因`() = runTest {
+        val dump = DiagnosticDump(
+            debug = false,
+            developerModeEnabled = { true },
+            adbBridgeEnabled = { false },
+            exporter = { error("不应打开数据库") },
+            incremental = { _, _, _ -> error("不应读取诊断记录") },
+            recent = { _, _ -> error("不应读取诊断记录") },
+        )
+        listOf(arrayOf("--help"), arrayOf("--trace", "latest"), arrayOf("--recent")).forEach { args ->
+            assertThat(dump.lines(args))
+                .containsExactly("""{"event":"diagnostics.blocked","reason":"adb_bridge_disabled"}""")
+        }
+    }
+
+    @Test
     fun `默认读取最近两百条而指定以来序号会分页并保留会话过滤`() = runTest {
         val record = UnifiedDiagnosticRecord(seq = 11, timestampMs = 1, event = "llm.route")
         val dump = DiagnosticDump(

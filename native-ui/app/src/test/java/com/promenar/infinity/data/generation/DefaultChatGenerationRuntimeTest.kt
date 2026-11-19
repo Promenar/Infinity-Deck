@@ -801,6 +801,29 @@ class DefaultChatGenerationRuntimeTest {
         coVerify { fixture.executor.executeTools(any(), any(), any(), match { "second" in it }, any(), any()) }
     }
 
+    @Test fun `知识库读写模式请求将 mode 透传至审批预览`() = runTest {
+        val skills = mockk<com.promenar.infinity.data.skills.SkillCatalog> { coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList()) }
+        val rwPreview = com.promenar.infinity.data.knowledge.KnowledgeAccessPreview(
+            "skills-session", allowed = true,
+            knowledgeBases = listOf(com.promenar.infinity.data.knowledge.KnowledgeAccessTarget("kb", "资料", 3, "knowledge", "/mnt/knowledge", readOnly = false)),
+            accessMode = "read_write",
+        )
+        val planner = mockk<com.promenar.infinity.data.knowledge.KnowledgeAccessPlanner> {
+            coEvery { preview("skills-session", "资料", "read_write") } returns rwPreview
+        }
+        val ledger = mockk<com.promenar.infinity.data.repository.ToolExecutionLedger>(relaxed = true) {
+            coEvery { createToolApproval(any(), any(), any(), any(), any()) } returns com.promenar.infinity.data.repository.ToolApprovalCreation.CREATED
+        }
+        val fixture = skillsFixture(skills, toolNames = listOf("request_knowledge_access"), knowledgePlanner = planner, knowledgeTurns = com.promenar.infinity.data.knowledge.KnowledgeTurnState(), toolLedger = ledger)
+        assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        val decision = fixture.runtime.handleTools(fixture.request, listOf(GenerationToolCall(
+            "rw-call", "request_knowledge_access", """{"reason":"需要创建整理笔记","knowledge_base":"资料","mode":"read_write"}""",
+        )))
+        assertThat(decision).isEqualTo(GenerationToolDecision.WAIT_FOR_APPROVAL)
+        val target = fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().executionTarget!!
+        assertThat(com.promenar.infinity.data.model.json.decodeFromString<com.promenar.infinity.data.knowledge.KnowledgeAccessPreview>(target)).isEqualTo(rwPreview)
+    }
+
     @Test fun `无界面不广告提问或分支且误提问返回工具错误继续生成`() = runTest {
         val ledger = mockk<com.promenar.infinity.data.repository.AskUserLedgerRepository>()
         coEvery { ledger.consumeResumption(any(), any()) } returns false

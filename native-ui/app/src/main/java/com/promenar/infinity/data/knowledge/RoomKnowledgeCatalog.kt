@@ -11,6 +11,7 @@ import com.promenar.infinity.data.rag.DocumentReach
 import com.promenar.infinity.data.rag.RetrievalScopeResolver
 import com.promenar.infinity.data.rag.documentTitleFromVectorMetadata
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isValidKnowledgeMount
 import com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination
 import com.promenar.infinity.data.workspace.workspaceFilePathPresenter
 import com.promenar.infinity.domain.model.SessionRunMode
@@ -64,7 +65,7 @@ class RoomKnowledgeCatalog(
                 documentCount = entries.size,
                 knowledgeBase = knowledgeBase != null,
                 mounted = knowledgeBase != null && mounts.any {
-                    it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.sourceId == uuid && it.readOnly
+                    it.isValidKnowledgeMount && it.sourceId == uuid
                 },
             )
         }.sortedWith(compareByDescending<KnowledgeCatalogGroup> { it.knowledgeBase }.thenBy { it.title }.thenBy { it.rootUuid })
@@ -113,7 +114,7 @@ class RoomKnowledgeCatalog(
         val knowledgeBase = roots().firstOrNull { it.uuid == file.workspaceRootUuid }
             ?: return@withContext KnowledgeDocumentLocation(documentId, title, KnowledgeDocumentLocationKind.SNIPPET_ONLY, file.workspaceRootUuid)
         val mount = externalAccess.visible(sessionId).firstOrNull {
-            it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.sourceId == file.workspaceRootUuid && it.readOnly && it.unavailableReason == null
+            it.isValidKnowledgeMount && it.sourceId == file.workspaceRootUuid && it.unavailableReason == null
         }
         KnowledgeDocumentLocation(
             documentId, title,

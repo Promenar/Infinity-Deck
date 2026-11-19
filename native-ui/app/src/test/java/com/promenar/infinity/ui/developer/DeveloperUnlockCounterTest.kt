@@ -1,8 +1,11 @@
 package com.promenar.infinity.ui.developer
 
+import android.content.SharedPreferences
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.navigation.isSettingsPaneRoute
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.Test
 
 class DeveloperUnlockCounterTest {
@@ -51,5 +54,32 @@ class DeveloperUnlockCounterTest {
         assertThat(isSettingsPaneRoute("visual_lab")).isTrue()
         assertThat(isSettingsPaneRoute("visual_lab?path=chat%2Fconversation")).isTrue()
         assertThat(isSettingsPaneRoute("lab_version/chat.workflow.ade-json")).isFalse()
+    }
+
+    @Test
+    fun `ADB调试桥开关仅在开发者模式同时开启时对Release生效并持久化`() {
+        val map = mutableMapOf<String, Boolean>()
+        val editor = mockk<SharedPreferences.Editor>(relaxed = true) {
+            every { putBoolean(any(), any()) } answers {
+                map[firstArg()] = secondArg()
+                this@mockk
+            }
+        }
+        val prefs = mockk<SharedPreferences>(relaxed = true) {
+            every { getBoolean(any(), any()) } answers { map[firstArg()] ?: secondArg() }
+            every { edit() } returns editor
+        }
+        val store = DeveloperModeStore(prefs)
+        assertThat(store.isEnabled()).isFalse()
+        assertThat(store.adbBridgeEnabled.value).isTrue()
+        assertThat(store.isAdbBridgeEnabled()).isFalse()
+
+        store.setEnabled(true)
+        assertThat(store.isAdbBridgeEnabled()).isTrue()
+
+        store.setAdbBridgeEnabled(false)
+        assertThat(store.adbBridgeEnabled.value).isFalse()
+        assertThat(store.isAdbBridgeEnabled()).isFalse()
+        assertThat(DeveloperModeStore(prefs).adbBridgeEnabled.value).isFalse()
     }
 }

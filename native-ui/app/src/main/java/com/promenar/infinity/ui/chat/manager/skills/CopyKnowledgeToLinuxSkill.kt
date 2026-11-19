@@ -4,6 +4,7 @@ import com.promenar.infinity.data.linux.LinuxImportFiles
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.ToolResult
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isValidKnowledgeMount
 import com.promenar.infinity.data.workspace.LinuxSessionPathKind
 import com.promenar.infinity.data.workspace.LinuxSessionPaths
 import com.promenar.infinity.domain.linux.LinuxFileSystem
@@ -67,8 +68,7 @@ class CopyKnowledgeToLinuxSkill(
             val normalizedSource = com.promenar.infinity.domain.storage.ExternalFolderPaths.normalize(source)
             val (alias, _) = ExternalMountPaths.parse(normalizedSource) ?: return@withContext error("请先调用 request_knowledge_access 授权资料")
             val mount = access.visible(session.id).singleOrNull {
-                it.alias == alias && it.sessionId == session.id && it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE &&
-                    it.readOnly && it.unavailableReason == null
+                it.alias == alias && it.sessionId == session.id && it.isValidKnowledgeMount && it.unavailableReason == null
             } ?: return@withContext error("source 未获本会话资料授权，请先调用 request_knowledge_access")
             val currentTarget = com.promenar.infinity.data.generation.knowledgeLinuxCopyTarget(session, args, workspace, access)
                 ?: return@withContext error("无法确定复制目标或来源授权")

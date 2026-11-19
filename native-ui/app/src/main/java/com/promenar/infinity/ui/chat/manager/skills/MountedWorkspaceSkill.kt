@@ -229,6 +229,12 @@ class MountedWorkspaceSkill(
                     else -> original
                 }
                 val result = delegate.execute(routedArgs, context)
+                if (result.status == "error") {
+                    val errorCode = runCatching {
+                        result.data?.let { Json.parseToJsonElement(it).jsonObject["errorCode"]?.jsonPrimitive?.contentOrNull }
+                    }.getOrNull() ?: "TOOL_ERROR"
+                    recordFileOpError(context.sessionId, original.id, linuxPaths, errorCode)
+                }
                 finish(if (sourceMounted && sourcePath != null && result.status != "error" && original.id in setOf("read_file", "write_file", "patch_file", "diff_file")) {
                     val hash = operations.completedHash.orEmpty()
                     val workspaceFile = aliasOf(sourcePath) == ExternalMountPaths.WORKSPACE_ALIAS
@@ -243,10 +249,18 @@ class MountedWorkspaceSkill(
             }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: ExternalFolderException) {
+            recordFileOpError(invocation.sessionId, original.id, linuxPaths, failure.code)
             workspaceTraversalFailure(original.id, failure)
-        } catch (failure: WorkspaceTextPolicyException) { workspaceTextFailureResult(original.id, failure) }
-        catch (failure: SecurityException) { workspaceMutationFailureResult(original.id, failure) }
-        catch (failure: Exception) { workspaceMutationFailureResult(original.id, failure) }
+        } catch (failure: WorkspaceTextPolicyException) {
+            recordFileOpError(invocation.sessionId, original.id, linuxPaths, failure.code.name)
+            workspaceTextFailureResult(original.id, failure)
+        } catch (failure: SecurityException) {
+            recordFileOpError(invocation.sessionId, original.id, linuxPaths, "ACCESS_DENIED")
+            workspaceMutationFailureResult(original.id, failure)
+        } catch (failure: Exception) {
+            recordFileOpError(invocation.sessionId, original.id, linuxPaths, failure.javaClass.simpleName.ifEmpty { "EXCEPTION" })
+            workspaceMutationFailureResult(original.id, failure)
+        }
     }
 
     private suspend fun move(context: SkillExecutionContext, source: String, destination: String, expected: String?, sourceMounted: Boolean, destinationMounted: Boolean): ToolResult {
@@ -378,6 +392,20 @@ internal class LinuxToolTransferBackend(private val original: ExternalFolderBack
 
 private fun String.isMounted() = ExternalMountPaths.isMountedPath(this)
 private fun fail(code: String, message: String): Nothing = throw ExternalFolderException(code, message)
+
+/** 记录文件路由层的失败摘要（仅含脱敏会话引用、工具名、模式与错误码）。 */
+internal fun recordFileOpError(sessionId: String, toolName: String, linuxPaths: Boolean, errorCode: String) {
+    com.promenar.infinity.utils.InfinityLogger.diagnostic(
+        "file.op",
+        mapOf(
+            "sessionId" to sessionId,
+            "toolName" to toolName,
+            "routeKind" to if (linuxPaths) "LINUX" else "BUILTIN",
+            "status" to "error",
+            "errorCode" to errorCode,
+        ),
+    )
+}
 
 /**
  * 私有工作区仓库加挂载命名空间。[rooted] 时 `/` 属于自选工作区，私有树需显式 `/session` 或专用 UUID。

@@ -98,6 +98,30 @@ class CopyKnowledgeToLinuxSkillTest {
     }
 
     @Test
+    fun `读写授权的知识库挂载同样允许复制到Linux`() = runTest {
+        val rwMount = ExternalMount("mount-rw", "knowledge", ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE, "kb", "s", 1, readOnly = false)
+        val sourceRoot = temporary.newFolder().canonicalFile
+        File(sourceRoot, "data.sqlite").writeBytes(byteArrayOf(7, 8, 9))
+        val base = JvmBoundRealPathFileSystem().backend(sourceRoot)
+        val access = mockk<ExternalWorkspaceAccess>()
+        coEvery { access.visible("s") } returns listOf(rwMount)
+        val backend = object : ExternalFolderBackend by base {
+            override suspend fun stat(path: String) = base.stat(path.removePrefix("/mnt/knowledge").ifEmpty { "/" })
+                ?.copy(path = path, name = if (path == "/mnt/knowledge") "knowledge" else path.substringAfterLast('/'))
+            override suspend fun <T> readStream(path: String, maxBytes: Long, consume: suspend (java.io.InputStream) -> T): T =
+                base.readStream(path.removePrefix("/mnt/knowledge").ifEmpty { "/" }, maxBytes, consume)
+        }
+        every { access.backend("s", mapOf("knowledge" to "mount-rw")) } returns backend
+        val workspace = ShareWorkspaceFixture(temporary.newFolder())
+        val skill = CopyKnowledgeToLinuxSkill({ session }, { true }, access, workspace.repo,
+            shareLinuxFiles(temporary.newFolder().apply { File(this, "root").mkdirs() }), { true }, { reconciled++ })
+            .apply { rootfsFileSystem = JvmBoundRealPathFileSystem() }
+        val result = skill.execute(args(), context)
+        assertThat(result.status).isEqualTo("success")
+        assertThat(File(workspace.root("root-s").physicalRootPath, "inbox/data.sqlite").readBytes()).isEqualTo(byteArrayOf(7, 8, 9))
+    }
+
+    @Test
     fun `默认落到会话inbox并对账且审批同时展示源和目标`() = runTest {
         val (skill, workspace) = fixture()
         val result = skill.execute(args(), context)

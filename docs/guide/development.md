@@ -35,17 +35,20 @@ python3 ../scripts/ci/check-native-page-alignment.py
 
 应用图标为发光点阵无穷：深蓝径向渐变背景上，扭转的点阵丝带组成无穷符号，点芯带柔和光晕，日夜一致；另有单色主题图层与实线通知图标。彩色前景取自[带透明通道的位图母版](../../assets/branding/infinity-glow-master.png)，由 `java scripts/branding/GlowIcon.java` 确定性缩放为五个密度的前景 PNG 并提交；背景、主题图标与通知图标是 `scripts/branding/infinity_icon.py` 生成的矢量母版。各变体通过 Gradle Variant API 自动生成自适应图标资源，IDE、ADE、命令行和 CI 的正常构建均使用同一组母版，构建时无需 Python 或图像工具。制作规格、覆盖防护和验证方法见[图标契约](../../assets/branding/design-spec.md)。
 
-### Metro CLI/TUI
+### ADB 调试桥与会话轨迹诊断
 
-Infinity Deck 没有面向最终用户、与 Android UI 等价的 CLI。仓库中的 `scripts/infinity-metro-tui.js` 是 **Debug 构建专用的开发者日志终端**，用于解析 `adb logcat` 中的脱敏 Metro 事件，不替代应用功能：
+Infinity Deck 没有面向最终用户、与 Android UI 等价的 CLI。开发者调试与设备诊断采用两类脱敏通道（均严格剔除 API Key、请求头凭据、消息正文、Prompt 与完整堆栈）：
+
+- **开发者选项页（「诊断与调试桥」）**：可按会话导出单条执行轨迹（Trace JSONL，串联会话元数据、消息与工具调用生命周期及关联诊断事件），或导出全局 2 MiB（`4 × 512 KiB` 分片滚动）运行诊断包；并配有「ADB 实时调试桥」开关（关闭后与关闭「开发者模式」同步停用 Release 环境的调试桥输出）。
+- **免 GUI ADB 调试桥（`DiagnosticDumpProvider`）**：通过 Android 系统 `DUMP` 权限保护的未导出 ContentProvider 提供桌面端实时抓取；在 USB ADB 连接且开发者模式与调试桥开关同时开启时生效：
 
 ```bash
-node scripts/infinity-metro-tui.js --help
-node scripts/infinity-metro-tui.js --serial emulator-5554
-adb logcat -s INFINITY_METRO | node scripts/infinity-metro-tui.js --stdin --no-color
+adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --recent --since 0
+adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --sessions --limit 20
+adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --trace latest
 ```
 
-该 TUI 支持中文帮助、设备/Tag 选择、标准输入、TTY/非 TTY 输出、明确退出码和缺失字段容错。Release 会关闭并剥离 Metro/调试日志入口；发行版仅保留应用内有界、脱敏且由用户主动分享的诊断事件文件。
+Debug 变体的调试后缀包名对应调整组件路径前缀（例如 `com.promenar.infinity.debug/.startup.diagnostics.DiagnosticDumpProvider`）；Release 构建同样支持上述脱敏诊断事件、会话轨迹导出与三重门禁保护下的 `dumpsys` 拉取。
 
 ## 技术栈
 

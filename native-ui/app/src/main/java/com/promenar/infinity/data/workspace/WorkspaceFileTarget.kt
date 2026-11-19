@@ -3,6 +3,7 @@ package com.promenar.infinity.data.workspace
 import com.promenar.infinity.data.local.db.entity.FileEntry
 import com.promenar.infinity.data.repository.ISessionRepository
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isKnowledgeBaseSource
 import com.promenar.infinity.data.storage.isUserSkills
 import com.promenar.infinity.data.storage.isWorkspaceRoot
 import com.promenar.infinity.data.storage.requireWritable
@@ -128,7 +129,10 @@ internal class WorkspaceFileTargetResolver(
             val mount = if (alias == ExternalMountPaths.WORKSPACE_ALIAS) workspaceMount
                 else mounts.visible(sessionId).singleOrNull { it.alias == alias }
             if (mount == null || mount.unavailableReason != null) unavailable("挂载已失效或不属于当前会话")
-            if (writing) mount.requireWritable()
+            if (writing) {
+                if (mount.isKnowledgeBaseSource) throw ExternalFolderException("READ_ONLY", "知识库挂载为只读")
+                mount.requireWritable()
+            }
             val directory = when {
                 mount.isWorkspaceRoot -> (current as? SessionWorkspace.Directory)?.root
                 mount.isUserSkills -> userSkillsDirectory.canonicalFile
@@ -185,7 +189,10 @@ internal class WorkspaceFileTargetResolver(
             LinuxSessionPathKind.EXTERNAL -> {
                 val alias = ExternalMountPaths.parse(routed.path)?.first ?: unavailable("挂载已失效或不属于当前会话")
                 val mount = mounts.visible(sessionId).singleOrNull { it.alias == alias }
-                if (writing) mount?.requireWritable()
+                if (writing) {
+                    if (mount?.isKnowledgeBaseSource == true) throw ExternalFolderException("READ_ONLY", "知识库挂载为只读")
+                    mount?.requireWritable()
+                }
                 if (mount == null || mount.sourceType != "real_path" && !mount.isUserSkills) unavailable("挂载已失效或不属于当前会话")
                 builtinTarget(sessionId, routed.path, writing, destination, initializeMissingPrivateRoot).let {
                     if (mount.isUserSkills) it.copy(privatePathPrefix = LinuxSessionPaths.SKILLS_ROOT, accessPrefix = "/skills") else it

@@ -51,6 +51,18 @@ internal fun requireKnowledgeAccessMode(mode: String): String {
     return mode
 }
 
+internal fun parseKnowledgeAccessArguments(args: kotlinx.serialization.json.JsonObject?): Pair<String?, String>? {
+    if (args == null) return null
+    val base = (args["knowledge_base"] as? kotlinx.serialization.json.JsonPrimitive)
+        ?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+    val mode = if ("mode" in args) {
+        val raw = (args["mode"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+        if (raw != KNOWLEDGE_READ_ONLY && raw != KNOWLEDGE_READ_WRITE) return null
+        raw
+    } else KNOWLEDGE_READ_ONLY
+    return base to mode
+}
+
 /** 预览无写入；批准的完整预览在执行前重新解析并核验。 */
 class KnowledgeAccessPlanner(
     private val loadSession: suspend (String) -> Session?,

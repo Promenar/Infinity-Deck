@@ -45,6 +45,7 @@
     <string name="knowledge_search_path_unmounted">Knowledge base not mounted</string>
     <string name="knowledge_search_path_snippet_only">Snippet only</string>
     <string name="chat_approval_title_knowledge_access">Read knowledge base</string>
+    <string name="chat_approval_title_knowledge_access_rw">Read &amp; write knowledge base</string>
     <string name="chat_approval_risk_access_grant">Access grant</string>
     <string name="knowledge_access_label_kb">Knowledge base</string>
     <string name="knowledge_access_label_mount">Mount at</string>
@@ -53,8 +54,14 @@
         <item quantity="other">%1$s (%2$d documents)</item>
     </plurals>
     <string name="knowledge_access_already_mounted">%1$s (already mounted)</string>
-    <string name="knowledge_access_read_only">Read-only · Can read every file in the knowledge base, this chat only</string>
+    <string name="knowledge_access_badge_read_only">Read-only</string>
+    <string name="knowledge_access_badge_read_write">Read-write</string>
+    <string name="knowledge_access_read_only">Read-only allows reading all files in the library, versioned edits to recording transcripts (.md) synced with the workbench; ordinary docs and original audio stay read-only and never exposed to Linux shell.</string>
+    <string name="knowledge_access_read_write">Read-write lets file tools create, edit, move, and delete (with approval) documents and sync search indexes; original recording audio (.wav) stays read-only; not mounted directly in Linux shell.</string>
     <string name="knowledge_mount_read_only_tag">Knowledge base · Read-only</string>
+    <string name="knowledge_mount_read_write_tag">Knowledge base · Read-write</string>
+    <string name="knowledge_access_approve_ro">Approve read-only</string>
+    <string name="knowledge_access_approve_rw">Approve read-write</string>
     <string name="knowledge_mount_add">Mount knowledge base</string>
     <string name="knowledge_mount_add_desc">Read-only at %1$s, for this chat only</string>
     <string name="knowledge_mount_add_mounted">Already mounted in this chat</string>

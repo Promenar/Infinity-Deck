@@ -9,6 +9,6 @@
 | [执行环境](execution-environments.md) | 内置 Linux 环境、Termux 接入、隔离脚本运行时（QuickJS、Python 沙箱）、SSH |
 | [工作区与外部文件夹](workspaces.md) | 三类工作区、Git 凭据与面板、Agent 可达范围、SAF 与真实路径挂载 |
 | [安装、升级与数据迁移](install-and-upgrade.md) | 运行要求、旧应用数据迁移、数据库版本链、APK 验真与安装 |
-| [开发构建与发行验证](development.md) | 构建命令与依赖、打包 Python 与内置 Tailscale、富内容安全策略、图标、Metro 日志终端、技术栈 |
+| [开发构建与发行验证](development.md) | 构建命令与依赖、打包 Python 与内置 Tailscale、富内容安全策略、图标、ADB 调试桥与会话轨迹导出、技术栈 |
 
 其它参考：[架构说明](../ARCHITECTURE.md) · [上下文管理](../context-management.md) · [模型目录](../model-catalog.md) · [发行渠道构建](../distribution-builds.md) · [更新日志](../../CHANGELOG.md)

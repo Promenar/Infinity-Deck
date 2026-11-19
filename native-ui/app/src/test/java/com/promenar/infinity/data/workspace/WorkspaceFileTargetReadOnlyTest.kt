@@ -26,12 +26,18 @@ class WorkspaceFileTargetReadOnlyTest {
         pathPresenter = if (linux) LinuxWorkspaceFilePathPresenter else BuiltinWorkspaceFilePathPresenter)
 
     @Test fun `媒体画布共享目标解析在普通和Linux模式都提前拒绝知识库写入`() = runBlocking {
-        for (linux in listOf(false, true)) {
-            val failure = assertThrows(ExternalFolderException::class.java) {
-                runBlocking { targets(linux).resolve("session", "/mnt/knowledge/new.png", writing = true) }
+        for (rwMount in listOf(
+            mount,
+            ExternalMount("kb-rw", "knowledge", ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE, "kb-root", "session", 1, readOnly = false),
+        )) {
+            mount = rwMount
+            for (linux in listOf(false, true)) {
+                val failure = assertThrows(ExternalFolderException::class.java) {
+                    runBlocking { targets(linux).resolve("session", "/mnt/knowledge/new.png", writing = true) }
+                }
+                assertThat(failure.code).isEqualTo("READ_ONLY")
+                assertThat(failure.message).isEqualTo("知识库挂载为只读")
             }
-            assertThat(failure.code).isEqualTo("READ_ONLY")
-            assertThat(failure.message).isEqualTo("知识库挂载为只读")
         }
         assertThat(root.list()).isEmpty()
     }

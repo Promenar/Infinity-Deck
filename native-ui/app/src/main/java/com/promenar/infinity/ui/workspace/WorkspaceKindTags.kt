@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +18,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -102,21 +105,52 @@ fun WorkspaceStorageHeader(kind: String?, modifier: Modifier = Modifier) {
 @Composable
 fun KnowledgeReadOnlyTag(modifier: Modifier = Modifier) {
     val domain = MaterialTheme.infinityDomainColors
-    Surface(
-        color = domain.infoContainer,
-        contentColor = domain.onInfoContainer,
-        shape = MaterialTheme.shapes.small,
+    KnowledgeMountTag(
+        icon = Icons.Rounded.Lock,
+        label = stringResource(R.string.knowledge_mount_read_only_tag),
+        container = domain.infoContainer,
+        content = domain.onInfoContainer,
         modifier = modifier.testTag(KNOWLEDGE_READ_ONLY_TAG),
+    )
+}
+
+/** 知识库挂载的读写授权标签：提醒色带编辑图标，明确区分于只读挂载。 */
+@Composable
+fun KnowledgeReadWriteTag(modifier: Modifier = Modifier) {
+    val domain = MaterialTheme.infinityDomainColors
+    KnowledgeMountTag(
+        icon = Icons.Rounded.EditNote,
+        label = stringResource(R.string.knowledge_mount_read_write_tag),
+        container = domain.warningContainer,
+        content = domain.onWarningContainer,
+        modifier = modifier.testTag(KNOWLEDGE_READ_WRITE_TAG),
+    )
+}
+
+@Composable
+private fun KnowledgeMountTag(
+    icon: ImageVector,
+    label: String,
+    container: Color,
+    content: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = container,
+        contentColor = content,
+        shape = MaterialTheme.shapes.small,
+        modifier = modifier,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = InfinitySpacing.Small, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Icon(Icons.Rounded.Lock, contentDescription = null, modifier = Modifier.size(12.dp))
-            Text(stringResource(R.string.knowledge_mount_read_only_tag), style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            Icon(icon, contentDescription = null, modifier = Modifier.size(12.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 2)
         }
     }
 }
 
 const val KNOWLEDGE_READ_ONLY_TAG = "knowledge_read_only_tag"
+const val KNOWLEDGE_READ_WRITE_TAG = "knowledge_read_write_tag"

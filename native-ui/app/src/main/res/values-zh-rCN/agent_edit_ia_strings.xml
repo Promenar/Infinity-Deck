@@ -42,6 +42,7 @@
     <string name="knowledge_search_path_unmounted">知识库未挂载</string>
     <string name="knowledge_search_path_snippet_only">只提供片段</string>
     <string name="chat_approval_title_knowledge_access">读取知识库</string>
+    <string name="chat_approval_title_knowledge_access_rw">读写知识库</string>
     <string name="chat_approval_risk_access_grant">访问授权</string>
     <string name="knowledge_access_label_kb">知识库</string>
     <string name="knowledge_access_label_mount">挂载到</string>
@@ -49,8 +50,14 @@
         <item quantity="other">%1$s（%2$d 个文档）</item>
     </plurals>
     <string name="knowledge_access_already_mounted">%1$s（已挂载）</string>
-    <string name="knowledge_access_read_only">只读 · 可读取知识库全部文件，仅本会话有效</string>
+    <string name="knowledge_access_badge_read_only">只读挂载</string>
+    <string name="knowledge_access_badge_read_write">读写授权</string>
+    <string name="knowledge_access_read_only">只读可查看资料库全部文档；录音整理稿（.md）支持带版本校验的编辑与工作台同步；普通文档与原始音频不可修改，且不暴露给 Linux 终端命令。</string>
+    <string name="knowledge_access_read_write">读写授权允许文件工具创建、修改、移动与经审批删除资料文档并自动同步检索索引；录音原始音频（.wav）仍保持只读；不会直接挂载到 Linux 终端命令。</string>
     <string name="knowledge_mount_read_only_tag">知识库 · 只读</string>
+    <string name="knowledge_mount_read_write_tag">知识库 · 读写授权</string>
+    <string name="knowledge_access_approve_ro">批准只读</string>
+    <string name="knowledge_access_approve_rw">批准读写</string>
     <string name="knowledge_mount_add">挂载知识库</string>
     <string name="knowledge_mount_add_desc">只读挂载到 %1$s，仅本会话有效</string>
     <string name="knowledge_mount_add_mounted">已挂载到本会话</string>

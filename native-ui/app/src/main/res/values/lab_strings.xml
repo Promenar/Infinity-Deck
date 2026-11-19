@@ -13,9 +13,29 @@
     <string name="devmode_entry_desc">Visual Lab and debugging tools</string>
     <string name="devmode_title">Developer options</string>
     <string name="devmode_toggle_title">Developer mode</string>
-    <string name="devmode_toggle_desc">Turn off to hide this page from Settings</string>
+    <string name="devmode_toggle_desc">Turn off to hide this page and stop Release ADB debug bridge output</string>
     <string name="devmode_section_tools">Tools</string>
+    <string name="devmode_section_diagnostics">Diagnostics &amp; debug bridge</string>
     <string name="devmode_section_mode">Mode</string>
+    <string name="devmode_trace_title">Export session trace</string>
+    <string name="devmode_trace_empty">No exportable non-system sessions yet</string>
+    <plurals name="devmode_trace_calls_count">
+        <item quantity="one">%1$d tool call</item>
+        <item quantity="other">%1$d tool calls</item>
+    </plurals>
+    <string name="devmode_trace_export_failed">Selected session has no trace data to export</string>
+    <string name="devmode_diag_pack_title">Export global diagnostics bundle</string>
+    <string name="devmode_diag_pack_seg_snapshot">Sharded JSONL snapshot</string>
+    <string name="devmode_diag_pack_seg_size">Latest 2 MiB</string>
+    <string name="devmode_diag_pack_seg_scope">Startup, tool &amp; LLM events</string>
+    <string name="devmode_adb_bridge_title">ADB live debug bridge</string>
+    <string name="devmode_adb_bridge_desc">In Release builds, responds to dumpsys only when USB ADB DUMP permission and Developer mode are both active; strips secrets &amp; message bodies</string>
+    <string name="devmode_adb_footer">Collect structured logs directly over USB without opening UI:\nadb shell dumpsys activity provider %1$s/.startup.diagnostics.DiagnosticDumpProvider --recent --since 0\nadb shell dumpsys activity provider %1$s/.startup.diagnostics.DiagnosticDumpProvider --trace latest</string>
+    <string name="devmode_trace_sheet_title">Select session trace to export</string>
+    <string name="devmode_trace_share">Share Trace JSONL</string>
+    <string name="devmode_trace_cancel">Cancel</string>
+    <string name="devmode_trace_chooser">Export session trace</string>
+    <string name="devmode_diag_chooser">Export diagnostics bundle</string>
 
     <!-- 视觉实验室目录 -->
     <string name="lab_title">Visual Lab</string>

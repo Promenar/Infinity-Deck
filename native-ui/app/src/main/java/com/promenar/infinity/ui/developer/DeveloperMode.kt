@@ -44,19 +44,32 @@ class DeveloperUnlockCounter(
     }
 }
 
-/** 开发者模式开关，存于设置偏好；进程内共享一份，设置首页与开发者页同步刷新。 */
+/** 开发者模式与 Release ADB 调试桥开关，存于设置偏好；进程内共享一份，设置首页与开发者页同步刷新。 */
 class DeveloperModeStore internal constructor(private val prefs: SharedPreferences) {
     private val state = MutableStateFlow(prefs.getBoolean(KEY_ENABLED, false))
     val enabled: StateFlow<Boolean> = state.asStateFlow()
+
+    private val adbBridgeState = MutableStateFlow(prefs.getBoolean(KEY_ADB_BRIDGE_ENABLED, true))
+    val adbBridgeEnabled: StateFlow<Boolean> = adbBridgeState.asStateFlow()
+
+    fun isEnabled(): Boolean = state.value
+
+    fun isAdbBridgeEnabled(): Boolean = state.value && adbBridgeState.value
 
     fun setEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
         state.value = enabled
     }
 
+    fun setAdbBridgeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_ADB_BRIDGE_ENABLED, enabled).apply()
+        adbBridgeState.value = enabled
+    }
+
     companion object {
         const val PREFS_NAME = "infinity_settings"
         const val KEY_ENABLED = "developer_mode_enabled"
+        const val KEY_ADB_BRIDGE_ENABLED = "developer_adb_bridge_enabled"
 
         @Volatile
         private var instance: DeveloperModeStore? = null

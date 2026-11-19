@@ -2,6 +2,7 @@ package com.promenar.infinity.data.generation
 
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isValidKnowledgeMount
 import com.promenar.infinity.data.workspace.LinuxSessionPathKind
 import com.promenar.infinity.data.workspace.LinuxSessionPaths
 import com.promenar.infinity.domain.model.SessionRunMode
@@ -23,7 +24,7 @@ internal suspend fun knowledgeLinuxCopyTarget(
     val source = com.promenar.infinity.domain.storage.ExternalFolderPaths.normalize(rawSource)
     val (alias, _) = ExternalMountPaths.parse(source) ?: return null
     val mount = mounts.visible(session.id).singleOrNull { it.alias == alias && it.sessionId == session.id &&
-        it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.readOnly && it.unavailableReason == null } ?: return null
+        it.isValidKnowledgeMount && it.unavailableReason == null } ?: return null
     val target = LinuxSessionPaths.normalize(if ("target" in args) string("target") ?: return null else CopyKnowledgeToLinuxSkill.DEFAULT_TARGET)
     val route = LinuxSessionPaths.route(target, session.workspaceId == null, null)
     if (route.kind !in setOf(LinuxSessionPathKind.PRIVATE, LinuxSessionPathKind.ROOTFS)) return null

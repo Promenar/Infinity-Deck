@@ -61,9 +61,11 @@ class DiagnosticDumpProvider : ContentProvider() {
         val output = AtomicReference(Output.PENDING)
         val task = FutureTask {
             val lines = runBlocking {
+                val store = DeveloperModeStore.get(app)
                 DiagnosticDump(
                     debug = BuildConfig.DEBUG,
-                    developerModeEnabled = { DeveloperModeStore.get(app).enabled.value },
+                    developerModeEnabled = { store.isEnabled() },
+                    adbBridgeEnabled = { store.adbBridgeEnabled.value },
                     exporter = {
                         if (app.startupState.value != BackupStartupState.Ready) null
                         else SessionTraceExporter(
@@ -111,6 +113,7 @@ class DiagnosticDumpProvider : ContentProvider() {
 internal class DiagnosticDump(
     private val debug: Boolean,
     private val developerModeEnabled: () -> Boolean,
+    private val adbBridgeEnabled: () -> Boolean = { true },
     private val exporter: () -> SessionTraceExporter?,
     private val incremental: suspend (Long, String?, Int) -> List<UnifiedDiagnosticRecord> = { since, session, limit ->
         AppDiagnostics.readEvents(since, session, limit, acceptReference = true)
@@ -120,8 +123,13 @@ internal class DiagnosticDump(
     },
 ) {
     suspend fun lines(args: Array<out String>): List<String> {
-        if (!debug && !developerModeEnabled()) {
-            return listOf(dumpStatus("diagnostics.blocked", "developer_mode_disabled"))
+        if (!debug) {
+            if (!developerModeEnabled()) {
+                return listOf(dumpStatus("diagnostics.blocked", "developer_mode_disabled"))
+            }
+            if (!adbBridgeEnabled()) {
+                return listOf(dumpStatus("diagnostics.blocked", "adb_bridge_disabled"))
+            }
         }
         return when (args.firstOrNull() ?: "--recent") {
             "--help" -> if (args.size == 1) listOf(help()) else invalidArguments()

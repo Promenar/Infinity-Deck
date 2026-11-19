@@ -86,6 +86,11 @@ val ExternalMount.isUserSkills: Boolean get() = id == ExternalMountPaths.SKILLS_
 val ExternalMount.isKnowledgeBaseSource: Boolean
     get() = sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE || sourceType == ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE
 
+/** 旧版 `knowledge_base` 须保持只读标记，扩展读写挂载允许两种档位。 */
+val ExternalMount.isValidKnowledgeMount: Boolean
+    get() = (sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && readOnly) ||
+        sourceType == ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE
+
 /** 旧版知识库来源强制只读，读写来源仍遵循持久化只读标志。 */
 internal fun ExternalMount.requireWritable() {
     if (readOnly || sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) {

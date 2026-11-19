@@ -149,6 +149,7 @@ object DiagnosticRedactor {
         "linux.exec_start" to processFields,
         "linux.exec_end" to processFields,
         "linux.reconcile" to keys("sessionId elapsedMs"),
+        "file.op" to keys("sessionId toolName routeKind status errorCode"),
         "schedule.callback_failure" to keys("taskId stage exception cause"),
         "composer_queue.corrupt" to keys("discarded"),
         "composer_queue.image_cleanup_failed" to keys("operation"),

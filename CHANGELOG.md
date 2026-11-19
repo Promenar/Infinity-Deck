@@ -14,6 +14,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **统一发行版诊断日志、单会话轨迹导出与 ADB 调试桥**：
+  - 统一 `InfinityLogger.diagnostic()` 与 `AppDiagnostics`（[AppDiagnosticRecorder.kt](native-ui/app/src/main/java/com/promenar/infinity/startup/diagnostics/AppDiagnosticRecorder.kt)、[AppDiagnostics.kt](native-ui/app/src/main/java/com/promenar/infinity/startup/diagnostics/AppDiagnostics.kt)、[InfinityLogger.kt](native-ui/app/src/main/java/com/promenar/infinity/utils/InfinityLogger.kt)）为同一套 `4 × 512 KiB`（2 MiB）`NOFOLLOW_LINKS` 分片滚动 JSONL 存储；下线 RN 时代遗留的 `MetroLogInterceptor`、`MetroLoggingMiddleware`、`infinity_logs.txt` 及 `scripts/infinity-metro-tui.js`，同步更新 `proguard-rules.pro` 与 `ReleaseLoggingSourceContractTest`（保留非 Android JVM 单测的脱敏 `System.err` 输出）；
+  - 补齐 `ProviderRequestRouter` / `UnifiedLlmClient`、`ToolExecutor`、`LinuxRuntimeProcess`、`reconcileSessionHome` 与 [MountedWorkspaceSkill.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/MountedWorkspaceSkill.kt) / [LinuxSessionFileSkill.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/LinuxSessionFileSkill.kt) 的 `file.op` Release 结构化埋点；
+  - 新增 [SessionTraceExporter.kt](native-ui/app/src/main/java/com/promenar/infinity/startup/diagnostics/SessionTraceExporter.kt)（事务一致性快照投影与脱敏，关联单会话时间线与工具台账及后台事件）与未导出的 [DiagnosticDumpProvider.kt](native-ui/app/src/main/java/com/promenar/infinity/startup/diagnostics/DiagnosticDumpProvider.kt)（支持 `adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider` 的 `--recent`、`--since`、`--session`、`--sessions`、`--trace <sessionId|latest>`，Release 下受系统 `DUMP` 权限、开发者模式及 `ADB 实时调试桥` 开关三重门禁）；
+  - 接入 [DeveloperScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/developer/DeveloperScreen.kt)「诊断与调试桥」分组（单会话轨迹选择器与 Share Sheet 导出、全局 2 MiB 诊断包导出、ADB 实时调试桥开关及动态包名命令行指引卡）。
+- **文件工具 Harness 容错收敛与资料库 `read_only` / `read_write` 分级受管读写**：
+  - `search_files` 移除 Alpine `/` 全盘默认扫描、支持显式可选 `path` 参数与逐目录异常隔离，区分并透出具体错误码；`list_files` 按条目和挂载点隔离异常，`RealPathExternalFolderBackend` 符号链接拦截指明相对路径段；
+  - `FileReadSkill` 新增 `mode="stat"` 绕过文本解码，流式计算 `<=100 MiB` 二进制与大文件 SHA-256；
+  - 扩展 `request_knowledge_access`（[KnowledgeAccessPlanner.kt](native-ui/app/src/main/java/com/promenar/infinity/data/knowledge/KnowledgeAccessPlanner.kt)、[RoomKnowledgeCatalog.kt](native-ui/app/src/main/java/com/promenar/infinity/data/knowledge/RoomKnowledgeCatalog.kt)、[KnowledgeBaseManagedBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/knowledge/KnowledgeBaseManagedBackend.kt) 与 [DefaultFileLocationsSource.kt](native-ui/app/src/main/java/com/promenar/infinity/data/files/DefaultFileLocationsSource.kt)）支持 `read_only`（默认）与 `read_write` 分级授权：普通资料文档经 `read_write` 授权后支持受管 `create/write/patch/move/delete` 闭环并自动同步索引，`deleteForDocuments` 联动清理孤立录音会话，`.wav` 原始音频与 Linux shell 隔离边界维持只读不暴露；
+  - 接入 [KnowledgeAccessApproval.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/KnowledgeAccessApproval.kt)、[WorkspaceKindTags.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/workspace/WorkspaceKindTags.kt)、[ExternalFoldersPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/components/ExternalFoldersPanel.kt) 与 [AgentReachSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/workspace/AgentReachSheet.kt) 分级徽章、审批说明与 `批准只读` / `批准读写` 操作按钮，并修复英文 `1.3x` 大字号下 `KnowledgeMountTag` 单行截断。
+
 ## [0.63.4-beta] - 2026-11-18
 
 - **修复真机 `/mnt/knowledge` 经过系统符号链接导致文件工具拒绝访问的问题**：

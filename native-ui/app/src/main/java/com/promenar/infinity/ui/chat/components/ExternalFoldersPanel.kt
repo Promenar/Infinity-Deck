@@ -98,7 +98,9 @@ import com.promenar.infinity.distribution.DistributionCapabilities
 import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.storage.ExternalMount
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isKnowledgeBaseSource
 import com.promenar.infinity.ui.workspace.KnowledgeReadOnlyTag
+import com.promenar.infinity.ui.workspace.KnowledgeReadWriteTag
 import com.promenar.infinity.ui.workspace.SharedFolderPicker
 import com.promenar.infinity.ui.theme.breakableIdentifier
 import com.promenar.infinity.domain.storage.IExternalFolderManager
@@ -760,7 +762,9 @@ private fun ExternalMountRow(
     var menuOpen by remember(mount.id) { mutableStateOf(false) }
     val unavailable = mount.unavailableReason != null
     val unavailableLabel = stringResource(R.string.mount_unavailable)
-    val knowledgeBase = mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE
+    val knowledgeBase = mount.isKnowledgeBaseSource
+    val readOnlyKnowledge = knowledgeBase && (mount.readOnly || mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE)
+    val stackKnowledgeTag = knowledgeBase && androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.05f
     val sourceLabel = stringResource(if (mount.sourceType == "real_path") R.string.mount_source_real_path else R.string.mount_source_saf)
     val primaryVolumeLabel = stringResource(R.string.workspace_picker_shared_volume)
     val meta = if (libraryScope) listOfNotNull(
@@ -770,7 +774,7 @@ private fun ExternalMountRow(
         "/mnt/" + mount.alias,
         sourceLabel.takeUnless { knowledgeBase },
         stringResource(when {
-            linuxSession && mount.sourceType != "real_path" -> R.string.run_mode_folder_saf_hidden
+            linuxSession && mount.sourceType == "saf_tree" -> R.string.run_mode_folder_saf_hidden
             mount.commandAccessible -> R.string.agent_reach_mount_command_visible
             else -> R.string.agent_reach_mount_files_only
         }),
@@ -778,7 +782,18 @@ private fun ExternalMountRow(
     InfinitySettingsItem(
         title = mount.alias,
         subtitle = unavailableLabel.takeIf { unavailable },
-        subtitleSegments = meta.takeUnless { unavailable },
+        subtitleSegments = meta.takeUnless { unavailable || stackKnowledgeTag },
+        subtitleContent = if (!unavailable && stackKnowledgeTag) ({
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                InfinityMetaLine(
+                    segments = meta,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                )
+                if (readOnlyKnowledge) KnowledgeReadOnlyTag() else KnowledgeReadWriteTag()
+            }
+        }) else null,
         // 分段排版放不下时整段省略，放宽到三行让访问方式始终可见。
         subtitleMaxLines = if (unavailable) 2 else 3,
         // 不可用的挂载点按后直接给出重新授权或移除等操作。
@@ -794,7 +809,9 @@ private fun ExternalMountRow(
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (knowledgeBase) KnowledgeReadOnlyTag()
+                if (knowledgeBase && !stackKnowledgeTag) {
+                    if (readOnlyKnowledge) KnowledgeReadOnlyTag() else KnowledgeReadWriteTag()
+                }
                 Box {
                     IconButton(onClick = { menuOpen = true }, enabled = !busy) {
                         Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.mount_more_actions, mount.alias))
