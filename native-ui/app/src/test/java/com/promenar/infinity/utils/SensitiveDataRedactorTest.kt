@@ -1,6 +1,7 @@
 package com.promenar.infinity.utils
 
 import com.google.common.truth.Truth.assertThat
+import java.util.Base64
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -99,6 +100,89 @@ class SensitiveDataRedactorTest {
         assertThat(releaseText).doesNotContain("obviously-fake")
         assertThat(releaseText).doesNotContain("SecretClass")
         assertThat(releaseText).contains("IllegalStateException")
+    }
+
+    @Test
+    fun `凭据清洗保留业务键和安全 URL 路径`() {
+        val input = """
+            prompt=绘制蓝色海面
+            content=替换正文
+            command=ls -la
+            body=请求主体
+            response=已接收
+            url=https://user-fixture:pass-fixture@example.invalid/v1?raw=query-fixture#fragment-fixture
+            url=ssh://ssh-user-fixture@host.invalid/project
+            url=https://example.invalid/path#fragment@host.invalid
+            callback=/callback?state=relative-fixture#fragment-fixture
+            GET oauth/callback?code=oauth-fixture
+            GET callback?flag#fragment-fixture
+            GET callback#fragment-fixture
+            error {"token":"fixture-json-value", "status":503}
+            error {"token":{"value":"fixture-nested"}, "status":401}
+            error {"client\u0053ecret":123456, "status":502}
+            caught ForegroundServiceStartNotAllowedException
+        """.trimIndent()
+        val expected = """
+            prompt=绘制蓝色海面
+            content=替换正文
+            command=ls -la
+            body=请求主体
+            response=已接收
+            url=https://example.invalid/v1
+            url=ssh://host.invalid/project
+            url=https://example.invalid/path
+            callback=/callback
+            GET oauth/callback
+            GET callback
+            GET callback
+            error {"token":"[omitted]", "status":503}
+            error {"token":"[omitted]", "status":401}
+            error {"client\u0053ecret":"[omitted]", "status":502}
+            caught ForegroundServiceStartNotAllowedException
+        """.trimIndent()
+        assertThat(SensitiveDataRedactor.redactSecretsOnly(input)).isEqualTo(expected)
+        val repeatedPaths = "(/dir".repeat(10_000)
+        assertThat(SensitiveDataRedactor.redactSecretsOnly(repeatedPaths)).isEqualTo(repeatedPaths)
+        val jwtHeader = Base64.getUrlEncoder().withoutPadding().encodeToString(" \t{\"alg\":\"none\"}".toByteArray())
+        val jwt = "$jwtHeader.eyAic3ViIjoiMSJ9."
+        assertThat(SensitiveDataRedactor.redactSecretsOnly("token received $jwt")).isEqualTo("token received [omitted]")
+        val escapedJson = """error {\"api\u005fkey\":\"fixture-escaped-secret\"}"""
+        assertThat(SensitiveDataRedactor.redactSecretsOnly(escapedJson)).doesNotContain("fixture-escaped-secret")
+        val coloredHeader = "\u001B[31mBearer \u001B[0mfixture-colored-value"
+        assertThat(SensitiveDataRedactor.redactSecretsOnly(coloredHeader)).isEqualTo("[omitted]")
+    }
+
+    @Test
+    fun `凭据清洗覆盖折行头部 编码路径和不完整私钥`() {
+        val input = """
+            Set-Cookie: fixture-a=folded-first, fixture-b=folded-second
+                fixture-c=folded-third
+            credential=fixture-credential
+            signature="fixture-signature, remaining-signature"
+            ssh://host.invalid/%2e%73sh/fixture-path
+            C:\fixture-key-directory\local.p12
+            /workspace/secure_env/fixture-env
+            /user/fixture/.aws/credentials /user/fixture/.netrc
+            /user/fixture/.docker/config.json /user/fixture/.kube/config
+            cat "/workspace/private directory/quoted-fixture.key"
+            .ssh: denied
+            Bearer%20encoded-fixture
+            password='multiline-start
+            multiline-end'
+            tool --api-key 'flag-fixture'
+            session token = fixture-assignment
+            -----BEGIN PGP PRIVATE KEY BLOCK-----
+            pgp-fixture
+            -----END PGP PRIVATE KEY BLOCK-----
+            -----BEGIN OPENSSH PRIVATE KEY-----
+            fixture-incomplete-pem
+        """.trimIndent()
+        val redacted = SensitiveDataRedactor.redactSecretsOnly(input)
+        listOf("folded-first", "folded-second", "folded-third", "fixture-credential", "fixture-signature",
+            "remaining-signature", "fixture-path", "fixture-key-directory", "fixture-env", "fixture-assignment",
+            "quoted-fixture", ".ssh", "encoded-fixture", "multiline-start", "multiline-end", "flag-fixture",
+            ".aws/credentials", ".netrc", ".docker/config.json", ".kube/config", "pgp-fixture", "fixture-incomplete-pem")
+            .forEach { assertThat(redacted).doesNotContain(it) }
     }
 
     @Test

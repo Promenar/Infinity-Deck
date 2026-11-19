@@ -30,12 +30,13 @@ internal class SessionTraceExporter(
     },
     private val snapshotTransaction: suspend (suspend () -> TraceSnapshot?) -> TraceSnapshot? = { it() },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val mode: DiagnosticTraceMode = DiagnosticTraceMode.STRICT_SHAREABLE,
 ) {
     suspend fun listRecentSessions(limit: Int): List<String> =
         recentSessions(limit).map { session ->
             traceLine("trace.session") {
                 put("sessionId", DiagnosticRedactor.correlationId(session.id))
-                put("title", DiagnosticRedactor.traceTitle(session.title, session.id))
+                put("title", traceTitle(session))
                 put("runMode", SessionRunMode.fromStored(session.runMode)?.name)
                 put("updatedAt", session.updatedAt)
             }
@@ -74,7 +75,7 @@ internal class SessionTraceExporter(
             add(traceLine("trace.header") {
                 diagnosticBuildFields().forEach { (key, value) -> put(key, value) }
                 put("sessionId", safeSessionId)
-                put("title", DiagnosticRedactor.traceTitle(session.title, session.id))
+                put("title", traceTitle(session))
                 put("runMode", SessionRunMode.fromStored(session.runMode)?.name)
                 put("exportedAt", clock())
                 put("appDiagnosticsIncluded", page == null)
@@ -82,7 +83,7 @@ internal class SessionTraceExporter(
             for (turn in snapshot.turns) {
                 context.ensureActive()
                 add(turnLine(turn.message))
-                val calls = decodeList<ToolCall>(turn.message.toolCalls).associateBy(ToolCall::id)
+                val calls = decodeList<ToolCall>(boundedStoredJson(turn.message.toolCalls)).associateBy(ToolCall::id)
                 val entries = turn.ledger.associateBy(ToolExecutionLedgerEntity::toolCallId)
                 val messageKey = DiagnosticRedactor.correlationId(turn.message.id)
                 for (callId in calls.keys + entries.keys) {
@@ -140,15 +141,31 @@ internal class SessionTraceExporter(
             messages.getById(reference)?.takeIf { it.sessionId == sessionId }?.id
         }
 
+    private fun traceTitle(session: SessionEntity): String = when (mode) {
+        DiagnosticTraceMode.STRICT_SHAREABLE -> DiagnosticRedactor.traceTitle(session.title, session.id)
+        DiagnosticTraceMode.ADB_LOCAL -> AdbTraceRedactor.title(session.title)
+    }
+
+    private fun boundedStoredJson(value: String?): String? =
+        value?.takeUnless {
+            mode == DiagnosticTraceMode.ADB_LOCAL &&
+                (it.length > MAX_ADB_STORED_JSON_CHARS || !AdbTraceRedactor.hasBoundedNesting(it))
+        }
+
     private fun turnLine(message: MessageEntity): String = traceLine("trace.turn") {
         put("messageId", DiagnosticRedactor.correlationId(message.id))
         put("role", message.role.takeIf { it in setOf("user", "assistant", "tool", "system", "function", "developer") })
         put("modelId", message.modelId?.let(DiagnosticRedactor::safeLabel))
         put("createdAt", message.createdAt)
         put("contentLength", message.content.length)
-        val steps = message.executionSteps?.let { runCatching { diagnosticJson.parseToJsonElement(it) }.getOrNull() }
+        val steps = boundedStoredJson(message.executionSteps)?.let {
+            runCatching { diagnosticJson.parseToJsonElement(it) }.getOrNull()
+        }
         put("stepCount", (steps as? JsonArray)?.size ?: 0)
         put("isError", message.isError != 0)
+        if (mode == DiagnosticTraceMode.ADB_LOCAL && message.isError != 0) {
+            put("errorPreview", AdbTraceRedactor.errorPreview(message.content))
+        }
     }
 
     private fun toolLine(
@@ -166,8 +183,7 @@ internal class SessionTraceExporter(
         put("callId", DiagnosticRedactor.correlationId(callId))
         put("messageId", DiagnosticRedactor.correlationId(message.id))
         put("toolName", (entry?.toolName ?: call?.name)?.let(DiagnosticRedactor::safeLabel))
-        val arguments = call?.arguments?.let { runCatching { diagnosticJson.parseToJsonElement(it) }.getOrNull() }
-        put("arguments", if (arguments is JsonObject) DiagnosticRedactor.toolArgumentSummary(arguments) else JsonNull)
+        put("arguments", traceArguments(call?.arguments))
         put("requiresApproval", entry?.let { JsonPrimitive(it.requiresApproval) } ?: JsonNull)
         put("approvalOutcome", entry?.approvalOutcome() ?: approval?.fieldText("approvalOutcome"))
         put("ledgerStatus", entry?.status?.name)
@@ -175,9 +191,22 @@ internal class SessionTraceExporter(
         put("errorCode", completed?.fieldText("errorCode")
             ?: approval?.takeIf { it.fieldText("status") == entry?.status?.name }?.fieldText("errorCode")
             ?: entry?.status?.takeIf { it in failedStates }?.name)
-        put("errorSummary", entry?.error?.let(DiagnosticRedactor::traceError))
+        put("errorSummary", entry?.error?.let {
+            when (mode) {
+                DiagnosticTraceMode.STRICT_SHAREABLE -> DiagnosticRedactor.traceError(it)
+                DiagnosticTraceMode.ADB_LOCAL -> AdbTraceRedactor.error(it)
+            }
+        })
         val measured = completed?.takeIf { it.fieldText("status") in measuredStates }
         put("durationMs", measured?.fields?.get("elapsedMs") ?: JsonNull)
+    }
+
+    private fun traceArguments(source: String?) = when (mode) {
+        DiagnosticTraceMode.STRICT_SHAREABLE -> {
+            val arguments = source?.let { runCatching { diagnosticJson.parseToJsonElement(it) }.getOrNull() }
+            if (arguments is JsonObject) DiagnosticRedactor.toolArgumentSummary(arguments) else JsonNull
+        }
+        DiagnosticTraceMode.ADB_LOCAL -> AdbTraceRedactor.arguments(source)
     }
 
     private fun ToolExecutionLedgerEntity.approvalOutcome(): String? = when {
@@ -189,6 +218,8 @@ internal class SessionTraceExporter(
     }
 
     private companion object {
+        // 防止巨型持久化 JSON 在单个入参的独立预算生效前阻塞 ADB 工作线程。
+        const val MAX_ADB_STORED_JSON_CHARS = 512 * 1024
         val approvedStates = setOf(ToolLedgerStatus.APPROVED, ToolLedgerStatus.RUNNING, ToolLedgerStatus.SUCCEEDED)
         val measuredStates = setOf("SUCCEEDED", "FAILED", "CANCELLED", "TIMED_OUT")
         val failedStates = setOf(ToolLedgerStatus.FAILED, ToolLedgerStatus.REJECTED,

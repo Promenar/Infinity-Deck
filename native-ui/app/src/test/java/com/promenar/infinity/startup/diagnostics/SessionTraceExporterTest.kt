@@ -13,10 +13,16 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Test
 
@@ -135,4 +141,206 @@ class SessionTraceExporterTest {
         assertThat(last[1]["messageId"]).isEqualTo(JsonPrimitive(oldest.id))
     }
 
+    @Test
+    fun `ADB轨迹保留业务入参和真实错误而分享输出沿用严格投影`() = runTest {
+        val title = "排查工作区写入"
+        val error = "NoSuchMethodError: updateWorkspace\n\t重试失败"
+        val operations = buildJsonArray {
+            add(buildJsonObject {
+                put("op", "replace")
+                put("path", "/workspace/draft.md")
+                put("content", "替换后的正文")
+                put("command", "ls -la")
+                put("body", "请求内容")
+                put("response", "响应内容")
+                put("unknownKey", true)
+            })
+        }
+        val references = JsonArray(listOf(JsonPrimitive("reference.png"), JsonNull))
+        val call = traceTool("production_update", buildJsonObject { put("operations", operations) })
+        val image = traceTool("generate_image", buildJsonObject {
+            put("prompt", "生成一张蓝色海面")
+            put("reference_images", references)
+            put("images", references)
+        })
+        val fixture = setupTrace(title, error, call, image)
+        val adb = exporter(DiagnosticTraceMode.ADB_LOCAL)
+        val rows = traceRows(adb, fixture)
+        assertThat(adb.listRecentSessions(1).single().toRow()["title"]).isEqualTo(JsonPrimitive(title))
+        assertThat(rows.first()["title"]).isEqualTo(JsonPrimitive(title))
+        val turns = rows.filter { it["event"] == JsonPrimitive("trace.turn") }
+        assertThat(turns[0].containsKey("errorPreview")).isFalse()
+        assertThat(turns[1]["errorPreview"]).isEqualTo(JsonPrimitive("工具轮次失败 token=[omitted]"))
+        val tools = rows.filter { it["event"] == JsonPrimitive("trace.tool_call") }
+        assertThat(tools[0].arguments()["operations"]).isEqualTo(operations)
+        assertThat(tools[0]["errorSummary"]).isEqualTo(JsonPrimitive("NoSuchMethodError: updateWorkspace 重试失败"))
+        assertThat(tools[1].arguments()).isEqualTo(diagnosticJson.parseToJsonElement(image.arguments))
+
+        val strict = SessionTraceExporter(sessions, messages, ledger, diagnostics = { emptyList() })
+        val strictRows = traceRows(strict, fixture)
+        assertThat(strictRows.first()["title"]!!.jsonPrimitive.content).startsWith("会话 ")
+        assertThat(strict.listRecentSessions(1).single().toRow()["title"]).isEqualTo(strictRows.first()["title"])
+        assertThat(strictRows.none { "errorPreview" in it }).isTrue()
+        val strictTools = strictRows.filter { it["event"] == JsonPrimitive("trace.tool_call") }
+        assertThat(strictTools[0].arguments()).isEmpty()
+        assertThat(strictTools[0]["errorSummary"]).isEqualTo(JsonPrimitive("[内容已隐藏]"))
+        assertThat(strictTools[1].arguments()).isEqualTo(buildJsonObject { put("prompt", "[omitted]") })
+        assertThat(rows.joinToString()).doesNotContain("正常轮次的正文")
+        assertThat(rows.joinToString()).doesNotContain("fixture-turn-secret")
+    }
+
+    @Test
+    fun `ADB完整JSONL对任意嵌套键值与预览执行硬脱敏`() = runTest {
+        val values = listOf(
+            "fake-bearer-value", "fake-basic-value", "sk-fixture-openai", "ghp_fixture-github",
+            "github_pat_fixture-github", "xoxb-fixture-slack", "AIzaFixtureGoogle",
+            "AKIAFIXTUREAMAZON", "eyJhbGciOiJub25lIn0.eyJmaXh0dXJlIjp0cnVlfQ.fixture",
+            "fixture-pem-material", "fixture-url-user", "fixture-url-pass", "fixture-query",
+            "fixture-fragment", "fixture-api-value", "fixture-token-value", "fixture-password-value",
+            "fixture-header-value", "fixture-unlisted-header", "fixture-cookie-one", "fixture-cookie-two",
+            "fixture-secret-path", "OpaqueFixtureValueWithoutAnyDelimiters123",
+        )
+        val args = buildJsonObject {
+            put("url", "https://fixture-url-user:fixture-url-pass@example.invalid/v1?token=fixture-query#fixture-fragment")
+            put("callbackUrl", "/callback?state=fixture-relative-query#fixture-relative-fragment")
+            put("headers", buildJsonObject {
+                put("name", "X-API-Key")
+                put("value", "fixture-header-pair")
+            })
+            put("path", "/workspace/.env.local")
+            put("prompt", "Bearer fake-bearer-value, Basic fake-basic-value\n" +
+                values.subList(2, 9).joinToString(" "))
+            put("content", "-----BEGIN RSA PRIVATE KEY-----\nfixture-pem-material\n-----END RSA PRIVATE KEY-----")
+            put("operations", buildJsonArray {
+                add(buildJsonObject {
+                    put("apiKey", "fixture-api-value")
+                    put("t-o_K-e_n", buildJsonArray { add(JsonPrimitive("fixture-token-value")) })
+                    put("PASSWORD", "fixture-password-value")
+                    put("sessionToken", "fixture-session-value")
+                    put("databasePassword", "fixture-database-value")
+                    put("sshPassphrase", "fixture-ssh-passphrase")
+                    put("secretAccessKey", "fixture-secret-access-key")
+                    put("requestHeaders", JsonArray(listOf(JsonArray(listOf(
+                        JsonPrimitive("Cookie"), JsonPrimitive("session=fixture-header-array"),
+                    )))))
+                    put("headers", buildJsonObject {
+                        put("Authorization", "fixture-header-value")
+                        put("X-Trace", "Bearer fixture-unlisted-header")
+                        put("X-Debug", JsonArray(listOf(JsonPrimitive("debug"), JsonPrimitive("Basic fixture-basic-header"))))
+                        put("Content-Type", "application/json")
+                    })
+                    put("responseHeaders", buildJsonObject {
+                        put("namesAndValues", JsonArray(listOf(JsonPrimitive("Cookie"), JsonPrimitive("fixture-header-values"))))
+                    })
+                    put("customHeaders", buildJsonObject {
+                        put("names", JsonArray(listOf(JsonPrimitive("Authorization"))))
+                        put("values", JsonArray(listOf(JsonPrimitive("fixture-parallel-header"))))
+                    })
+                    put("command", "cat /workspace/.ssh/fixture-secret-path /other/fixture-secret-path.key")
+                    put("opaque", values.last())
+                })
+            })
+            put("command", "Cookie: a=fixture-cookie-one; b=fixture-cookie-two")
+        }
+        val fixture = setupTrace("诊断标题 password=fixture-title", "写入失败 secret=fixture-error",
+            traceTool("production_update", args))
+        val exporter = exporter(DiagnosticTraceMode.ADB_LOCAL)
+        val rows = traceRows(exporter, fixture)
+        val output = (rows.map(JsonObject::toString) + exporter.listRecentSessions(1)).joinToString("\n")
+        (values + listOf("fixture-title", "fixture-error", "fixture-basic-header", ".env", ".ssh", "fixture-secret-path.key",
+            "fixture-session-value", "fixture-database-value", "fixture-header-array", "fixture-relative-query",
+            "fixture-relative-fragment", "fixture-header-pair", "fixture-header-values", "fixture-ssh-passphrase",
+            "fixture-secret-access-key", "fixture-parallel-header"))
+            .forEach { assertThat(output).doesNotContain(it) }
+        val result = rows.single { it["event"] == JsonPrimitive("trace.tool_call") }.arguments()
+        assertThat(result["url"]).isEqualTo(JsonPrimitive("https://example.invalid/v1"))
+        assertThat(result["callbackUrl"]).isEqualTo(JsonPrimitive("/callback"))
+        assertThat(result["headers"]).isEqualTo(JsonPrimitive("[omitted]"))
+        assertThat(result["path"]).isEqualTo(JsonPrimitive("[omitted]"))
+        val operation = result.getValue("operations").jsonArray.single().jsonObject
+        listOf("apiKey", "t-o_K-e_n", "PASSWORD", "sessionToken", "databasePassword", "sshPassphrase", "secretAccessKey",
+            "requestHeaders", "opaque").forEach {
+            assertThat(operation[it]).isEqualTo(JsonPrimitive("[omitted]"))
+        }
+        val headers = operation.getValue("headers").jsonObject
+        assertThat(headers["Authorization"]).isEqualTo(JsonPrimitive("[omitted]"))
+        assertThat(headers["X-Trace"]).isEqualTo(JsonPrimitive("[omitted]"))
+        assertThat(headers["X-Debug"]).isEqualTo(JsonPrimitive("[omitted]"))
+        assertThat(headers["Content-Type"]).isEqualTo(JsonPrimitive("application/json"))
+        assertThat(operation.getValue("responseHeaders").jsonObject["namesAndValues"]).isEqualTo(JsonPrimitive("[omitted]"))
+        assertThat(operation["customHeaders"]).isEqualTo(JsonPrimitive("[omitted]"))
+    }
+
+    @Test
+    fun `ADB对字符串代码点 容器规模 深度和序列化字节数施加独立上限`() = runTest {
+        val content = "图😀".repeat(600)
+        val wide = JsonArray(List(45) { JsonPrimitive(it) })
+        val deep = (1..8).fold(JsonPrimitive("深层内容") as JsonElement) { child, _ ->
+            JsonArray(listOf(child))
+        }
+        val limited = traceTool("limited", buildJsonObject {
+            put("content", content)
+            put("operations", wide)
+            put("nested", deep)
+            put("images", JsonArray(List(20) { JsonPrimitive(content) }))
+        })
+        val huge = ToolCall("oversized", "oversized", """{"content":"${"大".repeat(100_000)}"}""")
+        val excessiveNesting = """{"operations":""" + "[".repeat(10_000) + "0" + "]".repeat(10_000) + "}"
+        val deepCall = ToolCall("deep", "deep", excessiveNesting)
+        val malformed = ToolCall("malformed", "malformed", """{"value":NaN,"scale":-1.5e-3}""")
+        val fixture = setupTrace("会".repeat(100), "错".repeat(800), limited, huge, deepCall, malformed,
+            turnError = "预".repeat(400))
+        val rows = traceRows(exporter(DiagnosticTraceMode.ADB_LOCAL), fixture)
+        val tools = rows.filter { it["event"] == JsonPrimitive("trace.tool_call") }
+        val args = tools[0].arguments()
+        assertThat(args["content"]!!.jsonPrimitive.content).isEqualTo("图😀".repeat(250))
+        assertThat(args["operations"]!!.jsonArray).hasSize(40)
+        assertThat(args["nested"].toString()).doesNotContain("深层内容")
+        assertThat(args["images"]!!.jsonArray.size).isLessThan(20)
+        assertThat(args.toString().toByteArray(Charsets.UTF_8).size).isAtMost(6 * 1024)
+        assertThat(tools[1]["arguments"]).isEqualTo(JsonPrimitive("[omitted]"))
+        assertThat(tools[2]["arguments"]).isEqualTo(JsonPrimitive("[omitted]"))
+        val malformedArgs = tools[3].arguments()
+        assertThat(malformedArgs["value"]).isEqualTo(JsonPrimitive("[omitted]"))
+        assertThat(malformedArgs["scale"]!!.toString()).isEqualTo("-1.5e-3")
+        assertThat(rows.first()["title"]).isEqualTo(JsonPrimitive("会".repeat(80)))
+        assertThat(rows.single { it["isError"] == JsonPrimitive(true) }["errorPreview"])
+            .isEqualTo(JsonPrimitive("预".repeat(300)))
+        assertThat(tools[0]["errorSummary"]).isEqualTo(JsonPrimitive("错".repeat(600)))
+    }
+
+    private fun traceTool(name: String, arguments: JsonObject) = ToolCall(name, name, arguments.toString())
+
+    private fun setupTrace(
+        title: String,
+        error: String,
+        vararg calls: ToolCall,
+        turnError: String = "工具轮次失败 token=fixture-turn-secret",
+    ): SessionEntity {
+        val session = SessionEntity("chat-adb", "assistant", title = title, createdAt = 1, updatedAt = 2)
+        val assistant = MessageEntity("assistant-adb", session.id, "assistant",
+            turnError, isError = 1,
+            toolCalls = diagnosticJson.encodeToString(calls.toList()), createdAt = 2)
+        coEvery { sessions.getAll() } returns listOf(session)
+        coEvery { sessions.getById(session.id) } returns session
+        coEvery { messages.getBySession(session.id) } returns listOf(
+            MessageEntity("user-adb", session.id, "user", "正常轮次的正文", createdAt = 1),
+            assistant,
+        )
+        coEvery { ledger.getForAssistant(session.id, assistant.id) } returns listOf(ToolExecutionLedgerEntity(
+            session.id, assistant.id, calls.first().id, calls.first().name, "", "", "",
+            false, ToolLedgerStatus.FAILED, error = error, createdAt = 2, updatedAt = 2,
+        ))
+        return session
+    }
+
+    private fun exporter(mode: DiagnosticTraceMode) =
+        SessionTraceExporter(sessions, messages, ledger, diagnostics = { emptyList() }, mode = mode)
+
+    private suspend fun traceRows(exporter: SessionTraceExporter, session: SessionEntity) =
+        checkNotNull(exporter.export(session.id)).map { it.toRow() }
+
+    private fun String.toRow() = diagnosticJson.parseToJsonElement(this).jsonObject
+
+    private fun JsonObject.arguments() = getValue("arguments").jsonObject
 }

@@ -77,6 +77,10 @@ object DiagnosticRedactor {
         "EOFException", "SocketException", "SocketTimeoutException", "UnknownHostException",
         "TimeoutException", "CancellationException", "TimeoutCancellationException", "SQLiteException",
         "SQLiteDatabaseCorruptException", "OutOfMemoryError", "AssertionError", "LinkageError",
+        "NoSuchMethodError", "NoSuchFieldError", "NoClassDefFoundError", "IncompatibleClassChangeError",
+        "AbstractMethodError", "IllegalAccessError", "InstantiationError", "BootstrapMethodError",
+        "VerifyError", "UnsatisfiedLinkError", "ClassFormatError", "UnsupportedClassVersionError",
+        "ExceptionInInitializerError", "ClassCircularityError",
         "WorkspaceMutationRecoveryException", "BackupStartupException", "BackupValidationException",
         "StartupCriticalRecoveryException", "StartupIsolationException",
         "SnapshotPublicationUncertainException", "SnapshotStagingRetainedException",
@@ -206,9 +210,6 @@ object DiagnosticRedactor {
     private val credential = Regex(
         """(?i)(?:\b(?:bearer|basic)\s+\S|(?<![A-Za-z0-9])(?:sk-|gh[pousr]_|github_pat_|xox[baprs]-|AIza|AKIA|eyJ[A-Za-z0-9_-]+\.)[A-Za-z0-9_./-]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:[?&#]|\b)(?:[\w-]*(?:token|password|secret|api[_-]?key)|authorization|cookie|credential|signature)\s*[:=]|(?<!:)[^:@\s/]+:[^:@\s/]+@[A-Za-z0-9.-]+|://)""",
     )
-    private val unsafePath = Regex(
-        """(?i)(?:^|[/\\])(?:\.env(?:[./\\]|$)|\.ssh(?:[/\\]|$)|[^/\\]*\.(?:pem|p12|pfx|key)(?:[/\\]|$)|secure_env(?:[/\\]|$))""",
-    )
     private val headerName = Regex("[A-Za-z][A-Za-z0-9-]{0,63}")
     private val structuralKeys = keys("depth offset limit startLine endLine")
     private val traceMode = Regex("[A-Za-z][A-Za-z0-9_-]{0,31}")
@@ -266,7 +267,8 @@ object DiagnosticRedactor {
 
     internal fun safeLabel(value: String): String? =
         value.takeIf {
-            label.matches(it) && !it.startsWith('/') && !credential.containsMatchIn(it) && !plainCredential.matches(it)
+            label.matches(it) && !it.startsWith('/') && !credential.containsMatchIn(it) &&
+                !plainCredential.matches(it) && SensitiveDataRedactor.redactSecretsOnly(it) == it
         }?.let(SensitiveDataRedactor::redactMessage)?.takeIf(label::matches)
 
     internal fun toolArgumentSummary(arguments: JsonObject): JsonObject = buildJsonObject {
@@ -299,7 +301,8 @@ object DiagnosticRedactor {
 
     private fun safePath(path: String): String {
         if (path.length > 16_384 || path.any { it.isISOControl() || it in "?#" } ||
-            credential.containsMatchIn(path) || unsafePath.containsMatchIn(path)
+            credential.containsMatchIn(path) ||
+            SensitiveDataRedactor.isSensitivePath(path) || SensitiveDataRedactor.redactSecretsOnly(path) != path
         ) return "[omitted]"
         if (path !in setOf(".", "..") && '/' !in path && '\\' !in path && !plainPathName.matches(path)) {
             return "[omitted]"
@@ -415,6 +418,7 @@ object DiagnosticRedactor {
             is SecurityException -> "SecurityException"
             is RuntimeException -> "RuntimeException"
             is Exception -> "Exception"
+            is LinkageError -> "LinkageError"
             else -> "Throwable"
         }
     }

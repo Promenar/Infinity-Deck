@@ -81,6 +81,23 @@ class DiagnosticDumpProviderTest {
     }
 
     @Test
+    fun `调试版的会话列表和轨迹也必须通过两个应用内开关`() = runTest {
+        var developerMode = false
+        var adbBridge = true
+        val dump = DiagnosticDump(debug = true, developerModeEnabled = { developerMode },
+            adbBridgeEnabled = { adbBridge }, exporter = { error("不应打开数据库") })
+        val commands = listOf(arrayOf("--sessions"), arrayOf("--trace", "latest"))
+        commands.forEach {
+            assertThat(dump.lines(it).single()).contains("developer_mode_disabled")
+        }
+        developerMode = true
+        adbBridge = false
+        commands.forEach {
+            assertThat(dump.lines(it).single()).contains("adb_bridge_disabled")
+        }
+    }
+
+    @Test
     fun `默认读取最近两百条而指定以来序号会分页并保留会话过滤`() = runTest {
         val record = UnifiedDiagnosticRecord(seq = 11, timestampMs = 1, event = "llm.route")
         val dump = DiagnosticDump(

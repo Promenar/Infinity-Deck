@@ -71,6 +71,7 @@ class DiagnosticDumpProvider : ContentProvider() {
                         else SessionTraceExporter(
                             app.database.sessionDao(), app.database.messageDao(), app.database.toolExecutionLedgerDao(),
                             snapshotTransaction = { read -> app.database.withTransaction { read() } },
+                            mode = DiagnosticTraceMode.ADB_LOCAL,
                         )
                     },
                 ).lines(args)
@@ -124,14 +125,7 @@ internal class DiagnosticDump(
     private val threadSnapshot: () -> Map<Thread, Array<StackTraceElement>> = Thread::getAllStackTraces,
 ) {
     suspend fun lines(args: Array<out String>): List<String> {
-        if (!debug) {
-            if (!developerModeEnabled()) {
-                return listOf(dumpStatus("diagnostics.blocked", "developer_mode_disabled"))
-            }
-            if (!adbBridgeEnabled()) {
-                return listOf(dumpStatus("diagnostics.blocked", "adb_bridge_disabled"))
-            }
-        }
+        if (!debug) blockedReason()?.let { return blocked(it) }
         return when (args.firstOrNull() ?: "--recent") {
             "--help" -> if (args.size == 1) listOf(help()) else invalidArguments()
             "--recent" -> readRecent(args.drop(1))
@@ -172,8 +166,19 @@ internal class DiagnosticDump(
         return values.takeIf { it.size == pairs.size && it.keys.all { key -> key in allowed } }
     }
 
-    private suspend fun withExporter(read: suspend (SessionTraceExporter) -> List<String>): List<String> =
-        exporter()?.let { read(it) } ?: listOf(dumpStatus("diagnostics.error", "startup_unavailable"))
+    private suspend fun withExporter(read: suspend (SessionTraceExporter) -> List<String>): List<String> {
+        // 会话列表与轨迹包含本地排障正文，调试构建也检查两个应用内开关。
+        if (debug) blockedReason()?.let { return blocked(it) }
+        return exporter()?.let { read(it) } ?: listOf(dumpStatus("diagnostics.error", "startup_unavailable"))
+    }
+
+    private fun blockedReason(): String? = when {
+        !developerModeEnabled() -> "developer_mode_disabled"
+        !adbBridgeEnabled() -> "adb_bridge_disabled"
+        else -> null
+    }
+
+    private fun blocked(reason: String): List<String> = listOf(dumpStatus("diagnostics.blocked", reason))
 
     private fun validSession(id: String): Boolean = id.isNotBlank() && id.length <= 160 && !id.startsWith("--")
 

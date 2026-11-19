@@ -94,6 +94,21 @@ class DiagnosticRedactorTest {
     }
 
     @Test
+    fun `链接错误保留实际子类且严格摘要省略正文`() {
+        val errors = listOf(
+            NoSuchMethodError("内部方法详细信息") to "NoSuchMethodError",
+            NoClassDefFoundError("内部类详细信息") to "NoClassDefFoundError",
+            IncompatibleClassChangeError("内部类详细信息") to "IncompatibleClassChangeError",
+            object : LinkageError("内部类详细信息") {} to "LinkageError",
+        )
+        errors.forEach { (error, type) ->
+            val event = DiagnosticRedactor.sanitize(DiagnosticRedactor.snapshot("TOOL_LEDGER", error))
+            assertThat(event.exceptionType).isEqualTo(type)
+            assertThat(event.summary).isEqualTo("$type: [内容已隐藏]")
+        }
+    }
+
+    @Test
     fun `原因链有上限且不会因循环引用死循环`() {
         val first = IllegalStateException("a")
         val second = IllegalStateException("b", first)
