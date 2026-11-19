@@ -21,6 +21,25 @@ class RealPathExternalFolderBackendTest : ExternalFolderBackendContractTest() {
 
     override fun createBackend(): ExternalFolderBackend = JvmBoundRealPathFileSystem().backend(temporaryFolder.newFolder().canonicalFile)
 
+    @Test fun `目录逐级访问报告符号链接段与正常兄弟项`() = runBlocking {
+        val root = temporaryFolder.newFolder().canonicalFile
+        val outside = temporaryFolder.newFolder().canonicalFile
+        Files.createSymbolicLink(File(root, "blocked-dir").toPath(), outside.toPath())
+        File(root, "good.md").writeText("正文")
+        val backend = JvmBoundRealPathFileSystem().backend(root)
+        for (path in listOf("/blocked-dir", "/blocked-dir/missing.md")) {
+            val failure = runCatching { backend.stat(path) }.exceptionOrNull() as ExternalFolderException
+            assertEquals("INVALID_PATH", failure.code)
+            assertTrue(failure.message.contains("不允许通过符号链接访问目录（触发段：blocked-dir）"))
+            assertFalse(failure.message.contains(root.path))
+            assertFalse(failure.message.contains(outside.path))
+        }
+        val skipped = mutableListOf<String>()
+        val entries = kotlinx.coroutines.withContext(ExternalDirectoryDiagnostics { name, _ -> skipped += name }) { backend.list("/") }
+        assertEquals(listOf("good.md"), entries.map { it.name })
+        assertEquals(listOf("blocked-dir"), skipped)
+    }
+
     @Test fun `FUSE大文件流写回执与无摘要stat使用同一对象身份`() = runBlocking {
         val root = temporaryFolder.newFolder().canonicalFile
         val backend = JvmBoundRealPathFileSystem().apply { emulateFuse = true }.backend(root)

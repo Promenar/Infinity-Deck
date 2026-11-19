@@ -45,6 +45,7 @@ object ExternalMountPaths {
     const val WORKSPACE_ALIAS = ""
     const val WORKSPACE_SOURCE = "workspace"
     const val KNOWLEDGE_BASE_SOURCE = "knowledge_base"
+    const val KNOWLEDGE_BASE_RW_SOURCE = "knowledge_base_rw"
     fun workspaceMountId(workspaceId: String) = "ws_$workspaceId"
 
     fun virtualPath(mount: ExternalMount, relative: String): String = when {
@@ -82,7 +83,10 @@ object ExternalMountPaths {
 val ExternalMount.isWorkspaceRoot: Boolean get() = alias == ExternalMountPaths.WORKSPACE_ALIAS
 val ExternalMount.isUserSkills: Boolean get() = id == ExternalMountPaths.SKILLS_MOUNT_ID && sourceType == ExternalMountPaths.SKILLS_SOURCE
 
-/** 知识库来源始终只读，即使历史或受损记录的标志没有置位。 */
+val ExternalMount.isKnowledgeBaseSource: Boolean
+    get() = sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE || sourceType == ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE
+
+/** 旧版知识库来源强制只读，读写来源仍遵循持久化只读标志。 */
 internal fun ExternalMount.requireWritable() {
     if (readOnly || sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) {
         throw ExternalFolderException("READ_ONLY", "知识库挂载为只读")
@@ -92,3 +96,11 @@ internal fun ExternalMount.requireWritable() {
 /** 一次工具调用要固定的全部挂载身份：可见挂载加当前工作区挂载。 */
 suspend fun com.promenar.infinity.domain.storage.ExternalWorkspaceAccess.namespaceBindings(sessionId: String): Map<String, String> =
     visible(sessionId).associate { it.alias to it.id } + listOfNotNull(workspaceMount(sessionId)).associate { it.alias to it.id }
+
+
+/** 目录枚举可上报单个子项失败，调用方负责将名称改写为工具可见路径。 */
+internal class ExternalDirectoryDiagnostics(
+    val skipped: (name: String, failure: Exception) -> Unit,
+) : kotlin.coroutines.AbstractCoroutineContextElement(Key) {
+    companion object Key : kotlin.coroutines.CoroutineContext.Key<ExternalDirectoryDiagnostics>
+}

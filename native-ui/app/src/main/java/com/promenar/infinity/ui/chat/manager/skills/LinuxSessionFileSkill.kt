@@ -55,12 +55,13 @@ class LinuxSessionFileSkill(
                 if (original.id == "delete_file" && result.status == "success" && metadata?.get("linuxRootfs")?.jsonPrimitive?.booleanOrNull == true) {
                     val path = Json.parseToJsonElement(target).jsonArray[1].jsonPrimitive.content
                     result.copy(content = "已永久删除：$path")
-                } else if (original.id in setOf("read_file", "diff_file") && result.status == "success") {
+                } else if (original.id in setOf("read_file", "diff_file") && result.status == "success" &&
+                    (args["mode"] as? JsonPrimitive)?.contentOrNull != "stat") {
                     val path = Json.parseToJsonElement(target).jsonArray[1].jsonPrimitive.content
                     result.copy(content = "路径: $path\n${result.content}")
                 } else result
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: ExternalFolderException) { ToolResult("linux_files_error", "${failure.code}：${failure.message}", "error") }
+            catch (failure: ExternalFolderException) { workspaceTraversalFailure(original.id, failure) }
         }
     }
 }

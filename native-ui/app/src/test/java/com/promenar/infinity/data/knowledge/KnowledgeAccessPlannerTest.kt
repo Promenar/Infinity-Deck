@@ -113,6 +113,20 @@ class KnowledgeAccessPlannerTest {
     }
 
     @Test
+    fun `审批绑定原挂载身份和档位且拒绝无效的模式`() = runTest {
+        val current = ExternalMount("original", "knowledge", ExternalMountPaths.KNOWLEDGE_BASE_SOURCE, "kb", "s", 0, readOnly = true)
+        mounts += current
+        val approved = planner.preview("s", accessMode = "read_write")
+        assertThat(approved.knowledgeBases.single().mountedId).isEqualTo(current.id)
+        assertThat(approved.knowledgeBases.single().readOnly).isFalse()
+        mounts[0] = current.copy(id = "replacement")
+        assertThat(assertThrows<ExternalFolderException> { planner.mount(approved) }.code).isEqualTo("APPROVAL_TARGET_CHANGED")
+        mounts[0] = current.copy(sourceType = ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE, readOnly = false)
+        assertThat(assertThrows<ExternalFolderException> { planner.mount(approved) }.code).isEqualTo("APPROVAL_TARGET_CHANGED")
+        assertThat(assertThrows<ExternalFolderException> { planner.preview("s", accessMode = "write") }.code).isEqualTo("INVALID_ARGUMENT")
+    }
+
+    @Test
     fun `并发执行相同批准不重复新增知识库`() = runTest {
         val preview = planner.preview("s")
         val first = async { runCatching { planner.mount(preview) } }
