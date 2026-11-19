@@ -1,7 +1,16 @@
 package com.promenar.infinity.startup.diagnostics
 
+import com.promenar.infinity.utils.SensitiveDataRedactor
 import java.security.MessageDigest
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 
 /** 不保留任意正文；只有完整匹配的固定错误原因和结构化元数据可以进入诊断。 */
 object DiagnosticRedactor {
@@ -109,7 +118,7 @@ object DiagnosticRedactor {
 
     fun summary(error: Throwable): String {
         val type = exceptionType(error)
-        val message = error.message
+        val message = error.message?.takeIf { it.length <= 240 }?.let(SensitiveDataRedactor::redactMessage)
         val safeMessage = when {
             message in safeMessages -> message
             message != null && errnoMessage.matches(message) -> message
@@ -125,9 +134,184 @@ object DiagnosticRedactor {
         return referenceFor(value)
     }
 
-    private fun referenceFor(value: String): String {
+    // 只有显式登记的事件和标量字段会从来源进入诊断流。
+    private val llmFields = keys("sessionId providerId modelId httpStatus firstTokenMs elapsedMs finishReason failureCode retryAfterSec attempt")
+    private val toolFields = keys("sessionId messageId callId toolName runMode approvalOutcome status errorCode elapsedMs")
+    private val processFields = keys("sessionId exitCode timedOut elapsedMs")
+    private val structuredFields = mapOf(
+        "app.uncaught" to keys("exception"),
+        "llm.route" to keys("sessionId providerId protocol sessionHeaderInjected sessionHeaderName"),
+        "llm.complete" to llmFields,
+        "llm.error" to llmFields,
+        "tool.start" to toolFields,
+        "tool.approval" to toolFields,
+        "tool.end" to toolFields,
+        "linux.exec_start" to processFields,
+        "linux.exec_end" to processFields,
+        "linux.reconcile" to keys("sessionId elapsedMs"),
+        "schedule.callback_failure" to keys("taskId stage exception cause"),
+        "composer_queue.corrupt" to keys("discarded"),
+        "composer_queue.image_cleanup_failed" to keys("operation"),
+        "composer_queue.pause_failed" to keys("reason"),
+        "context.project_rules_read_failed" to keys("reason"),
+        "generation.completed" to keys("sessionId"),
+        "generation.empty_reply_retry" to keys("sessionId"),
+        "generation.failed" to keys("sessionId code elapsedMs retryable providerId"),
+        "generation.latency" to keys("sessionId traceId messageId targetId attempt stage elapsedMs monotonicMs chars index"),
+        "generation.presentation_first_text" to keys("sessionId traceId messageId elapsedMs monotonicMs chars"),
+        "generation.send_accepted" to keys("sessionId traceId messageId monotonicMs"),
+        "generation.stream_retry" to keys("sessionId providerId code elapsedMs attempt retry_after_s"),
+        "generation.tool_budget_exhausted" to keys("sessionId rounds calls"),
+        "generation.user_attachment_save_failed" to keys("sessionId messageId"),
+        "production_review.callback_failed" to keys("delivered"),
+        "production_review.queue_maintenance_failed" to emptySet(),
+        "production_review.receipt_failed" to emptySet(),
+        "production_review.receipt_query_failed" to emptySet(),
+        "production_review.reconcile_failed" to emptySet(),
+        "recording.capture_backlog" to keys("lag_ms max_backlog_ms audio_ms"),
+        "recording.decode" to keys("audio_ms beam_search decode_ms hotword_count backend language"),
+        "recording.draft_batch" to keys("index elapsed_ms points segments start_audio_ms segment_end_ms first_output_ms"),
+        "recording.draft_start" to keys("segments backend language duration_ms"),
+        "recording.model_error" to keys("cause code kind backend"),
+        "recording.organization_failed" to keys("cause stage kind"),
+        "recording.scheduler_failed" to keys("cause"),
+        "recording.summary_ready" to keys("segments duration_ms"),
+        "session.delete" to keys("sessionId targetId deleted elapsedMs"),
+        "mutation_refresh_failed" to keys("sessionId targetId cause reason"),
+        "write_failed" to keys("sessionId targetId cause reason"),
+        "user_attachment.workspace_store_failed" to keys("sessionId reason cause storage_reason"),
+        "workspace.external_legacy_migration_failed" to keys("reason cause"),
+        "workspace.identity_baseline_discarded" to keys("reason"),
+        "workspace.real_path_move_copy_fallback" to keys("errno handle_errno path_attempted path_errno same_directory"),
+        "workspace.real_path_move_path_retry" to keys("errno handle_errno path_attempted path_errno same_directory"),
+        "workspace.real_path_root_unavailable" to keys("errno kind component_count component_index"),
+        "backup_operation_failed" to keys("phase error reason causes"),
+    )
+    private val correlationFields = keys("sessionId messageId callId traceId taskId targetId")
+    private val projectedReference = Regex("~ref-[0-9a-f]{32}")
+    private val numericFields = keys(
+        "httpStatus firstTokenMs elapsedMs retryAfterSec attempt exitCode elapsed_ms duration_ms decode_ms " +
+            "audio_ms monotonicMs chars index calls rounds lag_ms max_backlog_ms hotword_count points segments " +
+            "start_audio_ms segment_end_ms first_output_ms errno handle_errno path_errno component_count component_index",
+    )
+    private val booleanFields = keys("sessionHeaderInjected timedOut retryable discarded delivered deleted path_attempted same_directory beam_search")
+    private val plainCredential = Regex("(?:[0-9]{10,}|[A-Za-z0-9_]{32,})")
+    private val plainPathName = Regex("""[^/\\\s]{1,100}\.[A-Za-z0-9]{1,12}""")
+    private val safeLedgerErrors = setOf(
+        "用户拒绝工具执行", "目标授权无效", "工具执行失败", "工具调用预检失败", "工具执行已拒绝。",
+    )
+    private val label = Regex("[A-Za-z0-9_.:@+>/~-]{1,160}")
+    private val credential = Regex(
+        """(?i)(?:\b(?:bearer|basic)\s+\S|(?<![A-Za-z0-9])(?:sk-|gh[pousr]_|github_pat_|xox[baprs]-|AIza|AKIA|eyJ[A-Za-z0-9_-]+\.)[A-Za-z0-9_./-]+|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:[?&#]|\b)(?:[\w-]*(?:token|password|secret|api[_-]?key)|authorization|cookie|credential|signature)\s*[:=]|(?<!:)[^:@\s/]+:[^:@\s/]+@[A-Za-z0-9.-]+|://)""",
+    )
+    private val unsafePath = Regex(
+        """(?i)(?:^|[/\\])(?:\.env(?:[./\\]|$)|\.ssh(?:[/\\]|$)|[^/\\]*\.(?:pem|p12|pfx|key)(?:[/\\]|$)|secure_env(?:[/\\]|$))""",
+    )
+    private val headerName = Regex("[A-Za-z][A-Za-z0-9-]{0,63}")
+    private val structuralKeys = keys("depth offset limit startLine endLine")
+    private val traceMode = Regex("[A-Za-z][A-Za-z0-9_-]{0,31}")
+    private val sensitiveArgNames = mapOf(
+        "authorization" to "authorization", "cookie" to "cookie", "apikey" to "apiKey",
+        "token" to "token", "accesstoken" to "accessToken", "refreshtoken" to "refreshToken",
+        "password" to "password", "secret" to "secret", "privatekey" to "privateKey",
+        "content" to "content", "prompt" to "prompt", "command" to "command",
+        "body" to "body", "url" to "url", "headers" to "headers", "key" to "key",
+    )
+
+    internal fun isStructuredEvent(event: String): Boolean = event in structuredFields
+
+    internal fun diagnosticFieldNames(event: String): Set<String> = structuredFields[event].orEmpty()
+
+    internal fun isCorrelationField(key: String): Boolean = key in correlationFields
+
+    internal fun projectStructuredFields(
+        event: String, fields: Map<String, JsonElement>, projected: Boolean = false,
+    ): JsonObject = buildJsonObject {
+        val allowed = if (event == "app.exception") setOf("sessionId") else diagnosticFieldNames(event)
+        for (key in allowed) {
+            val value = fields[key] as? JsonPrimitive ?: continue
+            val safe = when {
+                value == JsonNull -> value
+                key in numericFields -> value.longOrNull?.takeIf { validNumber(key, it) }?.let(::JsonPrimitive)
+                key in booleanFields -> value.booleanOrNull?.let(::JsonPrimitive)
+                !value.isString -> null
+                key in correlationFields -> JsonPrimitive(
+                    if (projected) resolveReference(value.content) else correlationId(value.content),
+                )
+                key == "sessionHeaderName" -> JsonPrimitive(
+                    safeLabel(value.content)?.takeIf(headerName::matches) ?: "[omitted]",
+                )
+                else -> JsonPrimitive(safeLabel(value.content) ?: "[omitted]")
+            }
+            if (safe != null) put(key, safe)
+        }
+    }
+
+    private fun validNumber(key: String, value: Long): Boolean = when (key) {
+        "httpStatus" -> value in 100..599
+        "exitCode" -> value in -1..255
+        "attempt" -> value in 0..1_000
+        "retryAfterSec" -> value in 0..Int.MAX_VALUE.toLong()
+        else -> value in 0..1_000_000_000_000L
+    }
+
+    internal fun isReference(value: String): Boolean = projectedReference.matches(value)
+
+    internal fun resolveReference(value: String): String = if (isReference(value)) value else correlationId(value)
+
+    internal fun correlationId(value: String): String =
+        safeLabel(value)?.takeUnless { it.startsWith("~ref-") } ?: "~" + referenceFor(value, 16)
+
+    internal fun safeLabel(value: String): String? =
+        value.takeIf {
+            label.matches(it) && !it.startsWith('/') && !credential.containsMatchIn(it) && !plainCredential.matches(it)
+        }?.let(SensitiveDataRedactor::redactMessage)?.takeIf(label::matches)
+
+    internal fun toolArgumentSummary(arguments: JsonObject): JsonObject = buildJsonObject {
+        for ((key, value) in arguments) {
+            val sensitiveKey = sensitiveArgNames[key.lowercase().replace("_", "").replace("-", "")]
+            when {
+                sensitiveKey != null -> put(sensitiveKey, "[omitted]")
+                key == "path" && value is JsonPrimitive && value.isString -> put(key, safePath(value.content))
+                key == "mode" && value is JsonPrimitive && value.isString ->
+                    put(key, safeLabel(value.content)?.takeIf(traceMode::matches) ?: "[omitted]")
+                key in structuralKeys && value is JsonPrimitive ->
+                    value.content.toLongOrNull()?.let { put(key, it) }
+            }
+        }
+    }
+
+    internal fun traceTitle(title: String, sessionId: String): String {
+        if (title.isBlank()) return ""
+        if (title == "New Chat" || title == "新对话") return title
+        // 会话标题可能直接取自用户首条消息。自定义标题只保留稳定摘要。
+        return "会话 ${referenceFor(sessionId).takeLast(8)}"
+    }
+
+    internal fun traceError(error: String): String {
+        // 账本错误可能包含命令输出或消息正文，只保留已知错误描述。
+        val firstLine = error.lineSequence().firstOrNull().orEmpty().take(240)
+        val redacted = SensitiveDataRedactor.redactMessage(firstLine)
+        return if (redacted in safeLedgerErrors) redacted else redact(redacted)
+    }
+
+    private fun safePath(path: String): String {
+        if (path.length > 16_384 || path.any { it.isISOControl() || it in "?#" } ||
+            credential.containsMatchIn(path) || unsafePath.containsMatchIn(path)
+        ) return "[omitted]"
+        if (path !in setOf(".", "..") && '/' !in path && '\\' !in path && !plainPathName.matches(path)) {
+            return "[omitted]"
+        }
+        if (path.split('/', '\\').any { plainCredential.matches(it.substringBeforeLast('.')) }) return "[omitted]"
+        val redacted = SensitiveDataRedactor.redactMessage(path)
+        return redacted.substring(0, redacted.offsetByCodePoints(0, minOf(160, redacted.codePointCount(0, redacted.length))))
+    }
+
+    private fun keys(names: String): Set<String> = names.split(' ').toSet()
+
+    private fun referenceFor(value: String, bytes: Int = 8): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
-        return "ref-" + digest.take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return "ref-" + digest.take(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
     internal fun snapshot(step: String, error: Throwable, scopeKind: String? = null, scopeId: String? = null): DiagnosticEvent = DiagnosticEvent(
@@ -212,6 +396,7 @@ object DiagnosticRedactor {
         value in safeIdentifiers || uuid.matches(value) || reference.matches(value)
 
     private fun safeSummary(value: String): String? {
+        if (value.length > 240 || SensitiveDataRedactor.redactMessage(value) != value) return null
         val separator = value.indexOf(": ")
         if (separator < 0 || value.substring(0, separator) !in exceptionTypes) return null
         val message = value.substring(separator + 2)
@@ -233,8 +418,10 @@ object DiagnosticRedactor {
     }
 
     private fun safeFrame(clazz: String, method: String, source: String?, line: Int): String? {
-        if (clazz.length > 200 || !className.matches(clazz) || !methodName.matches(method)) return null
-        val safeSource = source?.takeIf { sourceName.matches(it) } ?: "<source>"
+        if (clazz.length > 200 || !className.matches(clazz) || !methodName.matches(method) ||
+            credential.containsMatchIn(clazz) || credential.containsMatchIn(method)
+        ) return null
+        val safeSource = source?.takeIf { sourceName.matches(it) && !credential.containsMatchIn(it) } ?: "<source>"
         return "$clazz.$method($safeSource:${line.coerceAtLeast(0)})"
     }
 }

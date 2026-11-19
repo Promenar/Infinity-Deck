@@ -2,223 +2,83 @@ package com.promenar.infinity.utils
 
 import android.content.Context
 import android.util.Log
+import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.startup.diagnostics.AppDiagnostics
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
-import java.util.concurrent.Executors
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import java.util.Locale
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 object InfinityLogger {
     private const val TAG = "InfinityLogger"
-    private const val LOG_FILE_NAME = "infinity_logs.txt"
-    private const val DIAGNOSTIC_FILE_NAME = "infinity_diagnostics.jsonl"
-    private const val MAX_DIAGNOSTIC_BYTES = 512 * 1024L
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-    private val diagnosticExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "infinity-diagnostics").apply { isDaemon = true }
-    }
-
     private val isAndroid = System.getProperty("java.vendor") == "The Android Project"
 
+    @Synchronized
     fun init(context: Context) {
         if (!isAndroid) return
         AppDiagnostics.initialize(context.filesDir)
-        try {
-            diagnosticExecutor.execute {
-                runCatching { getDiagnosticFile(context).let { if (!it.exists()) it.createNewFile() } }
-            }
-            if (com.promenar.infinity.BuildConfig.DEBUG) getLogFile(context).let {
-                if (!it.exists()) it.createNewFile()
-            }
-
-            val originalHandler = Thread.getDefaultUncaughtExceptionHandler()
-            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-                diagnostic("app.uncaught", mapOf(
-                    "thread" to thread.name.take(40),
-                    "exception" to throwable::class.java.simpleName.take(60),
-                ))
-                logError("FATAL EXCEPTION", throwable)
-                originalHandler?.uncaughtException(thread, throwable)
-            }
-        } catch (e: Exception) {
-            // Ignored
-        }
+        val originalHandler = Thread.getDefaultUncaughtExceptionHandler()
+        if (originalHandler is DiagnosticExceptionHandler) return
+        Thread.setDefaultUncaughtExceptionHandler(DiagnosticExceptionHandler(originalHandler))
     }
 
-    /**
-     * 发行版可用的有界诊断事件。调用方只能传标识符、计数和状态，不得传消息正文、
-     * Prompt、凭据或完整 URL；这里仍会执行统一脱敏并限制单字段长度。
-     */
-    fun diagnostic(event: String, fields: Map<String, Any?> = emptyMap()) {
-        if (!isAndroid) return
-        val context = com.promenar.infinity.InfinityApplication.instance ?: return
-        diagnosticExecutor.execute { runCatching {
-            val safeEvent = event.replace(Regex("[^A-Za-z0-9_.-]"), "_").take(64)
-            val payload = org.json.JSONObject().apply {
-                put("timestamp", System.currentTimeMillis())
-                put("event", safeEvent)
-                sanitizeDiagnosticFields(fields).forEach { (key, value) ->
-                    put(key, value)
-                }
-            }.toString()
-            val file = getDiagnosticFile(context)
-            file.appendText(payload + "\n")
-            if (file.length() > MAX_DIAGNOSTIC_BYTES) {
-                val retained = file.readLines().takeLast(800)
-                file.writeText(retained.joinToString("\n", postfix = "\n"))
-            }
-        } }
-    }
-
-    fun getDiagnosticFile(context: Context): File = File(context.filesDir, DIAGNOSTIC_FILE_NAME)
-
-    suspend fun prepareDiagnosticExport(context: Context): File = withContext(Dispatchers.IO) {
-        File(context.filesDir, "infinity_diagnostics_export.jsonl").also { export ->
-            val metadata = org.json.JSONObject(
-                com.promenar.infinity.distribution.DistributionCapabilities.diagnosticFields(),
-            ).apply { put("event", "app.build") }
-            export.bufferedWriter().use { writer ->
-                writer.appendLine(metadata.toString())
-                val source = getDiagnosticFile(context)
-                if (source.exists()) source.bufferedReader().use { it.copyTo(writer) }
+    private class DiagnosticExceptionHandler(
+        private val delegate: Thread.UncaughtExceptionHandler?,
+    ) : Thread.UncaughtExceptionHandler {
+        override fun uncaughtException(thread: Thread, error: Throwable) {
+            try {
+                diagnostic("app.uncaught", mapOf("exception" to error.javaClass.simpleName))
+                logError("FATAL EXCEPTION", error)
+                runBlocking { withTimeoutOrNull(300) { AppDiagnostics.flush() } }
+            } finally {
+                delegate?.uncaughtException(thread, error)
             }
         }
     }
 
-    fun clearDiagnostics(context: Context) {
-        getDiagnosticFile(context).writeText("")
-    }
+    /** 发行版可用。调用方只提供经过审定的结构化元数据。 */
+    fun diagnostic(event: String, fields: Map<String, Any?> = emptyMap()) = AppDiagnostics.record(event, fields)
+
+    suspend fun prepareDiagnosticExport(context: Context): File = AppDiagnostics.prepareJsonlExport(
+        context.filesDir,
+        (context.applicationContext as? InfinityApplication)?.startupIssueManager?.formatIssues().orEmpty(),
+    )
 
     fun log(message: String) {
         if (!com.promenar.infinity.BuildConfig.DEBUG) return
-        val safeMessage = SensitiveDataRedactor.redactMessage(message)
-        if (!isAndroid) {
-            println("[$TAG] $safeMessage")
-            return
-        }
-        Log.d(TAG, safeMessage)
-        try {
-            val trimMsg = safeMessage.trim()
-            if (trimMsg.startsWith("[")) {
-                val closeBracket = trimMsg.indexOf("]")
-                if (closeBracket > 0) {
-                    val tag = trimMsg.substring(1, closeBracket).uppercase(Locale.getDefault())
-                    val content = trimMsg.substring(closeBracket + 1).trim()
-                    val json = org.json.JSONObject().apply {
-                        put("message", content)
-                    }
-                    Log.d("INFINITY_METRO", "EVENT_START|${tag}|${json}|EVENT_END")
-                } else {
-                    logDefaultMetro(safeMessage)
-                }
-            } else {
-                logDefaultMetro(safeMessage)
-            }
-        } catch (_: Exception) {
-            logDefaultMetro(safeMessage)
-        }
-        writeToDisk("DEBUG: $safeMessage")
-    }
-
-    private fun logDefaultMetro(message: String) {
-        if (!isAndroid) return
-        try {
-            val json = org.json.JSONObject().apply {
-                put("message", message)
-            }
-            Log.d("INFINITY_METRO", "EVENT_START|LOG|${json}|EVENT_END")
-        } catch (e: Exception) {
-            // Ignored
-        }
+        if (isAndroid) Log.d(TAG, SensitiveDataRedactor.redactMessage(message))
     }
 
     fun logError(tag: String, throwable: Throwable) {
         AppDiagnostics.recordError(tag, throwable)
         if (!com.promenar.infinity.BuildConfig.DEBUG) return
-        val safeTag = SensitiveDataRedactor.redactMessage(tag).take(80)
-        val safeError = SensitiveDataRedactor.safeThrowable(
-            throwable,
-            debug = true
-        )
-        if (!isAndroid) {
-            System.err.println("[$TAG] ERROR [$safeTag]: $safeError")
-            return
+        if (isAndroid) {
+            val safeTag = SensitiveDataRedactor.redactMessage(tag).take(80)
+            val safeError = SensitiveDataRedactor.safeThrowable(throwable, debug = true)
+            Log.e(TAG, "$safeTag: $safeError")
         }
-        Log.e(TAG, "$safeTag: $safeError")
-
-        writeToDisk("ERROR [$safeTag]: $safeError")
-        try {
-            val json = org.json.JSONObject().apply {
-                put("tag", safeTag)
-                put("error", safeError)
-            }
-            metro("ERROR", json.toString())
-        } catch (_: Exception) {}
-    }
-
-    fun metro(event: String, payload: String) {
-        if (!com.promenar.infinity.BuildConfig.DEBUG) return
-        val safeEvent = event.replace(Regex("[^A-Za-z0-9_.-]"), "_").take(64)
-        val safePayload = SensitiveDataRedactor.redactMessage(payload)
-        runCatching {
-            Log.d("INFINITY_METRO", "EVENT_START|$safeEvent|$safePayload|EVENT_END")
-        }
-    }
-
-    private fun writeToDisk(content: String) {
-        if (!isAndroid || !com.promenar.infinity.BuildConfig.DEBUG) return
-        try {
-            val context = com.promenar.infinity.InfinityApplication.instance ?: return
-            val logFile = getLogFile(context)
-            val timestamp = dateFormat.format(Date())
-            logFile.appendText("[$timestamp] $content\n")
-            
-            // Limit log file size to 1MB
-            if (logFile.length() > 1024 * 1024) {
-                val lines = logFile.readLines()
-                if (lines.size > 500) {
-                    logFile.writeText(lines.takeLast(500).joinToString("\n"))
-                }
-            }
-        } catch (_: Exception) {
-            Log.e(TAG, "log_io_failure")
-        }
-    }
-
-    fun getLogFile(context: Context): File {
-        return File(context.filesDir, LOG_FILE_NAME)
-    }
-
-    fun getLogs(context: Context): String {
-        if (!isAndroid || !com.promenar.infinity.BuildConfig.DEBUG) return "Logs unavailable."
-        val file = getLogFile(context)
-        return if (file.exists()) file.readText() else "No logs found."
-    }
-
-    fun clearLogs(context: Context) {
-        if (!isAndroid) return
-        val file = getLogFile(context)
-        if (file.exists()) file.writeText("")
     }
 }
 
-private val ForbiddenDiagnosticFieldFragments = setOf(
-    "authorization", "apikey", "api_key", "token", "secret", "prompt",
-    "content", "message", "request", "response", "body", "url",
+private val forbiddenDiagnosticFieldFragments = setOf(
+    "authorization", "apikey", "api_key", "secret", "password", "cookie",
+    "prompt", "content", "message", "request", "response", "body", "url",
 )
+private val diagnosticKey = Regex("[^A-Za-z0-9_.-]")
 
 internal fun sanitizeDiagnosticFields(fields: Map<String, Any?>): Map<String, Any?> =
     fields.entries.take(16).associate { (key, value) ->
-        val safeKey = key.replace(Regex("[^A-Za-z0-9_.-]"), "_").take(48)
-        val forbidden = ForbiddenDiagnosticFieldFragments.any {
-            safeKey.lowercase(Locale.ROOT).contains(it)
-        }
+        val safeKey = key.replace(diagnosticKey, "_").take(48)
+        val lowerKey = safeKey.lowercase(Locale.ROOT)
+        val forbidden = (safeKey != "firstTokenMs" && "token" in lowerKey) ||
+            (safeKey != "messageId" && forbiddenDiagnosticFieldFragments.any(lowerKey::contains))
         safeKey to if (forbidden) {
             "[omitted]"
         } else when (value) {
-            null, is Number, is Boolean -> value
-            else -> SensitiveDataRedactor.redactMessage(value.toString()).take(160)
+            null, is Boolean, is Byte, is Short, is Int, is Long -> value
+            is Float -> value.takeIf(Float::isFinite)
+            is Double -> value.takeIf(Double::isFinite)
+            is String -> if (value.length <= 4_096) SensitiveDataRedactor.redactMessage(value) else "[omitted]"
+            else -> "[omitted]"
         }
     }

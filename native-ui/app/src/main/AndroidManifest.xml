@@ -184,6 +184,11 @@
         </receiver>
 
         <provider
+            android:name=".startup.diagnostics.DiagnosticDumpProvider"
+            android:authorities="${applicationId}.diagnostics"
+            android:exported="false" />
+
+        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"

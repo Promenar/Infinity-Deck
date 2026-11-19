@@ -16,6 +16,9 @@ import com.promenar.infinity.data.local.inference.LocalInferenceEngine
 import com.promenar.infinity.data.local.inference.LocalInferenceRuntimeGate
 import com.promenar.infinity.data.local.inference.SlotType
 import com.promenar.infinity.data.local.db.InfinityDatabase
+import com.promenar.infinity.data.model.ApprovalRequest
+import com.promenar.infinity.data.repository.ExactToolApprovalDecision
+import com.promenar.infinity.data.repository.ToolExecutionLedger
 import com.promenar.infinity.data.memory.isEnabledForToolAdvertisement
 import com.promenar.infinity.data.local.db.SessionMountNormalizationCallback
 import com.promenar.infinity.data.local.db.LegacyDatabasePromoter
@@ -349,32 +352,36 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     db.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
                 }
             })
-            .setQueryCallback(
-                androidx.room.RoomDatabase.QueryCallback { sqlQuery, bindArgs ->
-                    if (com.promenar.infinity.BuildConfig.DEBUG) {
-                        try {
-                            if (sqlQuery.contains("Message", ignoreCase = true) || 
-                                sqlQuery.contains("TaskNodeEntity", ignoreCase = true) ||
-                                sqlQuery.contains("Session", ignoreCase = true)
-                            ) {
-                                val json = org.json.JSONObject().apply {
-                                    put("operation", sqlQuery.trimStart().substringBefore(' ').uppercase())
-                                    put("argumentCount", bindArgs.size)
-                                }
-                                InfinityLogger.metro("DB_QUERY", json.toString())
-                            }
-                        } catch (e: Exception) {
-                            // Ignored
-                        }
-                    }
-                },
-                java.util.concurrent.Executors.newSingleThreadExecutor()
-            )
             .build()
     }
 
-    val toolExecutionLedger by lazy {
-        StartupGuardedToolLedger(ToolExecutionLedgerRepository(database))
+    val toolExecutionLedger: ToolExecutionLedger by lazy {
+        val guarded = StartupGuardedToolLedger(ToolExecutionLedgerRepository(database))
+        object : ToolExecutionLedger by guarded {
+            override suspend fun decideExactToolApproval(
+                sessionId: String, request: ApprovalRequest, approved: Boolean,
+            ): ExactToolApprovalDecision {
+                val started = System.nanoTime()
+                val decision = guarded.decideExactToolApproval(sessionId, request, approved)
+                if (decision is ExactToolApprovalDecision.Decided) {
+                    val key = decision.key
+                    val call = request.calls.firstOrNull { it.toolCallId == key.toolCallId }
+                    val status = if (approved) "APPROVED" else "REJECTED"
+                    InfinityLogger.diagnostic("tool.approval", mapOf(
+                        "sessionId" to key.sessionId,
+                        "messageId" to key.assistantMessageId,
+                        "callId" to key.toolCallId,
+                        "toolName" to call?.toolName,
+                        "runMode" to chatStore.getSession(sessionId)?.runMode?.name,
+                        "approvalOutcome" to status,
+                        "status" to status,
+                        "errorCode" to if (approved) null else "APPROVAL_REJECTED",
+                        "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+                    ))
+                }
+                return decision
+            }
+        }
     }
 
     val askUserLedger by lazy {
@@ -468,7 +475,20 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     (workspaceRepository as WorkspaceRepository).reconcileSessionWorkspace(rootUuid, null)
                 }
             },
-        ) { sessionId ->
+            reconcile = ::reconcileSessionHome,
+        )
+    }
+
+    private fun requestSessionHomeReconcile(sessionId: String) { workspaceIndexReconciliation.request(sessionId) }
+
+    private suspend fun awaitSessionHomeReconciliation(sessionId: String) {
+        requestSessionHomeReconcile(sessionId)
+        workspaceIndexReconciliation.awaitSettled(sessionId)
+    }
+
+    private suspend fun reconcileSessionHome(sessionId: String) {
+        val started = System.nanoTime()
+        try {
             // 已删除会话没有待维护的索引，不能为恢复请求重建会话根。
             val row = database.sessionDao().getById(sessionId)
             if (row != null) {
@@ -483,14 +503,12 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 } else (workspaceRepository as WorkspaceRepository).reconcileSessionWorkspace(root.uuid, sessionId)
                 sharedSource?.let { workspaceIndexReconciliation.awaitSharedRootSettled(it.location) }
             }
+        } finally {
+            InfinityLogger.diagnostic("linux.reconcile", mapOf(
+                "sessionId" to sessionId,
+                "elapsedMs" to (System.nanoTime() - started) / 1_000_000,
+            ))
         }
-    }
-
-    private fun requestSessionHomeReconcile(sessionId: String) { workspaceIndexReconciliation.request(sessionId) }
-
-    private suspend fun reconcileSessionHome(sessionId: String) {
-        requestSessionHomeReconcile(sessionId)
-        workspaceIndexReconciliation.awaitSettled(sessionId)
     }
 
     private suspend fun sessionCommandHome(sessionId: String): File {
@@ -1924,7 +1942,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 json(Json { ignoreUnknownKeys = true })
             }
             engine {
-                addInterceptor(com.promenar.infinity.utils.MetroLogInterceptor())
                 // tailnet 目标经内置 Tailscale 本机代理；其它目标仍按系统默认选择器（无系统代理即直连）。
                 config {
                     proxySelector(tailnetManager.proxySelector)
@@ -1970,7 +1987,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 else {
                     val root = workspaceRepository.ensureSessionRoot(sessionId)
                     com.promenar.infinity.data.linux.LinuxRunModeDirectoryExportTarget(File(root.physicalRootPath),
-                        reconcile = { reconcileSessionHome(sessionId) }, sessionId = sessionId, rootId = root.uuid)
+                        reconcile = { awaitSessionHomeReconciliation(sessionId) }, sessionId = sessionId, rootId = root.uuid)
                 }
             }
             linuxRunModeRecovery.export(sessionId, target).collect { emit(it) }
@@ -1993,7 +2010,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 knowledgeAccessPlanner, sessionRepository::getById, { agentRepository.getById(it)?.retrievalConfig }, knowledgeTurns))
             register(com.promenar.infinity.ui.chat.manager.skills.CopyKnowledgeToLinuxSkill(
                 sessionRepository::getById, { current -> knowledgeAccessAllowedForTools(current) }, externalFolderManager,
-                workspaceRepository, linux.files, { linux.runtime.state.value is com.promenar.infinity.domain.linux.LinuxRuntimeState.Ready }, ::reconcileSessionHome))
+                workspaceRepository, linux.files, { linux.runtime.state.value is com.promenar.infinity.domain.linux.LinuxRuntimeState.Ready }, ::awaitSessionHomeReconciliation))
             register(CalculatorSkill())
             register(com.promenar.infinity.ui.chat.manager.skills.PetSkill(petPreferenceStore) { id ->
                 com.promenar.infinity.ui.chat.manager.skills.installedDefaultPetName(filesDir, id)
@@ -2263,14 +2280,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
 
     /** 聊天主路径按每次请求的稳定模型归属解析，不复用 default Provider 客户端。 */
     val providerRequestRouter: ProviderRequestRouter by lazy {
-        val middlewares = if (com.promenar.infinity.BuildConfig.DEBUG) {
-            listOf(com.promenar.infinity.data.remote.middleware.MetroLoggingMiddleware())
-        } else {
-            emptyList()
-        }
         DefaultProviderRequestRouter(
             ProviderManager.getInstance(),
-            middlewares,
             sessionIdentifier = sessionHeaderIdentity::identifier,
             sessionHeaderPreferences = com.promenar.infinity.data.local.SessionHeaderPreferences(getSharedPreferences("infinity_settings", MODE_PRIVATE)),
             localRuntimeSlot = { localInferenceRuntimeGate.createIfAvailable { localInferenceEngine }?.mainSlot?.value },
@@ -3373,15 +3384,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private fun buildUnifiedLlmClient(): com.promenar.infinity.data.remote.UnifiedLlmClient? {
         val summary = ProviderManager.getInstance().getProviderSummary("default") ?: return null
         if (!summary.hasApiKey && !summary.hasVertexCredentials && summary.protocolType !is ProtocolType.Local) return null
-        val middlewares = if (com.promenar.infinity.BuildConfig.DEBUG) {
-            listOf(com.promenar.infinity.data.remote.middleware.MetroLoggingMiddleware())
-        } else {
-            emptyList()
-        }
         return com.promenar.infinity.data.remote.UnifiedLlmClient(
             providerConfigResolver = { buildUnifiedProviderConfig() },
-            middlewares = middlewares,
-        )
+        ).withDiagnosticRoute("default")
     }
 
     private fun buildUnifiedProviderConfig(): com.promenar.infinity.data.remote.UnifiedProviderConfig? {

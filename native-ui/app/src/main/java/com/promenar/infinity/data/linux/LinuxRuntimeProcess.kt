@@ -8,6 +8,7 @@ import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.R
 import com.promenar.infinity.data.exec.*
 import com.promenar.infinity.domain.linux.*
+import com.promenar.infinity.utils.InfinityLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -156,7 +157,7 @@ class ProcessLinuxRuntime(
                                     }
                                     // 已登记的包直接 fix，保留来源；全部基础包均检查，避免只看入口文件而漏掉损坏依赖。
                                     if (repairBaseOnly) {
-                                        val fixed = execute(buildLaunch(LinuxLaunchSpec(listOf("/sbin/apk", "--no-interactive", "--no-progress", "fix", "--reinstall", "--depends", "--") + names)), 120)
+                                        val fixed = executeObserved(buildLaunch(LinuxLaunchSpec(listOf("/sbin/apk", "--no-interactive", "--no-progress", "fix", "--reinstall", "--depends", "--") + names)), 120)
                                         if (fixed.exitCode != 0 || fixed.timedOut || fixed.stoppedByUser) {
                                             val reason = when {
                                                 fixed.timedOut -> "软件包修复超时"
@@ -308,11 +309,16 @@ class ProcessLinuxRuntime(
     }
 
     private suspend fun diagnosticCheck(id: String, command: String, validate: (String) -> Boolean = { true }): LinuxDiagnosticCheck = try {
-        val output = execute(buildLaunch(LinuxLaunchSpec.shell(command)), 15)
+        val output = executeObserved(buildLaunch(LinuxLaunchSpec.shell(command)), 15)
         LinuxDiagnosticCheck(id, output.exitCode == 0 && !output.timedOut && validate(output.stdout),
             (output.stdout + output.stderr).takeLast(4096).ifBlank { if (output.timedOut) messages(LinuxRuntimeMessage.TIMEOUT) else "exit=${output.exitCode}" })
     } catch (cancelled: CancellationException) { throw cancelled }
     catch (error: Exception) { LinuxDiagnosticCheck(id, false, error.message) }
+
+    private suspend fun executeObserved(launch: LinuxProcessLaunch, timeoutSeconds: Int): BuiltinCommandOutput =
+        observeLinuxExecution(currentCoroutineContext()[ToolCallControlContext]?.sessionId, {
+            LinuxExecutionStatus(it.exitCode, it.timedOut)
+        }) { execute(launch, timeoutSeconds) }
 
     override suspend fun storageUsage(): LinuxStorageUsage = withContext(dispatcher) { lifecycle.withLock { installer.storageUsage() } }
     override suspend fun clearDownloadCache(): Long = withContext(dispatcher) { lifecycle.withLock { installer.clearDownloadCache() } }
@@ -406,5 +412,27 @@ class ProcessLinuxRuntime(
                     if (maintenance) R.string.linux_runtime_reset_summary else R.string.linux_runtime_install_summary,
                 ) }, messages = messages)
         }
+    }
+}
+
+internal data class LinuxExecutionStatus(val exitCode: Int?, val timedOut: Boolean?)
+
+internal suspend fun <T> observeLinuxExecution(
+    sessionId: String?,
+    summarize: (T) -> LinuxExecutionStatus,
+    action: suspend () -> T,
+): T {
+    val startedAt = System.nanoTime()
+    InfinityLogger.diagnostic("linux.exec_start", mapOf("sessionId" to sessionId))
+    var status: LinuxExecutionStatus? = null
+    try {
+        return action().also { output -> status = runCatching { summarize(output) }.getOrNull() }
+    } finally {
+        InfinityLogger.diagnostic("linux.exec_end", mapOf(
+            "sessionId" to sessionId,
+            "exitCode" to status?.exitCode,
+            "timedOut" to status?.timedOut,
+            "elapsedMs" to (System.nanoTime() - startedAt) / 1_000_000,
+        ))
     }
 }
