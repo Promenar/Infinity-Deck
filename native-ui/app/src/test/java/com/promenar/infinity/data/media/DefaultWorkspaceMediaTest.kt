@@ -140,7 +140,11 @@ class DefaultWorkspaceMediaTest {
     }
 
     @Test fun `制作媒体与清单位于同一会话私有根和挂载`() = runBlocking {
-        val files = DefaultProductionWorkspaceFiles(repo, mockk<IFileOperationRepository>(), mounts, service)
+        val files = DefaultProductionWorkspaceFiles(
+            repo, mockk<IFileOperationRepository>(), mounts, service,
+            { id -> com.promenar.infinity.domain.model.SessionRunMode.fromStored(db.sessionDao().getById(id)?.runMode) },
+            roots::resolve,
+        )
         val path = "productions/p/takes/t01.mp4"
         files.write("session", path, byteArrayOf(1, 2, 3), null)
         db.sessionDao().updateRunMode("session", "LINUX", 2)
@@ -161,6 +165,13 @@ class DefaultWorkspaceMediaTest {
         assertThat(files.isImageOrVideo("session", path)).isTrue()
         assertThat(service.productionPath("session", privatePath)).isEqualTo("/home/session/$privatePath")
         assertThat(files.isImageOrVideo("session", privatePath)).isTrue()
+        val explicitPrivate = files.normalizeRelativePath("session", "/home/session/$path")
+        assertThat(explicitPrivate).isNotEqualTo(path)
+        assertThat(service.productionPath("session", explicitPrivate)).isEqualTo("/home/session/$path")
+        val resolved = service.resolve("session", service.productionPath("session", explicitPrivate)) as MediaResolution.Available
+        assertThat(service.open(resolved).use { it.readBytes() }).isEqualTo(byteArrayOf(1, 2, 3))
+        assertThat(files.isImageOrVideo("session", explicitPrivate)).isTrue()
+        assertThat(files.normalizeRelativePath("session", "/home/session/$privatePath")).isEqualTo(privatePath)
         val mounted = File(directory, "mounted").apply { mkdirs() }
         File(mounted, "a.png").writeBytes(png)
         addMount("素材", mounted.path)

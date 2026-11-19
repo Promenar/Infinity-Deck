@@ -191,10 +191,29 @@ internal const val IMAGE_MODERATION_LEVEL = "low"
 internal fun imageModelSupportsModeration(model: String): Boolean = !model.contains("dall-e", ignoreCase = true)
 
 /** 错误体指向 moderation 参数本身（未知字段、取值不被接受），而不是内容被安全系统拦截。 */
-internal fun rejectsModerationParameter(errorBody: String): Boolean =
-    errorBody.contains("moderation", ignoreCase = true) &&
-        !errorBody.contains("moderation_blocked", ignoreCase = true) &&
-        !errorBody.contains("safety", ignoreCase = true)
+internal fun rejectsModerationParameter(errorBody: String): Boolean {
+    val error = runCatching {
+        (Json.parseToJsonElement(errorBody) as? JsonObject)?.get("error") as? JsonObject
+    }.getOrNull()
+    fun field(name: String) = (error?.get(name) as? JsonPrimitive)?.takeIf { it.isString }?.content
+    val message = field("message") ?: if (error == null) errorBody else ""
+    val code = field("code")
+    val type = field("type")
+    if (listOfNotNull(code, type, message).any(moderationSafetyError::containsMatchIn)) return false
+    if (code != null && code !in moderationParameterCodes) return false
+    val param = field("param")
+    if (param != null && param != "moderation") return false
+    if (param == "moderation" && code in moderationParameterCodes) return true
+    if (param == "moderation" && message.isBlank() && (type == null || type in moderationParameterTypes)) return true
+    return moderationParameterError.matches(message.trim())
+}
+
+private val moderationParameterCodes = setOf("unknown_parameter", "invalid_parameter", "unsupported_parameter", "unknown_field", "invalid_value")
+private val moderationParameterTypes = setOf("invalid_request_error", "validation_error")
+private val moderationSafetyError = Regex("""(?i)\b(?:moderation_blocked|[\w]*safety[\w]*|content[ _-](?:filter|policy)[\w-]*)\b""")
+private val moderationParameterError = Regex(
+    """(?i)(?:(?:unknown|unrecognized|unsupported|unexpected|invalid)\s+(?:parameter|field)\s*:?\s*['"`]?moderation['"`]?|['"`]?moderation['"`]?\s*(?::|is)\s*(?:an?\s+)?(?:unknown|unrecognized|unsupported|unexpected|invalid)\s+(?:parameter|field|value))[.!]?"""
+)
 
 /**
  * 单张生成图像的数据。

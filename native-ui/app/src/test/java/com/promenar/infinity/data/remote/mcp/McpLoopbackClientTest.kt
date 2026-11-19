@@ -10,11 +10,10 @@ import com.promenar.infinity.ui.chat.manager.skills.McpSkill
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -47,7 +46,7 @@ class McpLoopbackClientTest {
         val http = HttpClient(MockEngine { request ->
             methods += request.headers["Mcp-Method"]
             credentials += request.headers[HttpHeaders.Authorization]
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             val result = if (methods.size == 1) {
                 """{"tools":[{"name":"exec","inputSchema":{"type":"object"}}]}"""
             } else {
@@ -78,7 +77,7 @@ class McpLoopbackClientTest {
         val credentials = mutableListOf<String?>()
         val http = HttpClient(MockEngine { request ->
             credentials += request.headers[HttpHeaders.Authorization]
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond("""{"jsonrpc":"2.0","id":$id,"result":{"tools":[]}}""", HttpStatusCode.OK,
                 headersOf(HttpHeaders.ContentType, "application/json"))
         })
@@ -106,7 +105,7 @@ class McpLoopbackClientTest {
                     headersOf(HttpHeaders.Location, "http://remote.example.test/mcp"),
                 )
             } else {
-                val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                 respond(
                     """{"jsonrpc":"2.0","id":$id,"result":{"tools":[]}}""",
                     HttpStatusCode.OK,

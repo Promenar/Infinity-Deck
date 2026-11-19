@@ -2,6 +2,7 @@ package com.promenar.infinity.data.remote
 
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.pluginOrNull
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
@@ -18,7 +19,7 @@ internal object ModelRequestTimeouts {
 
 internal fun HttpRequestBuilder.applyModelTimeout(kind: ModelTimeoutKind) {
     timeout {
-        requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
+        requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
         socketTimeoutMillis = ModelRequestTimeouts.socketMillis(kind)
     }
 }

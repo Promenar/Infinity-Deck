@@ -619,10 +619,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
 
     // ─── 网络 (Multiplatform-Ready) ───
-    implementation("io.ktor:ktor-client-android:2.3.7")
-    implementation("io.ktor:ktor-client-okhttp:2.3.7")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.7")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
+    implementation("io.ktor:ktor-client-android:3.6.1")
+    implementation("io.ktor:ktor-client-okhttp:3.6.1")
+    implementation("io.ktor:ktor-client-content-negotiation:3.6.1")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.6.1")
 
     // ─── 序列化 (Multiplatform-Ready) ───
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
@@ -686,7 +686,7 @@ dependencies {
     testImplementation("org.junit.vintage:junit-vintage-engine:5.10.1")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
-    testImplementation("io.ktor:ktor-client-mock:2.3.7")
+    testImplementation("io.ktor:ktor-client-mock:3.6.1")
     testImplementation("com.google.truth:truth:1.2.0")
     testImplementation("io.mockk:mockk:1.13.12")
     testImplementation("app.cash.turbine:turbine:1.1.0")

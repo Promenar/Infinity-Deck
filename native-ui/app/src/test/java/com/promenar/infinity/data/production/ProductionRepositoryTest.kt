@@ -45,6 +45,27 @@ class ProductionRepositoryTest {
         repo = ProductionRepository(db, files, now = { 10 }, newId = { "project" })
     }
     @After fun close() { repo.close(); db.close() }
+    @Test fun `文件工具虚拟路径归一后才校验媒体和写入清单`() = runBlocking {
+        val created = repo.define("s", "影片", ProductionKind.FILM, "/productions/demo")
+        assertThat(created.production.rootPath).isEqualTo("productions/demo")
+        files.mediaPaths += "s" to "productions/demo/ref.png"
+        files.bytes["s" to "productions/demo/ref.png"] = byteArrayOf(1)
+        val result = repo.update("s", "m", Json.parseToJsonElement("""[
+            {"op":"upsert_season","id":"S1","number":1},
+            {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集","script_path":"/productions/demo/script.md"},
+            {"op":"set_bible","documents":[{"title":"设定","path":"/productions/demo/bible.md"}]},
+            {"op":"upsert_asset","id":"hero","kind":"character","name":"角色","looks":[{"id":"main","name":"常服","slots":[
+                {"id":"front","name":"正面","path":"/productions/demo/ref.png"},{"id":"side","name":"侧面"},{"id":"back","name":"背面"}
+            ]}]}
+        ]""").jsonArray)
+        assertThat(result.production.seasons.single().episodes.single().scriptPath).isEqualTo("productions/demo/script.md")
+        assertThat(result.production.bible.single().path).isEqualTo("productions/demo/bible.md")
+        assertThat(result.production.assets.single().looks.single().slots.first().path).isEqualTo("productions/demo/ref.png")
+        awaitInSync()
+        repo.unbind("s")
+        assertThat(repo.attach("s", "/productions/demo/production.json").production.bible.single().path)
+            .isEqualTo("productions/demo/bible.md")
+    }
     @Test fun `剪辑写入在事务中核对项目标识与修订号`() = runBlocking {
         val created = repo.define("s", "影片", ProductionKind.FILM)
         val action = ProductionUserAction.SetStage(ProductionStage.EDIT, StageStatus.IN_PROGRESS)

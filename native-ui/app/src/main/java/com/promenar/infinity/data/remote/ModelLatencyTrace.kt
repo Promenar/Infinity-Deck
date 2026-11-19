@@ -37,6 +37,5 @@ class ModelLatencyTrace(
 /** 等待响应体中首字节可读，不消费或改变流。 */
 internal suspend fun ByteReadChannel.observeFirstByte(trace: ModelLatencyTrace?) {
     if (trace == null) return
-    awaitContent()
-    if (availableForRead > 0) trace.firstByte()
+    if (awaitContent()) trace.firstByte()
 }

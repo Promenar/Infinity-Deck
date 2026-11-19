@@ -15,7 +15,8 @@ import com.promenar.infinity.data.local.inference.LocalInferenceEngine
 import com.promenar.infinity.data.local.inference.SlotState
 import com.promenar.infinity.data.remote.ModelRequestTimeouts
 import com.promenar.infinity.data.remote.ModelTimeoutSettings
-import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutCapability
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -410,7 +411,7 @@ class EmbeddingClientTest {
     fun `响应体读取超时作为可重试批次错误且不泄露底层信息`() = runTest {
         val transport = HttpClient(MockEngine {
             val channel = ByteChannel(autoFlush = true)
-            channel.close(java.net.SocketTimeoutException("fake-secret-transport-detail"))
+            channel.cancel(java.net.SocketTimeoutException("fake-secret-transport-detail"))
             respond(channel, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         })
         try {
@@ -440,7 +441,7 @@ class EmbeddingClientTest {
     fun `文档请求使用可配置空闲超时和放宽总时长查询保留原超时`() = runTest {
         val values = mutableListOf<Pair<Long?, Long?>>()
         val transport = HttpClient(MockEngine { request ->
-            val timeout = checkNotNull(request.getCapabilityOrNull(HttpTimeout))
+            val timeout = checkNotNull(request.getCapabilityOrNull(HttpTimeoutCapability))
             values += timeout.socketTimeoutMillis to timeout.requestTimeoutMillis
             respondOk(buildEmbeddingResponse(2, 1))
         })
@@ -456,7 +457,7 @@ class EmbeddingClientTest {
             assertThat(values).containsExactly(
                 30_000L to 120_000L,
                 60_000L to 240_000L,
-                60_000L to HttpTimeout.INFINITE_TIMEOUT_MS,
+                60_000L to HttpTimeoutConfig.INFINITE_TIMEOUT_MS,
             ).inOrder()
         } finally {
             ModelRequestTimeouts.install { ModelTimeoutSettings() }

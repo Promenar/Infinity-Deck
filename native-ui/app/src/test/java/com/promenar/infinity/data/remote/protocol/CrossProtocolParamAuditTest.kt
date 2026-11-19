@@ -16,7 +16,7 @@ class CrossProtocolParamAuditTest {
     fun `OpenAIProtocol transmits all 7 parameters to unrecognized compatible models`() = runTest {
         var capturedBody: String? = null
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(content = "{}", status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"))
         }
@@ -48,7 +48,7 @@ class CrossProtocolParamAuditTest {
     fun `AnthropicProtocol does not crash with unsupported penalty params`() = runTest {
         var capturedBody: String? = null
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(content = "{\"type\":\"message\",\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":10}}",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"))
@@ -78,7 +78,7 @@ class CrossProtocolParamAuditTest {
     fun `VertexAIProtocol includes repetitionPenalty`() = runTest {
         var capturedBody: String? = null
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(content = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"))
@@ -110,7 +110,7 @@ class CrossProtocolParamAuditTest {
     fun `GenericOpenAICompatProtocol still transmits all 7 parameters after Adapter migration`() = runTest {
         var capturedBody: String? = null
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(content = "{}", status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"))
         }
@@ -144,7 +144,7 @@ class CrossProtocolParamAuditTest {
         var capturedBody: String? = null
         val mockEngine = MockEngine { request ->
             capturedUrl = request.url.encodedPath
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(
                 content = """{"status":"completed","output_text":"pong","usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3}}""",
                 status = HttpStatusCode.OK,

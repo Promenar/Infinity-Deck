@@ -4,7 +4,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpHeaders
 import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.cancel
+import io.ktor.utils.io.readByte
 import io.ktor.utils.io.readAvailable
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer

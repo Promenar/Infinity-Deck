@@ -5,8 +5,10 @@ import kotlinx.serialization.json.*
 
 /** 批量操作只创建新快照；媒体存在性由调用方在进入引擎前提供。 */
 object ProductionEngine {
-    fun update(snapshot: ProductionSnapshot, operations: List<JsonObject>, seenRevision: Long?, now: Long, isMedia: (String) -> Boolean): ProductionSnapshot {
-        require(operations.size in 1..100) { "operations 需为 1～100 项。" }
+    fun update(snapshot: ProductionSnapshot, operations: List<JsonElement>, seenRevision: Long?, now: Long, isMedia: (String) -> Boolean): ProductionSnapshot =
+        update(snapshot, prepareProductionOperations(operations, snapshot.production) { it }, seenRevision, now, isMedia)
+
+    internal fun update(snapshot: ProductionSnapshot, prepared: PreparedProductionOperations, seenRevision: Long?, now: Long, isMedia: (String) -> Boolean): ProductionSnapshot {
         require(snapshot.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
         val rev = snapshot.revision + 1
         var p = snapshot.production
@@ -38,8 +40,8 @@ object ProductionEngine {
         fun bool(o: JsonObject, key: String): Boolean = (o[key] as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull ?: throw IllegalArgumentException("$key 必须是布尔值，请检查参数。")
         fun media(path: String) { ProductionManifestCodec.validatePath(path); require(isMedia(path)) { "媒体 $path 不存在或不是图片、视频或音频，请检查工作区路径。" } }
         fun enumText(value: String, allowed: List<String>, field: String): Int = allowed.indexOf(value).also { require(it >= 0) { "$field 仅支持 ${allowed.joinToString()}，请修正参数。" } }
-        fun mode(o: JsonObject, key: String): ShotMode = ShotMode.entries[enumText(text(o, key), listOf("text", "first_frame", "first_last", "reference"), key)]
-        operations.forEachIndexed { index, op ->
+        fun mode(o: JsonObject, key: String): ShotMode = ShotMode.entries[enumText(text(o, key), productionModes, key)]
+        prepared.operations.forEachIndexed { index, op ->
             try {
                 when (text(op, "op")) {
                     "upsert_season" -> {
@@ -69,17 +71,17 @@ object ProductionEngine {
                         if (existing == null || position != null && position != sc.shots.indexOf(existing)) checkScene(sc)
                         require(!sc.storyboardLocked || existing != null && (position == null || position == sc.shots.indexOf(existing))) { "场 ${sc.code} 的分镜已锁定，请由用户解锁后增删或重排。" }
                         val old = existing ?: Shot(code, text(op, "title"), durationSeconds = number(op, "duration_seconds"))
-                        val inputs = if ("inputs" in op) try { Json.decodeFromJsonElement<List<ShotInput>>(op.getValue("inputs")) } catch (e: Exception) { throw IllegalArgumentException("inputs 格式无效，请检查输入角色和路径。", e) } else old.inputs
+                        val inputs = if ("inputs" in op) decodeProductionField(op, "inputs") else old.inputs
                         if ("inputs" in op) inputs.forEach { media(it.path) }
-                        val preview = if ("preview" !in op) old.preview else if (op["preview"] == JsonNull) null else PreviewKind.entries[enumText(text(op, "preview"), listOf("keyframe", "draft_clip", "text_card"), "preview")]
+                        val preview = if ("preview" !in op) old.preview else if (op["preview"] == JsonNull) null else PreviewKind.entries[enumText(text(op, "preview"), productionPreviews, "preview")]
                         val updated = old.copy(title = if ("title" in op) text(op, "title") else old.title, size = optional(op, "size", old.size), durationSeconds = if ("duration_seconds" in op) number(op, "duration_seconds") else old.durationSeconds, mode = if ("mode" in op) mode(op, "mode") else old.mode, prompt = if ("prompt" in op && !old.promptUserEdited) text(op, "prompt") else old.prompt, inputs = inputs, preview = preview, previewPath = optional(op, "preview_path", old.previewPath), agentNote = optional(op, "agent_note", old.agentNote),
                             camera = optional(op, "camera", old.camera), cameraMovement = optional(op, "camera_movement", old.cameraMovement),
                             visual = optional(op, "visual", old.visual), performance = optional(op, "performance", old.performance),
-                            dialogue = if ("dialogue" in op) decodeField(op, "dialogue") else old.dialogue,
+                            dialogue = if ("dialogue" in op) decodeProductionField(op, "dialogue") else old.dialogue,
                             sound = optional(op, "sound", old.sound), transition = optional(op, "transition", old.transition), continuity = optional(op, "continuity", old.continuity),
-                            appearances = if ("appearances" in op) decodeField(op, "appearances") else old.appearances,
+                            appearances = if ("appearances" in op) decodeProductionField(op, "appearances") else old.appearances,
                             locationAssetId = optional(op, "location_asset_id", old.locationAssetId),
-                            propAssetIds = if ("prop_asset_ids" in op) decodeField(op, "prop_asset_ids") else old.propAssetIds,
+                            propAssetIds = if ("prop_asset_ids" in op) decodeProductionField(op, "prop_asset_ids") else old.propAssetIds,
                             channelId = optional(op, "channel_id", old.channelId), changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev)
                         val changes = ProductionRules.changes(old, updated)
                         val stored = if (sc.storyboardLocked && changes.isNotEmpty()) {
@@ -95,21 +97,21 @@ object ProductionEngine {
                     "set_shot_status" -> {
                         val ep = episode(text(op, "episode_id")); val old = shot(ep, text(op, "shot_code")); checkShot(old)
                         require(old.status != ShotStatus.LOCKED) { "镜头 ${old.code} 已锁定，请先由用户解锁。" }
-                        val status = listOf(ShotStatus.TODO, ShotStatus.GENERATING, ShotStatus.REVIEW)[enumText(text(op, "status"), listOf("todo", "generating", "review"), "status")]
+                        val status = listOf(ShotStatus.TODO, ShotStatus.GENERATING, ShotStatus.REVIEW)[enumText(text(op, "status"), productionShotStatuses, "status")]
                         setShot(ep, old.copy(status = status, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "add_take" -> {
                         val ep = episode(text(op, "episode_id")); val old = shot(ep, text(op, "shot_code")); checkShot(old); ProductionRules.generationRejection(p, ep.id, old.code)?.let { throw IllegalArgumentException(it) }; val path = text(op, "path"); media(path)
                         require("task_id" !in op || op["task_id"] == JsonNull || "plan_snapshot" in op) { "生成任务登记候选时必须提供实际规划快照。" }
                         val id = UUID.nameUUIDFromBytes("${p.id}:$rev:$index".toByteArray(Charsets.UTF_8)).toString()
-                        val take = Take(id, path, TakeSource(text(op, "service"), optional(op, "model", null), if ("mode" in op && op["mode"] != JsonNull) mode(op, "mode") else null, optional(op, "usage_ref", null)), now, optional(op, "note", null), taskId = optional(op, "task_id", null), planSnapshot = if ("plan_snapshot" in op) decodeField(op, "plan_snapshot") else ProductionRules.planSnapshot(old))
+                        val take = Take(id, path, TakeSource(text(op, "service"), optional(op, "model", null), if ("mode" in op && op["mode"] != JsonNull) mode(op, "mode") else null, optional(op, "usage_ref", null)), now, optional(op, "note", null), taskId = optional(op, "task_id", null), planSnapshot = if ("plan_snapshot" in op) decodeProductionField(op, "plan_snapshot") else ProductionRules.planSnapshot(old))
                         setShot(ep, old.copy(takes = old.takes + take, status = if (old.status == ShotStatus.LOCKED) old.status else ShotStatus.REVIEW, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "upsert_asset" -> {
                         val id = text(op, "id"); val old = p.assets.firstOrNull { it.id == id }; old?.let(::checkAsset)
-                        val kind = AssetKind.entries[enumText(text(op, "kind"), listOf("character", "location", "prop", "style", "sound"), "kind")]
+                        val kind = AssetKind.entries[enumText(text(op, "kind"), productionAssetKinds, "kind")]
                         require(old == null || old.status != AssetStatus.LOCKED || old.kind == kind && old.name == text(op, "name")) { "资产 $id 已锁定，请先由用户解锁后修改名称或种类。" }
-                        val a = (old ?: Asset(id, kind, text(op, "name"))).copy(kind = kind, name = text(op, "name"), description = optional(op, "description", old?.description), looks = if ("looks" in op) decodeField(op, "looks") else old?.looks ?: emptyList(), referenceVoice = if ("reference_voice" in op) decodeField(op, "reference_voice") else old?.referenceVoice, changedBy = old?.changedBy ?: ChangeSource.AGENT, changedAt = if (old?.changedBy == ChangeSource.USER) old?.changedAt ?: rev else rev)
+                        val a = (old ?: Asset(id, kind, text(op, "name"))).copy(kind = kind, name = text(op, "name"), description = optional(op, "description", old?.description), looks = if ("looks" in op) decodeProductionField(op, "looks") else old?.looks ?: emptyList(), referenceVoice = if ("reference_voice" in op) decodeProductionField(op, "reference_voice") else old?.referenceVoice, changedBy = old?.changedBy ?: ChangeSource.AGENT, changedAt = if (old?.changedBy == ChangeSource.USER) old?.changedAt ?: rev else rev)
                         if ("looks" in op) a.looks.flatMap { it.slots }.mapNotNull { it.path }.forEach(::media)
                         if ("reference_voice" in op) a.referenceVoice?.path?.let(::media)
                         p = p.copy(assets = if (old == null) p.assets + a else p.assets.map { if (it.id == id) a else it })
@@ -121,17 +123,17 @@ object ProductionEngine {
                     }
                     "set_asset_status" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old); require(old.status != AssetStatus.LOCKED) { "资产 ${old.id} 已锁定，请先由用户解锁。" }
-                        val status = listOf(AssetStatus.DRAFT, AssetStatus.REVIEW)[enumText(text(op, "status"), listOf("draft", "review"), "status")]
+                        val status = listOf(AssetStatus.DRAFT, AssetStatus.REVIEW)[enumText(text(op, "status"), productionAssetStatuses, "status")]
                         setAsset(old.copy(status = status, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "set_stage" -> {
-                        val stage = ProductionStage.entries[enumText(text(op, "stage"), listOf("script", "visual_dev", "storyboard", "animatic", "generation", "sound", "edit"), "stage")]
+                        val stage = ProductionStage.entries[enumText(text(op, "stage"), productionStages, "stage")]
                         val old = p.stages.first { it.stage == stage }; check(old.changedBy, old.changedAt, "阶段 $stage"); require(old.status != StageStatus.LOCKED) { "阶段已锁定，请先由用户解锁。" }
-                        val status = listOf(StageStatus.NOT_STARTED, StageStatus.IN_PROGRESS, StageStatus.SKIPPED)[enumText(text(op, "status"), listOf("not_started", "in_progress", "skipped"), "status")]
+                        val status = listOf(StageStatus.NOT_STARTED, StageStatus.IN_PROGRESS, StageStatus.SKIPPED)[enumText(text(op, "status"), productionStageStatuses, "status")]
                         p = p.copy(stages = p.stages.map { if (it.stage == stage) it.copy(status = status, note = optional(op, "note", it.note), changedBy = it.changedBy, changedAt = if (it.changedBy == ChangeSource.USER) it.changedAt else rev) else it })
                     }
                     "set_bible" -> {
-                        val docs = try { Json.decodeFromJsonElement<List<DocumentRef>>(op.getValue("documents")) } catch (e: Exception) { throw IllegalArgumentException("documents 必须是 title 和 path 组成的数组。", e) }
+                        val docs = decodeProductionField<List<DocumentRef>>(op, "documents")
                         p = p.copy(bible = docs)
                     }
                     "set_experimental" -> {
@@ -153,14 +155,10 @@ object ProductionEngine {
                     }
                     else -> throw IllegalArgumentException("未知 op，请使用制作面板支持的操作。")
                 }
-            } catch (e: IllegalArgumentException) { throw IllegalArgumentException("第 ${index + 1} 项：${e.message}", e) }
+            } catch (e: IllegalArgumentException) { throw IllegalArgumentException("第 ${index + 1} 项（${text(op, "op")}）：${e.message}", e) }
         }
         p = stampProductionContent(snapshot.production, p, rev).pruneDeletedReviewTargets().copy(updatedAt = now)
         ProductionManifestCodec.encode(p, rev)
         return ProductionSnapshot(p, rev, ManifestSync.Pending)
     }
 }
-
-private inline fun <reified T> decodeField(op: JsonObject, key: String): T = try {
-    Json.decodeFromJsonElement<T>(op.getValue(key))
-} catch (e: Exception) { throw IllegalArgumentException("$key 格式无效，请检查字段。", e) }

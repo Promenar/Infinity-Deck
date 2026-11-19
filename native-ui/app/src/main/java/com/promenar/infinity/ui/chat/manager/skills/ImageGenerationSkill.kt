@@ -16,6 +16,7 @@ import com.promenar.infinity.data.model.ImageGenerationActual
 import com.promenar.infinity.data.model.ImageGenerationUsage
 import com.promenar.infinity.data.generation.ImageGenerationInputReader
 import com.promenar.infinity.data.generation.imageGenerationOutputMime
+import com.promenar.infinity.data.generation.ImageGenerationRequest
 import com.promenar.infinity.data.generation.parseImageGenerationRequest
 import com.promenar.infinity.domain.tool.ToolRisk
 import kotlinx.coroutines.Dispatchers
@@ -110,25 +111,25 @@ class ImageGenerationSkill(
                     "description": "仅编辑且仅部分模型支持。默认不发送；gpt-image-2 应省略。"
                 }
             },
-            "required": ["prompt"]
+            "required": ["prompt"],
+            "additionalProperties": false
         }
     """.trimIndent()
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
-        return runMediaJob(id, args, context, jobs, 20, "wake", "run_in_background", "生成图片") { output ->
-            executeImage(args, context, output)
-        }
-    }
-
-    private suspend fun executeImage(args: JsonObject, context: SkillExecutionContext,
-        output: com.promenar.infinity.domain.tool.ToolLiveOutputSink): ToolResult {
-        val resultId = "img_${UUID.randomUUID().toString().take(8)}"
-
         val request = try {
             parseImageGenerationRequest(args)
         } catch (invalid: IllegalArgumentException) {
-            return ToolResult(id = resultId, content = invalid.message ?: "图片参数无效。", status = "error")
+            return ToolResult(id = id, content = invalid.message ?: "图片参数无效。", status = "error")
         }
+        return runMediaJob(id, args, context, jobs, 20, "wake", "run_in_background", "生成图片") { output ->
+            executeImage(request, context, output)
+        }
+    }
+
+    private suspend fun executeImage(request: ImageGenerationRequest, context: SkillExecutionContext,
+        output: com.promenar.infinity.domain.tool.ToolLiveOutputSink): ToolResult {
+        val resultId = "img_${UUID.randomUUID().toString().take(8)}"
 
         // ── 读取图像模型配置 ──
         val modelId = providerManager.imageModelId.value.takeIf { it.isNotBlank() } ?: ""

@@ -15,11 +15,10 @@ import com.promenar.infinity.domain.tool.ToolRisk
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -119,7 +118,7 @@ class McpSkillRegistryPersistenceTest {
         val registry = registry(MockEngine { request ->
             entered.complete(Unit)
             release.await()
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond(
                 """{"jsonrpc":"2.0","id":$id,"result":{"tools":[{"name":"late","inputSchema":{"type":"object"}}]}}""",
                 HttpStatusCode.OK,
@@ -147,7 +146,7 @@ class McpSkillRegistryPersistenceTest {
         val registry = registry(MockEngine { request ->
             entered.complete(Unit)
             release.await()
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond(
                 """{"jsonrpc":"2.0","id":$id,"result":{"tools":[{"name":"late","inputSchema":{"type":"object"}}]}}""",
                 HttpStatusCode.OK,
@@ -178,7 +177,7 @@ class McpSkillRegistryPersistenceTest {
                 firstEntered.complete(Unit)
                 releaseFirst.await()
             }
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             val name = if (call == 1) "older" else "newer"
             respond(
                 """{"jsonrpc":"2.0","id":$id,"result":{"tools":[{"name":"$name","inputSchema":{"type":"object"}}]}}""",
@@ -244,7 +243,7 @@ class McpSkillRegistryPersistenceTest {
         var header: String? = null
         val registry = registry(MockEngine { request ->
             header = request.headers["Mcp-Param-tenant"]
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond(
                 """{"jsonrpc":"2.0","id":$id,"result":{"content":[]}}""",
                 HttpStatusCode.OK,
@@ -272,7 +271,7 @@ class McpSkillRegistryPersistenceTest {
         repository.insertMcpServer(McpServerEntity("http", "HTTP", "http://legacy.example.test", "http", createdAt = 1))
         repository.insertMcpServer(McpServerEntity("stdio", "STDIO", "/usr/bin/server", "stdio", createdAt = 1))
         val registry = registry(MockEngine { request ->
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond("""{"jsonrpc":"2.0","id":$id,"result":{"tools":[{"name":"exec","inputSchema":{"type":"object"}}]}}""",
                 HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         }, backgroundScope)
@@ -296,7 +295,7 @@ class McpSkillRegistryPersistenceTest {
             credentials += request.headers[HttpHeaders.Authorization]
             val method = request.headers["Mcp-Method"]
             methods += method
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             val result = if (method == "tools/list") {
                 """{"tools":[{"name":"exec","inputSchema":{"type":"object"}}]}"""
             } else {
@@ -342,7 +341,7 @@ class McpSkillRegistryPersistenceTest {
         val registry = registry(MockEngine { request ->
             entered.complete(Unit)
             release.await()
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond(
                 """{"jsonrpc":"2.0","id":$id,"result":{"tools":[{"name":"exec","inputSchema":{"type":"object"}}]}}""",
                 HttpStatusCode.OK,
@@ -380,7 +379,7 @@ class McpSkillRegistryPersistenceTest {
                     "url" -> repository.insertMcpServer(server.copy(url = "http://127.0.0.1:8766/mcp"))
                     else -> { settings.removeBearerToken(id); settings.saveBearerToken(id, "test-only-bearer") }
                 }
-                val rpcId = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                val rpcId = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                 val page = if (calls == 1) """{"tools":[],"nextCursor":"second"}""" else """{"tools":[]}"""
                 respond("""{"jsonrpc":"2.0","id":$rpcId,"result":$page}""", HttpStatusCode.OK,
                     headersOf(HttpHeaders.ContentType, "application/json"))
@@ -419,7 +418,7 @@ class McpSkillRegistryPersistenceTest {
     }
 
     private fun rpcEngine(result: String) = MockEngine { request ->
-        val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+        val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
         respond(
             """{"jsonrpc":"2.0","id":$id,"result":$result}""",
             HttpStatusCode.OK,

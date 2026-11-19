@@ -18,6 +18,58 @@ class ProductionEngineTest {
     ]""")
     private fun shot(s: ProductionSnapshot) = s.production.seasons.single().episodes.single().scenes.single().shots.single()
 
+    @Test fun `同批删除后重建镜头缺必填项且嵌套报错定位数组下标`() {
+        val original = fixture()
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            ProductionEngine.update(original, ops("""[
+                {"op":"remove","target":"shot","episode_id":"S1E01","ids":["SC01-01"]},
+                {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","inputs":[{"role":"reference","path":"ref.png"}]},
+                {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-02","title":"二","duration_seconds":2,"inputs":[{"role":"reference","path":"ref.png"},{"role":"reference"}]}
+            ]"""), original.revision, 3) { error("结构错误应在媒体查询之前发现") }
+        }
+        assertThat(failure.message).contains("第 2 项（upsert_shot）：新建镜头缺少必填字段")
+        assertThat(failure.message).contains("inputs[1]")
+        assertThat(failure.message).contains("缺少字段 path")
+    }
+
+    @Test fun `新镜头与嵌套拼写错误批量定位而省略 slots 时填充默认三位`() {
+        val original = fixture()
+        val failure = assertThrows(IllegalArgumentException::class.java) { update(original, """[
+            {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-02"},
+            {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","cameraMovement":"固定"},
+            {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","dialogue":[{"character_asset_id":"hero","text":"台词"}]},
+            {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","inputs":[{"role":"first","path":"ref.png"}]}
+        ]""") }
+        assertThat(failure.message).contains("新建镜头缺少必填字段 title、duration_seconds")
+        assertThat(failure.message).contains("camera_movement")
+        assertThat(failure.message).contains("characterAssetId")
+        assertThat(failure.message).contains("character_asset_id")
+        assertThat(failure.message).contains("first_frame")
+        val updated = update(original, """[
+            {"op":"upsert_asset","id":"hero","kind":"character","name":"角色","looks":[{"id":"main","name":"常服"}]}
+        ]""")
+        assertThat(updated.production.assets.last().looks.single().slots.map { it.id }).containsExactly("front", "side", "back").inOrder()
+    }
+
+    @Test fun `结构预检汇总多项并先于媒体查询与父级检查`() {
+        var accessedMedia = false
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            ProductionEngine.update(base(), ops("""[
+                {"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"a.png","service":"服务"},
+                {"action":"upsert_season","id":"S1","number":1},
+                {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"title":"场"},
+                {"op":"upsert_asset","id":"hero","kind":"character","name":"主角","looks":[{"id":"main","name":"常服","slots":[{"id":"front","name":"正面"}]}]}
+            ]"""), 1, 2) { accessedMedia = true; true }
+        }
+        assertThat(accessedMedia).isFalse()
+        assertThat(failure.message).contains("第 2 项")
+        assertThat(failure.message).contains("第 3 项（upsert_scene）")
+        assertThat(failure.message).contains("heading")
+        assertThat(failure.message).contains("第 4 项（upsert_asset）")
+        assertThat(failure.message).contains("side")
+        assertThat(failure.message).contains("back")
+    }
+
     @Test fun `批量创建并登记候选与版本`() {
         val result = update(fixture(), """[
             {"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"media/a.mp4","service":"服务"},

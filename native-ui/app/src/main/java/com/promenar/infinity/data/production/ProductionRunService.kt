@@ -12,6 +12,7 @@ class ProductionRunService(
     private val audit: suspend (String) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val normalizePath: suspend (String, String, String) -> String = { _, path, _ -> productionRelativePathSyntax(path) },
 ) {
     private suspend fun scanAfterReport(sessionId: String) {
         try { audit(sessionId) } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { /* 由回合结束与面板打开的扫描补查。 */ }
@@ -55,17 +56,19 @@ class ProductionRunService(
         require((sourceTakeId == null) == (operation == null)) { "来源候选与处理名称须同时提供。" }
         require(params.isEmpty() || sourceTakeId != null) { "处理参数需要来源候选与处理名称。" }
         require(operation == null || operation.isNotBlank() && operation.length <= 120) { "处理名称需要 1～120 字。" }
-        for (file in listOf(path) + segmentPaths) {
+        val resultPath = normalizePath(sessionId, path, p.rootPath)
+        val normalizedSegments = segmentPaths.map { normalizePath(sessionId, it, p.rootPath) }
+        for (file in listOf(resultPath) + normalizedSegments) {
             ProductionCuts.validateProjectPath(p, file)
             require(exists(sessionId, file)) { "产物不可读或媒体类型无效：$file" }
         }
-        val spec = probe(sessionId, path)
+        val spec = probe(sessionId, resultPath)
         val derivation = sourceTakeId?.let { source ->
             require(p.seasons.flatMap { it.episodes }.flatMap { it.scenes }.flatMap { it.shots }.any { shot -> shot.takes.any { it.id == source } }) { "来源候选不存在。" }
             TakeDerivation(source, requireNotNull(operation), params = params)
         }
         var cursor = 0.0
-        val segments = segmentPaths.mapIndexed { index, segment ->
+        val segments = normalizedSegments.mapIndexed { index, segment ->
             val seconds = requireNotNull(probe(sessionId, segment).durationSeconds) { "无法读取分段实际时长。" }
             require(seconds.isFinite() && seconds > 0) { "分段时长无效。" }
             TakeSegment(index, segment, cursor, cursor + seconds).also { cursor += seconds }
@@ -76,16 +79,16 @@ class ProductionRunService(
         var version: AssetVersion? = null
         if (old.target.assetId != null) {
             val asset = p.assets.first { it.id == old.target.assetId }
-            require(asset.kind != AssetKind.SOUND || mediaKindFromPath(path) == com.promenar.infinity.domain.mediagen.InputKind.AUDIO) { "声音资产产物必须是音频。" }
-            version = AssetVersion((asset.versions.maxOfOrNull { it.number } ?: 0) + 1, path, time, durationSeconds = spec.durationSeconds, derivedFrom = derivation)
+            require(asset.kind != AssetKind.SOUND || mediaKindFromPath(resultPath) == com.promenar.infinity.domain.mediagen.InputKind.AUDIO) { "声音资产产物必须是音频。" }
+            version = AssetVersion((asset.versions.maxOfOrNull { it.number } ?: 0) + 1, resultPath, time, durationSeconds = spec.durationSeconds, derivedFrom = derivation)
         } else {
             val shot = p.requiredShot(requireNotNull(old.target.episodeId), requireNotNull(old.target.shotCode))
             require(derivation == null || shot.takes.any { it.id == derivation.sourceTakeId }) { "来源候选须属于登记镜头。" }
-            require(mediaKindFromPath(path) == com.promenar.infinity.domain.mediagen.InputKind.VIDEO) { "镜头产物必须是视频。" }
-            take = Take(newId(), path, TakeSource("外部脚本"), time, derivedFrom = derivation, segments = segments, spec = spec, runId = old.id)
+            require(mediaKindFromPath(resultPath) == com.promenar.infinity.domain.mediagen.InputKind.VIDEO) { "镜头产物必须是视频。" }
+            take = Take(newId(), resultPath, TakeSource("外部脚本"), time, derivedFrom = derivation, segments = segments, spec = spec, runId = old.id)
         }
         val run = old.copy(state = RunState.COMPLETED, completedSteps = old.steps ?: old.completedSteps, reportedAt = time,
-            resultTakeId = take?.id, resultAssetVersion = version?.number, resultPath = path, segments = segments)
+            resultTakeId = take?.id, resultAssetVersion = version?.number, resultPath = resultPath, segments = segments)
         store.apply(sessionId, snapshot, ProductionUserAction.SaveRun(run, take, version))
         scanAfterReport(sessionId)
         run

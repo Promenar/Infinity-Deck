@@ -24,8 +24,10 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class BuiltInSkillCancellationTest {
     private val jobFixture = MediaTestJobFixture()
     @org.junit.After fun closeJobs() = jobFixture.close()

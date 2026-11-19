@@ -18,6 +18,21 @@ class ProductionSkillsTest {
         override val workspaceRootUuid = "root"
         override val assistantMessageId = "m"
     }
+    @Test fun `未绑定时返回建项或导入路线且公开批量操作清单`() = runBlocking {
+        val repo = mockk<ProductionRepository>()
+        io.mockk.coEvery { repo.get("s") } returns null
+        val failure = ProductionGetSkill(repo).execute(buildJsonObject { put("scope", "overview") }, context)
+        val error = Json.parseToJsonElement(failure.content).jsonObject
+        assertThat(error.getValue("error").jsonPrimitive.content).isEqualTo("no_project")
+        assertThat(error.getValue("suggestion").jsonPrimitive.content).contains("production_attach")
+        val update = ProductionUpdateSkill(repo)
+        val props = Json.parseToJsonElement(update.parametersSchema).jsonObject.getValue("properties").jsonObject
+        val items = props.getValue("operations").jsonObject.getValue("items").jsonObject
+        val op = items.getValue("properties").jsonObject.getValue("op").jsonObject
+        assertThat(op.getValue("enum").jsonArray.map { it.jsonPrimitive.content }).containsExactlyElementsIn(productionOperationFields.keys)
+        assertThat(update.description).doesNotContain("沿用原参数")
+    }
+
     @Test fun `参数错误返回结构化错误与风险分类`() = runBlocking {
         val repo = mockk<ProductionRepository>()
         val result = ProductionDefineSkill(repo).execute(buildJsonObject { put("title", "影片") }, context)

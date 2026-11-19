@@ -6,12 +6,11 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import java.security.KeyPairGenerator
 import java.util.Base64
 import kotlinx.coroutines.flow.filterIsInstance
@@ -45,7 +44,7 @@ class GeminiProtocolTest {
         httpClient = HttpClient(MockEngine { request ->
             recorder.urls += request.url.toString()
             recorder.keys += request.headers[GeminiProtocol.API_KEY_HEADER]
-            recorder.bodies += request.body.toByteReadPacket().readText()
+            recorder.bodies += request.body.toByteArray().decodeToString()
             respond()
         }),
     )
@@ -299,7 +298,7 @@ class GeminiProtocolTest {
             if (request.url.host == "oauth2.googleapis.com") {
                 jsonBody("""{"access_token":"fake-token","expires_in":3600}""")
             } else {
-                bodies += request.body.toByteReadPacket().readText()
+                bodies += request.body.toByteArray().decodeToString()
                 sse(TOOL_STREAM)
             }
         })

@@ -6,11 +6,10 @@ import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -30,7 +29,7 @@ class McpSkillTypedArgumentsTest {
     fun `MCP skill 原样发送嵌套 JsonObject`() = runTest {
         val requestBody = AtomicReference<String>()
         val client = HttpClient(MockEngine { request ->
-            requestBody.set(request.body.toByteReadPacket().readText())
+            requestBody.set(request.body.toByteArray().decodeToString())
             respond(
                 content = """{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"ok"}]}}""",
                 status = HttpStatusCode.OK,
@@ -79,7 +78,7 @@ class McpSkillTypedArgumentsTest {
         suspend fun execute(result: String): com.promenar.infinity.data.model.ToolResult {
             val client = HttpClient(MockEngine { request ->
                 val requestId = Json.parseToJsonElement(
-                    request.body.toByteReadPacket().readText(),
+                    request.body.toByteArray().decodeToString(),
                 ).jsonObject.getValue("id")
                 respond(
                     content = """{"jsonrpc":"2.0","id":$requestId,"result":$result}""",

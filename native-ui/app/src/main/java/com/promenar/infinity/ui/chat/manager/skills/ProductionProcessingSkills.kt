@@ -9,17 +9,16 @@ import kotlinx.serialization.json.*
 internal fun productionParams(args: JsonObject): Map<String, JsonPrimitive> {
     if ("params" !in args) return emptyMap()
     val objectValue = args["params"] as? JsonObject ?: throw IllegalArgumentException("params 必须是对象。")
-    require(objectValue.size <= 6) { "模板参数最多 6 项。" }
+    require(objectValue.size <= 6) { "params 最多 6 项。" }
     return objectValue.mapValues { (key, value) ->
-        require(key.matches(Regex("[a-z][a-z0-9_]{0,31}"))) { "params 的 key 无效。" }
+        require(key.matches(Regex("[a-z][a-z0-9_]{0,31}"))) { "params.$key 的键名须符合 [a-z][a-z0-9_]{0,31}。" }
         (value as? JsonPrimitive)?.takeUnless { it == JsonNull } ?: throw IllegalArgumentException("params.$key 必须是字符串、数值或布尔值。")
     }
 }
-private fun JsonObject.keys(required: Set<String>, allowed: Set<String> = required) {
-    require(keys.containsAll(required) && keys.all { it in allowed }) { "缺少必填参数或包含不适用的字段。" }
-}
+private fun JsonObject.keys(required: Set<String>, allowed: Set<String> = required) =
+    validateProductionToolKeys(this, required, allowed)
 private fun JsonObject.text(key: String): String = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
-    ?.takeIf { it.isNotBlank() && it.length <= 7000 } ?: throw IllegalArgumentException("$key 需要非空字符串。")
+    ?.takeIf { it.isNotBlank() && it.length <= 7000 } ?: throw IllegalArgumentException("$key 必须是 1～7000 字的非空字符串。")
 private fun JsonObject.optionalText(key: String): String? = if (key in this) text(key) else null
 private fun JsonObject.integer(key: String, fallback: Int? = null): Int? = if (key !in this) fallback else
     (get(key) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: throw IllegalArgumentException("$key 需要整数。")
@@ -63,7 +62,7 @@ class ProductionScoreSkill(private val processing: () -> ProductionProcessing) :
     """{"type":"object","properties":{"asset_id":{"type":"string"},"template_id":{"type":"string"},"prompt":{"type":"string"},"duration_seconds":{"type":"number"},"versions":{"type":"integer"}},"required":["asset_id"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         args.keys(setOf("asset_id"), setOf("asset_id", "template_id", "prompt", "duration_seconds", "versions"))
-        val versions = requireNotNull(args.integer("versions", 4)).also { require(it in 1..30) { "versions 需要 1～30。" } }
+        val versions = requireNotNull(args.integer("versions", 4)) { "versions 必须是 1～30 的整数。" }.also { require(it in 1..30) { "versions 需要 1～30。" } }
         val tasks = processing().score(context.sessionId, args.text("asset_id"), args.optionalText("template_id"), args.optionalText("prompt"), args.number("duration_seconds"), versions)
         return buildJsonObject { put("status", if (tasks.size == versions) "submitted" else "partially_submitted"); put("task_ids", JsonArray(tasks.map { JsonPrimitive(it.id) })); if (tasks.size != versions) put("warning", "部分配乐任务已入队，请先查询已有任务，再补交剩余版本。") }
     }
@@ -77,7 +76,7 @@ class ProductionExtendSkill(private val coordinator: () -> ShotChainCoordinator)
         val episode = args.text("episode_id"); val shot = args.text("shot_code")
         val result = if (action == "start") {
             args.keys(base, base + setOf("start_take_id", "segments", "segment_seconds", "segment_prompts"))
-            val segments = requireNotNull(args.integer("segments", 3)).also { require(it in 1..8) { "segments 需要 1～8。" } }
+            val segments = requireNotNull(args.integer("segments", 3)) { "segments 必须是 1～8 的整数。" }.also { require(it in 1..8) { "segments 需要 1～8。" } }
             val prompts = args.strings("segment_prompts")
             require(prompts.isEmpty() || prompts.size == segments) { "segment_prompts 数量必须与 segments 相同。" }
             coordinator().start(context.sessionId, episode, shot, args.optionalText("start_take_id"), segments, args.number("segment_seconds"), prompts)
@@ -105,7 +104,7 @@ class ProductionRunSkill(private val service: () -> ProductionRunService) : Prod
                 val steps = args.integer("steps"); require(steps == null || steps > 0) { "steps 需要正整数。" }
                 service().start(context.sessionId, RunTarget(episode, shot, asset), args.text("label"), steps)
             }
-            "progress" -> { args.keys(setOf("action", "run_id", "completed_steps", "message")); val done = requireNotNull(args.integer("completed_steps")); require(done >= 0) { "completed_steps 不能为负数。" }; service().progress(context.sessionId, args.text("run_id"), done, args.text("message")) }
+            "progress" -> { args.keys(setOf("action", "run_id", "completed_steps", "message")); val done = requireNotNull(args.integer("completed_steps")) { "completed_steps 必须是非负整数。" }; require(done >= 0) { "completed_steps 不能为负数。" }; service().progress(context.sessionId, args.text("run_id"), done, args.text("message")) }
             "finish" -> {
                 args.keys(setOf("action", "run_id", "path"), setOf("action", "run_id", "path", "source_take_id", "operation", "params", "segments"))
                 service().finish(context.sessionId, args.text("run_id"), args.text("path"), args.optionalText("source_take_id"), args.optionalText("operation"), productionParams(args), args.strings("segments"))

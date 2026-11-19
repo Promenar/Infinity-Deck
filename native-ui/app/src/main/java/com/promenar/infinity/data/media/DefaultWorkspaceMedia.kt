@@ -55,12 +55,18 @@ internal class DefaultWorkspaceMedia(
 
     override suspend fun productionPath(sessionId: String, path: String): String {
         com.promenar.infinity.data.production.ProductionManifestCodec.validatePath(path)
+        val privatePath = com.promenar.infinity.data.production.privateProductionLocalPath(path)
+        val privateDestination = com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(
+            com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE,
+        )
+        // 显式私有路径须使用私有入口，保证私有根下的同名挂载目录不会被重新解释。
+        if (privatePath != null) return targets.presenter(sessionId).present(privateDestination.destination, privatePath, privatePrimary = false)
         val virtualPath = "/$path"
         val bindings = mounts.namespaceBindings(sessionId)
         val alias = com.promenar.infinity.data.storage.ExternalMountPaths.aliasOf(virtualPath, com.promenar.infinity.data.storage.ExternalMountPaths.WORKSPACE_ALIAS in bindings)
         val presenter = targets.presenter(sessionId)
         return when (alias) {
-            null -> targets.present(sessionId, com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE), virtualPath)
+            null -> targets.present(sessionId, privateDestination, virtualPath)
             com.promenar.infinity.data.storage.ExternalMountPaths.WORKSPACE_ALIAS -> targets.present(sessionId, com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.PRIMARY_WORKSPACE), virtualPath)
             com.promenar.infinity.data.storage.ExternalMountPaths.SKILLS_ALIAS -> if (presenter == com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter) "/mnt$virtualPath" else virtualPath
             else -> virtualPath

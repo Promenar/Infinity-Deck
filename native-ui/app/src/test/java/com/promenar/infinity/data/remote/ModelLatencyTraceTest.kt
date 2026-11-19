@@ -3,7 +3,7 @@ package com.promenar.infinity.data.remote
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.readUTF8Line
+import io.ktor.utils.io.readLine
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.toList
 import io.ktor.client.HttpClient
@@ -46,7 +46,7 @@ class ModelLatencyTraceTest {
         trace.dispatched()
         val channel = ByteReadChannel("data: hello\n".toByteArray())
         channel.observeFirstByte(trace)
-        assertThat(channel.readUTF8Line()).isEqualTo("data: hello")
+        assertThat(channel.readLine()).isEqualTo("data: hello")
         assertThat(events.map { it.first }).containsExactly("prepare_ms", "first_byte_ms").inOrder()
     }
     @Test fun `兼容协议观测首字节且正文保持完整`() = runBlocking {

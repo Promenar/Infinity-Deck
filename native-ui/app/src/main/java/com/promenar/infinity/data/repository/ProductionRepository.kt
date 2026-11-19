@@ -29,10 +29,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /** 项目快照独立于消息生命周期；数据库事务与文件写入在 IO 调度器执行。 */
 class ProductionRepository(
@@ -103,10 +100,11 @@ class ProductionRepository(
     private fun clearReads(sessionId: String) { synchronized(reads) { reads.keys.removeAll { it.startsWith("$sessionId:") }; sessionReads.keys.removeAll { it.startsWith("$sessionId:") } }; externalObservations.keys.removeAll { it.first == sessionId } }
 
     suspend fun define(sessionId: String, title: String, kind: ProductionKind, rootPath: String? = null, logline: String? = null, aspectRatio: String? = null): ProductionSnapshot = withContext(Dispatchers.IO) {
+        val normalizedRoot = rootPath?.let { files.normalizeRelativePath(sessionId, it) }
         mutex.withLock {
             val old = dao.getForSession(sessionId)
             if (old != null) {
-                val p = snapshot(old).production.copy(title = title, kind = kind, rootPath = rootPath ?: old.rootPath, logline = logline, aspectRatio = aspectRatio, updatedAt = now())
+                val p = snapshot(old).production.copy(title = title, kind = kind, rootPath = normalizedRoot ?: old.rootPath, logline = logline, aspectRatio = aspectRatio, updatedAt = now())
                 require(old.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
                 val next = ProductionSnapshot(p, old.revision + 1, ManifestSync.Pending)
                 ProductionManifestCodec.encode(p, next.revision)
@@ -120,7 +118,7 @@ class ProductionRepository(
         val t = now()
         val id = newId()
         val slug = title.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { id }
-        val p = Production(id, title, kind, rootPath ?: "productions/$slug", logline, aspectRatio, createdAt = t, updatedAt = t)
+        val p = Production(id, title, kind, normalizedRoot ?: "productions/$slug", logline, aspectRatio, createdAt = t, updatedAt = t)
         val next = ProductionSnapshot(p, 1, ManifestSync.Pending)
         ProductionManifestCodec.encode(p, next.revision)
         projectFileMutex(id).withLock {
@@ -145,17 +143,17 @@ class ProductionRepository(
     }
 
     suspend fun attach(sessionId: String, manifestPath: String): ProductionSnapshot = withContext(Dispatchers.IO) {
-        ProductionManifestCodec.validatePath(manifestPath)
+        val normalizedManifest = files.normalizeRelativePath(sessionId, manifestPath)
         // 未知项目先按文件路径发现身份，再按项目锁顺序重新读取与核对。
-        val discovered = manifestPathMutex(sessionId, manifestPath).withLock {
-            ProductionManifestCodec.decode(files.read(sessionId, manifestPath) ?: throw IllegalArgumentException("清单文件不存在，请检查路径。"))
+        val discovered = manifestPathMutex(sessionId, normalizedManifest).withLock {
+            ProductionManifestCodec.decode(files.read(sessionId, normalizedManifest) ?: throw IllegalArgumentException("清单文件不存在，请检查路径。"))
         }
         projectFileMutex(discovered.production.id).withLock {
-            manifestPathMutex(sessionId, manifestPath).withLock {
-                val bytes = files.read(sessionId, manifestPath) ?: throw IllegalArgumentException("清单文件不存在，请检查路径。")
+            manifestPathMutex(sessionId, normalizedManifest).withLock {
+                val bytes = files.read(sessionId, normalizedManifest) ?: throw IllegalArgumentException("清单文件不存在，请检查路径。")
                 val manifest = ProductionManifestCodec.decode(bytes)
                 require(manifest.production.id == discovered.production.id) { "清单已变化，请重新查看。" }
-                require(manifestPath == "${manifest.production.rootPath}/production.json") { "清单路径与项目根目录不一致，请检查路径。" }
+                require(normalizedManifest == "${manifest.production.rootPath}/production.json") { "清单路径与项目根目录不一致，请检查路径。" }
                 val work = mutex.withLock {
                     database.withTransaction {
                         val bound = dao.otherActiveSession(manifest.production.id, sessionId)
@@ -173,34 +171,18 @@ class ProductionRepository(
     }
     suspend fun unbind(sessionId: String) = withContext(Dispatchers.IO) { mutex.withLock { dao.unbind(sessionId); clearReads(sessionId) } }
 
-    suspend fun update(sessionId: String, owner: String, operations: List<JsonObject>): ProductionSnapshot = withContext(Dispatchers.IO) {
+    suspend fun update(sessionId: String, owner: String, operations: List<JsonElement>): ProductionSnapshot = withContext(Dispatchers.IO) {
         val row = mutex.withLock { required(sessionId) }
-        val validMedia = mutableSetOf<String>()
-        val mediaPaths = mutableSetOf<String>()
-        fun collectPaths(element: JsonElement) {
-            when (element) {
-                is JsonObject -> element.forEach { (key, value) ->
-                    if (key == "path" && value is JsonPrimitive && value.isString) mediaPaths += value.content
-                    else collectPaths(value)
-                }
-                is JsonArray -> element.forEach(::collectPaths)
-                else -> Unit
-            }
+        val prepared = prepareProductionOperations(operations, snapshot(row).production) { path ->
+            files.normalizeRelativePath(sessionId, path, row.rootPath)
         }
-        operations.forEach { op ->
-            when ((op["op"] as? JsonPrimitive)?.content) {
-                "add_take", "add_asset_version" -> (op["path"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { mediaPaths += it }
-                "upsert_shot" -> op["inputs"]?.let(::collectPaths)
-                "upsert_asset" -> { op["looks"]?.let(::collectPaths); op["reference_voice"]?.let(::collectPaths) }
-            }
-        }
-        mediaPaths.forEach { path -> if (files.isImageOrVideo(sessionId, path)) validMedia += path }
+        val validMedia = prepared.media.filterTo(mutableSetOf()) { files.isImageOrVideo(sessionId, it) }
         mutex.withLock {
             val seen = reads["$sessionId:$owner:${row.id}"]
             database.withTransaction {
                 val current = required(sessionId)
-                require(current.id == row.id) { "会话绑定已改变，请重试。" }
-                val result = ProductionEngine.update(snapshot(current), operations, seen, now()) { it in validMedia }
+                require(current.id == row.id && current.rootPath == row.rootPath) { "会话绑定或项目根目录已改变，请重新读取项目后重试。" }
+                val result = ProductionEngine.update(snapshot(current), prepared, seen, now()) { it in validMedia }
                 dao.update(entity(result, current))
             }
             enqueue(row.id)

@@ -7,7 +7,6 @@ import io.ktor.client.engine.mock.*
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -26,7 +25,7 @@ class GenericOpenAICompatToolRoundTripTest {
             apiKey = "test-key",
             model = "test-model",
             httpClient = HttpClient(MockEngine { request ->
-                bodies += request.body.toByteReadPacket().readText()
+                bodies += request.body.toByteArray().decodeToString()
                 respond(
                     if (bodies.size == 1) """
                         data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_file","arguments":"{\"path\":\"a\"}"}}]},"finish_reason":"tool_calls"}]}

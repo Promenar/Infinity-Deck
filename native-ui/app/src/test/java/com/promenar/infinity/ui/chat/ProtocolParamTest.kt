@@ -22,7 +22,7 @@ class ProtocolParamTest {
         var capturedBody: String? = null
         
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(
                 content = "{}",
                 status = HttpStatusCode.OK,
@@ -70,7 +70,7 @@ class ProtocolParamTest {
         var capturedBody: String? = null
         
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(
                 content = "{\"type\":\"message\",\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":10}}",
                 status = HttpStatusCode.OK,
@@ -109,7 +109,7 @@ class ProtocolParamTest {
     fun testOpenAIProtocol_parametersMapping() = runTest {
         var capturedBody: String? = null
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(content = "{}", status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"))
         }
@@ -139,7 +139,7 @@ class ProtocolParamTest {
     fun `Anthropic gracefully skips unsupported penalties`() = runTest {
         var capturedBody: String? = null
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(content = "{\"type\":\"message\",\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":10}}",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"))
@@ -166,7 +166,7 @@ class ProtocolParamTest {
         var capturedBody: String? = null
         
         val mockEngine = MockEngine { request ->
-            capturedBody = request.body.toByteReadPacket().readText()
+            capturedBody = request.body.toByteArray().decodeToString()
             respond(
                 content = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]}}]}",
                 status = HttpStatusCode.OK,

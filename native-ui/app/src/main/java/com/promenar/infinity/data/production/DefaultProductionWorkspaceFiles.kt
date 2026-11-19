@@ -2,6 +2,10 @@ package com.promenar.infinity.data.production
 
 import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.data.storage.namespaceBindings
+import com.promenar.infinity.data.workspace.LinuxSessionPaths
+import com.promenar.infinity.data.workspace.LinuxWorkspaceLocation
+import com.promenar.infinity.data.workspace.SessionWorkspace
+import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.domain.media.MediaKind
 import com.promenar.infinity.domain.media.MediaResolution
 import com.promenar.infinity.domain.media.WorkspaceMediaResolver
@@ -21,13 +25,38 @@ class DefaultProductionWorkspaceFiles(
     private val fileOperations: IFileOperationRepository,
     private val mounts: ExternalWorkspaceAccess,
     private val media: WorkspaceMediaResolver,
+    private val modeFor: suspend (String) -> SessionRunMode?,
+    private val sessionWorkspace: suspend (String) -> SessionWorkspace,
 ) : ProductionWorkspaceFiles {
+    override suspend fun normalizeRelativePath(sessionId: String, rawPath: String, projectRoot: String?): String = withContext(Dispatchers.IO) {
+        val linux = modeFor(sessionId) == SessionRunMode.LINUX
+        val current = if (linux) sessionWorkspace(sessionId) else null
+        val directory = when (current) {
+            is SessionWorkspace.Directory -> LinuxWorkspaceLocation.workingDirectory(current.workspace)
+            is SessionWorkspace.Unavailable -> {
+                require(rawPath.startsWith("${LinuxSessionPaths.PRIVATE_ROOT}/") || rawPath.startsWith("session/") ||
+                    privateProductionLocalPath(rawPath) != null || rawPath.removePrefix("/").startsWith("mnt/")) {
+                    "当前会话工作区不可用，请检查目录和授权。"
+                }
+                LinuxSessionPaths.WORKSPACE_ROOT
+            }
+            else -> null
+        }
+        val mountsForPath = if (rawPath.removePrefix("/").startsWith("mnt/")) {
+            mounts.visible(sessionId).filter { it.unavailableReason == null && (!linux || it.sourceType == "real_path") }.map { it.alias }.toSet()
+        } else emptySet()
+        normalizeProductionWorkspacePath(rawPath, linux, directory, projectRoot, mountsForPath)
+    }
+
+    private fun backendPath(path: String): String =
+        privateProductionLocalPath(path) ?: "/$path"
+
     private data class Target(val backend: ExternalFolderBackend, val rootUuid: String?, val bindings: Map<String, String>)
     private suspend fun target(sessionId: String, path: String): Target {
         ProductionManifestCodec.validatePath(path)
         val virtualPath = "/$path"
         val bindings = mounts.namespaceBindings(sessionId)
-        val mounted = ExternalMountPaths.aliasOf(virtualPath, ExternalMountPaths.WORKSPACE_ALIAS in bindings) != null
+        val mounted = privateProductionLocalPath(path) == null && ExternalMountPaths.aliasOf(virtualPath, ExternalMountPaths.WORKSPACE_ALIAS in bindings) != null
         if (mounted) return Target(mounts.backend(sessionId, bindings), null, bindings)
         val root = workspace.ensureSessionRoot(sessionId)
         return Target(PrivateWorkspaceTransferBackend(workspace, root.uuid), root.uuid, bindings)
@@ -35,16 +64,16 @@ class DefaultProductionWorkspaceFiles(
     override suspend fun read(sessionId: String, path: String): ByteArray? = withContext(Dispatchers.IO) {
         val target = target(sessionId, path)
         withContext(ExternalMountOperationBindings(target.bindings)) {
-            val virtualPath = "/$path"
+            val virtualPath = backendPath(path)
             if (target.backend.stat(virtualPath) == null) null else target.backend.read(virtualPath, 16L * 1024 * 1024)
         }
     }
     override suspend fun write(sessionId: String, path: String, bytes: ByteArray, expectedSha256: String?): Unit = withContext(Dispatchers.IO) {
         val target = target(sessionId, path)
         withContext(ExternalMountOperationBindings(target.bindings)) {
-            val virtualPath = "/$path"
+            val virtualPath = backendPath(path)
             var parent = ""
-            path.substringBeforeLast('/', "").split('/').filter { it.isNotEmpty() }.forEach { part ->
+            virtualPath.substringBeforeLast('/', "").split('/').filter { it.isNotEmpty() }.forEach { part ->
                 parent += "/$part"
                 val entry = target.backend.stat(parent)
                 if (entry == null) target.backend.createDirectory(parent) else require(entry.isDirectory) { "$parent 不是目录。" }
@@ -69,7 +98,7 @@ class DefaultProductionWorkspaceFiles(
     suspend fun publishChainMedia(sessionId: String, path: String, file: java.io.File, cacheDir: java.io.File): Unit = withContext(Dispatchers.IO) {
         val target = target(sessionId, path)
         withContext(ExternalMountOperationBindings(target.bindings)) {
-            WorkspaceChainOutputStore(cacheDir).publish(target.backend, path, file) {
+            WorkspaceChainOutputStore(cacheDir).publish(target.backend, backendPath(path).removePrefix("/"), file) {
                 (target.backend as? PrivateWorkspaceTransferBackend)?.confirmCreated()
             }
         }
@@ -80,11 +109,14 @@ class DefaultProductionWorkspaceFiles(
             val found = mutableListOf<String>()
             suspend fun visit(path: String, depth: Int) {
                 require(depth <= 32 && found.size <= 100_000) { "制作媒体目录超过扫描上限。" }
-                val entry = target.backend.stat("/$path") ?: return
+                val virtualPath = backendPath(path)
+                val entry = target.backend.stat(virtualPath) ?: return
                 if (!entry.isDirectory) { if (mediaKindFromPath(path) != null) found += path; return }
-                target.backend.list("/$path").forEach { child ->
-                    val next = child.path.removePrefix("/")
-                    require(next.startsWith(path + "/") && next.substringAfter(path + "/").indexOf('/') < 0) { "媒体目录返回了越界条目。" }
+                target.backend.list(virtualPath).forEach { child ->
+                    require(child.path.startsWith("$virtualPath/")) { "媒体目录返回了越界条目。" }
+                    val name = child.path.removePrefix("$virtualPath/")
+                    require('/' !in name) { "媒体目录返回了越界条目。" }
+                    val next = "$path/$name"
                     ProductionManifestCodec.validatePath(next)
                     visit(next, depth + 1)
                 }

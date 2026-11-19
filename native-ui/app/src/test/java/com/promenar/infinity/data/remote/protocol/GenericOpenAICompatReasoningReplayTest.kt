@@ -6,7 +6,6 @@ import io.ktor.client.engine.mock.*
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -25,7 +24,7 @@ class GenericOpenAICompatReasoningReplayTest {
     private val okStream = "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
 
     private fun engine(bodies: MutableList<String>, stream: String = okStream) = HttpClient(MockEngine { request ->
-        bodies += request.body.toByteReadPacket().readText()
+        bodies += request.body.toByteArray().decodeToString()
         respond(stream, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
     })
 

@@ -13,6 +13,14 @@ class ImageGenerationRequestTest {
         assertThat(failure?.message).contains(message)
     }
 
+    @Test fun `参考图误写会给出 images 纠正提示且允许任务控制键`() {
+        listOf("image", "reference_image", "reference_images", "input_images").forEach {
+            rejects(",\"$it\":\"/media/ref.png\"", "images")
+        }
+        rejects(",\"typo\":true", "typo")
+        assertThat(request(""","yield_after_seconds":2,"run_in_background":true,"on_exit":"wake","max_runtime_minutes":3""").images).isEmpty()
+    }
+
     @Test fun `标注需要参考图且与蒙版互斥并拒绝空路径`() {
         rejects(",\"markup\":\"/mark.png\"", "images")
         rejects(",\"images\":[\"/a.png\"],\"markup\":\" \"", "markup")

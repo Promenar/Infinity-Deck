@@ -1,5 +1,77 @@
 # 影视制作工具与执行路线
 
+## 建项与读取
+
+1. 已有清单时调用 `production_attach(manifest_path="productions/demo/production.json")`。清单路径须与根目录对应。同 id 项目保留数据库内容，外部差异会报告同步冲突。
+2. 从零开始时调用 `production_define(title="雾港", kind="film", root_path="productions/demo")`，按依赖顺序用 `production_update` 成批建季、集、场、镜头与资产。kind 为 `film` 或 `series`，root_path 默认 `productions/标题 slug`。可选 logline（≤1000 字）、aspect_ratio（≤120 字）。
+3. 已有小说或原剧本时先用文件工具读原文，拆成季、集、场、镜头、对白与资产。用 `production_define` 建项并分批录入。先写入集剧本文档，再用 `upsert_episode.script_path` 登记。同路径正文更新后也须重新登记路径。
+
+`production_get(scope="overview")` 读取修订号、清单同步状态、阶段与成本提醒。`episode` 需要 `episode_id`，`shot` 还需 `shot_code`，`assets` 列资产与生成次数，`changes` 查审核与未结事项。只有 `changes` 的 `runs`、`chains`、`unregistered_files`、`open_items` 使用 `limit`（1～50，默认 10）与 `offset`（默认 0，非负）分页。
+
+`production_cut` 用 camelCase 参数。list 可传 `episodeId`，create 必填 `episodeId`（每集最多 20 版），export 和 status 必填 `versionId`，可用 `episodeId` 核对归属。create 或 export 可传布尔 `burnSubtitles`。export 返回 accepted 后用 status 取进度与产物。
+
+## 批量更新
+
+`production_update({"operations":[...]})` 一次接受 1～100 项并原子提交。每项用 `op` 指定动作。静态格式错误按操作序号汇总，纠正后可整批重试。结构通过后按顺序核对父级、媒体与锁定状态。修订冲突先调用 `production_get`。已锁定或待审内容由用户在制作面板处理，锁定场允许的内容修改会产生改动请求。用户改写的提示词受保护。审核回合逐条处理，用 `agent_note`、`change_note` 或资产 `description` 记录结果。镜头或资产达到 6 次生成提醒时，继续生成前向用户说明。
+
+| op | 必填字段 | 可选字段 |
+| --- | --- | --- |
+| upsert_season | id, number | title |
+| upsert_episode | season_id, id, number, title | script_path |
+| upsert_scene | episode_id, code, number, heading | |
+| upsert_shot | episode_id, scene_code, code，新建还需 title, duration_seconds | title, duration_seconds, size, camera, camera_movement, visual, performance, dialogue, sound, transition, continuity, appearances, location_asset_id, prop_asset_ids, channel_id, mode, prompt, inputs, preview, preview_path, agent_note, change_note, position |
+| set_shot_status | episode_id, shot_code, status | |
+| add_take | episode_id, shot_code, path, service，有 task_id 时须提供实际 plan_snapshot | model, mode, task_id, usage_ref, plan_snapshot, note |
+| upsert_asset | id, kind, name | description, looks, reference_voice |
+| add_asset_version | asset_id, path | note, task_id |
+| set_asset_status | asset_id, status | |
+| set_stage | stage, status | note |
+| set_bible | documents | |
+| set_experimental | enabled | |
+| set_preview_enabled | enabled | |
+| remove | target, ids，scene、shot 还需 episode_id | |
+
+- 季 `S[0-9]+`（S1），集 `S[0-9]+E[0-9]{2,}`（S1E01，须属该季），场 `SC[0-9]+`（SC01），镜头 `SC[0-9]+-[0-9]+`（SC01-01，须属该场）。资产 `[a-z][a-z0-9-]*`，最多 48 字符。number 为正整数，duration_seconds 为有限正数，position 从 0 起算。
+- status 取值按操作区分。镜头用 todo、generating、review，资产用 draft、review，阶段用 not_started、in_progress、skipped。stage 为 script、visual_dev、storyboard、animatic、generation、sound、edit。
+- kind 为 character、location、prop、style、sound。mode 为 text、first_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。remove 的 target 为 season、episode、scene、shot、asset，ids 是按目标格式填写的非空无重复字符串数组。enabled 为布尔值。
+- 外层字段用表中的 snake_case，嵌套字段使用下列精确拼写。问号表示可选。
+  - dialogue 为 `[{characterAssetId, text, tone?, audioSource?}]`，audioSource 取 native（默认）或 dubbed。
+  - appearances 为 `[{characterAssetId, lookId, referenceSlotIds?}]`，referenceSlotIds 为字符串数组。prop_asset_ids 为资产 ID 字符串数组。
+  - looks 为 `[{id, name, slots?: [{id, name, path?, version?}]}]`。角色造型省略 slots 时默认 front、side、back。显式传 slots 须包含这三项，可附加其他参考位。version 为正整数。
+  - reference_voice 为 `{path?, transcript?, voiceSetting?, tone?}` 或 null。looks 和参考语音用于 character。配乐等音频成品登记到 sound 资产。
+  - inputs 为 `[{role, path, label?, assetId?, atSeconds?}]`，最多 12 项。role 为 first_frame、last_frame、anchor、reference。非负 atSeconds 仅用于 anchor。
+  - plan_snapshot 为 `{mode, inputs, prompt, channelId?, mediaInputs?, specs?, generationMode?, templateFingerprint?, params?}`。mediaInputs 每项用 location、kind、role。specs 可含 resolution、durationSeconds、width、height、frames、seed、durationSecondsExact。documents 为 `[{title, path}]`。
+- 优先使用工作区相对路径，如 `productions/demo/ep1.md`。普通会话的 `/productions/demo/ep1.md`，以及 Linux 当前工作区下的 `/workspace/...`、登记的工作区目录或 `/home/session/...`，会归一后写入清单。独立私有目录保留归属。制作相对路径也可直接用于参考图。禁止 URI、点路径、空段、反斜杠、Linux 系统根和不属于项目的外部挂载。媒体须已保存到工作区。调用 `generate_image` 时参考图放在数组 `images`，例如 `{"prompt":"调整光线","images":["productions/demo/assets/hero.png"]}`。
+
+### 批次一 建季、集、场与资产
+
+```json
+{
+  "operations": [
+    {"op":"upsert_season","id":"S1","number":1},
+    {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"归港","script_path":"productions/demo/ep1.md"},
+    {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"外景 港口 黄昏"},
+    {"op":"upsert_asset","id":"lin-wan","kind":"character","name":"林晚","looks":[{"id":"coat","name":"风衣"}],"reference_voice":{"path":"productions/demo/assets/lin-wan.wav"}},
+    {"op":"upsert_asset","id":"harbor-score","kind":"sound","name":"港口配乐"}
+  ]
+}
+```
+
+### 批次二 建镜头并登记已有候选
+
+```json
+{
+  "operations": [
+    {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"林晚回望","duration_seconds":4,"mode":"first_frame","dialogue":[{"characterAssetId":"lin-wan","text":"船到了。","audioSource":"native"}],"appearances":[{"characterAssetId":"lin-wan","lookId":"coat"}],"inputs":[{"role":"first_frame","path":"productions/demo/assets/harbor.png"}]},
+    {"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"productions/demo/S1E01/takes/harbor.mp4","service":"已完成的生成任务"}
+  ]
+}
+```
+
+把示例中的路径改为当前会话的实际文件。尚未生成候选时，先建镜头，生成完成后再登记。
+
+## 生成、派生、尾帧衔接与外部编排
+
 制作面板负责审核、建议、批准与取消；智能体通过制作工具执行工作。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生模板及参数表。请求不可用时按错误返回的可用项调整规划。
 
 - `production_plan` 预览当前镜头输入和通道；`production_generate(episode_id, shot_code, params?)` 提交一次生成。`params` 为模板参数 key 对应的字符串、数值或布尔值对象，省略时取模板缺省值。

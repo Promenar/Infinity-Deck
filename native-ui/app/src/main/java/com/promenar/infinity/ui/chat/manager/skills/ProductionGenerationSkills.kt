@@ -39,11 +39,11 @@ class ProductionGenerationTasksSkill(private val store: () -> ShotGenerationStor
         arguments(args, emptySet(), setOf("episode_id", "shot_code", "limit", "offset"))
         val episode = if ("episode_id" in args) stringArgument(args, "episode_id") else null
         val shot = if ("shot_code" in args) stringArgument(args, "shot_code") else null
-        require(shot == null || episode != null)
-        fun integer(key: String, fallback: Int) = if (key !in args) fallback else (args[key] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: throw IllegalArgumentException("$key")
-        val limit = integer("limit", 50).also { require(it in 1..100) }
-        val offset = integer("offset", 0).also { require(it >= 0) }
-        val project = store().load(context.sessionId)?.production ?: throw IllegalArgumentException("project")
+        require(shot == null || episode != null) { "按 shot_code 筛选时必须同时提供 episode_id。" }
+        fun integer(key: String, fallback: Int) = if (key !in args) fallback else (args[key] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: throw IllegalArgumentException("$key 必须是整数。")
+        val limit = integer("limit", 50).also { require(it in 1..100) { "limit 必须为 1～100 的整数。" } }
+        val offset = integer("offset", 0).also { require(it >= 0) { "offset 必须为非负整数。" } }
+        val project = store().load(context.sessionId)?.production ?: throw IllegalArgumentException("当前会话没有制作项目。")
         val tasks = queue().observeTasks().first().filter { task ->
             val source = ProductionSourceRef.parse(task.request.sourceRef.removeSuffix("/preview"))
             project.ownsTask(task) && (episode == null || source?.episodeId == episode) && (shot == null || source?.shotCode == shot)
@@ -65,11 +65,20 @@ abstract class ProductionGenerationTool(override val name: String, override val 
     final override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
         try { ToolResult(id = name, content = run(args, context).toString()) }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: Exception) { ToolResult(id = name, status = "error", content = buildJsonObject { put("error", "INVALID_PRODUCTION_GENERATION"); put("message", (failure as? IllegalArgumentException)?.message?.takeIf { it.any { c -> c.code > 0x2E80 } }?.take(1200) ?: "请核对工具参数、当前项目和生成通道。") }.toString()) }
+        catch (failure: Exception) {
+            val reason = (failure as? IllegalArgumentException)?.message
+                ?.takeIf { it.any { c -> c.code > 0x2E80 } }?.take(1200)
+                ?: "请核对工具参数、当前项目和生成通道。"
+            ToolResult(id = name, status = "error", content = buildJsonObject {
+                put("error", if (reason.contains("当前会话没有制作项目")) "no_project" else "INVALID_PRODUCTION_GENERATION")
+                put("message", reason)
+                put("suggestion", productionErrorSuggestion(reason))
+            }.toString())
+        }
     }
 }
-private fun arguments(args: JsonObject, required: Set<String>, allowed: Set<String>) { require(args.keys.containsAll(required) && args.keys.all { it in allowed }) }
-private fun stringArgument(args: JsonObject, name: String) = (args[name] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() && it.length <= 300 } ?: throw IllegalArgumentException(name)
+private fun arguments(args: JsonObject, required: Set<String>, allowed: Set<String>) = validateProductionToolKeys(args, required, allowed)
+private fun stringArgument(args: JsonObject, name: String) = (args[name] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() && it.length <= 300 } ?: throw IllegalArgumentException("$name 必须是 1～300 字的非空字符串。")
 private fun shotArguments(args: JsonObject): Pair<String, String> { arguments(args, setOf("episode_id", "shot_code"), setOf("episode_id", "shot_code")); return stringArgument(args, "episode_id") to stringArgument(args, "shot_code") }
 private fun moneyJson(money: Money?): JsonElement = money?.let { buildJsonObject { put("amount", it.amount.toPlainString()); put("currency", it.currency) } } ?: JsonNull
 internal fun shotPlanJson(plan: ShotPlanPreview): JsonObject = buildJsonObject {

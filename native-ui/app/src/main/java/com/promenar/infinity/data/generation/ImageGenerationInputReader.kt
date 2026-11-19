@@ -1,6 +1,8 @@
 package com.promenar.infinity.data.generation
 
 import com.promenar.infinity.data.media.MediaTypeSniffer
+import com.promenar.infinity.data.production.ProductionManifestCodec
+import com.promenar.infinity.data.production.privateProductionLocalPath
 import com.promenar.infinity.data.rag.ImageGenInput
 import com.promenar.infinity.domain.media.*
 import java.io.ByteArrayOutputStream
@@ -8,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
+
+private val uriScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
 
 data class ImageGenerationInputs(val images: List<ImageGenInput>, val mask: ImageGenInput?, val paths: List<String>, val maskPath: String?, val markup: ImageGenInput? = null, val markupPath: String? = null)
 
@@ -17,13 +21,48 @@ class ImageGenerationInputReader(private val resolver: WorkspaceMediaResolver) {
         require(paths.size in 1..16) { "images 必须包含 1–16 张 PNG/WebP/JPEG 图片。" }
         require(mask == null || markup == null) { "markup 与 mask 不能同时提供。" }
         suspend fun load(path: String, index: Int, layer: String? = null): Pair<ImageGenInput, MediaRef> {
-            val resolved = resolver.resolve(sessionId, path)
-            require(resolved is MediaResolution.Available) { "$path：工作区图片路径无效、越界或不可读（${(resolved as? MediaResolution.Unavailable)?.reason}）。" }
+            require(!uriScheme.containsMatchIn(path.trimStart()) && "://" !in path) {
+                "$path：参考图不接受 URI，请使用工作区文件路径。"
+            }
+            suspend fun mappedPath(): String = try {
+                resolver.productionPath(sessionId, path)
+            } catch (_: UnsupportedOperationException) {
+                path
+            } catch (failure: WorkspaceMediaException) {
+                throw IllegalArgumentException("$path：制作路径无法映射，工作区或挂载不可用，请检查目录和授权。", failure)
+            }
+            // 清单中的显式私有路径只在制作命名空间有效。
+            val explicitPrivate = privateProductionLocalPath(path) != null
+            val direct = resolver.resolve(sessionId, if (explicitPrivate) mappedPath() else path)
+            val resolved = if (!explicitPrivate && direct is MediaResolution.Unavailable && direct.reason == MediaUnavailableReason.NOT_FOUND &&
+                !path.startsWith('/') && runCatching { ProductionManifestCodec.validatePath(path) }.isSuccess
+            ) {
+                val mapped = mappedPath()
+                if (mapped == path) direct else resolver.resolve(sessionId, mapped)
+            } else direct
+            if (resolved is MediaResolution.Unavailable) {
+                val reason = when (resolved.reason) {
+                    MediaUnavailableReason.INVALID_PATH -> "工作区路径无效、越界或包含保留名称。"
+                    MediaUnavailableReason.NOT_FOUND -> "工作区文件不存在，请核对路径。"
+                    MediaUnavailableReason.IS_DIRECTORY -> "路径指向目录，请指定图片文件。"
+                    MediaUnavailableReason.UNREADABLE -> "工作区文件不可读，请检查文件和授权。"
+                }
+                throw IllegalArgumentException("$path：$reason")
+            }
+            require(resolved is MediaResolution.Available) { "$path：工作区文件不可用。" }
             val limit = (if (layer != null) 4 else 50) * 1024 * 1024
             val limitText = if (layer != null) "$layer 必须小于 4 MiB" else "每张图片必须小于 50 MiB"
             require(resolved.ref.kind == MediaKind.IMAGE) { "$path：只允许 PNG/WebP/JPEG 图片。" }
             require(resolved.ref.sizeBytes < limit) { "$path：$limitText。" }
-            val bytes = resolver.open(resolved).use { input ->
+            val source = try {
+                resolver.open(resolved)
+            } catch (failure: WorkspaceMediaException) {
+                val reason = if (failure.code == "WORKSPACE_UNAVAILABLE") {
+                    "打开图片时工作区或挂载已变化，请重新确认路径与授权后重试。"
+                } else "无法打开工作区图片。${failure.message}"
+                throw IllegalArgumentException("$path：$reason", failure)
+            }
+            val bytes = source.use { input ->
                 val output = ByteArrayOutputStream()
                 val buffer = ByteArray(64 * 1024)
                 while (true) {

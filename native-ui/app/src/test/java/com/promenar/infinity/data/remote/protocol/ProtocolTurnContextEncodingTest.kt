@@ -4,7 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -195,7 +195,7 @@ class ProtocolTurnContextEncodingTest {
             val response = if (request.url.host == "oauth2.googleapis.com") {
                 """{"access_token":"fixture-token","expires_in":3600}"""
             } else {
-                bodies += request.body.toByteReadPacket().readText()
+                bodies += request.body.toByteArray().decodeToString()
                 when (wire) {
                     WireProtocol.OPENAI, WireProtocol.GENERIC ->
                         """{"choices":[{"message":{"content":"完成"},"finish_reason":"stop"}]}"""

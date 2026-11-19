@@ -5,11 +5,10 @@ import com.promenar.infinity.data.model.params.ReasoningEffort
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -25,7 +24,7 @@ class ReasoningRequestBodyTest {
     private suspend fun body(build: (HttpClient) -> LlmProtocol, request: PromptRequest): JsonObject {
         var captured: String? = null
         val engine = MockEngine { call ->
-            captured = call.body.toByteReadPacket().readText()
+            captured = call.body.toByteArray().decodeToString()
             respond("{}", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         }
         runCatching { build(HttpClient(engine)).sendPromptSync(request.copy(stream = false)) }

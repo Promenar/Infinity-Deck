@@ -5,12 +5,11 @@ import com.promenar.infinity.BuildConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteChannel
-import io.ktor.utils.io.core.readText
 import io.ktor.utils.io.writeStringUtf8
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -25,7 +24,7 @@ class McpClientContractTest {
     fun `tools list使用2026现代headers meta精确id并消费全部分页`() = runTest {
         val bodies = mutableListOf<String>()
         val engine = MockEngine { request ->
-            val body = request.body.toByteReadPacket().readText()
+            val body = request.body.toByteArray().decodeToString()
             bodies += body
             assertThat(request.headers["MCP-Protocol-Version"]).isEqualTo("2026-07-28")
             assertThat(request.headers["Mcp-Method"]).isEqualTo("tools/list")
@@ -58,13 +57,13 @@ class McpClientContractTest {
         var calls = 0
         assertThat(failure(MockEngine { request ->
             calls++
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond(json(id.toString(), """{"tools":[],"nextCursor":"loop"}"""))
         })).isNotNull()
         assertThat(calls).isAtMost(2)
 
         assertThat(failure(MockEngine { request ->
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond(json(id.toString(), """{"tools":[{"name":"dup","inputSchema":{"type":"object"}},{"name":"dup","inputSchema":{"type":"object"}}]}"""))
         })).isNotNull()
 
@@ -75,7 +74,7 @@ class McpClientContractTest {
     @Test
     fun `Streamable HTTP SSE可忽略通知并解析精确响应id`() = runTest {
         val engine = MockEngine { request ->
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             respond(
                 """: keepalive
 
@@ -104,7 +103,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
             "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n\n",
         )
         val engine = MockEngine { request ->
-            val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+            val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
             assertThat(id).isEqualTo(JsonPrimitive(1))
             respond(
                 responseBody,
@@ -125,7 +124,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
     fun `Streamable HTTP SSE错id截断与事件超限均失败关闭`() = runTest {
         suspend fun failure(body: (String) -> String): Throwable? = runCatching {
             McpClient(HttpClient(MockEngine { request ->
-                val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                 respond(
                     body(id.toString()),
                     HttpStatusCode.OK,
@@ -149,7 +148,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
     fun `Streamable HTTP SSE畸形事件或错id响应后即使出现精确响应也失败关闭`() = runTest {
         suspend fun failure(body: (String) -> String): Throwable? = runCatching {
             McpClient(HttpClient(MockEngine { request ->
-                val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                 respond(
                     body(id.toString()),
                     HttpStatusCode.OK,
@@ -216,7 +215,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
         ).forEach { tool ->
             val error = runCatching {
                 McpClient(HttpClient(MockEngine { request ->
-                    val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                    val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                     respond(json(id.toString(), """{"tools":[$tool]}"""))
                 }), "https://mcp.example.test").listTools()
             }.exceptionOrNull()
@@ -228,7 +227,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
     fun `x mcp header只接受primitive并映射到调用header`() = runTest {
         var callHeaders: Map<String, String> = emptyMap()
         val engine = MockEngine { request ->
-            val body = request.body.toByteReadPacket().readText()
+            val body = request.body.toByteArray().decodeToString()
             val root = Json.parseToJsonElement(body).jsonObject
             val id = root.getValue("id").toString()
             when (root.getValue("method").toString().trim('"')) {
@@ -256,7 +255,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
 
         val invalid = runCatching {
             McpClient(HttpClient(MockEngine { request ->
-                val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                 respond(json(id.toString(), """{"tools":[{"name":"bad","inputSchema":{"type":"object","properties":{"nested":{"type":"object","x-mcp-header":true}}}}]}"""))
             }), "https://mcp.example.test").listTools()
         }.exceptionOrNull()
@@ -264,7 +263,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
 
         val nestedInvalid = runCatching {
             McpClient(HttpClient(MockEngine { request ->
-                val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                 respond(json(id.toString(), """{"tools":[{"name":"bad","inputSchema":{"type":"object","properties":{"outer":{"type":"object","properties":{"tenant":{"type":"string","x-mcp-header":true}}}}}}]}"""))
             }), "https://mcp.example.test").listTools()
         }.exceptionOrNull()
@@ -275,7 +274,7 @@ data: "id":$id,"result":{"tools":[{"name":"sse_tool","inputSchema":{"type":"obje
     fun `isError与input required都作为稳定失败而非成功`() = runTest {
         suspend fun call(result: String): Throwable? {
             val engine = MockEngine { request ->
-                val id = Json.parseToJsonElement(request.body.toByteReadPacket().readText()).jsonObject["id"]
+                val id = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject["id"]
                 respond(json(id.toString(), result))
             }
             return runCatching {

@@ -35,6 +35,7 @@ interface CutOutputStore {
 data class CutOutputTarget(
     val backend: ExternalFolderBackend,
     val afterWrite: suspend () -> Unit = {},
+    val backendPath: String? = null,
 )
 
 /** 成片先冻结到本地，工作区替换失败时用本地备份补偿，所有删除均绑定身份和摘要。 */
@@ -46,7 +47,7 @@ class WorkspaceCutOutputStore(
     private data class LocalFile(val file: File, val size: Long, val sha256: String)
     private data class Original(val entry: ExternalFolderEntry, val local: LocalFile)
     private class Output(val path: String, val target: CutOutputTarget, val local: LocalFile) {
-        val virtualPath = "/$path"
+        val virtualPath = target.backendPath ?: "/$path"
         var original: Original? = null
         var deleteAttempted = false
         var writeAttempted = false

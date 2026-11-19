@@ -5,6 +5,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import io.ktor.utils.io.ByteChannel
+import io.ktor.utils.io.writeFully
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
@@ -51,7 +52,7 @@ class ProviderListModelsCancellationTest {
     @Test
     fun `Anthropic listModels preserves cancellation while reading response body`() = runTest {
         val responseBody = ByteChannel(autoFlush = true)
-        responseBody.close(CancellationException("list-models-body-cancelled"))
+        responseBody.cancel(CancellationException("list-models-body-cancelled"))
         val protocol = AnthropicProtocol(
             baseUrl = "https://api.anthropic.com",
             apiKey = "fake-key",
@@ -76,7 +77,7 @@ class ProviderListModelsCancellationTest {
         val responseBody = ByteChannel(autoFlush = true)
         val partial = """{"data":[""".toByteArray()
         responseBody.writeFully(partial, 0, partial.size)
-        responseBody.close(IOException("truncated-model-list"))
+        responseBody.cancel(IOException("truncated-model-list"))
         val protocol = AnthropicProtocol(
             baseUrl = "https://api.anthropic.com",
             apiKey = "fake-key",

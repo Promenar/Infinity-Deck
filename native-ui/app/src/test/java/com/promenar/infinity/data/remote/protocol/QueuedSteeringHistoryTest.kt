@@ -4,11 +4,10 @@ import com.google.common.truth.Truth.assertThat
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.engine.mock.toByteReadPacket
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -33,7 +32,7 @@ class QueuedSteeringHistoryTest {
     private suspend fun capture(factory: (HttpClient) -> LlmProtocol): JsonObject {
         var body = ""
         val client = HttpClient(MockEngine { incoming ->
-            body = incoming.body.toByteReadPacket().readText()
+            body = incoming.body.toByteArray().decodeToString()
             respond("", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "text/event-stream"))
         })
         try { factory(client).sendPrompt(request()).toList() } finally { client.close() }

@@ -1123,6 +1123,24 @@ class ToolExecutorTest {
     }
 
     @Test
+    fun `制作批次 schema 拒绝时把多项纠正说明完整回传`() = testScope.runTest {
+        seedSessionWithAssistant()
+        val update = com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(io.mockk.mockk())
+        val skill = testSkill(name = update.name, schema = update.parametersSchema) {
+            error("无效制作批次不得执行")
+        }
+        val registry = singleSkillRegistry(skill)
+        val executor = ToolExecutor(store, messageManager, registry, testToolResolver(registry), ledger = RecordingLedger())
+        val invalid = List(9) { """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","inputs":[{"role":"missing"}]}""" }
+        val args = """{"operations":[0,${invalid.joinToString(",")}]}"""
+        executor.executeTools("s1", "m1", listOf(ToolCall("production", skill.name, args)), preparedTools = listOf(skill.toPreparedTool()))
+        advanceUntilIdle()
+        val feedback = store.getSession("s1")!!.messages.single { it.toolCallId == "production" }.content
+        assertThat(feedback).contains("第 10 项（upsert_shot）")
+        assertThat(feedback).contains("inputs[0]")
+    }
+
+    @Test
     fun malformedUnknownAndSchemaMismatchFailDeterministicallyWithoutExecution() = testScope.runTest {
         seedSessionWithAssistant()
         var executions = 0

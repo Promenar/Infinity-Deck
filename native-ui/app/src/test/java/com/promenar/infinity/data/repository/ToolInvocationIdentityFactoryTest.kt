@@ -24,6 +24,26 @@ class ToolInvocationIdentityFactoryTest {
         function = ProtocolToolFunction(name, description, schema),
     )
 
+    @Test fun `账本拒绝错误 schema 同时保留参考图和制作批次的纠正信息`() {
+        val image = tool(name = "generate_image", schema =
+            """{"type":"object","properties":{"prompt":{"type":"string"}},"required":["prompt"],"additionalProperties":false}""")
+        val imageError = ToolInvocationIdentityFactory.fromPreparedToolCall(
+            ToolCall("image", "generate_image", """{"prompt":"画图","reference_image":"/media/a.png"}"""), image, false,
+        ) as ToolInvocationIdentityResolution.Invalid
+        assertThat(imageError.code).isEqualTo(ToolInvocationIdentityErrorCode.SCHEMA_MISMATCH)
+        assertThat(imageError.message).contains("数组键 images")
+
+        val update = com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(io.mockk.mockk())
+        val productionError = ToolInvocationIdentityFactory.fromPreparedToolCall(
+            ToolCall("production", update.name, """{"operations":[5,{"op":"upsert_scene","episode_id":"S1E01","title":"场"}]}"""),
+            tool(name = update.name, schema = update.parametersSchema), false,
+        ) as ToolInvocationIdentityResolution.Invalid
+        assertThat(productionError.code).isEqualTo(ToolInvocationIdentityErrorCode.SCHEMA_MISMATCH)
+        assertThat(productionError.message).contains("第 1 项")
+        assertThat(productionError.message).contains("第 2 项（upsert_scene）")
+        assertThat(productionError.message).contains("heading")
+    }
+
     @Test
     fun `schema 对象键重排不改变 definition digest`() {
         val first = tool(schema = """{"type":"object","properties":{"b":{"type":"integer"},"a":{"type":"string"}},"required":["a"]}""")

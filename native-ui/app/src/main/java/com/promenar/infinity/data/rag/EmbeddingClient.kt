@@ -278,7 +278,11 @@ class EmbeddingClient(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: IOException) {
-                if (failure is java.net.SocketTimeoutException || failure is HttpRequestTimeoutException) {
+                // Ktor 3 会把读取通道的底层超时包在关闭异常中。
+                val timeout = generateSequence<Throwable>(failure) { it.cause }.take(8).any {
+                    it is java.net.SocketTimeoutException || it is HttpRequestTimeoutException
+                }
+                if (timeout) {
                     throw EmbeddingTimeoutException()
                 }
                 throw EmbeddingBatchException("向量请求网络错误，请检查连接", true)

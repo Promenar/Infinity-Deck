@@ -12,8 +12,23 @@ data class ImageGenerationRequest(
     val markup: String? = null,
 )
 
+private val imageGenerationKeys = setOf(
+    "prompt", "size", "quality", "background", "output_format", "output_compression", "n",
+    "images", "mask", "markup", "input_fidelity",
+    "yield_after_seconds", "run_in_background", "on_exit", "max_runtime_minutes",
+)
+private val referenceImageAliases = setOf("image", "reference_image", "reference_images", "input_images")
+
 /** 保留未指定参数的空值，交给所选模型使用默认值。 */
 fun parseImageGenerationRequest(args: JsonObject): ImageGenerationRequest {
+    val unknown = args.keys - imageGenerationKeys
+    require(unknown.isEmpty()) {
+        val fields = unknown.joinToString("、")
+        val hint = if (unknown.any { it in referenceImageAliases }) {
+            """参考图必须使用数组键 images，例如 {"prompt":"调整光线","images":["/media/ref.png"]}。"""
+        } else "请使用工具定义中的参数。"
+        "generate_image 含未知字段 $fields。$hint"
+    }
     fun string(key: String): String? {
         if (key !in args) return null
         val value = args[key] as? JsonPrimitive

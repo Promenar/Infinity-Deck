@@ -8,7 +8,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.core.ByteReadPacket
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -73,9 +72,9 @@ class SearchProviderCancellationTest {
         contentType: String,
     ): HttpClient {
         val body = object : ByteReadChannel by ByteReadChannel(ByteArray(0)) {
-            override suspend fun readRemaining(limit: Long): ByteReadPacket {
-                throw cancellation
-            }
+            override val isClosedForRead = false
+            @OptIn(io.ktor.utils.io.InternalAPI::class)
+            override val readBuffer: kotlinx.io.Source get() = throw cancellation
         }
         return HttpClient(MockEngine {
             respond(

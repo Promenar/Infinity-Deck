@@ -1928,7 +1928,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     }
 
     val productionRepository by lazy {
-        com.promenar.infinity.data.repository.ProductionRepository(database, com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles(workspaceRepository, fileOperationRepository, externalFolderManager, workspaceMediaResolver))
+        com.promenar.infinity.data.repository.ProductionRepository(database, com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles(
+            workspaceRepository, fileOperationRepository, externalFolderManager, workspaceMediaResolver,
+            sessionRunModes::modeFor, sessionWorkspaceResolver::resolve,
+        ))
     }
 
     val comfyMedia by lazy {

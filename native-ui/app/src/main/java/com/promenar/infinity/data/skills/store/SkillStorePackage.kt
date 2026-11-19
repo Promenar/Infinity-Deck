@@ -2,6 +2,7 @@ package com.promenar.infinity.data.skills.store
 
 import com.promenar.infinity.data.skills.AgentSkillStore
 import com.promenar.infinity.data.skills.SkillMarkdownParser
+import io.ktor.utils.io.readAvailable
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel

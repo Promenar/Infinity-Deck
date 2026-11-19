@@ -8,7 +8,8 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
 import io.ktor.http.HttpStatusCode
 import io.ktor.utils.io.ByteChannel
-import io.ktor.utils.io.core.readText
+import io.ktor.utils.io.readRemaining
+import kotlinx.io.readString
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
@@ -24,14 +25,40 @@ class ImageGenClientProtocolTest {
         name.groupValues[1].ifEmpty { name.groupValues[2] } to part.substring(headerEnd + 4).removeSuffix("\r\n")
     }
 
+    @Test fun `网关拒绝图片字段时保留首个 HTTP 错误且不重发`() = runTest {
+        var requests = 0
+        val http = HttpClient(MockEngine {
+            requests++
+            respond(
+                """{"error":{"param":"image[]","code":"unknown_parameter","message":"Unsupported image[] field; moderation is enabled."}}""",
+                HttpStatusCode.BadRequest,
+            )
+        })
+        http.use {
+            val client = ImageGenClient("https://images.example.test/v1", "test-key", "gpt-image-2", http)
+            val failure = runCatching { client.edit("修改", listOf(ImageGenInput(byteArrayOf(1), "image/png", "ref.png"))) }.exceptionOrNull()
+            assertThat(requests).isEqualTo(1)
+            assertThat(failure?.message).contains("HTTP 400")
+            assertThat(failure?.message).contains("image[]")
+        }
+        assertThat(rejectsModerationParameter("""{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'image[]'. Request includes moderation."}}""")).isFalse()
+        assertThat(rejectsModerationParameter("""{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'moderation'."}}""")).isTrue()
+        assertThat(rejectsModerationParameter("""{"error":{"param":"moderation","code":"moderation_blocked","message":"Unsupported content."}}""")).isFalse()
+        assertThat(rejectsModerationParameter("""{"error":{"param":"moderation","code":"content_filter","message":"Your request was rejected by our content policy."}}""")).isFalse()
+        assertThat(rejectsModerationParameter("""{"error":{"param":"moderation","code":"rate_limit_exceeded","message":"Too many requests."}}""")).isFalse()
+        assertThat(rejectsModerationParameter("""{"error":{"param":"moderation","type":"moderation_rejected","message":"Prompt blocked by moderation."}}""")).isFalse()
+        assertThat(rejectsModerationParameter("""{"error":{"param":"moderation","type":"rate_limit_error","message":"Rate limit exceeded."}}""")).isFalse()
+        assertThat(rejectsModerationParameter("""{"error":{"param":"moderation","type":"invalid_request_error"}}""")).isTrue()
+    }
+
     @Test fun `标注通过multipart发送且审核参数回退保留文件`() = runTest {
         val sent = mutableListOf<List<Pair<String, String>>>()
         val http = HttpClient(MockEngine { request ->
             val body = request.body as OutgoingContent.WriteChannelContent
             val text = coroutineScope {
                 val channel = ByteChannel(autoFlush = true)
-                val reader = async { channel.readRemaining().readText() }
-                body.writeTo(channel); channel.close(null); reader.await()
+                val reader = async { channel.readRemaining().readString() }
+                body.writeTo(channel); channel.flushAndClose(); reader.await()
             }
             assertThat(text).contains("filename=\"markup.png\"")
             val fields = multipartFields(text)
@@ -78,9 +105,9 @@ class ImageGenClientProtocolTest {
             assertThat(body.contentType.toString()).startsWith("multipart/form-data; boundary=")
             val text = coroutineScope {
                 val channel = ByteChannel(autoFlush = true)
-                val reader = async { channel.readRemaining().readText() }
+                val reader = async { channel.readRemaining().readString() }
                 body.writeTo(channel)
-                channel.close(null)
+                channel.flushAndClose()
                 reader.await()
             }
             val fields = multipartFields(text)
@@ -115,8 +142,8 @@ class ImageGenClientProtocolTest {
             val body = request.body as OutgoingContent.WriteChannelContent
             val text = coroutineScope {
                 val channel = ByteChannel(autoFlush = true)
-                val reader = async { channel.readRemaining().readText() }
-                body.writeTo(channel); channel.close(null); reader.await()
+                val reader = async { channel.readRemaining().readString() }
+                body.writeTo(channel); channel.flushAndClose(); reader.await()
             }
             assertThat(multipartFields(text).map { it.first })
                 .containsExactly("model", "prompt", "moderation", "image[]")
@@ -223,8 +250,8 @@ class ImageGenClientProtocolTest {
             val body = request.body as OutgoingContent.WriteChannelContent
             val text = coroutineScope {
                 val channel = ByteChannel(autoFlush = true)
-                val reader = async { channel.readRemaining().readText() }
-                body.writeTo(channel); channel.close(null); reader.await()
+                val reader = async { channel.readRemaining().readString() }
+                body.writeTo(channel); channel.flushAndClose(); reader.await()
             }
             val names = multipartFields(text).map { it.first }
             sent += names

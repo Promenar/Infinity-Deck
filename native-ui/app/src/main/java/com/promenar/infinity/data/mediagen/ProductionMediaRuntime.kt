@@ -16,7 +16,7 @@ import kotlinx.serialization.json.Json
 class ProductionMediaRuntime(private val app: InfinityApplication) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val providers = ProviderManager.getInstance()
-    private val files = DefaultProductionWorkspaceFiles(app.workspaceRepository, app.fileOperationRepository, app.externalFolderManager, app.workspaceMediaResolver)
+    private val files = DefaultProductionWorkspaceFiles(app.workspaceRepository, app.fileOperationRepository, app.externalFolderManager, app.workspaceMediaResolver, app.sessionRunModes::modeFor, app.sessionWorkspaceResolver::resolve)
     private val models = ProviderCloudMediaModelSource(providers)
     private val http = KtorCloudMediaHttp(providers)
     private val inputs = WorkspaceCloudMediaInputSource(app.workspaceMediaResolver)
@@ -48,7 +48,7 @@ class ProductionMediaRuntime(private val app: InfinityApplication) {
     val processing: ProductionProcessing by lazy { DefaultProductionProcessing(workStore, registry, queue, ::templates, ::planningSpecs, files::isImageOrVideo) }
     val chains by lazy { ShotChainCoordinator(workStore, registry, queue, planner, chainMediaOps,
         fingerprint = { id -> registry.channel(id)?.let { template(it)?.fingerprint() } }, ready = ::channelReady, specsFor = ::planningSpecs) }
-    val runs by lazy { ProductionRunService(workStore, chainMediaOps::spec, files::isImageOrVideo, fileAudit::scan) }
+    val runs by lazy { ProductionRunService(workStore, chainMediaOps::spec, files::isImageOrVideo, fileAudit::scan, normalizePath = files::normalizeRelativePath) }
     val store: ShotGenerationStore = RepositoryShotGenerationStore(app.productionRepository,
         byId = { id -> app.database.productionDao().get(id)?.let { Json { ignoreUnknownKeys = true }.decodeFromString(Production.serializer(), it.snapshot) } },
         activeSession = { app.database.productionDao().activeSession(it) }, probe = chainMediaOps::spec)

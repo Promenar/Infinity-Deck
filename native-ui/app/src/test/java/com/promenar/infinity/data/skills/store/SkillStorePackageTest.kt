@@ -14,6 +14,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CompletableDeferred
 import io.ktor.utils.io.ByteChannel
+import io.ktor.utils.io.writeFully
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder

@@ -156,7 +156,7 @@ class KtorWebDavBackupClient(
     }
 
     override suspend fun uploadAtomic(config: WebDavConfig, fileName: String, file: Path) {
-        val size = Files.size(file)
+        val size = withContext(Dispatchers.IO) { Files.size(file) }
         val body = object : OutgoingContent.WriteChannelContent() {
             override val contentLength = size
             override val contentType = ContentType.Application.OctetStream

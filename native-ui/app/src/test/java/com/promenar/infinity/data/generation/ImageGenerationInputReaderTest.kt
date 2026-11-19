@@ -26,6 +26,46 @@ class ImageGenerationInputReaderTest {
         }
     }
 
+    @Test fun `仅制作相对路径不存在时尝试一次映射`() = runTest {
+        val paths = mutableListOf<String>()
+        val relative = "productions/demo/assets/ref.png"
+        val mapped = "/home/session/$relative"
+        val resolver = object : WorkspaceMediaResolver {
+            override suspend fun productionPath(sessionId: String, path: String) = mapped
+            override suspend fun resolve(sessionId: String, path: String): MediaResolution {
+                paths += path
+                return if (path == mapped) {
+                    MediaResolution.Available(MediaRef(path, "image/png", MediaKind.IMAGE, png.size.toLong()), MediaSource.LocalFile(File("unused")))
+                } else MediaResolution.Unavailable(path, MediaUnavailableReason.NOT_FOUND)
+            }
+            override suspend fun open(resolution: MediaResolution.Available) = ByteArrayInputStream(png)
+        }
+        val reader = ImageGenerationInputReader(resolver)
+        assertThat(reader.read("s", listOf(relative), null).paths).containsExactly(mapped)
+        assertThat(paths).containsExactly(relative, mapped).inOrder()
+        paths.clear()
+        assertThat(runCatching { reader.read("s", listOf("/$relative"), null) }.exceptionOrNull()?.message).contains("不存在")
+        assertThat(paths).containsExactly("/$relative")
+        paths.clear()
+        assertThat(reader.read("s", listOf(".infinity-production-private/$relative"), null).paths).containsExactly(mapped)
+        assertThat(paths).containsExactly(mapped)
+    }
+
+    @Test fun `区分 URI 目录不可读与打开时的挂载变化`() = runTest {
+        val resolver = Resolver()
+        val reader = ImageGenerationInputReader(resolver)
+        suspend fun message(path: String) = runCatching { reader.read("s", listOf(path), null) }.exceptionOrNull()?.message
+        assertThat(message("content://image/123")).contains("URI")
+        mapOf(MediaUnavailableReason.INVALID_PATH to "越界", MediaUnavailableReason.NOT_FOUND to "不存在",
+            MediaUnavailableReason.IS_DIRECTORY to "指向目录", MediaUnavailableReason.UNREADABLE to "不可读").forEach { (reason, text) ->
+            resolver.resolution = MediaResolution.Unavailable("/media/a.png", reason)
+            assertThat(message("/media/a.png")).contains(text)
+        }
+        resolver.available(png.size.toLong())
+        resolver.stream = { throw WorkspaceMediaException("WORKSPACE_UNAVAILABLE", "挂载失效") }
+        assertThat(message("/media/a.png")).contains("挂载已变化")
+    }
+
     @Test fun `标注必须为PNG且尺寸与第一张输入相同`() = runTest {
         val resolver = object : WorkspaceMediaResolver {
             var jpeg = true

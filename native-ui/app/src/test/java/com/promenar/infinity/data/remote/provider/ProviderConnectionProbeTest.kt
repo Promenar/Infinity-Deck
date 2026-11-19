@@ -71,7 +71,7 @@ class ProviderConnectionProbeTest {
         val probe = ProviderConnectionProbe(
             HttpClient(MockEngine { request ->
                 urls += request.url.toString()
-                formBody = request.body.toByteReadPacket().readText()
+                formBody = request.body.toByteArray().decodeToString()
                 respond(
                     content = """{"access_token":"fake-access-token","expires_in":3600}""",
                     status = HttpStatusCode.OK,

@@ -8,6 +8,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.background.cut.CutExportForegroundService
 import com.promenar.infinity.data.production.ProductionManifestCodec
 import com.promenar.infinity.data.production.ProductionUserAction
+import com.promenar.infinity.data.production.privateProductionLocalPath
 import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.data.storage.namespaceBindings
 import com.promenar.infinity.data.workspace.SessionWorkspace
@@ -27,13 +28,18 @@ class ProductionCutRuntime(private val app: InfinityApplication) {
         val binding = requireNotNull(currentCoroutineContext()[CutWorkspaceOperation]?.binding)
         binding.verify()
         val bindings = app.externalFolderManager.namespaceBindings(sessionId)
-        val mounted = ExternalMountPaths.aliasOf("/$path", ExternalMountPaths.WORKSPACE_ALIAS in bindings) != null
+        val privatePath = privateProductionLocalPath(path)
+        val mounted = privatePath == null && ExternalMountPaths.aliasOf("/$path", ExternalMountPaths.WORKSPACE_ALIAS in bindings) != null
         if (mounted) {
             CutOutputTarget(GuardedCutBackend(app.externalFolderManager.backend(sessionId, bindings), binding.verify))
         } else {
             val root = app.workspaceRepository.ensureSessionRoot(sessionId)
             val backend = PrivateWorkspaceTransferBackend(app.workspaceRepository, root.uuid)
-            CutOutputTarget(GuardedCutBackend(backend, binding.verify), afterWrite = { binding.verify(); backend.confirmCreated(); Unit })
+            CutOutputTarget(
+                GuardedCutBackend(backend, binding.verify),
+                afterWrite = { binding.verify(); backend.confirmCreated(); Unit },
+                backendPath = privatePath,
+            )
         }
     })
     val controller: DefaultCutExportController = DefaultCutExportController(store, WorkspaceCutMediaProbe(app, app.workspaceMediaResolver),

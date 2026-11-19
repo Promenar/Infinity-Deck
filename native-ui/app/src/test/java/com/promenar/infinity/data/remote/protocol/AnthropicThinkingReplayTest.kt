@@ -7,7 +7,6 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import io.ktor.utils.io.core.readText
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -31,7 +30,7 @@ class AnthropicThinkingReplayTest {
         apiKey = "test-key",
         model = model,
         httpClient = HttpClient(MockEngine { request ->
-            bodies += request.body.toByteReadPacket().readText()
+            bodies += request.body.toByteArray().decodeToString()
             respond(bodies.size)
         }),
     )

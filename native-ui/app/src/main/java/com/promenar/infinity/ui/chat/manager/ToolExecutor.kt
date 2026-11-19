@@ -692,13 +692,17 @@ class ToolExecutor internal constructor(
             requiresApproval = false,
         ),
         persistedIdentity = persistedIdentity,
-        feedback = invalidCallFeedback(code, detail),
+        feedback = invalidCallFeedback(
+            code, detail,
+            if (call.name == "production_update" && code == ToolInvocationIdentityErrorCode.SCHEMA_MISMATCH)
+                com.promenar.infinity.data.production.PRODUCTION_BATCH_ERROR_LIMIT else MAX_INVALID_DETAIL_CHARS,
+        ),
         code = code,
     )
 
     /** 回传给模型的预检失败说明：给出可纠错的具体原因，不回显参数原文。 */
-    private fun invalidCallFeedback(code: ToolInvocationIdentityErrorCode, detail: String?): String {
-        val reason = detail?.take(MAX_INVALID_DETAIL_CHARS) ?: when (code) {
+    private fun invalidCallFeedback(code: ToolInvocationIdentityErrorCode, detail: String?, detailLimit: Int): String {
+        val reason = detail?.take(detailLimit) ?: when (code) {
             ToolInvocationIdentityErrorCode.MALFORMED_ARGUMENTS -> "参数不是合法 JSON。"
             ToolInvocationIdentityErrorCode.ROOT_ARGUMENTS_NOT_OBJECT -> "参数根节点必须是 JSON object。"
             else -> "工具定义或参数校验未通过。"

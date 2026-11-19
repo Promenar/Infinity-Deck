@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.model.catalog
 
 import android.app.Application
+import io.ktor.utils.io.readAvailable
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout

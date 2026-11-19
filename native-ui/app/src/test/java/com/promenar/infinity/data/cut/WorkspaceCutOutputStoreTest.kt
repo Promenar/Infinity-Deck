@@ -50,6 +50,20 @@ class WorkspaceCutOutputStoreTest {
             CutOutputTarget(backend, afterWrite)
         }, now = { 123L })
 
+    @Test fun `显式私有目录使用后端路径写文件并登记清单路径`() = runBlocking {
+        val backend = MemoryBackend()
+        val prefix = ".infinity-production-private/"
+        val plan = plan().copy(videoPath = prefix + videoPath, subtitlePath = prefix + subtitlePath)
+        val store = WorkspaceCutOutputStore(cache(), { _, path ->
+            CutOutputTarget(backend, backendPath = com.promenar.infinity.data.production.privateProductionLocalPath(path))
+        })
+        val record = store.publish("session", plan, video()) { }
+        assertThat(record.videoPath).isEqualTo(plan.videoPath)
+        assertThat(record.subtitlePath).isEqualTo(plan.subtitlePath)
+        assertThat(backend.text(videoPath)).isEqualTo(videoBytes.toString(Charsets.UTF_8))
+        assertThat(backend.text(subtitlePath)).isEqualTo(subtitles)
+    }
+
     @Test fun `首次发布先完成两文件再登记且所有媒体通过流式接口传输`() = runBlocking {
         val backend = MemoryBackend()
         var confirmations = 0

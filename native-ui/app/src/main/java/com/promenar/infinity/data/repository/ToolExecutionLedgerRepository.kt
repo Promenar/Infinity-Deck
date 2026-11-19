@@ -18,6 +18,9 @@ import com.promenar.infinity.domain.tool.ToolArgumentsValidation
 import com.promenar.infinity.domain.tool.ToolArgumentsValidator
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.domain.tool.ToolSchemaValidation
+import com.promenar.infinity.data.generation.parseImageGenerationRequest
+import com.promenar.infinity.data.production.prepareProductionOperations
+import com.promenar.infinity.data.production.productionRelativePathSyntax
 import com.promenar.infinity.domain.tool.ToolSchemaValidator
 import com.promenar.infinity.data.remote.protocol.ProtocolTool
 import kotlinx.coroutines.CancellationException
@@ -263,9 +266,19 @@ object ToolInvocationIdentityFactory {
         }
         val schema = ToolSchemaValidator().validate(digest.canonicalSchema, if (tool.sourceId == "builtin" && com.promenar.infinity.domain.tool.ExecToolArguments.supports(toolName)) com.promenar.infinity.domain.tool.ExecToolArguments.normalize(arguments.arguments).arguments else arguments.arguments)
         if (schema is ToolSchemaValidation.Invalid) {
+            // 保留账本的 schema 门禁，并为内置工具返回其自身可自纠的参数诊断。
+            val detail = if (tool.sourceId == "builtin") {
+                when (toolName) {
+                    "generate_image" -> runCatching { parseImageGenerationRequest(arguments.arguments) }.exceptionOrNull()
+                    "production_update" -> (arguments.arguments["operations"] as? JsonArray)?.let { operations ->
+                        runCatching { prepareProductionOperations(operations, normalize = ::productionRelativePathSyntax) }.exceptionOrNull()
+                    }
+                    else -> null
+                } as? IllegalArgumentException
+            } else null
             return ToolInvocationIdentityResolution.Invalid(
                 ToolInvocationIdentityErrorCode.SCHEMA_MISMATCH,
-                "工具参数不符合 schema：${schema.error.message}（${schema.error.code.name} @ ${schema.error.path}）",
+                detail?.message ?: "工具参数不符合 schema：${schema.error.message}（${schema.error.code.name} @ ${schema.error.path}）",
             )
         }
         return ToolInvocationIdentityResolution.Valid(

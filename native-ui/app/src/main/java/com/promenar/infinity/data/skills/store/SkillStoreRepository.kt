@@ -3,6 +3,7 @@ package com.promenar.infinity.data.skills.store
 import android.content.SharedPreferences
 import com.promenar.infinity.data.skills.SkillCatalog
 import com.promenar.infinity.data.skills.SkillStatus
+import io.ktor.utils.io.readAvailable
 import io.ktor.client.HttpClient
 import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
