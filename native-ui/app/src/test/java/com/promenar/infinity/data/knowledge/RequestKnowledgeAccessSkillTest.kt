@@ -47,7 +47,7 @@ class RequestKnowledgeAccessSkillTest {
             return listOf(KnowledgeBaseSummary("kb", "资料", 2, true))
         }
         override suspend fun snapshot(session: Session, options: RagOptions) = KnowledgeCatalogSnapshot()
-        override fun hasIndexedMaterial(session: Session, options: RagOptions) = false
+        override suspend fun hasIndexedMaterialAsync(session: Session, options: RagOptions) = false
         override suspend fun documentLocation(sessionId: String, reference: RagReference): KnowledgeDocumentLocation? = null
     }
     private val planner = KnowledgeAccessPlanner({ session }, { config }, access, source)

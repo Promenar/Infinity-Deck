@@ -11,6 +11,16 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class LinuxFileSystemTest {
+    @Test fun `同步宿主路径查询可在同一单路IO调度器内完成`() {
+        val io = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1)
+        val confined = LinuxFileSystemImpl(root, { ready }, TestLinuxFileMetadata, io)
+        val result = java.util.concurrent.FutureTask {
+            runBlocking { kotlinx.coroutines.withContext(io) { confined.hostFile("/") } }
+        }
+        Thread(result).apply { isDaemon = true }.start()
+        assertThat(result.get(2, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(root)
+    }
+
     private val base = Files.createTempDirectory("linux-files").toFile().canonicalFile
     private val root = File(base, "rootfs").apply { mkdir() }
     private val home = File(root, "root").apply { mkdir() }

@@ -27,6 +27,7 @@ class GitHubApiForwarder(
 
     /** 首个有效请求绑定命令作用域；keep-alive 不能把连接转交给其它命令。 */
     fun serve(input: InputStream, output: OutputStream, connection: AutoCloseable = AutoCloseable {}, timeout: (Int) -> Unit = {}) {
+        val lifetime = connection as? GitHttpConnection
         val source = BufferedInputStream(input)
         val sink = BufferedOutputStream(output)
         var owner: GitNonceRegistry.Scope? = null
@@ -76,8 +77,9 @@ class GitHubApiForwarder(
                 }
                 val call = client.newCall(request)
                 val cancel = AutoCloseable { call.cancel() }
-                if (scope != null && !scope.register(cancel)) return
+                if (lifetime?.attach(call) == false) return
                 try {
+                    if (scope != null && !scope.register(cancel)) return
                     call.execute().use { response ->
                         if (scope?.revoked == true) return
                         // 未消费完的请求体不能当作下一条请求；包含上游提前返回的情况。
@@ -110,7 +112,10 @@ class GitHubApiForwarder(
                         }
                         if (!keepAlive) return
                     }
-                } finally { scope?.unregister(cancel) }
+                } finally {
+                    scope?.unregister(cancel)
+                    lifetime?.detach(call)
+                }
             }
         } catch (_: BadRequest) {
             diagnostics("gh-proxy: BAD_REQUEST")

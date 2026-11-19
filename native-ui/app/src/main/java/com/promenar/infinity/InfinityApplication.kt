@@ -17,9 +17,9 @@ import com.promenar.infinity.data.local.inference.LocalInferenceRuntimeGate
 import com.promenar.infinity.data.local.inference.SlotType
 import com.promenar.infinity.data.local.db.InfinityDatabase
 import com.promenar.infinity.data.model.ApprovalRequest
+import com.promenar.infinity.ui.chat.manager.registry.getAllToolsAsync
 import com.promenar.infinity.data.repository.ExactToolApprovalDecision
 import com.promenar.infinity.data.repository.ToolExecutionLedger
-import com.promenar.infinity.data.memory.isEnabledForToolAdvertisement
 import com.promenar.infinity.data.local.db.SessionMountNormalizationCallback
 import com.promenar.infinity.data.local.db.LegacyDatabasePromoter
 import com.promenar.infinity.data.backup.BackupRuntime
@@ -1407,6 +1407,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             branchService = { branchService }, branchPlans = branchPlans, sessionMailbox = sessionMailbox,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgeAccessPlanner, knowledgeTurns = knowledgeTurns,
             chatCitationRecorder = com.promenar.infinity.data.library.ask.ChatCitationRecorder(roomKnowledgeCitationRepository),
+            cleanupGate = sessionExecutionGate,
         )
     }
     val generationCoordinator: com.promenar.infinity.domain.generation.GenerationCoordinator by lazy {
@@ -2014,7 +2015,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.RequestKnowledgeAccessSkill(
                 knowledgeAccessPlanner, sessionRepository::getById, { agentRepository.getById(it)?.retrievalConfig }, knowledgeTurns))
             register(com.promenar.infinity.ui.chat.manager.skills.CopyKnowledgeToLinuxSkill(
-                sessionRepository::getById, { current -> knowledgeAccessAllowedForTools(current) }, externalFolderManager,
+                sessionRepository::getById, { current ->
+                    knowledgeAccessAllowedForTools(current, agentRepository.getById(current.agentId)?.retrievalConfig)
+                }, externalFolderManager,
                 workspaceRepository, linux.files, { linux.runtime.state.value is com.promenar.infinity.domain.linux.LinuxRuntimeState.Ready }, ::awaitSessionHomeReconciliation))
             register(CalculatorSkill())
             register(com.promenar.infinity.ui.chat.manager.skills.PetSkill(petPreferenceStore) { id ->
@@ -2183,11 +2186,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             )
         ))
 
-    private fun knowledgeConfigForTools(agentId: String): com.promenar.infinity.data.agent.AgentRetrievalConfig? =
-        database.query(androidx.sqlite.db.SimpleSQLiteQuery("SELECT retrieval_config FROM agents WHERE id = ?", arrayOf(agentId))).use {
-            if (it.moveToFirst()) com.promenar.infinity.data.local.db.Converters.toRetrievalConfig(it.getString(0)) else null
-        }
-
     val knowledgeTurns = com.promenar.infinity.data.knowledge.KnowledgeTurnState()
     val knowledgeCatalog by lazy { com.promenar.infinity.data.knowledge.RoomKnowledgeCatalog(database, externalFolderManager) }
     val knowledgeAccessPlanner by lazy { com.promenar.infinity.data.knowledge.KnowledgeAccessPlanner(
@@ -2201,9 +2199,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         return com.promenar.infinity.data.model.json.encodeToString(knowledgeAccessPlanner.preview(session.id, base, accessMode))
     }
 
-    private fun knowledgeAccessAllowedForTools(current: com.promenar.infinity.data.model.Session): Boolean =
-        com.promenar.infinity.data.rag.effectiveKnowledgeFileAccess(knowledgeConfigForTools(current.agentId), current.options.toolsEnabled) ==
-            com.promenar.infinity.data.agent.KnowledgeFileAccess.ON_REQUEST
+    private fun knowledgeAccessAllowedForTools(
+        session: com.promenar.infinity.data.model.Session,
+        config: com.promenar.infinity.data.agent.AgentRetrievalConfig?,
+    ): Boolean = com.promenar.infinity.data.rag.effectiveKnowledgeFileAccess(config, session.options.toolsEnabled) ==
+        com.promenar.infinity.data.agent.KnowledgeFileAccess.ON_REQUEST
 
     val sessionToolResolver: com.promenar.infinity.data.generation.SessionToolResolver by lazy { createSessionToolResolver(false) }
     private val mainChatToolResolver: com.promenar.infinity.data.generation.SessionToolResolver by lazy { createSessionToolResolver(true) }
@@ -2211,34 +2211,39 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private fun createSessionToolResolver(stableKnowledgeAvailability: Boolean): com.promenar.infinity.data.generation.SessionToolResolver =
         object : com.promenar.infinity.data.generation.SessionToolResolver {
             override fun resolve(session: com.promenar.infinity.data.model.Session): List<com.promenar.infinity.data.remote.protocol.ProtocolTool> =
-                com.promenar.infinity.data.generation.DefaultSessionToolResolver(
+                error("应用会话工具需要使用挂起解析入口")
+
+            override suspend fun resolveAsync(session: com.promenar.infinity.data.model.Session): List<com.promenar.infinity.data.remote.protocol.ProtocolTool> {
+                val candidates = createSkillRegistry(session.id).getAllToolsAsync()
+                val config = if (session.options.toolsEnabled &&
+                    !com.promenar.infinity.startup.StartupWriteBarrier.isSubsystemIsolated(com.promenar.infinity.startup.StartupSubsystem.TOOL_LEDGER)
+                ) agentRepository.getById(session.agentId)?.retrievalConfig else null
+                return com.promenar.infinity.data.generation.DefaultSessionToolResolver(
                     getSharedPreferences("infinity_settings", MODE_PRIVATE),
-                    createSkillRegistry(session.id),
-                    longTermMemoryAllowed = longTermMemoryAccess::isEnabledForToolAdvertisement,
-                    knowledgeSearchAllowed = { current ->
-                        val config = knowledgeConfigForTools(current.agentId)
+                    skillRegistry = null,
+                    longTermMemoryAllowedAsync = longTermMemoryAccess::isEnabled,
+                    knowledgeSearchAllowedAsync = { current ->
                         if (stableKnowledgeAvailability) com.promenar.infinity.data.generation.knowledgeSearchAvailableForPrompt(current, config) else
                             com.promenar.infinity.data.rag.effectiveRetrievalMode(config, current.options.toolsEnabled) != com.promenar.infinity.data.agent.AgentRetrievalMode.AUTO &&
-                                knowledgeCatalog.hasIndexedMaterial(current, com.promenar.infinity.data.rag.resolveEffectiveRagOptions(current.ragOptions,
+                                knowledgeCatalog.hasIndexedMaterialAsync(current, com.promenar.infinity.data.rag.resolveEffectiveRagOptions(current.ragOptions,
                                     memoryPolicy = config?.memoryPolicy ?: com.promenar.infinity.data.agent.AgentMemoryPolicy()))
                     },
-                    knowledgeAccessAllowed = ::knowledgeAccessAllowedForTools,
-                    subagentModelPolicy = { current -> knowledgeConfigForTools(current.agentId)?.subagentModels ?: com.promenar.infinity.data.agent.AgentSubagentModelPolicy() },
+                    knowledgeAccessAllowed = { current -> knowledgeAccessAllowedForTools(current, config) },
+                    subagentModelPolicy = { config?.subagentModels ?: com.promenar.infinity.data.agent.AgentSubagentModelPolicy() },
                     modelName = { modelId -> currentProviderModelsWithLocal().firstOrNull { it.id == modelId }?.name },
                 ) { current ->
                     com.promenar.infinity.data.generation.MediaViewTarget.capabilities(
                         currentProviderModelsWithLocal().firstOrNull { it.id == current.modelId },
                     )
-                }.resolve(session)
+                }.resolveAsync(session, candidates)
+            }
 
-            // 审批后的执行路径从主线程调用；技能注册表会同步扫描磁盘，必须切到 IO。
-            override suspend fun resolveForExecution(session: com.promenar.infinity.data.model.Session): List<com.promenar.infinity.data.remote.protocol.ProtocolTool> =
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val current = session.copy(runMode = sessionRunModes.modeFor(session.id))
-                    val target = resolveMediaViewTarget(current)
-                    if (target.modelId.isBlank()) resolve(current).filterNot { it.runtimeToolId == "view_media" }
-                    else resolve(current.copy(modelId = target.modelId))
-                }
+            override suspend fun resolveForExecution(session: com.promenar.infinity.data.model.Session): List<com.promenar.infinity.data.remote.protocol.ProtocolTool> {
+                val current = session.copy(runMode = sessionRunModes.modeFor(session.id))
+                val target = resolveMediaViewTarget(current)
+                return if (target.modelId.isBlank()) resolveAsync(current).filterNot { it.runtimeToolId == "view_media" }
+                else resolveAsync(current.copy(modelId = target.modelId))
+            }
         }
 
     private val workspaceMediaViewer by lazy {

@@ -573,6 +573,7 @@ class ChatGenerationRunnerTest {
         val events = mutableListOf<GenerationEvent>()
         val job = launch { ChatGenerationRunner(runtime).run(request(), events::add) }
         yield()
+        yield()
         assertThat(runtime.flushCount).isEqualTo(1)
         assertThat(runtime.flushCompleted).isFalse()
 

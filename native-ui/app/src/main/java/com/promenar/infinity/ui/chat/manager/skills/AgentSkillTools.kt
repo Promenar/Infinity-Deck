@@ -13,7 +13,7 @@ import com.promenar.infinity.data.workspace.SessionWorkspace
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
-import com.promenar.infinity.ui.chat.manager.registry.SkillRegistry
+import com.promenar.infinity.ui.chat.manager.registry.AsyncSkillRegistry
 import com.promenar.infinity.ui.chat.manager.registry.stringArgument
 import com.promenar.infinity.ui.chat.manager.registry.toProtocolTool
 import com.promenar.infinity.utils.InfinityLogger
@@ -131,7 +131,7 @@ class AgentSkillToolRegistry(
     catalog: SkillCatalog,
     workspaceResolver: (suspend (String) -> SessionWorkspace)? = null,
     private val sessionId: String? = null,
-) : SkillRegistry {
+) : AsyncSkillRegistry {
     private val access = SkillToolAccess(catalog, workspaceResolver)
     private val tools: List<SkillDefinition> = listOf(ActivateSkillTool(catalog, workspaceResolver), ReadSkillFileTool(catalog, workspaceResolver))
 
@@ -139,10 +139,12 @@ class AgentSkillToolRegistry(
 
     override fun getAllSkills(): List<SkillDefinition> = tools
 
-    override fun getAllTools(allowedIds: List<String>?): List<ProtocolTool> {
-        // 现有注册表接口是同步的，磁盘扫描与工作区解析统一派发到 IO。
+    override fun getAllTools(allowedIds: List<String>?): List<ProtocolTool> =
+        runBlocking { getAllToolsAsync(allowedIds) }
+
+    override suspend fun getAllToolsAsync(allowedIds: List<String>?): List<ProtocolTool> {
         val enabled = try {
-            runBlocking(Dispatchers.IO) { access.scan(sessionId).skills.any { it.status == SkillStatus.ENABLED } }
+            access.scan(sessionId).skills.any { it.status == SkillStatus.ENABLED }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {

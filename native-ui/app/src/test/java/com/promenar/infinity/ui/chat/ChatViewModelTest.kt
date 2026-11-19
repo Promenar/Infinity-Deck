@@ -1228,6 +1228,7 @@ class ChatViewModelTest {
             composerQueueStore = queuePort,
             skillCatalog = slashSkillCatalog,
             askUserLedger = app.askUserLedger,
+            cleanupDispatcher = testDispatcher,
         )
         generationCoordinator = com.promenar.infinity.data.generation.DefaultGenerationCoordinator(
             applicationScope = generationScope,
@@ -2346,6 +2347,29 @@ class ChatViewModelTest {
         advanceUntilIdle()
         assertThat(sshLeases).isEmpty()
         assertThat(protocolRequestCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `SSH停止清理超时后下一回合可以启动`() = runTest {
+        seedSession("ssh-stop-timeout")
+        advanceUntilIdle()
+        val cleaning = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeSshClose = {
+            cleaning.complete(Unit)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { release.await() }
+        }
+        try {
+            viewModel.stopGeneration()
+            cleaning.await()
+            viewModel.sendMessage("next question")
+            runCurrent()
+            assertThat(protocolRequestCount).isEqualTo(0)
+            advanceUntilIdle()
+            assertThat(protocolRequestCount).isEqualTo(1)
+        } finally {
+            release.complete(Unit)
+        }
     }
 
     @Test

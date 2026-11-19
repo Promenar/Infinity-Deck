@@ -75,9 +75,12 @@ internal class DefaultChatGenerationRunnerFactory(
     private val timedGrants: com.promenar.infinity.data.approval.TimedApprovalGrantStore? = null,
     private val agentConfigService: (() -> com.promenar.infinity.data.agentconfig.AgentConfigService)? = null,
     private val attachmentWorkspaceStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
+    private val cleanupGate: com.promenar.infinity.data.session.SessionExecutionGate? = null,
+    private val cleanupDispatcher: kotlinx.coroutines.CoroutineDispatcher = generationCleanupDispatcher,
 ) : GenerationRunnerFactory {
     override fun create(request: GenerationRequest, taskId: String): GenerationRunner =
-        ChatGenerationRunner(createRuntime(request.sessionId, taskId))
+        ChatGenerationRunner(createRuntime(request.sessionId, taskId),
+            cleanupDispatcher = cleanupDispatcher, cleanupGate = cleanupGate)
 
     fun createRuntime(sessionId: String, taskId: String): DefaultChatGenerationRuntime {
         val contentStrategy = DefaultChatGenerationContentStrategy(settings, skillRegistry, toolResolver)

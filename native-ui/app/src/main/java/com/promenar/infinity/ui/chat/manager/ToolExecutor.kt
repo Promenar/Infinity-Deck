@@ -167,9 +167,11 @@ class ToolExecutor internal constructor(
 
         val targetMsg = session.messages.find { it.id == targetMsgId } ?: return
 
-        val sessionAllowedTools = if (session.options.toolsEnabled) emptyList() else toolResolver.resolveForExecution(session).filter {
-            com.promenar.infinity.data.generation.SessionToolAvailability.allows(session, it)
-        }
+        val sessionAllowedTools = if (!session.options.toolsEnabled && session.options.keepWebSearchWhenToolsOff) {
+            toolResolver.resolveForExecution(session).filter {
+                com.promenar.infinity.data.generation.SessionToolAvailability.allows(session, it)
+            }
+        } else emptyList()
         val admittedCalls = toolCalls.filter { call ->
             if (session.options.toolsEnabled || sessionAllowedTools.any { it.function.name == call.name }) true
             else {

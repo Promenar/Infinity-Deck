@@ -83,9 +83,11 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
-import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -234,11 +236,14 @@ internal class DefaultChatGenerationRuntime(
     private var observedProductionRevision = 0L
     private var observedProductionId: String? = null
     private var cachedRetrieval: com.promenar.infinity.ui.chat.manager.ContextRetrieval? = null
+    private val terminalEdits = Mutex()
+    private val providerCancelled = java.util.concurrent.atomic.AtomicBoolean()
+    private val activeProviderStream = java.util.concurrent.atomic.AtomicReference<kotlinx.coroutines.Job?>()
 
     /** 生成运行在主线程作用域；工具表要按会话扫描技能目录，统一放到 IO 上构建。 */
     private suspend fun buildToolsOffMain(session: com.promenar.infinity.data.model.Session, modelId: String? = preparedRoute?.modelId): List<ProtocolTool> =
         kotlinx.coroutines.withContext(toolBuildDispatcher) {
-            contentStrategy.buildTools(if (modelId == null) session else session.copy(modelId = modelId)).filterNot {
+            contentStrategy.buildToolsAsync(if (modelId == null) session else session.copy(modelId = modelId)).filterNot {
                 interactionMode == com.promenar.infinity.domain.generation.GenerationInteractionMode.HEADLESS &&
                     it.function.name in setOf(com.promenar.infinity.domain.ask.AskUserLimits.TOOL_NAME, com.promenar.infinity.domain.secret.SecretIoLimits.REQUEST_TOOL_NAME, "session_branch")
             }.canonicalizedForRequest()
@@ -942,27 +947,35 @@ internal class DefaultChatGenerationRuntime(
         val recorder = RequestInputUsageRecorder(currentSession, prompt, route.modelId) { baseline ->
             sessionManager.updateContextUsageBaseline(request.sessionId, baseline)
         }
-        return kotlinx.coroutines.flow.flow {
-            recorder.start()
-            emitAll(source.mapNotNull { chunk ->
-                if (!route.useLocalProvider && chunk is StreamChunk.Usage) recorder.observe(chunk.usage)
-                val mapped = toGenerationChunk(chunk)?.let { mapped ->
-                    if (mapped !is GenerationChunk.Failure || mapped.failure.code != GenerationFailureCode.CONTEXT_LIMIT) mapped else
-                        mapped.copy(failure = mapped.failure.copy(formatArgs = mapped.failure.formatArgs + mapOf(
-                            GenerationFailure.KEY_REQUIRED_TOKENS to PromptUsageCalibration.estimate(
-                                store.getSession(request.sessionId) ?: currentSession, prompt, route.modelId).toString(),
-                            GenerationFailure.KEY_AVAILABLE_TOKENS to (PreparedPromptBudgetGate.resolveWindow(currentSession, prompt, settings, route.modelId).inputBudgetTokens ?: 0).toString(),
-                            GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to finalHasDocuments.toString(),
-                        )))
-                }
-                mapped?.also {
-                    if (it is GenerationChunk.Text) {
-                        if (it.content.isNotEmpty()) trace.firstVisible()
-                        toolProgressReminder.onUserFacingText(it.content)
+        return kotlinx.coroutines.flow.channelFlow {
+            val streamJob = checkNotNull(coroutineContext[kotlinx.coroutines.Job])
+            activeProviderStream.set(streamJob)
+            try {
+                if (providerCancelled.get()) streamJob.cancel()
+                streamJob.ensureActive()
+                recorder.start()
+                source.mapNotNull { chunk ->
+                    if (!route.useLocalProvider && chunk is StreamChunk.Usage) recorder.observe(chunk.usage)
+                    val mapped = toGenerationChunk(chunk)?.let { mapped ->
+                        if (mapped !is GenerationChunk.Failure || mapped.failure.code != GenerationFailureCode.CONTEXT_LIMIT) mapped else
+                            mapped.copy(failure = mapped.failure.copy(formatArgs = mapped.failure.formatArgs + mapOf(
+                                GenerationFailure.KEY_REQUIRED_TOKENS to PromptUsageCalibration.estimate(
+                                    store.getSession(request.sessionId) ?: currentSession, prompt, route.modelId).toString(),
+                                GenerationFailure.KEY_AVAILABLE_TOKENS to (PreparedPromptBudgetGate.resolveWindow(currentSession, prompt, settings, route.modelId).inputBudgetTokens ?: 0).toString(),
+                                GenerationFailure.KEY_FULL_CONTEXT_DOCUMENTS to finalHasDocuments.toString(),
+                            )))
                     }
-                }
-            })
-        }
+                    mapped?.also {
+                        if (it is GenerationChunk.Text) {
+                            if (it.content.isNotEmpty()) trace.firstVisible()
+                            toolProgressReminder.onUserFacingText(it.content)
+                        }
+                    }
+                }.collect { send(it) }
+            } finally {
+                activeProviderStream.compareAndSet(streamJob, null)
+            }
+        }.buffer(0)
     }
 
     /**
@@ -1679,26 +1692,30 @@ internal class DefaultChatGenerationRuntime(
                 )
             } else null,
         )
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
         settleQuestionResumption(request)
         val citationSession = if (status == GenerationTerminalStatus.SUCCESS && chatCitationRecorder != null) {
             store.getSession(request.sessionId)
         } else null
         val createdCitationIds = if (citationSession != null) messagesCreatedSincePrepare(request).toSet() else emptySet()
-        if (status == GenerationTerminalStatus.SUCCESS) {
-            try {
-                commitReplacement(request)
-            } catch (failure: Throwable) {
-                if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
-                    try {
-                        discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
-                    } catch (cleanup: Throwable) {
-                        failure.addSuppressed(cleanup)
+        terminalEdits.withLock {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            if (status == GenerationTerminalStatus.SUCCESS) {
+                try {
+                    commitReplacement(request)
+                } catch (failure: Throwable) {
+                    if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
+                        try {
+                            discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
+                        } catch (cleanup: Throwable) {
+                            failure.addSuppressed(cleanup)
+                        }
                     }
+                    throw failure
                 }
-                throw failure
+            } else if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
+                discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
             }
-        } else if (!replacementCommitted && (request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request))) {
-            discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
         }
         if (citationSession != null && chatCitationRecorder != null) {
             val retained = store.getSession(request.sessionId)?.messages.orEmpty().mapTo(hashSetOf()) { it.id }
@@ -1726,9 +1743,15 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override suspend fun releaseToolResources(request: GenerationRequest, awaitingApproval: Boolean) {
+        stateBoardRepository?.endGeneration(request.sessionId, request.assistantMessageId)
         try {
-            if (!awaitingApproval && hasStagedUserEdit(request) && !replacementCommitted) {
-                discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
+            if (!awaitingApproval && hasStagedUserEdit(request)) {
+                terminalEdits.withLock {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    if (!replacementCommitted) {
+                        discardPreparedMessagesPreservingSummaryUsage(request, messagesCreatedSincePrepare(request))
+                    }
+                }
             }
             val userId = request.userMessageId
             if (store.getSession(request.sessionId)?.messages.orEmpty().any { it.id == userId }) {
@@ -1739,10 +1762,10 @@ internal class DefaultChatGenerationRuntime(
         } finally {
             val owner = "agent:${request.sessionId}"
             try {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 if (awaitingApproval) sshRuntime?.pauseOwner(owner) else sshRuntime?.closeOwner(owner)
             } finally {
-                stateBoardRepository?.endGeneration(request.sessionId, request.assistantMessageId)
-                if (!awaitingApproval) productionTurnEnd?.let { scan ->
+                if (!awaitingApproval && kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]?.isActive != false) productionTurnEnd?.let { scan ->
                     applicationScope.launch {
                         try { scan(request.sessionId) } catch (e: kotlin.coroutines.cancellation.CancellationException) { throw e } catch (e: Exception) {
                             InfinityLogger.logError("ProductionFileAudit.TurnEnd", e)
@@ -1764,7 +1787,10 @@ internal class DefaultChatGenerationRuntime(
     }
 
     // 网络流与本地推理由任务自身的协程取消；共享 Provider 的取消入口会影响其它会话。
-    override fun cancelProvider() = Unit
+    override fun cancelProvider() {
+        providerCancelled.set(true)
+        activeProviderStream.get()?.cancel()
+    }
 
     /** 批量删除旧回复与已失效的摘要，再确认暂存的用户编辑。 */
     private suspend fun commitReplacement(request: GenerationRequest) = withContext(kotlinx.coroutines.NonCancellable) {

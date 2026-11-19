@@ -8,7 +8,6 @@ import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.StandardOpenOption
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.cancel
@@ -25,7 +24,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.coroutines.coroutineContext
 
-/** 写入入口只排队脱敏后的事件，所有磁盘读写均在 IO 调度器执行。 */
+/** 写入入口只排队脱敏后的事件，磁盘操作由专用守护线程执行。 */
 object AppDiagnostics {
     @Volatile private var session: RecorderSession? = null
     private val generationAttempt = ThreadLocal<GenerationAttempt?>()
@@ -108,7 +107,7 @@ object AppDiagnostics {
     suspend fun export(output: OutputStream, issueSummary: String) {
         val recorder = flushedRecorder()
         if (recorder != null) recorder.export(output, issueSummary)
-        else withContext(Dispatchers.IO) { writeDiagnosticExport(output, issueSummary, "") }
+        else withContext(diagnosticsDispatcher) { writeDiagnosticExport(output, issueSummary, "") }
     }
 
     internal suspend fun prepareJsonlExport(filesDir: File, issueSummary: String): File {
@@ -135,7 +134,7 @@ object AppDiagnostics {
         prefix: String,
         retentionPattern: Regex = Regex("${Regex.escape(prefix)}[0-9]+\\.jsonl"),
         writeLines: suspend (java.io.BufferedWriter) -> Unit,
-    ): File = withContext(Dispatchers.IO) {
+    ): File = withContext(diagnosticsDispatcher) {
         exportMutex.withLock {
             val file = Files.createTempFile(filesDir.toPath(), prefix, ".jsonl")
             try {
@@ -174,7 +173,7 @@ object AppDiagnostics {
     private class RecorderSession(val directory: File) {
         val commands = Channel<Command>(capacity = 512)
         val recorder = AppDiagnosticRecorder(directory)
-        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val scope = CoroutineScope(SupervisorJob() + diagnosticsDispatcher)
 
         init {
             scope.launch {

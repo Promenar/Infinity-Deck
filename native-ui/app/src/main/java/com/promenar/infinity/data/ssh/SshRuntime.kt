@@ -843,13 +843,39 @@ class SshRuntime(
     }
     }
     fun sessionHost(owner: String, id: String): String? = terminals[id]?.takeIf { it.owner == owner }?.connection?.host?.alias
-    suspend fun closeOwner(owner: String) = withContext(Dispatchers.IO) { gate.withLock {
-        terminals.values.filter { it.owner == owner }.forEach(::removePty)
-        connections.values.filter { it.key.owner == owner }.forEach(::drop)
-        pausedOwners.remove(owner)
-        publishPersistent()
-    }
-    }
+    suspend fun closeOwner(owner: String): Unit =
+        withContext(com.promenar.infinity.data.generation.generationCleanupDispatcher) {
+            val (retiredTerminals, retiredConnections, published) = gate.withLock {
+                currentCoroutineContext().ensureActive()
+                val retiredTerminals = terminals.values.filter { it.owner == owner }
+                val retiredConnections = connections.values.filter { it.key.owner == owner }
+                retiredTerminals.forEach { terminals.remove(it.id, it) }
+                retiredConnections.forEach { connections.remove(it.key, it) }
+                if (owner == FORWARD_OWNER) _forwards.value = _forwards.value - retiredConnections.map { it.host.alias }.toSet()
+                pausedOwners.remove(owner)
+                Triple(retiredTerminals, retiredConnections, runCatching { publishPersistent() })
+            }
+            // 在锁外断开已摘除的连接。迟到的断开只操作这些对象，不能关闭新的同名租约。
+            var failure = published.exceptionOrNull()
+            fun clean(block: () -> Unit) {
+                try { block() } catch (error: Exception) {
+                    val first = failure
+                    if (first == null) failure = error else if (first !== error) first.addSuppressed(error)
+                }
+            }
+            retiredTerminals.forEach { pty ->
+                clean {
+                    pty.reader?.cancel()
+                    pty.buffer.clear()
+                    pty.mirror?.let { liveOutput?.close(pty.liveOutputKey, it) }
+                }
+            }
+            retiredTerminals.forEach { pty -> clean { pty.channel.disconnect() } }
+            retiredConnections.forEach { connection ->
+                clean { try { connection.session.disconnect() } finally { connection.filter.close() } }
+            }
+            failure?.let { throw it }
+        }
     suspend fun startForward(alias: String): Int = withContext(Dispatchers.IO) {
         val connection = connection(FORWARD_OWNER, alias)
         val host = connection.host

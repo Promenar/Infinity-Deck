@@ -6,13 +6,43 @@ import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.remote.protocol.ProtocolTool
 import com.promenar.infinity.data.remote.protocol.ProtocolToolFunction
 import com.promenar.infinity.domain.tool.ToolRisk
+import com.promenar.infinity.ui.chat.manager.registry.AsyncSkillRegistry
 import com.promenar.infinity.ui.chat.manager.registry.SkillRegistry
+import io.mockk.coEvery
 import io.mockk.every
+import kotlinx.coroutines.launch
 import io.mockk.mockk
 import org.junit.Before
 import org.junit.Test
 
 class DefaultSessionToolResolverTest {
+    @Test fun `单路IO中的异步工具策略挂起并与执行重验一致`() = kotlinx.coroutines.runBlocking {
+        val io = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1)
+        val session = Session("s", "a")
+        val tool = safeReadTool.copy(function = ProtocolToolFunction("knowledge_search", "检索", "{}"),
+            runtimeToolId = "knowledge_search")
+        val policy = kotlinx.coroutines.channels.Channel<Boolean>()
+        val asyncRegistry = mockk<AsyncSkillRegistry>()
+        coEvery { asyncRegistry.getAllToolsAsync(null) } coAnswers {
+            kotlinx.coroutines.yield()
+            listOf(tool)
+        }
+        every { settings.getStringSet(BuiltinToolPreferences.ENABLED_KEY, null) } returns null
+        val resolver = DefaultSessionToolResolver(settings, asyncRegistry,
+            knowledgeSearchAllowedAsync = { policy.receive() })
+        kotlinx.coroutines.withTimeout(2_000) {
+            kotlinx.coroutines.withContext(io) {
+                kotlinx.coroutines.coroutineScope {
+                    val response = launch { policy.send(true); policy.send(true); policy.send(false) }
+                    assertThat(resolver.resolveAsync(session)).containsExactly(tool)
+                    assertThat(resolver.resolveForExecution(session)).containsExactly(tool)
+                    assertThat(resolver.resolveForExecution(session)).isEmpty()
+                    response.join()
+                }
+            }
+        }
+    }
+
     @Test fun `配置工具只在主会话广告且子代理工具集排除`() {
         val tools = listOf("agents_read", "agents_write").map { name -> safeReadTool.copy(
             function = ProtocolToolFunction(name, "配置", "{}"), runtimeToolId = name,

@@ -15,12 +15,26 @@ import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class AgentSkillToolsTest {
+    @Test fun `技能广告在单路调度器上等待异步工作区并保持同步清单一致`() = runBlocking {
+        install(scope = SkillScope.PROJECT)
+        val dispatcher = Dispatchers.IO.limitedParallelism(1)
+        val registry = AgentSkillToolRegistry(catalog, {
+            kotlinx.coroutines.withContext(dispatcher) { kotlinx.coroutines.yield(); resolveWorkspace(it) }
+        }, "session")
+        val asyncTools = kotlinx.coroutines.withTimeout(2_000) {
+            kotlinx.coroutines.withContext(dispatcher) { registry.getAllToolsAsync() }
+        }
+        assertThat(asyncTools.map { it.runtimeToolId }).containsAtLeast("activate_skill", "read_skill_file")
+        assertThat(asyncTools).isEqualTo(registry.getAllTools())
+    }
+
     @get:Rule val temporary = TemporaryFolder()
     private val userRoot by lazy { temporary.newFolder("users") }
     private val projectRoot by lazy { temporary.newFolder("project") }

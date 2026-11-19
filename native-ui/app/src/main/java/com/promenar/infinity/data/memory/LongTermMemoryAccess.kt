@@ -28,9 +28,9 @@ class RoomLongTermMemoryAccess(
     private val settings: SharedPreferences,
     private val liveSession: (String) -> Session? = { null },
 ) : LongTermMemoryAccess {
-    override suspend fun isEnabled(session: Session): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun isEnabled(session: Session): Boolean {
         val current = liveSession(session.id) ?: session
-        session.options.toolsEnabled && current.options.toolsEnabled && LongTermMemoryPreferences.isEnabled(settings)
+        return session.options.toolsEnabled && current.options.toolsEnabled && LongTermMemoryPreferences.isEnabled(settings)
     }
     override suspend fun isEnabled(sessionId: String): Boolean = withContext(Dispatchers.IO) {
         val session = liveSession(sessionId) ?: database.sessionDao().getById(sessionId)?.toDomain()
@@ -43,7 +43,3 @@ class RoomLongTermMemoryAccess(
         return if (scope.activeMemoryMode == ActiveMemoryMode.ISOLATED) sessionId else null
     }
 }
-
-/** 兼容同步工具广告接口；调用方需在生成/执行工作线程使用，此桥会等待 IO 策略读取。 */
-fun LongTermMemoryAccess.isEnabledForToolAdvertisement(session: Session): Boolean =
-    kotlinx.coroutines.runBlocking(Dispatchers.IO) { isEnabled(session) }

@@ -61,8 +61,8 @@ interface KnowledgeCatalogSource {
     suspend fun knowledgeBases(session: Session, options: RagOptions): List<KnowledgeBaseSummary>
     suspend fun snapshot(session: Session, options: RagOptions): KnowledgeCatalogSnapshot
 
-    /** 同步工具注册入口调用；调用方必须处于 IO 上下文。 */
-    fun hasIndexedMaterial(session: Session, options: RagOptions): Boolean
+    /** 探测当前检索范围内是否有有效索引。 */
+    suspend fun hasIndexedMaterialAsync(session: Session, options: RagOptions): Boolean
 
     suspend fun documentLocation(sessionId: String, reference: RagReference): KnowledgeDocumentLocation?
 }

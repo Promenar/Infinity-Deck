@@ -165,7 +165,7 @@ graph TD
 - **ProviderToolFactory**: 7 个 Provider（OpenAI/Anthropic/Google/xAI/Hunyuan/DashScope）的原生 Web 搜索工具定义。
 - **ToolOrchestrationPlugin**: 意图分析（关键词检测）+ 动态工具注入（web_search/knowledge_search/memory_search）。
 - **ResultSizeOptimizer**: 多模态 MCP 结果 → 文本占位符转换，防 base64 超出消息大小限制。
-- **AppDiagnosticRecorder & AppDiagnostics**: 基于 `NOFOLLOW_LINKS` 的 `4 × 512 KiB`（2 MiB）分片滚动 JSONL 存储与字段白名单脱敏投影，覆盖启动自检、LLM 请求、工具执行、Linux 运行时、工作区对账与文件操作错误（`file.op`）。
+- **AppDiagnosticRecorder & AppDiagnostics**: 在专用诊断线程上处理基于 `NOFOLLOW_LINKS` 的 `4 × 512 KiB`（2 MiB）分片滚动 JSONL 存储与字段白名单脱敏投影，覆盖启动自检、LLM 请求、工具执行、Linux 运行时、工作区对账与文件操作错误（`file.op`）。近期读取从最新分片开始，收齐所需记录后返回。
 - **SessionTraceExporter**: 在事务一致性快照内提取单会话消息与工具台账（`tool_execution_ledger`），并与同一分片窗口内的诊断事件关联生成单会话 Trace JSONL。
-- **DiagnosticDumpProvider**: 未导出的 Android `ContentProvider`，支持 `adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider`（`--recent`、`--since`、`--session`、`--sessions`、`--trace <sessionId|latest>`）；Release 下受系统 `DUMP` 权限、开发者模式与「ADB 实时调试桥」开关三重门禁。
+- **DiagnosticDumpProvider**: 未导出的 Android `ContentProvider`，支持 `adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider`（`--recent`、`--since`、`--session`、`--sessions`、`--trace <sessionId|latest>`、`--threads`）。线程快照提供 JVM 线程状态汇总与有界、脱敏的栈帧摘要。Release 下受系统 `DUMP` 权限、开发者模式与「ADB 实时调试桥」开关三重门禁。
 - **DeveloperScreen**: 开发者选项二级页面，提供单会话轨迹选择与 Share Sheet 导出、全局 2 MiB 诊断包导出与 ADB 实时调试桥开关控制。

@@ -14,13 +14,61 @@ import com.promenar.infinity.domain.generation.GenerationToolBudget
 import com.promenar.infinity.domain.generation.GenerationToolCall
 import com.promenar.infinity.domain.generation.GenerationToolDecision
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class ChatGenerationRunnerTerminalContractTest {
+    @Test fun `短时并发清理等待空位后可以正常完成`() = runTest {
+        val dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        val completed = mutableListOf<Int>()
+        repeat(12) { index ->
+            launch {
+                awaitGenerationCleanup("flushOnce", "s", 100, dispatcher) { delay(10) }
+                completed += index
+            }
+        }
+        advanceUntilIdle()
+        assertThat(completed).containsExactlyElementsIn(0..11)
+    }
+
+    @Test fun `释放和刷盘不响应取消时仍发布取消终态并归还协调器会话`() = runTest {
+        val blocked = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val cleanupCalls = mutableListOf<String>()
+        val runtime = object : ChatGenerationRuntime by RuntimeFixture(listOf(flow { kotlinx.coroutines.awaitCancellation() }), knownTools = emptySet()) {
+            override suspend fun flush(request: GenerationRequest) {
+                cleanupCalls += "flush"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { blocked.await() }
+            }
+            override suspend fun releaseToolResources(request: GenerationRequest, awaitingApproval: Boolean) {
+                cleanupCalls += "release"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { blocked.await() }
+            }
+        }
+        val runner = ChatGenerationRunner(runtime, cleanupTimeoutMs = 20,
+            cleanupDispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler))
+        val coordinator = DefaultGenerationCoordinator(backgroundScope,
+            runnerFactory = GenerationRunnerFactory { _, _ -> runner })
+        val request = request()
+        try {
+            val task = coordinator.start(request) as com.promenar.infinity.domain.generation.StartGenerationResult.Started
+            kotlinx.coroutines.yield()
+            assertThat(coordinator.cancel(task.taskId)).isTrue()
+            val completed = coordinator.awaitTaskCompletion(request.sessionId, task.taskId)
+            assertThat(completed?.phase).isEqualTo(com.promenar.infinity.domain.generation.GenerationPhase.CANCELLED)
+            coordinator.awaitSessionIdle(request.sessionId)
+            assertThat(coordinator.isSessionBusy(request.sessionId)).isFalse()
+            assertThat(cleanupCalls).containsExactly("flush", "release")
+        } finally {
+            blocked.complete(Unit)
+        }
+    }
+
     @Test
     fun `Error EOF 与取消都会持久化清除未确认工具后再标终态`() = runTest {
         val providerFailure = com.promenar.infinity.domain.generation.GenerationFailure(

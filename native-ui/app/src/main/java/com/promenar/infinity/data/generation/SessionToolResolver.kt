@@ -4,11 +4,13 @@ import android.content.SharedPreferences
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.remote.protocol.ProtocolTool
 import com.promenar.infinity.ui.chat.manager.registry.SkillRegistry
+import com.promenar.infinity.ui.chat.manager.registry.getAllToolsAsync
 
 /** 会话在当前时刻实际有权广告和执行的工具集合；提示构建与执行重验必须共用此策略。 */
 fun interface SessionToolResolver {
     fun resolve(session: Session): List<ProtocolTool>
-    suspend fun resolveForExecution(session: Session): List<ProtocolTool> = resolve(session)
+    suspend fun resolveAsync(session: Session): List<ProtocolTool> = resolve(session)
+    suspend fun resolveForExecution(session: Session): List<ProtocolTool> = resolveAsync(session)
 }
 
 class DefaultSessionToolResolver(
@@ -19,10 +21,29 @@ class DefaultSessionToolResolver(
     private val knowledgeAccessAllowed: (Session) -> Boolean = { false },
     private val subagentModelPolicy: (Session) -> com.promenar.infinity.data.agent.AgentSubagentModelPolicy = { com.promenar.infinity.data.agent.AgentSubagentModelPolicy() },
     private val modelName: (String) -> String? = { null },
+    private val longTermMemoryAllowedAsync: suspend (Session) -> Boolean = { longTermMemoryAllowed(it) },
+    private val knowledgeSearchAllowedAsync: suspend (Session) -> Boolean = { knowledgeSearchAllowed(it) },
+    private val knowledgeAccessAllowedAsync: suspend (Session) -> Boolean = { knowledgeAccessAllowed(it) },
     private val mediaCapabilities: (Session) -> com.promenar.infinity.data.model.ModelCapabilities = { com.promenar.infinity.data.model.ModelCapabilities() },
 ) : SessionToolResolver {
-    override fun resolve(session: Session): List<ProtocolTool> {
-        val allTools = skillRegistry?.getAllTools(null).orEmpty()
+    override fun resolve(session: Session): List<ProtocolTool> =
+        resolveTools(session, skillRegistry?.getAllTools(null).orEmpty(),
+            longTermMemoryAllowed, knowledgeSearchAllowed, knowledgeAccessAllowed)
+
+    override suspend fun resolveAsync(session: Session): List<ProtocolTool> =
+        resolveAsync(session, skillRegistry?.getAllToolsAsync(null).orEmpty())
+
+    internal suspend fun resolveAsync(session: Session, allTools: List<ProtocolTool>): List<ProtocolTool> =
+        resolveTools(session, allTools,
+            { longTermMemoryAllowedAsync(it) }, { knowledgeSearchAllowedAsync(it) }, { knowledgeAccessAllowedAsync(it) })
+
+    private inline fun resolveTools(
+        session: Session,
+        allTools: List<ProtocolTool>,
+        longTermMemoryAllowed: (Session) -> Boolean,
+        knowledgeSearchAllowed: (Session) -> Boolean,
+        knowledgeAccessAllowed: (Session) -> Boolean,
+    ): List<ProtocolTool> {
         val memoryToolsAllowed = allTools.none { it.sourceId == "builtin" && it.runtimeToolId.ifBlank { it.function.name } in com.promenar.infinity.data.memory.LongTermMemoryPreferences.TOOL_IDS } ||
             (com.promenar.infinity.data.memory.LongTermMemoryPreferences.isEnabled(settings) && longTermMemoryAllowed(session))
         val capabilities = mediaCapabilities(session)

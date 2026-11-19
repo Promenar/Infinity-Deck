@@ -554,7 +554,7 @@ class DefaultChatGenerationRuntimeTest {
         val toolThreads = mutableListOf<Thread>()
         val toolSessions = mutableListOf<Session>()
         val strategy = mockk<ChatGenerationContentStrategy> {
-            every { buildTools(any()) } answers {
+            coEvery { buildToolsAsync(any()) } coAnswers {
                 toolThreads += Thread.currentThread()
                 toolSessions += firstArg<Session>()
                 toolNames.map { ProtocolTool(function = ProtocolToolFunction(it, "", "{}"), runtimeToolId = it) }
@@ -1221,7 +1221,7 @@ class DefaultChatGenerationRuntimeTest {
         )
         val sessionManager = mockk<SessionManager>(relaxed = true)
         val contentStrategy = mockk<ChatGenerationContentStrategy>()
-        every { contentStrategy.buildTools(any()) } returns emptyList()
+        coEvery { contentStrategy.buildToolsAsync(any()) } returns emptyList()
         every { contentStrategy.buildProtocolMessages(any(), any(), any(), any(), any()) } returns listOf(
             com.promenar.infinity.data.remote.protocol.ProtocolMessage(
                 role = "user",

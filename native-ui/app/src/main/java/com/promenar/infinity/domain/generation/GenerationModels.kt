@@ -189,3 +189,8 @@ sealed interface GenerationEvent {
 fun interface GenerationRunner {
     suspend fun run(request: GenerationRequest, emit: suspend (GenerationEvent) -> Unit)
 }
+
+/** 停止当前运行器拥有的 Provider 请求，可从任意线程并发调用。 */
+interface CancellableGenerationRunner {
+    fun cancelProvider()
+}

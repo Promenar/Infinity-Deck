@@ -12,6 +12,7 @@ import com.promenar.infinity.domain.generation.MAX_CONCURRENT_GENERATIONS
 import com.promenar.infinity.domain.generation.StartGenerationResult
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import com.promenar.infinity.domain.generation.CancellableGenerationRunner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +54,7 @@ class DefaultGenerationCoordinator(
         var terminalAcknowledged = false
         var queuedCleanup = false
         var runnerEntered = false
+        var cancelRequested = false
         var finished = false
         val completion = CompletableDeferred<GenerationTaskSnapshot?>()
     }
@@ -161,7 +163,10 @@ class DefaultGenerationCoordinator(
             try {
                 val run: suspend () -> Unit = {
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    synchronized(lifecycleLock) { task.runnerEntered = true }
+                    synchronized(lifecycleLock) {
+                        if (task.cancelRequested) throw CancellationException("生成在运行器启动前已取消")
+                        task.runnerEntered = true
+                    }
                     task.runner.run(task.request) { event -> handleEvent(task, event) }
                 }
                 val gate = executionGate
@@ -289,16 +294,31 @@ class DefaultGenerationCoordinator(
         return completion?.await()?.takeIf { it.sessionId == sessionId }
     }
 
-    override fun cancel(taskId: String, reason: CancellationReason): Boolean = synchronized(lifecycleLock) {
-        val task = tasks.values.firstOrNull { it.taskId == taskId } ?: return@synchronized false
-        if (task.snapshot.phase in SLOT_RELEASE_PHASES) return@synchronized false
+    override fun cancel(taskId: String, reason: CancellationReason): Boolean {
+        val action = synchronized(lifecycleLock) {
+            tasks.values.firstOrNull { it.taskId == taskId }?.let { markCancellationLocked(it, reason) }
+        } ?: return false
+        action()
+        return true
+    }
+
+    private fun markCancellationLocked(task: Task, reason: CancellationReason): (() -> Unit)? {
+        if (task.cancelRequested || task.snapshot.phase in SLOT_RELEASE_PHASES) return null
+        task.cancelRequested = true
         if (queue.remove(task)) {
             startPreRunCleanupLocked(task)
             updateQueuePositionsLocked()
-        } else {
-            task.job?.cancel(CancellationException("Generation cancelled: $reason")) ?: return@synchronized false
+            return {}
         }
-        true
+        val job = checkNotNull(task.job)
+        val active = (task.runner as? CancellableGenerationRunner)?.takeIf { task.runnerEntered }
+        return {
+            try {
+                runCatching { active?.cancelProvider() }
+            } finally {
+                job.cancel(CancellationException("Generation cancelled: $reason"))
+            }
+        }
     }
 
     private fun startPreRunCleanupLocked(task: Task) {
@@ -338,15 +358,20 @@ class DefaultGenerationCoordinator(
         reason: CancellationReason,
     ): Int = cancelMatching(reason) { it.request.runtimePolicy == policy }
 
-    private fun cancelMatching(reason: CancellationReason, include: (Task) -> Boolean): Int = synchronized(lifecycleLock) {
-        val ids = queue.filter(include).map { it.taskId } +
-            tasks.values.filter { it !in queue && include(it) }.map { it.taskId }
-        queueDrainSuspensions += 1
-        try {
-            ids.count { cancel(it, reason) }
+    private fun cancelMatching(reason: CancellationReason, include: (Task) -> Boolean): Int {
+        val actions = synchronized(lifecycleLock) {
+            val selected = queue.filter(include) + tasks.values.filter { it !in queue && include(it) }
+            queueDrainSuspensions += 1
+            selected.mapNotNull { markCancellationLocked(it, reason) }
+        }
+        return try {
+            actions.forEach { it() }
+            actions.size
         } finally {
-            queueDrainSuspensions -= 1
-            drainQueueLocked()
+            synchronized(lifecycleLock) {
+                queueDrainSuspensions -= 1
+                drainQueueLocked()
+            }
         }
     }
 

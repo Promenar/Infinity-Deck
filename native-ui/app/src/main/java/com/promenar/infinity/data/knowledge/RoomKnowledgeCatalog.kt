@@ -77,11 +77,10 @@ class RoomKnowledgeCatalog(
     }
 
     /** 与向量检索使用相同范围和有效性条件；只做 EXISTS，不读取 embedding BLOB。 */
-    override fun hasIndexedMaterial(session: Session, options: RagOptions): Boolean {
-        val scope = kotlinx.coroutines.runBlocking(Dispatchers.IO) { resolver.resolve(session.id, options) }
-        if (options.enableDocs && indexedDocumentsExist(scope.documents)) return true
-        if (!options.enableMemory) return false
-        return indexedHistorySessionCount(scope.memory) > 0
+    override suspend fun hasIndexedMaterialAsync(session: Session, options: RagOptions): Boolean = withContext(Dispatchers.IO) {
+        val scope = resolver.resolve(session.id, options)
+        (options.enableDocs && indexedDocumentsExist(scope.documents)) ||
+            (options.enableMemory && indexedHistorySessionCount(scope.memory) > 0)
     }
 
     override suspend fun documentLocation(sessionId: String, reference: RagReference): KnowledgeDocumentLocation? = withContext(Dispatchers.IO) {

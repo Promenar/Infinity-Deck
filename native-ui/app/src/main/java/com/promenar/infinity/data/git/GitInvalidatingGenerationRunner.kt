@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.git
 
 import com.promenar.infinity.data.generation.QueuedGenerationCancellation
+import com.promenar.infinity.domain.generation.CancellableGenerationRunner
 import com.promenar.infinity.domain.generation.GenerationEvent
 import com.promenar.infinity.domain.generation.GenerationRequest
 import com.promenar.infinity.domain.generation.GenerationRunner
@@ -9,7 +10,11 @@ import com.promenar.infinity.domain.generation.GenerationRunner
 internal class GitInvalidatingGenerationRunner(
     private val delegate: GenerationRunner,
     private val invalidate: () -> Unit,
-) : GenerationRunner, QueuedGenerationCancellation {
+) : GenerationRunner, QueuedGenerationCancellation, CancellableGenerationRunner {
+    override fun cancelProvider() {
+        runCatching { (delegate as? CancellableGenerationRunner)?.cancelProvider() }
+    }
+
     override suspend fun run(request: GenerationRequest, emit: suspend (GenerationEvent) -> Unit) {
         try { delegate.run(request, emit) } finally { runCatching { invalidate() } }
     }

@@ -342,7 +342,8 @@ class ChatViewModel(
     private val sshOwnerResumer: suspend (String) -> Unit = { owner ->
         (application as InfinityApplication).sshRuntime.resumeOwner(owner)
     },
-    private val sshCleanupDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val sshCleanupDispatcher: CoroutineDispatcher = com.promenar.infinity.data.generation.generationCleanupDispatcher,
+    private val sshCleanupTimeoutMs: Long = com.promenar.infinity.data.generation.GENERATION_CLEANUP_TIMEOUT_MS,
     private val contextCompactionService: com.promenar.infinity.data.generation.ContextCompactionService =
         (application as InfinityApplication).contextCompactionService,
     private val contextUsageEstimator: suspend (String) -> com.promenar.infinity.data.generation.ContextUsageEstimate =
@@ -2306,9 +2307,13 @@ class ChatViewModel(
     }
 
     private suspend fun closeSessionSshOwner(sessionId: String): Boolean =
-        withContext(NonCancellable + sshCleanupDispatcher) {
+        withContext(NonCancellable) {
             try {
-                sshOwnerCloser("agent:$sessionId")
+                com.promenar.infinity.data.generation.awaitGenerationCleanup(
+                    "closeSessionSshOwner", sessionId, sshCleanupTimeoutMs, sshCleanupDispatcher,
+                ) { sshOwnerCloser("agent:$sessionId") }
+                true
+            } catch (_: com.promenar.infinity.data.generation.GenerationCleanupTimeout) {
                 true
             } catch (_: Exception) {
                 _error.value = "SSH_CLEANUP_FAILED"

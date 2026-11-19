@@ -80,7 +80,7 @@ class RoomKnowledgeCatalogTest {
             val snapshot = catalog.snapshot(session, options)
             val expected = db.vectorDao().documentRows(resolver.resolve("a1", options).documents).map { it.docId }.toSet()
             assertThat(snapshot.documents.map { it.documentId }).containsExactlyElementsIn(expected)
-            assertThat(catalog.hasIndexedMaterial(session, options)).isEqualTo(snapshot.hasIndexedMaterial)
+            assertThat(catalog.hasIndexedMaterialAsync(session, options)).isEqualTo(snapshot.hasIndexedMaterial)
             assertThat(renderKnowledgeCatalog(snapshot)).doesNotContain("禁止列出的会话标题")
         }
         assertThat(catalog.knowledgeBases(session, RagOptions(documentScope = DocumentScope.WORKSPACE))).isEmpty()
@@ -100,12 +100,12 @@ class RoomKnowledgeCatalogTest {
     fun `未索引文件和失效向量不会提供目录或广告`() = runBlocking<Unit> {
         db.vectorDao().deleteAll()
         val options = RagOptions(enableMemory = false, documentScope = DocumentScope.ALL_INDEXED)
-        assertThat(catalog.hasIndexedMaterial(session, options)).isFalse()
+        assertThat(catalog.hasIndexedMaterialAsync(session, options)).isFalse()
         assertThat(renderKnowledgeCatalog(catalog.snapshot(session, options))).isEmpty()
         db.vectorDao().insert(vector("stale", docId = "f-a1").copy(stale = true))
-        assertThat(catalog.hasIndexedMaterial(session, options)).isFalse()
+        assertThat(catalog.hasIndexedMaterialAsync(session, options)).isFalse()
         db.vectorDao().insert(vector("missing", docId = "missing").copy(fileUuid = "missing-file"))
-        assertThat(catalog.hasIndexedMaterial(session, options)).isFalse()
+        assertThat(catalog.hasIndexedMaterialAsync(session, options)).isFalse()
     }
 
     @Test
@@ -115,9 +115,9 @@ class RoomKnowledgeCatalogTest {
         db.fileEntryDao().insert(file("nested", "root-b1").copy(parentUuid = "folder", materializedPath = "/folder/nested.md"))
         db.vectorDao().insert(vector("v-nested", docId = "nested"))
         val options = RagOptions(enableMemory = false, documentScope = DocumentScope.WORKSPACE, selectedCollectionIds = emptyList())
-        assertThat(catalog.hasIndexedMaterial(session, options)).isFalse()
+        assertThat(catalog.hasIndexedMaterialAsync(session, options)).isFalse()
         for (selected in listOf(options.copy(activeDocIds = listOf("legacy-doc")), options.copy(activeFolderIds = listOf("folder")))) {
-            assertThat(catalog.hasIndexedMaterial(session, selected)).isTrue()
+            assertThat(catalog.hasIndexedMaterialAsync(session, selected)).isTrue()
             assertThat(catalog.snapshot(session, selected).hasIndexedMaterial).isTrue()
         }
     }
@@ -132,17 +132,17 @@ class RoomKnowledgeCatalogTest {
             val expectedSessions = db.vectorDao().conversationRows(reach, "memory").map { it.sessionId }.toSet()
             assertThat(snapshot.history?.indexedSessionCount).isEqualTo(expectedSessions.size)
             assertThat(snapshot.history?.sessionCount).isEqualTo(resolver.stats(reach).sessionCount)
-            assertThat(catalog.hasIndexedMaterial(session, options)).isEqualTo(snapshot.hasIndexedMaterial)
+            assertThat(catalog.hasIndexedMaterialAsync(session, options)).isEqualTo(snapshot.hasIndexedMaterial)
             assertThat(renderKnowledgeCatalog(snapshot)).doesNotContain("禁止列出的会话标题")
         }
         db.vectorDao().deleteBySessionId("a1")
         db.vectorDao().deleteBySessionId("a2")
         db.vectorDao().deleteBySessionId("b1")
         val options = RagOptions(enableDocs = false, globalMemoryEnabled = true, globalMemoryScope = ConversationScope.ALL_AGENTS)
-        assertThat(catalog.hasIndexedMaterial(session, options)).isTrue()
+        assertThat(catalog.hasIndexedMaterialAsync(session, options)).isTrue()
         assertThat(catalog.snapshot(session, options).hasIndexedMaterial).isTrue()
         val privateSession = Session("p1", "P")
-        assertThat(catalog.hasIndexedMaterial(privateSession, options)).isTrue()
+        assertThat(catalog.hasIndexedMaterialAsync(privateSession, options)).isTrue()
     }
 
     @Test
@@ -150,7 +150,7 @@ class RoomKnowledgeCatalogTest {
         db.vectorDao().deleteAll()
         db.vectorDao().insert(vector("orphan", sessionId = "a1").copy(startMessageId = "deleted-message"))
         val options = RagOptions(enableDocs = false)
-        assertThat(catalog.hasIndexedMaterial(session, options)).isFalse()
+        assertThat(catalog.hasIndexedMaterialAsync(session, options)).isFalse()
         assertThat(renderKnowledgeCatalog(catalog.snapshot(session, options))).isEmpty()
     }
 

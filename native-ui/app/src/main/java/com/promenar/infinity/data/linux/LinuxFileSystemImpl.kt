@@ -22,7 +22,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -360,11 +359,9 @@ class LinuxFileSystemImpl internal constructor(
         entry(normalize(path), resolvePath(path, followFinal = false)) ?: fail(LinuxFileErrorCode.IO)
     }
 
-    override fun hostFile(path: String): File? = runBlocking(io) {
-        try {
-            if (!isReady()) null else resolvePath(path).takeIf { access.exists(it) }?.toFile()
-        } catch (_: Exception) { null }
-    }
+    override fun hostFile(path: String): File? = try {
+        if (!isReady()) null else resolvePath(path).takeIf { access.exists(it) }?.toFile()
+    } catch (_: Exception) { null }
 
     private fun entry(guestPath: String, source: Path): LinuxFileEntry? {
         if (!access.exists(source)) return null

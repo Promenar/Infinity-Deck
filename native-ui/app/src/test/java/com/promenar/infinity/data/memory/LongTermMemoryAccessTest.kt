@@ -39,10 +39,10 @@ class LongTermMemoryAccessTest {
             val registry = DefaultSkillRegistry().apply {
                 longTermMemoryTools(RoomLongTermMemoryRepository(db), access).forEach(::register)
             }
-            val resolver = DefaultSessionToolResolver(prefs, registry, longTermMemoryAllowed = { runBlocking { access.isEnabled(it) } })
+            val resolver = DefaultSessionToolResolver(prefs, registry, longTermMemoryAllowedAsync = access::isEnabled)
 
             assertThat(access.isEnabled(session)).isTrue()
-            assertThat(resolver.resolve(session).map { it.runtimeToolId })
+            assertThat(resolver.resolveAsync(session).map { it.runtimeToolId })
                 .containsExactly("memory_save", "memory_forget", "memory_read")
         } finally { db.close() }
     }
@@ -56,27 +56,27 @@ class LongTermMemoryAccessTest {
             val access = RoomLongTermMemoryAccess(db, prefs)
             val repo = RoomLongTermMemoryRepository(db)
             val registry = DefaultSkillRegistry().apply { longTermMemoryTools(repo, access).forEach(::register) }
-            val resolver = DefaultSessionToolResolver(prefs, registry, longTermMemoryAllowed = { runBlocking { access.isEnabled(it) } })
+            val resolver = DefaultSessionToolResolver(prefs, registry, longTermMemoryAllowedAsync = access::isEnabled)
             val session = Session("s", "a")
             db.agentDao().insert(AgentEntity(id = "a", name = "共享助手", createdAt = 1))
             db.sessionDao().insert(session.toEntity())
             assertThat(LongTermMemoryPreferences.isEnabled(prefs)).isTrue()
             assertThat(access.isEnabled("s")).isTrue()
-            assertThat(resolver.resolve(session).map { it.runtimeToolId }).containsExactly("memory_save", "memory_forget", "memory_read")
+            assertThat(resolver.resolveAsync(session).map { it.runtimeToolId }).containsExactly("memory_save", "memory_forget", "memory_read")
             val privateAgent = db.agentDao().getById("a")!!.copy(retrievalConfig = AgentRetrievalConfig(memoryPolicy = AgentMemoryPolicy(shareWithOtherAgents = false)))
             db.agentDao().update(privateAgent)
             assertThat(access.isEnabled(session)).isTrue()
             assertThat(access.isEnabled("s")).isTrue()
-            assertThat(resolver.resolve(session).map { it.runtimeToolId }).containsExactly("memory_save", "memory_forget", "memory_read")
+            assertThat(resolver.resolveAsync(session).map { it.runtimeToolId }).containsExactly("memory_save", "memory_forget", "memory_read")
             db.agentDao().update(privateAgent.copy(retrievalConfig = null))
-            assertThat(resolver.resolve(session.copy(options = SessionOptions(toolsEnabled = false)))).isEmpty()
+            assertThat(resolver.resolveAsync(session.copy(options = SessionOptions(toolsEnabled = false)))).isEmpty()
             assertThat(access.isEnabled(session.copy(options = SessionOptions(toolsEnabled = false)))).isFalse()
             LongTermMemoryPreferences.setEnabled(prefs, false)
             assertThat(access.isEnabled("s")).isFalse()
-            assertThat(resolver.resolve(session)).isEmpty()
+            assertThat(resolver.resolveAsync(session)).isEmpty()
             LongTermMemoryPreferences.setEnabled(prefs, true)
             prefs.edit().putStringSet(BuiltinToolPreferences.KNOWN_KEY, LongTermMemoryPreferences.TOOL_IDS).putStringSet(BuiltinToolPreferences.ENABLED_KEY, setOf("memory_read")).commit()
-            assertThat(resolver.resolve(session).map { it.runtimeToolId }).containsExactly("memory_read")
+            assertThat(resolver.resolveAsync(session).map { it.runtimeToolId }).containsExactly("memory_read")
             assertThat(access.isEnabled(session.copy(agentId = ""))).isTrue()
             assertThat(access.isEnabled("missing-session")).isFalse()
         } finally { db.close() }

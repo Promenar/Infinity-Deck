@@ -175,16 +175,20 @@ class TailnetManager(
     // ---- TailnetConnector ----
 
     override suspend fun ensureStarted(force: Boolean, timeoutMillis: Long): Boolean {
-        if (!enabled) return false
-        currentEndpoint()?.let { return true }
-        if (force) lastFailureAt = Long.MIN_VALUE / 2
-        val future = requestStart() ?: return false
-        // 只挂起等待，不取消共享的启动 future：其它等待方与路由选择器仍依赖它。
+        if (force && enabled && currentEndpoint() == null) lastFailureAt = Long.MIN_VALUE / 2
+        return awaitEndpointAsync(timeoutMillis) != null
+    }
+
+    private suspend fun awaitEndpointAsync(timeoutMillis: Long): TailnetProxyEndpoint? {
+        if (!enabled) return null
+        currentEndpoint()?.let { return it }
+        val future = requestStart() ?: return null
+        // 取消一个等待方时保留共享启动，路由选择器和其他会话仍可取得端点。
         return withTimeoutOrNull(timeoutMillis) {
             suspendCancellableCoroutine { continuation ->
-                future.whenComplete { endpoint, _ -> if (continuation.isActive) continuation.resume(endpoint != null) }
+                future.whenComplete { endpoint, _ -> if (continuation.isActive) continuation.resume(endpoint) }
             }
-        } ?: false
+        }
     }
 
     /** 返回正在进行或新发起的启动；退避期内或已停用返回 null。 */
@@ -379,7 +383,7 @@ class TailnetManager(
     override suspend fun refresh(): TailnetState {
         if (!enabled) return mutableState.value
         val target = liveSession() ?: run {
-            withContext(ioDispatcher) { awaitEndpoint(ENVIRONMENT_WAIT_MS) }
+            awaitEndpointAsync(ENVIRONMENT_WAIT_MS)
             liveSession()
         } ?: return mutableState.value
         val client = target.client ?: return mutableState.value
@@ -407,7 +411,7 @@ class TailnetManager(
 
     override suspend fun login(): String? {
         if (!enabled) return null
-        withContext(ioDispatcher) { awaitEndpoint(LOGIN_START_WAIT_MS) } ?: return null
+        awaitEndpointAsync(LOGIN_START_WAIT_MS) ?: return null
         val target = liveSession() ?: return null
         val client = target.client ?: return null
         mutableState.value.summary?.let { summary ->

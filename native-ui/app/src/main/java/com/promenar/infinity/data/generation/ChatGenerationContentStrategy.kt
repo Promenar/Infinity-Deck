@@ -109,6 +109,7 @@ interface ChatGenerationContentStrategy {
         replaySource: String? = null,
     ): List<ProtocolMessage>
     fun buildTools(session: Session): List<ProtocolTool>
+    suspend fun buildToolsAsync(session: Session): List<ProtocolTool> = buildTools(session)
     fun normalize(content: String, toolCalls: List<ToolCall>): GenerationContentNormalization
     fun extractFallbackToolCalls(content: String): List<ToolCall>
     fun stripToolCallMarkup(content: String): String
@@ -120,11 +121,11 @@ interface ChatGenerationContentStrategy {
 /** 不依赖 ViewModel 的纯内容与工具协议策略，可由应用级生成协调器长期持有。 */
 class DefaultChatGenerationContentStrategy(
     private val settings: SharedPreferences,
-    private val skillRegistry: SkillRegistry?,
+    skillRegistry: SkillRegistry?,
     private val toolResolver: SessionToolResolver = DefaultSessionToolResolver(settings, skillRegistry),
 ) : ChatGenerationContentStrategy {
     @Volatile
-    private var knownToolNames: Set<String>? = null
+    private var knownToolNames: Set<String> = emptySet()
     @Volatile
     private var knownToolRisks: Map<String, ToolRisk> = emptyMap()
 
@@ -196,13 +197,19 @@ class DefaultChatGenerationContentStrategy(
     }
 
     override fun buildTools(session: Session): List<ProtocolTool> {
-        knownToolRisks = emptyMap()
-        knownToolNames = emptySet()
-        val resolved = toolResolver.resolve(session)
-        knownToolNames = resolved.mapTo(mutableSetOf()) { it.function.name }
-        return resolved.also { tools ->
-            knownToolRisks = tools.associate { it.function.name to it.risk }
-        }
+        rememberTools(emptyList())
+        return rememberTools(toolResolver.resolve(session))
+    }
+
+    override suspend fun buildToolsAsync(session: Session): List<ProtocolTool> {
+        rememberTools(emptyList())
+        return rememberTools(toolResolver.resolveAsync(session))
+    }
+
+    private fun rememberTools(tools: List<ProtocolTool>): List<ProtocolTool> {
+        knownToolNames = tools.mapTo(mutableSetOf()) { it.function.name }
+        knownToolRisks = tools.associate { it.function.name to it.risk }
+        return tools
     }
 
     override fun normalize(content: String, toolCalls: List<ToolCall>): GenerationContentNormalization {
@@ -322,11 +329,7 @@ class DefaultChatGenerationContentStrategy(
 
     private fun isKnownTool(call: ToolCall): Boolean = isKnownTool(call.name)
 
-    private fun isKnownTool(name: String): Boolean {
-        val known = knownToolNames ?: skillRegistry?.getAllTools()?.map { it.function.name }?.toSet().orEmpty()
-            .also { knownToolNames = it }
-        return name in known
-    }
+    private fun isKnownTool(name: String): Boolean = name in knownToolNames
 
     private fun stableId(prefix: String, name: String, arguments: String, index: Int): String {
         val bytes = MessageDigest.getInstance("SHA-256")

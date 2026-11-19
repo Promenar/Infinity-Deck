@@ -121,6 +121,7 @@ internal class DiagnosticDump(
     private val recent: suspend (String?, Int) -> List<UnifiedDiagnosticRecord> = { session, limit ->
         AppDiagnostics.readRecentEvents(session, limit, acceptReference = true)
     },
+    private val threadSnapshot: () -> Map<Thread, Array<StackTraceElement>> = Thread::getAllStackTraces,
 ) {
     suspend fun lines(args: Array<out String>): List<String> {
         if (!debug) {
@@ -136,6 +137,7 @@ internal class DiagnosticDump(
             "--recent" -> readRecent(args.drop(1))
             "--sessions" -> if (args.size == 1) withExporter { it.listRecentSessions(50) } else invalidArguments()
             "--trace" -> readTrace(args.drop(1))
+            "--threads" -> if (args.size == 1) diagnosticThreadLines(threadSnapshot()) else invalidArguments()
             else -> invalidArguments()
         }
     }
@@ -182,6 +184,7 @@ internal class DiagnosticDump(
         put("usage", "adb shell dumpsys activity provider <applicationId>/com.promenar.infinity.startup.diagnostics.DiagnosticDumpProvider")
         put("recent", "--recent [--since <seq>] [--session <id>] [--limit <1..500>]")
         put("sessions", "--sessions")
+        put("threads", "--threads")
         put("trace", "--trace <sessionId|latest> [--limit <1..100>] [--before <messageId>]")
         put("tracePaging", "分页从较新的消息向前读取。收到 trace.end 后使用 nextBeforeMessageId，关联事件用 --recent 增量读取。")
         put("defaultLimit", 200)

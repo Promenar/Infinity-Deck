@@ -56,6 +56,24 @@ class TailnetManagerTest {
         withTimeout(5_000) { state.first { it.phase == phase } }
 
     @Test
+    fun `单路IO首次刷新可以挂起等待子进程启动`() = runBlocking<Unit> {
+        store.setEnabled(true)
+        val io = Dispatchers.IO.limitedParallelism(1)
+        val manager = TailnetManager(
+            settingsStore = store,
+            launcher = launcher,
+            stateDirectory = File(work, "limited-io"),
+            hostname = "infinity-test",
+            scope = scope,
+            ioDispatcher = io,
+            clock = now::get,
+        )
+        val state = withTimeout(2_000) { kotlinx.coroutines.withContext(io) { manager.refresh() } }
+        assertThat(state.phase).isEqualTo(TailnetPhase.NEEDS_LOGIN)
+        assertThat(children).hasSize(1)
+    }
+
+    @Test
     fun `未启用时一律保持原有路径且不启动子进程`(): Unit = runBlocking {
         val manager = manager()
         manager.start()

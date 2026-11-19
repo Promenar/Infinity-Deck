@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.CodingErrorAction
 import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assume.assumeNoException
 import org.junit.Rule
@@ -12,6 +13,51 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class AppDiagnosticRecorderTest {
+    @Test fun `默认录制在独立线程完成并跨片读取最新匹配序号`() = runBlocking<Unit> {
+        val root = temporaryFolder.newFolder()
+        val observed = mutableSetOf<String>()
+        val observedRoot = object : File(root.path) {
+            override fun listFiles(): Array<File>? {
+                observed += Thread.currentThread().name.substringBefore(" @")
+                return super.listFiles()
+            }
+        }
+        val recorder = AppDiagnosticRecorder(observedRoot, maxTotalBytes = 4_096, maxFileBytes = 512)
+        val io = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1)
+        kotlinx.coroutines.withTimeout(5_000) {
+            kotlinx.coroutines.withContext(io) {
+                repeat(14) { index ->
+                    recorder.record(UnifiedDiagnosticRecord(timestampMs = index.toLong(), event = "generation.completed",
+                        fields = kotlinx.serialization.json.buildJsonObject {
+                            put("sessionId", kotlinx.serialization.json.JsonPrimitive(if (index % 2 == 0) "session-a" else "session-b"))
+                        }))
+                }
+                val shards = root.listFiles().orEmpty().filter { it.name.endsWith(".jsonl") }.sortedBy(File::getName)
+                assertThat(shards.size).isGreaterThan(1)
+                shards.last().appendText("{坏行\n")
+                val recent = recorder.readRecentEvents("session-a", 3)
+                assertThat(recent.map { it.timestampMs }).containsExactly(8L, 10L, 12L).inOrder()
+                assertThat(recent.map { it.seq }).isInStrictOrder()
+                assertThat(recorder.readRecentEvents(limit = 2).map { it.timestampMs })
+                    .containsExactly(12L, 13L).inOrder()
+                assertThat(recorder.readRecentEvents("未匹配会话", 1)).isEmpty()
+                assertThat(recorder.readRecentEvents(limit = 0)).isEmpty()
+                assertThat(recorder.readRecentEvents(limit = -1)).isEmpty()
+            }
+        }
+        assertThat(observed).containsExactly("infinity-diagnostics")
+    }
+
+    @Test fun `读取尾行达到数量后立即停止且保留旧版行位置`() {
+        val visited = mutableListOf<String>()
+        val payload = "陈旧\n坏行\n最新\n".toByteArray()
+        visitDiagnosticLinesFromEnd(payload) { line, index ->
+            visited += "$line:${index()}"
+            line != "坏行"
+        }
+        assertThat(visited).containsExactly("最新:2", "坏行:1").inOrder()
+    }
+
     @get:Rule val temporaryFolder = TemporaryFolder()
 
     @Test

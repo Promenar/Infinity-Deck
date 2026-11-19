@@ -31,6 +31,30 @@ import kotlinx.coroutines.test.TestScope
 import org.junit.Test
 
 class DefaultGenerationCoordinatorTest {
+    @Test fun `活动运行器在协程收到取消前立即停止且不会影响下一任务`() = runTest {
+        val events = mutableListOf<String>()
+        val coordinator = DefaultGenerationCoordinator(applicationScope = backgroundScope,
+            taskIdFactory = { "cancel-order-${nextTaskId.incrementAndGet()}" },
+            runnerFactory = GenerationRunnerFactory { request, _ ->
+                object : GenerationRunner, com.promenar.infinity.domain.generation.CancellableGenerationRunner {
+                    override fun cancelProvider() { events += "provider:${request.assistantMessageId}" }
+                    override suspend fun run(request: GenerationRequest, emit: suspend (GenerationEvent) -> Unit) {
+                        try { awaitCancellation() } finally { events += "job:${request.assistantMessageId}" }
+                    }
+                }
+            })
+        val first = coordinator.start(request("s", "a")) as StartGenerationResult.Started
+        runCurrent()
+        assertThat(coordinator.cancel(first.taskId)).isTrue()
+        assertThat(events).containsExactly("provider:a")
+        assertThat(coordinator.cancel(first.taskId)).isFalse()
+        coordinator.awaitSessionIdle("s")
+        coordinator.start(request("s", "b"))
+        runCurrent()
+        assertThat(coordinator.cancel(first.taskId)).isFalse()
+        assertThat(events).containsExactly("provider:a", "job:a").inOrder()
+    }
+
     @Test fun `审批创建窗口插队续跑保持并发槽且可取消`() = runTest {
         val queue = kotlinx.coroutines.flow.MutableStateFlow(com.promenar.infinity.data.chat.queue.ComposerQueueState())
         val resumed = CompletableDeferred<Unit>()

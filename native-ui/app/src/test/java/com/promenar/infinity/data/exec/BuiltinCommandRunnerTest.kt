@@ -43,6 +43,31 @@ class BuiltinCommandRunnerTest {
         BuiltinCommandRequest(listOf("/bin/sh", "-c", command), work, env, stdin, timeout)
 
     @Test
+    fun `后台进程等待时单路IO仍能执行其他工作`() = runBlocking<Unit> {
+        val io = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1)
+        val confined = BuiltinCommandRunner(
+            groupLauncher = listOf(PERL, "-e", "setpgrp(0, 0); exec @ARGV or exit 127"),
+            shell = "/bin/sh", signaller = HostSignaller, scratchDirectory = { File(work, "scratch") },
+            killGraceMillis = 500, processDispatcher = io,
+        )
+        val job = File(work, "blocked-job").apply { mkdirs() }
+        val control = BuiltinCommandControl()
+        val pending = async {
+            confined.runBackground(request("while [ ! -f release ]; do sleep 0.05; done; echo done"),
+                control, File(job, "log"), File(job, "pgid"))
+        }
+        try {
+            withTimeout(2_000) {
+                control.started.await()
+                kotlinx.coroutines.withContext(io) { File(work, "release").createNewFile() }
+            }
+            assertThat(pending.await().exitCode).isEqualTo(0)
+        } finally {
+            File(work, "release").createNewFile()
+        }
+    }
+
+    @Test
     fun `后台检测结果无法写入时保留命令真实退出码`() = runBlocking<Unit> {
         val job = File(work, "job").apply { mkdirs() }
         File(job, "runtime-changes.json").mkdir()

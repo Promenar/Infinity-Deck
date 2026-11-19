@@ -16,6 +16,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /** 上游地址映射：生产固定为 `https://<主机键>`；测试可映射到本机明文服务。 */
@@ -57,8 +58,19 @@ class GitCredentialProxy(
         .writeTimeout(10, TimeUnit.MINUTES)
         .build()
 
+    private val upstreamCalls = ConcurrentHashMap<Socket, GitHttpConnection>()
     private val server = object : LoopbackServer(maxConnections) {
-        override suspend fun handle(socket: Socket) = serve(socket)
+        override suspend fun handle(socket: Socket) {
+            val connection = GitHttpConnection(socket)
+            upstreamCalls[socket] = connection
+            try { if (!socket.isClosed) serve(socket, connection) }
+            finally { upstreamCalls.remove(socket, connection) }
+        }
+
+        override fun closeClient(socket: Socket) {
+            upstreamCalls[socket]?.close() ?: socket.close()
+        }
+
         override fun rejectBusy(socket: Socket) {
             socket.soTimeout = 1_000
             BufferedOutputStream(socket.getOutputStream()).let { writeError(it, 503, "BUSY", "Git 凭据代理并发连接过多，请稍后重试。") }
@@ -72,21 +84,20 @@ class GitCredentialProxy(
 
     override fun close() = server.close()
 
-    private fun serve(socket: Socket) {
+    private fun serve(socket: Socket, connection: GitHttpConnection) {
         socket.soTimeout = HEAD_TIMEOUT_MILLIS
         val input = BufferedInputStream(socket.getInputStream())
         val output = BufferedOutputStream(socket.getOutputStream())
         val head = readHead(input) ?: return writeError(output, 400, "BAD_REQUEST", "请求格式无效。")
         val scope = nonces.resolve(head.header(NONCE_HEADER))
             ?: return reject(output, 403, "NONCE_REJECTED", "nonce 缺失、无效或所属命令已结束；Git 凭据代理只服务正在执行的命令。")
-        val closer = AutoCloseable { runCatching { socket.close() } }
-        if (!scope.register(closer)) return
+        if (!scope.register(connection)) return
         try {
             val route = route(head) ?: return
             if (route is Route.Rejected) return reject(output, route.status, route.code, route.message)
-            forward(route as Route.Accepted, head, input, output, socket, scope)
+            forward(route as Route.Accepted, head, input, output, socket, scope, connection)
         } finally {
-            scope.unregister(closer)
+            scope.unregister(connection)
         }
     }
 
@@ -127,6 +138,7 @@ class GitCredentialProxy(
         output: BufferedOutputStream,
         socket: Socket,
         scope: GitNonceRegistry.Scope,
+        connection: GitHttpConnection,
     ) {
         val username = credentials.username(route.hostKey)
         val token = credentials.token(route.hostKey)
@@ -161,8 +173,9 @@ class GitCredentialProxy(
         socket.soTimeout = BODY_TIMEOUT_MILLIS
         val call = client.newCall(request)
         val cancel = AutoCloseable { call.cancel() }
-        if (!scope.register(cancel)) return
+        if (!connection.attach(call)) return
         try {
+            if (!scope.register(cancel)) return
             val response = try { call.execute() } catch (failure: IOException) {
                 diagnostics("git-proxy: UPSTREAM_FAILED ${failure.javaClass.simpleName}")
                 return writeError(output, 502, "UPSTREAM_FAILED", "连接 ${route.hostKey} 失败（${failure.javaClass.simpleName}）。")
@@ -208,6 +221,7 @@ class GitCredentialProxy(
             diagnostics("git-proxy: STREAM_FAILED ${failure.javaClass.simpleName}")
         } finally {
             scope.unregister(cancel)
+            connection.detach(call)
         }
     }
 

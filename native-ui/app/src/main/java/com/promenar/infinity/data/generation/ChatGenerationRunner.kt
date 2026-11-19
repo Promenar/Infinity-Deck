@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.generation
 
+import com.promenar.infinity.data.session.SessionExecutionGate
+import com.promenar.infinity.domain.generation.CancellableGenerationRunner
 import com.promenar.infinity.domain.generation.GenerationChunk
 import com.promenar.infinity.domain.generation.GenerationEvent
 import com.promenar.infinity.domain.generation.GenerationFailedException
@@ -19,7 +21,10 @@ import com.promenar.infinity.domain.generation.GenerationFailure
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.data.remote.protocol.normalizeToolArguments
 import com.promenar.infinity.utils.InfinityLogger
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
@@ -27,6 +32,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.transformWhile
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
@@ -100,9 +107,22 @@ interface ChatGenerationRuntime {
 
 class ChatGenerationRunner(
     private val runtime: ChatGenerationRuntime,
+    private val cleanupTimeoutMs: Long = GENERATION_CLEANUP_TIMEOUT_MS,
+    private val cleanupDispatcher: CoroutineDispatcher? = null,
+    private val cleanupGate: SessionExecutionGate? = null,
     /** 记录每轮请求时间点所用的时钟（epoch 毫秒），测试可注入。 */
     private val clock: () -> Long = System::currentTimeMillis,
-) : GenerationRunner, QueuedGenerationCancellation {
+) : GenerationRunner, QueuedGenerationCancellation, CancellableGenerationRunner {
+    private val providerCancelled = AtomicBoolean()
+
+    override fun cancelProvider() {
+        runCatching(::cancelOwnedProvider)
+    }
+
+    private fun cancelOwnedProvider() {
+        if (providerCancelled.compareAndSet(false, true)) runtime.cancelProvider()
+    }
+
     override suspend fun cancelBeforeStart(request: GenerationRequest) = runtime.cancelBeforeStart(request)
 
     override suspend fun run(request: GenerationRequest, emit: suspend (GenerationEvent) -> Unit) {
@@ -113,6 +133,17 @@ class ChatGenerationRunner(
         var resultsCommitted = false
         var awaitingApproval = false
         var contextRecoveryAttempted = false
+        val dispatcher = cleanupDispatcher ?: (currentCoroutineContext()[ContinuationInterceptor] as? CoroutineDispatcher)
+            ?: generationCleanupDispatcher
+        val cleanupWrites = Mutex()
+
+        suspend fun <T> cleanup(stage: String, target: GenerationRequest, write: Boolean = true, block: suspend () -> T): T =
+            awaitGenerationCleanup(stage, target.sessionId, cleanupTimeoutMs, dispatcher) {
+                val guarded: suspend () -> T = if (write) { { cleanupWrites.withLock { block() } } } else block
+                val gate = cleanupGate
+                if (gate == null) guarded() else gate.withNewSessionAdmission(target.sessionId, guarded)
+            }
+
         suspend fun safeEmit(event: GenerationEvent, primary: Throwable? = null) {
             try {
                 emit(event)
@@ -135,7 +166,8 @@ class ChatGenerationRunner(
         suspend fun flushOnce(primary: Throwable? = null) {
             if (!flushed) {
                 try {
-                    runtime.flush(request)
+                    val target = request
+                    cleanup("flushOnce", target) { runtime.flush(target) }
                     flushed = true
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -155,32 +187,37 @@ class ChatGenerationRunner(
             val timing = snapshot.timing ?: return
             if (timing.endedAt == null) snapshot = snapshot.copy(timing = timing.copy(endedAt = clock()))
         }
-        /** 失败或取消时补记本轮结束时间；未确认的工具调用由 [clearUnconfirmedToolCalls] 一并持久化。 */
+        suspend fun persistCleanupSnapshot(stage: String, primary: Throwable) {
+            val target = request
+            val saved = snapshot
+            try {
+                snapshot = cleanup(stage, target) {
+                    val normalized = runtime.normalize(target, saved)
+                    currentCoroutineContext().ensureActive()
+                    runtime.persist(target, normalized)
+                    normalized
+                }
+                safeEmit(GenerationEvent.SnapshotChanged(snapshot), primary)
+            } catch (cleanupFailure: Throwable) {
+                if (cleanupFailure !== primary) primary.addSuppressed(cleanupFailure)
+            }
+        }
+
+        /** 失败或取消时补记本轮结束时间；未确认的工具调用由清理步骤一并持久化。 */
         suspend fun closeOpenRoundTiming(primary: Throwable) {
             val timing = snapshot.timing ?: return
             if (timing.endedAt != null) return
             markRoundEnded()
             if (snapshot.toolCalls.isNotEmpty() && !resultsCommitted) return
-            try {
-                withContext(NonCancellable) {
-                    snapshot = persist(request, snapshot, emit)
-                }
-            } catch (timingFailure: Throwable) {
-                if (timingFailure !== primary) primary.addSuppressed(timingFailure)
-            }
+            persistCleanupSnapshot("closeOpenRoundTiming", primary)
         }
+
         suspend fun clearUnconfirmedToolCalls(primary: Throwable) {
             if (snapshot.toolCalls.isEmpty() || resultsCommitted) return
-            val cleanSnapshot = snapshot.copy(toolCalls = emptyList())
-            snapshot = cleanSnapshot
-            try {
-                withContext(NonCancellable) {
-                    snapshot = persist(request, cleanSnapshot, emit)
-                }
-            } catch (cleanupFailure: Throwable) {
-                if (cleanupFailure !== primary) primary.addSuppressed(cleanupFailure)
-            }
+            snapshot = snapshot.copy(toolCalls = emptyList())
+            persistCleanupSnapshot("clearUnconfirmedToolCalls", primary)
         }
+
         suspend fun publishPersistenceFailure(
             persistenceFailure: Throwable,
             originalFailure: Throwable? = null,
@@ -205,9 +242,19 @@ class ChatGenerationRunner(
             status: GenerationTerminalStatus,
             originalFailure: Throwable? = null,
         ): Boolean = try {
-            runtime.markTerminal(request, status, snapshot, originalFailure)
+            val target = request
+            val saved = snapshot
+            cleanup("persistTerminal", target) { runtime.markTerminal(target, status, saved, originalFailure) }
             flushOnce()
             true
+        } catch (timeout: GenerationCleanupTimeout) {
+            if (status == GenerationTerminalStatus.CANCELLED) {
+                originalFailure?.addSuppressed(timeout)
+                true
+            } else {
+                publishPersistenceFailure(timeout, originalFailure)
+                false
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (persistenceFailure: Throwable) {
@@ -661,7 +708,9 @@ class ChatGenerationRunner(
                 closeOpenRoundTiming(paused)
                 clearUnconfirmedToolCalls(paused)
                 try {
-                    runtime.pauseForUser(request, snapshot)
+                    val target = request
+                    val saved = snapshot
+                    cleanup("pauseForUser", target) { runtime.pauseForUser(target, saved) }
                     flushOnce()
                     awaitingApproval = true
                     phase(GenerationPhase.WAITING_APPROVAL)
@@ -673,16 +722,16 @@ class ChatGenerationRunner(
             awaitingApproval = false
             primaryFailure = cancelled
             try {
-                runtime.cancelProvider()
+                cancelOwnedProvider()
             } catch (cleanupFailure: Throwable) {
                 if (!cleanupFailure.isRecoveryOf(cancelled)) {
                     cancelled.addSuppressed(cleanupFailure)
                 }
             }
-            closeOpenRoundTiming(cancelled)
-            clearUnconfirmedToolCalls(cancelled)
             try {
                 withContext(NonCancellable) {
+                    closeOpenRoundTiming(cancelled)
+                    clearUnconfirmedToolCalls(cancelled)
                     if (persistTerminal(GenerationTerminalStatus.CANCELLED, cancelled)) {
                         phase(GenerationPhase.CANCELLED, cancelled)
                     }
@@ -713,7 +762,11 @@ class ChatGenerationRunner(
         } finally {
             withContext(NonCancellable) {
                 val releaseFailure = try {
-                    runtime.releaseToolResources(request, awaitingApproval)
+                    val target = request
+                    val retainApprovalResources = awaitingApproval
+                    cleanup("releaseToolResources", target, write = false) {
+                        runtime.releaseToolResources(target, retainApprovalResources)
+                    }
                     null
                 } catch (failure: Throwable) {
                     failure
@@ -730,8 +783,8 @@ class ChatGenerationRunner(
                 }
                 if (releaseFailure != null) {
                     val primary = primaryFailure
-                    if (primary == null) throw releaseFailure
-                    if (releaseFailure !== primary) primary.addSuppressed(releaseFailure)
+                    if (primary == null && releaseFailure !is GenerationCleanupTimeout) throw releaseFailure
+                    if (primary != null && releaseFailure !== primary) primary.addSuppressed(releaseFailure)
                 }
             }
         }

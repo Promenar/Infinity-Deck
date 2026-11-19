@@ -2,8 +2,10 @@ package com.promenar.infinity.data.exec
 
 import com.promenar.infinity.domain.tool.ToolOutputStream
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -120,6 +122,7 @@ class BuiltinCommandRunner(
     private val requireBackgroundIdentity: Boolean = false,
     private val runtimeDataMonitor: RuntimeDataMonitor? = null,
     private val terminalFactory: com.promenar.infinity.data.linux.LinuxExecPtyFactory = com.promenar.infinity.data.linux.LinuxExecNativePtyFactory,
+    private val processDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     suspend fun run(
         request: BuiltinCommandRequest,
@@ -191,7 +194,7 @@ class BuiltinCommandRunner(
         processGroupFile: File? = null,
         onStarted: () -> Unit = {},
         onTerminalOutput: ((String) -> Unit)? = null,
-    ): BuiltinCommandOutput = withContext(Dispatchers.IO) {
+    ): BuiltinCommandOutput = withContext(processDispatcher) {
         require(request.argv.isNotEmpty()) { "命令不能为空" }
         require(request.timeoutSeconds in 1..(if (logFile == null) MAX_TIMEOUT_SECONDS else 1440 * 60)) { "timeout_seconds 必须为 1–$MAX_TIMEOUT_SECONDS" }
         // 启动前已请求停止（等待写锁或准备环境期间）则不再启动命令。
@@ -339,7 +342,7 @@ class BuiltinCommandRunner(
             onStarted()
             control.started.complete(Unit)
             val wait = try {
-                runInterruptible { await(process, request.timeoutSeconds, control, logFile == null || request.terminal) }
+                await(process, request.timeoutSeconds, control, logFile == null || request.terminal, persistentIdentity)
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable) { if(request.terminal) process.destroy(); terminate(process, pidFile, logFile != null); settled=true }
                 throw cancelled
@@ -415,8 +418,11 @@ class BuiltinCommandRunner(
     private enum class WaitOutcome { EXITED, TIMED_OUT, STOPPED }
     private class WaitResult(val outcome: WaitOutcome, val pausedNanos: Long)
 
-    /** 阻塞等待进程结束、超时或用户停止；被系统暂停的时间不消耗超时预算。 */
-    private fun await(process: Process, timeoutSeconds: Int, control: BuiltinCommandControl, excludePauses: Boolean): WaitResult {
+    /** 监视进程结束、超时或停止。可转入后台的进程用挂起轮询，等待期间归还共享 IO 线程。 */
+    private suspend fun await(
+        process: Process, timeoutSeconds: Int, control: BuiltinCommandControl,
+        excludePauses: Boolean, suspendPolling: Boolean,
+    ): WaitResult {
         val step = TimeUnit.MILLISECONDS.toNanos(pollMillis)
         val pauseThreshold = TimeUnit.MILLISECONDS.toNanos(pauseThresholdMillis)
         var remaining = TimeUnit.SECONDS.toNanos(timeoutSeconds.toLong())
@@ -428,9 +434,14 @@ class BuiltinCommandRunner(
             val desired = control.timeoutSecondsOverride ?: timeoutSeconds
             if (desired != budget) { remaining += TimeUnit.SECONDS.toNanos((desired - budget).toLong()); budget = desired }
             if (control.stopRequested) return WaitResult(WaitOutcome.STOPPED, paused)
-            if (process.waitFor(minOf(step, remaining.coerceAtLeast(1)), TimeUnit.NANOSECONDS)) {
-                return WaitResult(WaitOutcome.EXITED, paused)
+            val interval = minOf(step, remaining.coerceAtLeast(1))
+            val exited = if (suspendPolling) {
+                if (process.isAlive) delay(TimeUnit.NANOSECONDS.toMillis(interval).coerceAtLeast(1))
+                !process.isAlive
+            } else {
+                runInterruptible { process.waitFor(interval, TimeUnit.NANOSECONDS) }
             }
+            if (exited) return WaitResult(WaitOutcome.EXITED, paused)
             val now = clockNanos()
             val elapsed = (now - last).coerceAtLeast(0)
             last = now

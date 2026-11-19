@@ -46,7 +46,10 @@ Infinity Deck 没有面向最终用户、与 Android UI 等价的 CLI。开发�
 adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --recent --since 0
 adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --sessions
 adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --trace latest
+adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --threads
 ```
+
+`--threads` 用于排查生成停滞与线程池饥饿。输出为 JSONL，首行汇总 JVM 线程数量及状态，后续记录按优先级列出脱敏线程名和截断后的栈帧摘要。停止生成时，`--recent` 输出里的 `generation.cleanup_timeout` 事件可定位超过等待时限的清理阶段。
 
 Debug 变体的调试后缀包名对应调整组件路径前缀（例如 `com.promenar.infinity.debug/.startup.diagnostics.DiagnosticDumpProvider`）；Release 构建同样支持上述脱敏诊断事件、会话轨迹导出与三重门禁保护下的 `dumpsys` 拉取。
 

@@ -405,7 +405,7 @@ class ExternalKnowledgeBaseMountTest {
             override suspend fun knowledgeBases(session: Session, options: RagOptions) =
                 listOf(KnowledgeBaseSummary("kb-root", "默认资料", 1, true))
             override suspend fun snapshot(session: Session, options: RagOptions) = KnowledgeCatalogSnapshot()
-            override fun hasIndexedMaterial(session: Session, options: RagOptions) = false
+            override suspend fun hasIndexedMaterialAsync(session: Session, options: RagOptions) = false
             override suspend fun documentLocation(sessionId: String, reference: RagReference): KnowledgeDocumentLocation? = null
         })
         val request = RequestKnowledgeAccessSkill(planner, { session }, { config }, KnowledgeTurnState())

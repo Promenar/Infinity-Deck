@@ -155,6 +155,7 @@ object DiagnosticRedactor {
         "composer_queue.image_cleanup_failed" to keys("operation"),
         "composer_queue.pause_failed" to keys("reason"),
         "context.project_rules_read_failed" to keys("reason"),
+        "generation.cleanup_timeout" to keys("sessionId stage elapsedMs"),
         "generation.completed" to keys("sessionId"),
         "generation.empty_reply_retry" to keys("sessionId"),
         "generation.failed" to keys("sessionId code elapsedMs retryable providerId"),

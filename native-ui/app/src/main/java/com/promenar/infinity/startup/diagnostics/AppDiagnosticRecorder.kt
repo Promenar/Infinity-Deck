@@ -3,6 +3,7 @@ package com.promenar.infinity.startup.diagnostics
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
+import java.util.concurrent.Executors
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.Files
@@ -13,7 +14,7 @@ import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.StandardOpenOption
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,12 +27,17 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlin.coroutines.coroutineContext
 
+/** 诊断读取、落盘和队列共用进程级守护线程，避免等待业务 IO 调度器。 */
+internal val diagnosticsDispatcher: CoroutineDispatcher = Executors.newSingleThreadExecutor { runnable ->
+    Thread(runnable, "infinity-diagnostics").apply { isDaemon = true }
+}.asCoroutineDispatcher()
+
 /** 私有诊断目录只管理固定命名的滚动记录。写入和快照共享同一把锁。 */
 class AppDiagnosticRecorder(
     directory: File,
     maxTotalBytes: Long = 2 * 1024 * 1024L,
     maxFileBytes: Long = 256 * 1024L,
-    ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    ioDispatcher: CoroutineDispatcher = diagnosticsDispatcher,
 ) {
     private val directory: File = directory
     private val maxTotalBytes: Long = maxTotalBytes
@@ -112,17 +118,54 @@ class AppDiagnosticRecorder(
     ) = sessionEvents(sessionId, acceptReference).asSequence().filter { it.seq > sinceSeq }
         .take(limit.coerceAtLeast(0)).toList()
 
-    internal suspend fun readRecentEvents(sessionId: String? = null, limit: Int = 200, acceptReference: Boolean = false) =
-        sessionEvents(sessionId, acceptReference).takeLast(limit.coerceAtLeast(0))
+    internal suspend fun readRecentEvents(
+        sessionId: String? = null, limit: Int = 200, acceptReference: Boolean = false,
+    ): List<UnifiedDiagnosticRecord> {
+        if (limit <= 0) return emptyList()
+        val matches = sessionFilter(sessionId, acceptReference)
+        return readShards { files ->
+            val context = coroutineContext
+            val result = mutableListOf<UnifiedDiagnosticRecord>()
+            var upperSequence: Long? = null
+            for (file in files.asReversed()) {
+                context.ensureActive()
+                if (result.size == limit) break
+                val shard = shardNumber(file)
+                val bytes = FileChannel.open(file.toPath(), StandardOpenOption.READ, NOFOLLOW_LINKS).use { channel ->
+                    val size = channel.size()
+                    if (size == 0L || size > minOf(maxFileBytes, Int.MAX_VALUE.toLong())) return@use null
+                    val content = ByteBuffer.allocate(size.toInt())
+                    while (content.hasRemaining()) {
+                        context.ensureActive()
+                        if (channel.read(content) < 0) return@use null
+                    }
+                    content.array()
+                } ?: continue
+                visitDiagnosticLinesFromEnd(bytes) { line, index ->
+                    context.ensureActive()
+                    val record = decodeLine(line, shard, index)
+                    val upper = upperSequence
+                    if (record != null && (upper == null || record.seq < upper)) {
+                        upperSequence = record.seq
+                        if (matches(record)) result.add(record)
+                    }
+                    result.size < limit
+                }
+            }
+            result.asReversed()
+        }.orEmpty()
+    }
 
-    private suspend fun sessionEvents(sessionId: String?, acceptReference: Boolean): List<UnifiedDiagnosticRecord> {
-        val snapshot = snapshot()
-        if (sessionId == null) return snapshot
+    private suspend fun sessionEvents(sessionId: String?, acceptReference: Boolean): List<UnifiedDiagnosticRecord> =
+        snapshot().filter(sessionFilter(sessionId, acceptReference))
+
+    private fun sessionFilter(sessionId: String?, acceptReference: Boolean): (UnifiedDiagnosticRecord) -> Boolean {
+        if (sessionId == null) return { true }
         val expected = if (acceptReference) DiagnosticRedactor.resolveReference(sessionId)
         else DiagnosticRedactor.correlationId(sessionId)
         val legacy = if (acceptReference && DiagnosticRedactor.isReference(sessionId)) null
         else DiagnosticRedactor.safeIdentifier(sessionId)
-        return snapshot.filter { record ->
+        return { record ->
             val actual = (record.fields["sessionId"] as? JsonPrimitive)?.contentOrNull
             actual == expected || (legacy != null && record.event == "app.exception" && actual == legacy)
         }
@@ -136,11 +179,13 @@ class AppDiagnosticRecorder(
         writeDiagnosticExport(output, issueSummary, recent())
     }
 
-    internal suspend fun snapshot(): List<UnifiedDiagnosticRecord> = withContext(ioDispatcher) {
+    internal suspend fun snapshot(): List<UnifiedDiagnosticRecord> = readShards(::scan).orEmpty()
+
+    private suspend fun <T> readShards(read: suspend (List<File>) -> T): T? = withContext(ioDispatcher) {
         mutex.withLock {
-            if (!Files.exists(directory.toPath(), NOFOLLOW_LINKS)) return@withLock emptyList()
+            if (!Files.exists(directory.toPath(), NOFOLLOW_LINKS)) return@withLock null
             ensureDirectory()
-            withDirectoryLock { scan(prune(managedFiles())) }
+            withDirectoryLock { read(prune(managedFiles())) }
         }
     }
 
@@ -244,7 +289,7 @@ class AppDiagnosticRecorder(
                     .bufferedReader(Charsets.UTF_8).useLines { lines ->
                         lines.forEachIndexed { index, line ->
                             context.ensureActive()
-                            val record = decodeLine(line, shard, index) ?: return@forEachIndexed
+                            val record = decodeLine(line, shard) { index } ?: return@forEachIndexed
                             if (record.seq <= previous) return@forEachIndexed
                             previous = record.seq
                             add(record)
@@ -254,7 +299,7 @@ class AppDiagnosticRecorder(
         }
     }
 
-    private fun decodeLine(line: String, shard: Long, index: Int): UnifiedDiagnosticRecord? {
+    private fun decodeLine(line: String, shard: Long, lineIndex: () -> Int): UnifiedDiagnosticRecord? {
         val current = runCatching { diagnosticJson.decodeFromString<UnifiedDiagnosticRecord>(line) }.getOrNull()
         if (current != null && current.schemaVersion == 2 && current.seq > 0) {
             return current.takeIf { it.event == "app.exception" || DiagnosticRedactor.isStructuredEvent(it.event) }
@@ -262,6 +307,7 @@ class AppDiagnosticRecorder(
         }
         val legacy = runCatching { diagnosticJson.decodeFromString<DiagnosticEvent>(line) }.getOrNull() ?: return null
         // 存量分片使用固定宽度编号空间，淘汰旧分片后游标仍保持稳定。
+        val index = lineIndex()
         if (shard !in 1..Long.MAX_VALUE / LEGACY_SEQ_STRIDE || index >= LEGACY_SEQ_STRIDE) return null
         return exceptionRecord(legacy).copy(seq = (shard - 1) * LEGACY_SEQ_STRIDE + index + 1)
     }
@@ -277,6 +323,26 @@ class AppDiagnosticRecorder(
         const val MAX_SHARDS = 8
         const val SEQ_BLOCK = 128L
         const val LEGACY_SEQ_STRIDE = 1_000_000L
+    }
+}
+
+/** 只解码访问到的尾行，存量格式首次需要行号时再统计换行。 */
+internal fun visitDiagnosticLinesFromEnd(bytes: ByteArray, visit: (String, () -> Int) -> Boolean) {
+    val newline = '\n'.code.toByte()
+    val carriageReturn = '\r'.code.toByte()
+    var end = bytes.size
+    if (end > 0 && bytes[end - 1] == newline) end--
+    var linesFromEnd = 0
+    val lastIndex by lazy {
+        bytes.count { it == newline } - if (bytes.lastOrNull() == newline) 1 else 0
+    }
+    while (end > 0) {
+        var start = end
+        while (start > 0 && bytes[start - 1] != newline) start--
+        val textEnd = if (end > start && bytes[end - 1] == carriageReturn) end - 1 else end
+        if (!visit(String(bytes, start, textEnd - start, Charsets.UTF_8)) { lastIndex - linesFromEnd }) break
+        linesFromEnd++
+        end = start - 1
     }
 }
 

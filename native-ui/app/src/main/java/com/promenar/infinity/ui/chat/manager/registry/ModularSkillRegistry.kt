@@ -4,7 +4,7 @@ import com.promenar.infinity.data.remote.protocol.ProtocolTool
 
 class ModularSkillRegistry(
     private val registries: List<SkillRegistry>
-) : SkillRegistry {
+) : AsyncSkillRegistry {
     
     override fun getSkill(name: String): SkillDefinition? {
         for (registry in registries) {
@@ -17,6 +17,9 @@ class ModularSkillRegistry(
     override fun getAllSkills(): List<SkillDefinition> {
         return registries.flatMap { it.getAllSkills() }
     }
+
+    override suspend fun getAllToolsAsync(allowedIds: List<String>?): List<ProtocolTool> =
+        registries.flatMap { it.getAllToolsAsync(allowedIds) }
 
     override fun getAllTools(allowedIds: List<String>?): List<ProtocolTool> {
         return registries.flatMap { it.getAllTools(allowedIds) }

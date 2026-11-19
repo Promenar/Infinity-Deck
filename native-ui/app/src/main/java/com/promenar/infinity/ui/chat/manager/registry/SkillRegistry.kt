@@ -15,6 +15,13 @@ interface SkillRegistry {
     fun getAllTools(allowedIds: List<String>? = null): List<ProtocolTool>
 }
 
+interface AsyncSkillRegistry : SkillRegistry {
+    suspend fun getAllToolsAsync(allowedIds: List<String>? = null): List<ProtocolTool>
+}
+
+suspend fun SkillRegistry.getAllToolsAsync(allowedIds: List<String>? = null): List<ProtocolTool> =
+    if (this is AsyncSkillRegistry) getAllToolsAsync(allowedIds) else getAllTools(allowedIds)
+
 interface SkillDefinition {
     val id: String
     val runtimeToolId: String get() = id
