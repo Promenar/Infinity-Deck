@@ -44,7 +44,7 @@ Infinity Deck 没有面向最终用户、与 Android UI 等价的 CLI。开发�
 
 ```bash
 adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --recent --since 0
-adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --sessions --limit 20
+adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --sessions
 adb shell dumpsys activity provider com.promenar.infinity/.startup.diagnostics.DiagnosticDumpProvider --trace latest
 ```
 
