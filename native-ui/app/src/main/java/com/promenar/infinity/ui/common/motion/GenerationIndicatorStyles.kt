@@ -1,10 +1,10 @@
 package com.promenar.infinity.ui.common.motion
 
 import android.graphics.BlendMode
-import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -46,14 +46,11 @@ internal class IndicatorPainter {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
-    val glowLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-    }
+    val glowSpritePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    val glowRect = RectF()
     val flashPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     val point = FloatArray(2)
     val point2 = FloatArray(2)
-    var glowBlur = -1f
 
     private var lastTime = Float.NaN
     private var frame = 0
@@ -414,32 +411,44 @@ private fun infinityBase(native: Canvas, cx: Float, cy: Float, a: Float, k: Floa
     }
 }
 
-/** 光头与渐隐的尾巴：先画一层模糊光晕（深色主题叠加混合），再画清晰的一层。[tails] 依次给出每条尾巴的头部、颜色、长度与透明度。 */
+/** 光头与渐隐的尾巴：先画无模糊高斯精灵柔光层（深色主题叠加混合），再画清晰的一层。[tails] 依次给出每条尾巴的头部、颜色、长度与透明度。 */
 private inline fun infinityTails(
     native: Canvas, cx: Float, cy: Float, a: Float, k: Float, palette: MotionPalette, painter: IndicatorPainter,
     tails: ((Float, Color, Float, Float) -> Unit) -> Unit,
 ) {
-    if (painter.glowBlur != 2.5f * k) {
-        painter.glowLinePaint.maskFilter = BlurMaskFilter(2.5f * k, BlurMaskFilter.Blur.NORMAL)
-        painter.glowBlur = 2.5f * k
-    }
     val p = painter.point
     val q = painter.point2
-    for (pass in 0 until 2) {
-        val paint = if (pass == 0) painter.glowLinePaint else painter.linePaint
-        paint.blendMode = if (pass == 0 && palette.dark) BlendMode.PLUS else BlendMode.SRC_OVER
-        tails { head, color, length, alpha ->
-            val segments = 34
-            for (j in segments - 1 downTo 0) {
-                val s0 = head - j.toFloat() / segments * length
-                val s1 = head - (j + 1f) / segments * length
-                val f = 1 - j.toFloat() / segments
-                lemniscateAt(s0, p)
-                lemniscateAt(s1, q)
-                paint.color = (if (j < 2) palette.hot else color).copy(alpha = clamp01(f * f * alpha)).toArgb()
-                paint.strokeWidth = (0.6f + 1.6f * f) * k * (0.55f + 0.45f * abs(cos(s0)))
-                native.drawLine(cx + a * q[0], cy + a * q[1], cx + a * p[0], cy + a * p[1], paint)
-            }
+    val glowBlur = 2.5f * k
+    tails { head, color, length, alpha ->
+        val segments = 34
+        for (j in segments - 1 downTo 0) {
+            val s0 = head - j.toFloat() / segments * length
+            val s1 = head - (j + 1f) / segments * length
+            val f = 1 - j.toFloat() / segments
+            lemniscateAt(s0, p)
+            lemniscateAt(s1, q)
+            val segColor = if (j < 2) palette.hot else color
+            val segAlpha = clamp01(f * f * alpha)
+            val width = (0.6f + 1.6f * f) * k * (0.55f + 0.45f * abs(cos(s0)))
+            drawGaussianGlowSegment(
+                native,
+                cx + a * q[0], cy + a * q[1], cx + a * p[0], cy + a * p[1],
+                width, segColor, segAlpha, glowBlur, palette.dark, painter.glowSpritePaint, painter.glowRect,
+            )
+        }
+    }
+    painter.linePaint.blendMode = BlendMode.SRC_OVER
+    tails { head, color, length, alpha ->
+        val segments = 34
+        for (j in segments - 1 downTo 0) {
+            val s0 = head - j.toFloat() / segments * length
+            val s1 = head - (j + 1f) / segments * length
+            val f = 1 - j.toFloat() / segments
+            lemniscateAt(s0, p)
+            lemniscateAt(s1, q)
+            painter.linePaint.color = (if (j < 2) palette.hot else color).copy(alpha = clamp01(f * f * alpha)).toArgb()
+            painter.linePaint.strokeWidth = (0.6f + 1.6f * f) * k * (0.55f + 0.45f * abs(cos(s0)))
+            native.drawLine(cx + a * q[0], cy + a * q[1], cx + a * p[0], cy + a * p[1], painter.linePaint)
         }
     }
 }

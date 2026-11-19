@@ -73,28 +73,6 @@ import kotlin.math.sqrt
 
 private const val SQRT_2 = 1.4142135f
 
-/** Abramowitz & Stegun 7.1.26 高斯误差函数近似（最大误差 < 1.5e-7）。 */
-private fun erfApprox(x: Float): Float {
-    val sign = if (x < 0f) -1f else 1f
-    val ax = abs(x)
-    val t = 1f / (1f + 0.3275911f * ax)
-    val poly = t * (0.254829592f + t * (-0.284496736f + t * (1.421413741f + t * (-1.453152027f + t * 1.061405429f))))
-    val y = 1f - poly * exp(-ax * ax)
-    return sign * y
-}
-
-/** Skia SkBlurMask::ConvertRadiusToSigma 精确换算。 */
-private fun skiaSigma(blurRadius: Float): Float =
-    if (blurRadius > 0f) 0.57735f * blurRadius + 0.5f else 0f
-
-private fun roundedBoxSdf(px: Float, py: Float, halfW: Float, halfH: Float, r: Float): Float {
-    val qx = abs(px) - halfW + r
-    val qy = abs(py) - halfH + r
-    val outX = max(qx, 0f)
-    val outY = max(qy, 0f)
-    return sqrt(outX * outX + outY * outY) + min(max(qx, qy), 0f) - r
-}
-
 /**
  * 与生产 [LedBatch] 1:1 对标的零模糊批处理画笔：
  * - 熄灭底格与清晰灯芯保留纯几何 Path（零 BlurMaskFilter，不引发 fallback）；

@@ -39,7 +39,8 @@ enum class FileHostActionScope { FILE, FOLDER, MULTI }
  * 宿主专属的条目动作，例如资料页“加入资料 / 在对话中使用”、会话“附加到消息”、Linux“在终端运行”。
  * - [label] 由宿主给出已本地化的文字；
  * - [appliesTo] 决定出现在文件、文件夹或多选的菜单里；
- * - [prominent] 为 true 时同时作为文件预览上方的按钮，排在“打开方式”之前，第一个为主色。
+ * - [prominent] 为 true 且 [headerAction] 为 false 时作为文件预览上方的按钮；
+ * - [headerAction] 为 true 时渲染为文件预览页头右上角的图标按钮（“更多”菜单之前）。
  */
 @Immutable
 data class FileHostAction(
@@ -48,6 +49,7 @@ data class FileHostAction(
     val label: String,
     val appliesTo: Set<FileHostActionScope>,
     val prominent: Boolean = false,
+    val headerAction: Boolean = false,
     /** 额外的适用条件，例如只对存储空间文件夹显示。 */
     val visibleFor: (List<FileItem>) -> Boolean = { true },
     val onInvoke: (List<FileItem>) -> Unit,

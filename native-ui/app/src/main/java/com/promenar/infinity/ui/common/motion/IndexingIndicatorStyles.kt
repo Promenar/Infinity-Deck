@@ -1,8 +1,8 @@
 package com.promenar.infinity.ui.common.motion
 
 import android.graphics.BlendMode
-import android.graphics.BlurMaskFilter
 import android.graphics.Paint
+import android.graphics.RectF
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -265,11 +265,8 @@ internal class IndexIndicatorPainter {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
-    val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-    }
-    var glowBlur = -1f
+    val glowSpritePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    val glowRect = RectF()
     /** 等待确认与失败用的琥珀色，取主题的警示色，不随主色变化。 */
     var amber: Color = Color.Unspecified
 }
@@ -438,35 +435,49 @@ private fun DrawScope.drawInfinityTrace(cx: Float, cy: Float, k: Float, palette:
     val a = 20f * k
     val segments = 28
     val colors = palette.indexColors(painter.amber)
-    if (painter.glowBlur != 2.5f * k) {
-        painter.glowPaint.maskFilter = BlurMaskFilter(2.5f * k, BlurMaskFilter.Blur.NORMAL)
-        painter.glowBlur = 2.5f * k
-    }
+    val glowBlur = 2.5f * k
     val p = painter.point
     val q = painter.point2
     drawIntoCanvas { canvas ->
         val native = canvas.nativeCanvas
-        for (pass in 0 until 2) {
+        if (palette.dark) {
             for (track in 0 until 2) {
                 val levels = if (track == 0) painter.levels else painter.levels2
                 val trackColors = if (track == 0) painter.colors else painter.colors2
                 val start = (if (track == 0) PI / 2 else PI * 1.5).toFloat()
                 for (i in 0 until segments) {
+                    val level = levels[i]
+                    if (level < 0.9f) continue
                     val s0 = start + i.toFloat() / segments * PI.toFloat()
                     val s1 = s0 + PI.toFloat() / segments
-                    val level = levels[i]
-                    val lit = level >= IndexLedOff
-                    // 第 0 遍画深色主题里的光晕，只给最亮的前沿与数据包。
-                    if (pass == 0 && !(palette.dark && level >= 0.9f)) continue
                     lemniscateAt(s0, p)
                     lemniscateAt(s1, q)
-                    val paint = if (pass == 0) painter.glowPaint else painter.linePaint
-                    paint.blendMode = if (pass == 0) BlendMode.PLUS else BlendMode.SRC_OVER
-                    val color = if (lit) colors[trackColors[i]].copy(alpha = clamp01(level)) else palette.off
-                    paint.color = color.toArgb()
-                    paint.strokeWidth = (if (lit) 1.5f else 0.9f) * k * (0.55f + 0.45f * abs(cos(s0)))
-                    native.drawLine(cx + a * p[0], cy + a * p[1], cx + a * q[0], cy + a * q[1], paint)
+                    val segColor = colors[trackColors[i]]
+                    val width = 1.5f * k * (0.55f + 0.45f * abs(cos(s0)))
+                    drawGaussianGlowSegment(
+                        native,
+                        cx + a * p[0], cy + a * p[1], cx + a * q[0], cy + a * q[1],
+                        width, segColor, clamp01(level), glowBlur, additive = true, painter.glowSpritePaint, painter.glowRect,
+                    )
                 }
+            }
+        }
+        painter.linePaint.blendMode = BlendMode.SRC_OVER
+        for (track in 0 until 2) {
+            val levels = if (track == 0) painter.levels else painter.levels2
+            val trackColors = if (track == 0) painter.colors else painter.colors2
+            val start = (if (track == 0) PI / 2 else PI * 1.5).toFloat()
+            for (i in 0 until segments) {
+                val s0 = start + i.toFloat() / segments * PI.toFloat()
+                val s1 = s0 + PI.toFloat() / segments
+                val level = levels[i]
+                val lit = level >= IndexLedOff
+                lemniscateAt(s0, p)
+                lemniscateAt(s1, q)
+                val color = if (lit) colors[trackColors[i]].copy(alpha = clamp01(level)) else palette.off
+                painter.linePaint.color = color.toArgb()
+                painter.linePaint.strokeWidth = (if (lit) 1.5f else 0.9f) * k * (0.55f + 0.45f * abs(cos(s0)))
+                native.drawLine(cx + a * p[0], cy + a * p[1], cx + a * q[0], cy + a * q[1], painter.linePaint)
             }
         }
     }

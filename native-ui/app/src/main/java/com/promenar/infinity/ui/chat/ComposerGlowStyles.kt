@@ -1,20 +1,24 @@
 package com.promenar.infinity.ui.chat
 
 import android.graphics.BlendMode
-import android.graphics.BlurMaskFilter
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
+import android.graphics.RuntimeShader
 import android.graphics.Shader
+import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas as ComposeCanvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.lerp
@@ -27,17 +31,21 @@ import com.promenar.infinity.ui.common.motion.GenerationMotionPhase
 import com.promenar.infinity.ui.common.motion.LedBatch
 import com.promenar.infinity.ui.common.motion.LocalGenerationMotion
 import com.promenar.infinity.ui.common.motion.MotionPalette
+import com.promenar.infinity.ui.common.motion.RoundedRingHaloCache
 import com.promenar.infinity.ui.common.motion.actOn
 import com.promenar.infinity.ui.common.motion.breath
 import com.promenar.infinity.ui.common.motion.clamp01
+import com.promenar.infinity.ui.common.motion.createRoundedRingHaloShader
 import com.promenar.infinity.ui.common.motion.evenBlink
 import com.promenar.infinity.ui.common.motion.fract
 import com.promenar.infinity.ui.common.motion.heartbeat
 import com.promenar.infinity.ui.common.motion.motionHash
 import com.promenar.infinity.ui.common.motion.pingPong
 import com.promenar.infinity.ui.common.motion.rememberMotionPalette
+import com.promenar.infinity.ui.common.motion.skiaSigma
 import com.promenar.infinity.ui.common.motion.slowBlink
 import com.promenar.infinity.ui.common.motion.smoothStep
+import com.promenar.infinity.ui.common.motion.updateRoundedRingHaloShader
 import com.promenar.infinity.ui.theme.ComposerGlowStyle
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.InfinityPureWhite
@@ -71,28 +79,33 @@ internal const val ComposerInputRowEndDp = 10f
 /** 单行输入文字的中心距浮岛底边：底部留白 8dp + 工具行 40dp + 输入行 48dp 里文字下方 9dp + 半个 22sp 行高。 */
 internal const val ComposerInputRowCenterDp = 68f
 
-/** 浮岛外圈与描边所需的可复用画笔；每个浮岛持有一份。 */
-internal class ComposerOutlinePaints {
+/** 浮岛外圈与描边所需的可复用绘制状态；API 33+ 非预览环境缓存 AGSL 环带着色器。 */
+internal class ComposerOutlinePaints(val inspection: Boolean = false) {
     val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    /** 模糊半径按 1px 取整缓存，呼吸时不逐帧新建滤镜。 */
-    private val blurs = HashMap<Int, BlurMaskFilter>()
-    fun blur(radius: Float): BlurMaskFilter {
-        val key = radius.roundToInt().coerceAtLeast(1)
-        return blurs.getOrPut(key) { BlurMaskFilter(key.toFloat(), BlurMaskFilter.Blur.NORMAL) }
-    }
+    var ringShader: Shader? = null
+    var ringBrush: ShaderBrush? = null
 }
 
-/** 贴着浮岛边缘的模糊光圈，画在浮岛底色之下；[colorB] 不同时为主色到第三色的斜向渐变。 */
+/** 贴着浮岛边缘的无模糊光圈，画在浮岛底色之下；[colorB] 不同时为主色到第三色的斜向渐变。 */
 internal fun DrawScope.drawHaloRing(alpha: Float, blur: Float, width: Float, cornerPx: Float, colorA: Color, colorB: Color, paints: ComposerOutlinePaints) {
-    if (alpha <= 0.004f) return
-    val paint = paints.halo
-    paint.shader = if (colorA == colorB) null else LinearGradient(0f, 0f, size.width, size.height, colorA.toArgb(), colorB.toArgb(), Shader.TileMode.CLAMP)
-    paint.color = colorA.toArgb()
-    paint.alpha = (255 * clamp01(alpha)).roundToInt()
-    paint.strokeWidth = width * density
-    paint.maskFilter = paints.blur(blur * density)
-    drawIntoCanvas { it.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, cornerPx, cornerPx, paint) }
+    if (alpha <= 0.004f || size.width <= 0f || size.height <= 0f) return
+    val blurPx = blur * density
+    val strokePx = width * density
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !paints.inspection) {
+        val shader = (paints.ringShader ?: createRoundedRingHaloShader().also {
+            paints.ringShader = it
+            paints.ringBrush = ShaderBrush(it)
+        }) as RuntimeShader
+        val brush = paints.ringBrush ?: ShaderBrush(shader).also { paints.ringBrush = it }
+        val sigma = skiaSigma(blurPx).coerceAtLeast(0.5f)
+        val pad = kotlin.math.ceil(3.2f * sigma + strokePx * 0.5f).coerceAtLeast(4f)
+        updateRoundedRingHaloShader(shader, size.width, size.height, alpha, blurPx, strokePx, cornerPx, colorA, colorB)
+        drawRect(brush, topLeft = Offset(-pad, -pad), size = Size(size.width + pad * 2f, size.height + pad * 2f))
+    } else {
+        drawIntoCanvas { canvas ->
+            RoundedRingHaloCache.draw(canvas.nativeCanvas, size.width, size.height, alpha, blurPx, strokePx, cornerPx, colorA, colorB)
+        }
+    }
 }
 
 /** 贴边描边，内缩半个线宽；[colorB] 不同时为主色到第三色的斜向渐变。 */

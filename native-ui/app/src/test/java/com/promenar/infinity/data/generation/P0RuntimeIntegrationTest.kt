@@ -107,7 +107,7 @@ class P0RuntimeIntegrationTest {
         val fixture = fixture()
         val pipeline = spyk(ContextCompactionPipeline())
 
-        ChatGenerationRunner(fixture.runtime(pipeline)).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(pipeline), fixture.request)
 
         assertThat(fixture.prompts).hasSize(2)
         assertThat(fixture.prompts[1].messages.any { it.role == "tool" }).isTrue()
@@ -129,7 +129,7 @@ class P0RuntimeIntegrationTest {
             )
         }
 
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
 
         val assistants = fixture.messageRepository.getBySession("session").filter { it.role == MessageRole.ASSISTANT }
         val first = requireNotNull(assistants.single { it.id == "assistant" }.tokens)
@@ -160,7 +160,7 @@ class P0RuntimeIntegrationTest {
         fixture.summaryResponse = PromptResponse("保留关键事实的历史摘要", usage = ProtocolUsage(7, 3, 10))
         fixture.rounds = { listOf(StreamChunk.TextDelta("回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
 
-        withContext(Dispatchers.Default) { ChatGenerationRunner(fixture.runtime()).run(fixture.request) {} }
+        runOnRealClock(fixture.runtime(), fixture.request)
 
         assertThat(fixture.summaryPrompts).hasSize(2)
         assertThat(fixture.summaryPrompts.map { it.model }).containsExactly("p0-integration-model", "p0-integration-model")
@@ -182,7 +182,7 @@ class P0RuntimeIntegrationTest {
         fixture.summaryResponse = PromptResponse("", usage = ProtocolUsage(4, 0, 4))
         fixture.rounds = { listOf(StreamChunk.TextDelta("回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
 
-        withContext(Dispatchers.Default) { ChatGenerationRunner(fixture.runtime()).run(fixture.request) {} }
+        runOnRealClock(fixture.runtime(), fixture.request)
 
         assertThat(fixture.summaryPrompts).hasSize(1)
         assertThat(fixture.store.getSession("session")!!.summary).isNull()
@@ -277,7 +277,7 @@ class P0RuntimeIntegrationTest {
             if (round == 1) fixture.sessions.updateSessionExecutionMode("session", "auto")
         }
         val events = mutableListOf<GenerationEvent>()
-        val job = async { ChatGenerationRunner(fixture.runtime()).run(fixture.request) { events += it } }
+        val job = async(Dispatchers.Default) { ChatGenerationRunner(fixture.runtime()).run(fixture.request) { events += it } }
         val confirmation = fixture.interactions.pending.first { it != null }!!
 
         assertThat(confirmation.kind).isEqualTo(GenerationInteractionKind.UNLIMITED_AUTO)
@@ -307,7 +307,7 @@ class P0RuntimeIntegrationTest {
                 StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("call-1")),
             ) else listOf(StreamChunk.TextDelta("任务完成"), StreamChunk.Completed(CompletionReason.END_TURN))
         }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         assertThat(fixture.store.getSession("session")!!.loopStatus).isEqualTo(LoopStatus.WAITING_FOR_APPROVAL)
         assertThat(fixture.executedCalls).isEmpty()
         val firstAssistant = fixture.messageRepository.getById("assistant")!!
@@ -333,7 +333,7 @@ class P0RuntimeIntegrationTest {
         val resumedRequest = fixture.request.copy(assistantMessageId = "resumed")
         val resumedEvents = mutableListOf<GenerationEvent>()
 
-        ChatGenerationRunner(fixture.runtime()).run(resumedRequest) { resumedEvents += it }
+        runOnRealClock(fixture.runtime(), resumedRequest) { resumedEvents += it }
 
         val firstProgress = resumedEvents.filterIsInstance<GenerationEvent.ProgressChanged>().first().progress
         assertThat(firstProgress.tokens).isEqualTo(storedUsage.total.toLong())
@@ -353,7 +353,7 @@ class P0RuntimeIntegrationTest {
         val fixture = fixture(outputStore = output)
         fixture.toolResult = original
 
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
 
         assertThat(fixture.prompts).hasSize(2)
         val sentResult = fixture.prompts[1].messages.single { it.role == "tool" }
@@ -385,7 +385,7 @@ class P0RuntimeIntegrationTest {
             }
         }
         val events = mutableListOf<GenerationEvent>()
-        val job = launch { ChatGenerationRunner(fixture.runtime()).run(fixture.request) { events += it } }
+        val job = launch(Dispatchers.Default) { ChatGenerationRunner(fixture.runtime()).run(fixture.request) { events += it } }
         continuationEntered.await()
         assertThat(fixture.executedCalls).containsExactly("call-1")
 
@@ -420,10 +420,7 @@ class P0RuntimeIntegrationTest {
         fixture.rounds = { listOf(StreamChunk.TextDelta("已按预算收尾"), StreamChunk.Completed(CompletionReason.END_TURN)) }
         val runtime = fixture.runtime()
 
-        // 摘要路由使用真实 IO 线程；使用真实时钟避免测试调度器提前耗尽摘要超时。
-        withContext(Dispatchers.Default) {
-            ChatGenerationRunner(runtime).run(fixture.request) {}
-        }
+        runOnRealClock(runtime, fixture.request)
 
         assertThat(fixture.summaryPrompts).hasSize(1)
         assertThat(fixture.summaryPrompts.single().toolChoice).isEqualTo(ProtocolToolChoice.NONE)
@@ -473,7 +470,7 @@ class P0RuntimeIntegrationTest {
                 .toList()
             assertThat(chunks.filterIsInstance<StreamChunk.Usage>()).hasSize(2)
             fixture.rounds = { chunks }
-            ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+            runOnRealClock(fixture.runtime(), fixture.request)
             val usage = fixture.messageRepository.getById("assistant")!!.tokens!!
             assertThat(usage.input).isEqualTo(100)
             assertThat(usage.cacheReadInput).isEqualTo(80)
@@ -489,7 +486,7 @@ class P0RuntimeIntegrationTest {
             StreamChunk.ToolCallDelta("prefix-$index", "write_file", """{"path":"/$index.md"}""", 0),
             StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("prefix-$index")),
         ) else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         assertThat(fixture.prompts).hasSize(3)
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
         assertPrefix(fixture.prompts[1], fixture.prompts[2])
@@ -511,7 +508,7 @@ class P0RuntimeIntegrationTest {
         try {
             every { anyConstructed<java.util.Date>().time } answers { now }
             fixture.onPrompt = { index, _ -> if (index == 1) now += 60_000 }
-            ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+            runOnRealClock(fixture.runtime(), fixture.request)
             assertThat(fixture.prompts).hasSize(2)
             assertThat(fixture.prompts[0].messages.first { it.role == "user" }.turnContext).contains("System Time")
             assertPrefix(fixture.prompts[0], fixture.prompts[1])
@@ -527,7 +524,7 @@ class P0RuntimeIntegrationTest {
         coEvery { tasks.getPlan("session") } answers { plan }
         fixture.realContextBuilder = ContextBuilder(taskRepository = tasks)
         fixture.onPrompt = { index, _ -> if (index == 1) plan = plan.copy(steps = plan.steps.map { it.copy(status = "completed") }) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         assertThat(fixture.prompts).hasSize(2)
         assertThat(fixture.prompts[0].messages.first { it.role == "user" }.turnContext).contains("目标")
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
@@ -544,7 +541,7 @@ class P0RuntimeIntegrationTest {
         fixture.onPrompt = { index, _ -> if (index == 1) states.update("session", "assistant", listOf(
             com.promenar.infinity.data.state.StateOperation("progress", "set", kotlinx.serialization.json.JsonPrimitive(1)),
         )) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         assertThat(fixture.prompts).hasSize(2)
         assertThat(fixture.prompts[0].messages.first { it.role == "user" }.turnContext).contains("会话状态面板")
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
@@ -580,15 +577,18 @@ class P0RuntimeIntegrationTest {
             assertThat(sent).doesNotContain("configuration")
         }
         fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         val saved = fixture.messageRepository.getById("user")!!.turnContext
         assertThat(saved).contains("<turn_context>")
         fixture.rebuildFromRepositories()
         fixture.messages.addMessage("session", Message("user-next", MessageRole.USER, "新的问题"))
         fixture.messages.addMessage("session", Message("assistant-next", MessageRole.ASSISTANT, "", parentMessageId = "user-next"))
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
-            userMessageId = "user-next", assistantMessageId = "assistant-next", userContent = "新的问题",
-        )) {}
+        runOnRealClock(
+            fixture.runtime(),
+            fixture.request.copy(
+                userMessageId = "user-next", assistantMessageId = "assistant-next", userContent = "新的问题",
+            ),
+        )
         assertThat(fixture.prompts[1].messages.first { it.role == "user" }.turnContext!!.toByteArray())
             .isEqualTo(com.promenar.infinity.ui.chat.manager.turnContextForModel(saved)!!.toByteArray())
         assertPrefix(fixture.prompts[0], fixture.prompts[1])
@@ -606,7 +606,7 @@ class P0RuntimeIntegrationTest {
             2 -> listOf(StreamChunk.ToolCallDelta("retry-tool", "write_file", """{"path":"/retry.md"}""", 0), StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("retry-tool")))
             else -> listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN))
         } }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         assertThat(fixture.prompts).hasSize(3)
         assertThat(fixture.prompts[1]).isEqualTo(fixture.prompts[0])
         assertPrefix(fixture.prompts[1], fixture.prompts[2])
@@ -621,18 +621,21 @@ class P0RuntimeIntegrationTest {
         coEvery { tasks.getPlan("session") } answers { com.promenar.infinity.data.model.TaskState("plan", goal, status = "doing") }
         fixture.realContextBuilder = ContextBuilder(taskRepository = tasks)
         fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         val original = fixture.messageRepository.getById("user")!!.turnContext
         goal = "新的目标"
         fixture.rebuildFromRepositories()
         fixture.messages.addMessage("session", Message("resumed", MessageRole.ASSISTANT, "", parentMessageId = "user"))
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(assistantMessageId = "resumed")) {}
+        runOnRealClock(fixture.runtime(), fixture.request.copy(assistantMessageId = "resumed"))
         assertThat(fixture.messageRepository.getById("user")!!.turnContext).isEqualTo(original)
         coVerify(exactly = 1) { tasks.getPlan("session") }
         fixture.messages.addMessage("session", Message("regenerated", MessageRole.ASSISTANT, "", parentMessageId = "user"))
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
-            assistantMessageId = "regenerated", messageIdsToReplace = setOf("assistant", "resumed"),
-        )) {}
+        runOnRealClock(
+            fixture.runtime(),
+            fixture.request.copy(
+                assistantMessageId = "regenerated", messageIdsToReplace = setOf("assistant", "resumed"),
+            ),
+        )
         val regenerated = fixture.messageRepository.getById("user")!!.turnContext
         assertThat(regenerated).contains("新的目标")
         assertThat(regenerated).isNotEqualTo(original)
@@ -652,7 +655,7 @@ class P0RuntimeIntegrationTest {
         fixture.rounds = { index -> if (index == 1) listOf(
             StreamChunk.Error(code = com.promenar.infinity.domain.generation.GenerationFailureCode.NETWORK, retryable = true),
         ) else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         assertThat(fixture.prompts).hasSize(2)
         assertThat(fixture.prompts.first().tools).isNotEmpty()
         assertThat(fixture.prompts.last().tools).isNull()
@@ -668,7 +671,7 @@ class P0RuntimeIntegrationTest {
         val fixture = fixture(priorToolResults = listOf("升级前的工具结果"))
         fixture.realContextBuilder = ContextBuilder()
         fixture.rounds = { listOf(StreamChunk.TextDelta("续写完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         assertThat(fixture.database.messageDao().getById("user")!!.turnContext).isNull()
         assertThat(fixture.prompts.single().messages.first { it.role == "user" }.turnContext).isNull()
         assertThat(fixture.prompts.single().messages.none { it.content.contains("System Time") }).isTrue()
@@ -678,11 +681,11 @@ class P0RuntimeIntegrationTest {
     fun `删除全部旧回复后重新生成也覆盖用户块`() = runTest {
         val fixture = prefixFixture()
         fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         val original = fixture.messageRepository.getById("user")!!.turnContext
         fixture.messages.deleteMessage("session", "assistant")
         fixture.messages.addMessage("session", Message("new-answer", MessageRole.ASSISTANT, "", parentMessageId = "user"))
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(assistantMessageId = "new-answer")) {}
+        runOnRealClock(fixture.runtime(), fixture.request.copy(assistantMessageId = "new-answer"))
         val saved = fixture.messageRepository.getById("user")!!.turnContext
         assertThat(saved).isNotEqualTo(original)
         assertThat(saved).contains("new-answer")
@@ -692,15 +695,18 @@ class P0RuntimeIntegrationTest {
     fun `重新生成失败恢复原用户块及其对应旧回复`() = runTest {
         val fixture = prefixFixture()
         fixture.rounds = { listOf(StreamChunk.TextDelta("原回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         val original = fixture.messageRepository.getById("user")!!.turnContext
         fixture.preferences.edit().putInt("stream_retry_limit", 0).commit()
         fixture.messages.addMessage("session", Message("failed-regenerate", MessageRole.ASSISTANT, "", parentMessageId = "user"))
         fixture.rounds = { listOf(StreamChunk.Error(code = com.promenar.infinity.domain.generation.GenerationFailureCode.NETWORK, retryable = false)) }
         try {
-            ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
-                assistantMessageId = "failed-regenerate", messageIdsToReplace = setOf("assistant"),
-            )) {}
+            runOnRealClock(
+                fixture.runtime(),
+                fixture.request.copy(
+                    assistantMessageId = "failed-regenerate", messageIdsToReplace = setOf("assistant"),
+                ),
+            )
         } catch (_: com.promenar.infinity.domain.generation.GenerationFailedException) { }
         assertThat(fixture.messageRepository.getById("user")!!.turnContext).isEqualTo(original)
         assertThat(fixture.messageRepository.getById("assistant")!!.content).isEqualTo("原回答")
@@ -749,7 +755,7 @@ class P0RuntimeIntegrationTest {
                 StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("update")))
             else -> listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN))
         } }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(messageIdsToReplace = setOf("excluded"))) {}
+        runOnRealClock(fixture.runtime(), fixture.request.copy(messageIdsToReplace = setOf("excluded")))
         assertThat(fixture.prompts).hasSize(4)
         assertThat(states.get("session")!!.board!!.fields.single().value).isEqualTo(kotlinx.serialization.json.JsonPrimitive(85))
         fixture.prompts.zipWithNext().forEach { (before, after) -> assertPrefix(before, after) }
@@ -764,7 +770,7 @@ class P0RuntimeIntegrationTest {
                 fixture.messageRepository.updatePartial(messageId, updates)
             }
         })
-        val result = runCatching { ChatGenerationRunner(fixture.runtime()).run(fixture.request) {} }
+        val result = runCatching { runOnRealClock(fixture.runtime(), fixture.request) }
         assertThat(result.isFailure).isTrue()
         assertThat(fixture.prompts).isEmpty()
         assertThat(fixture.database.messageDao().getById("user")!!.turnContext).isNull()
@@ -784,7 +790,7 @@ class P0RuntimeIntegrationTest {
             StreamChunk.ToolCallDelta("continue-failure", "write_file", """{"path":"/continue.md"}""", 0),
             StreamChunk.Completed(CompletionReason.TOOL_CALLS, listOf("continue-failure")),
         ) else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        val result = runCatching { ChatGenerationRunner(fixture.runtime()).run(fixture.request) {} }
+        val result = runCatching { runOnRealClock(fixture.runtime(), fixture.request) }
         assertThat(result.exceptionOrNull()?.message).isEqualTo("模拟续轮字段写入失败")
         assertThat(fixture.prompts).hasSize(1)
         assertThat(fixture.messageRepository.getById("assistant")!!.content).isEqualTo("阶段正文")
@@ -798,7 +804,7 @@ class P0RuntimeIntegrationTest {
     fun `发送前配置刷新拒绝可重试且不得提前删除重新生成目标`() = runTest {
         val fixture = prefixFixture()
         fixture.rounds = { listOf(StreamChunk.TextDelta("原回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         fixture.messages.addMessage("session", Message("reroute-target", MessageRole.ASSISTANT, "", parentMessageId = "user"))
         val request = fixture.request.copy(assistantMessageId = "reroute-target", messageIdsToReplace = setOf("assistant"))
         val runtime = fixture.runtime()
@@ -813,6 +819,15 @@ class P0RuntimeIntegrationTest {
         assertThat(fixture.prompts).hasSize(2)
     }
 
+    /** Room 持久化与摘要路由使用真实 IO 线程；切到默认调度器使用真实时钟，避免 runTest 虚拟时钟提前耗尽善后超时。 */
+    private suspend fun runOnRealClock(
+        runtime: ChatGenerationRuntime,
+        request: GenerationRequest,
+        emit: suspend (GenerationEvent) -> Unit = {},
+    ) = withContext(Dispatchers.Default) {
+        ChatGenerationRunner(runtime).run(request, emit)
+    }
+
     private suspend fun TestScope.prefixFixture(): Fixture = fixture().also {
         it.realContextBuilder = ContextBuilder()
         it.sessions.updateSessionOptions("session", it.store.getSession("session")!!.options.copy(enableTimeInjection = false))
@@ -820,12 +835,15 @@ class P0RuntimeIntegrationTest {
 
     private suspend fun adjacentTurns(fixture: Fixture, secondContent: String = "后续任务") {
         fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request) {}
+        runOnRealClock(fixture.runtime(), fixture.request)
         fixture.messages.addMessage("session", Message("user-next", MessageRole.USER, secondContent))
         fixture.messages.addMessage("session", Message("assistant-next", MessageRole.ASSISTANT, "", parentMessageId = "user-next"))
-        ChatGenerationRunner(fixture.runtime()).run(fixture.request.copy(
-            userMessageId = "user-next", assistantMessageId = "assistant-next", userContent = secondContent,
-        )) {}
+        runOnRealClock(
+            fixture.runtime(),
+            fixture.request.copy(
+                userMessageId = "user-next", assistantMessageId = "assistant-next", userContent = secondContent,
+            ),
+        )
         assertThat(fixture.prompts).hasSize(2)
     }
 

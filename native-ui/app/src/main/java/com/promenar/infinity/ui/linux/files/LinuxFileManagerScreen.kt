@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material3.MaterialTheme
@@ -108,8 +108,8 @@ private fun LinuxHomeFileManager(
             settingsPage = true,
             hostActions = listOf(
                 FileHostAction(
-                    id = "linux-details", icon = Icons.Rounded.Description, label = details,
-                    appliesTo = setOf(FileHostActionScope.FILE), prominent = true,
+                    id = "linux-details", icon = Icons.Rounded.Edit, label = details,
+                    appliesTo = setOf(FileHostActionScope.FILE), prominent = false, headerAction = true,
                     onInvoke = { items -> items.singleOrNull()?.let { onOpenFile(linuxAbsolutePath(it.ref.path)) } },
                 ),
                 FileHostAction(

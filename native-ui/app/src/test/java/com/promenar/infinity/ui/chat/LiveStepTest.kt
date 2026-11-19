@@ -194,12 +194,19 @@ class LiveStepTest {
         assertThat(live.labelRes).isEqualTo(R.string.live_step_preparing_tool)
         assertThat(live.isTailRow).isTrue()
         assertThat(live.startedAt).isEqualTo(1_000)
+        // 工具阶段但调用尚未记入 executionSteps 时同样显示“正在准备工具调用”，不误报等待模型响应。
+        val stalledBeforeExec = resolveLiveStep(listOf(preparing), signals(GenerationPhase.EXECUTING_TOOLS))!!
+        assertThat(stalledBeforeExec.kind).isEqualTo(LiveStepKind.PREPARING_TOOL)
+        assertThat(stalledBeforeExec.labelRes).isEqualTo(R.string.live_step_preparing_tool)
+        assertThat(stalledBeforeExec.startedAt).isEqualTo(1_000)
+        assertThat(stalledBeforeExec.isStalled(31_000)).isTrue()
+        assertThat(stalledBeforeExec.statusLine(31_000).badge).isEqualTo(LiveStatusBadge.Stalled)
         // 调用一旦登记为执行步骤，就不再是“准备中”。
         assertThat(resolveLiveStep(listOf(sayThenRun), signals(GenerationPhase.STREAMING))!!.kind).isNotEqualTo(LiveStepKind.PREPARING_TOOL)
     }
 
     @Test
-    fun `等待模型超过30秒才进入警示，其它种类不警示`() {
+    fun `等待模型与工具准备态超过30秒均进入警示，其它种类不警示`() {
         val waiting = LiveStep(LiveStepKind.WAITING_MODEL, GenerationMotionPhase.WAIT, startedAt = 10_000)
         assertThat(waiting.isStalled(39_999)).isFalse()
         assertThat(waiting.isStalled(40_000)).isTrue()
@@ -207,7 +214,10 @@ class LiveStepTest {
         // 时钟回拨不出现负数。
         assertThat(waiting.elapsedSeconds(5_000)).isEqualTo(0)
         assertThat(waiting.copy(startedAt = null).isStalled(1_000_000)).isFalse()
-        listOf(LiveStepKind.TOOL, LiveStepKind.PREPARING_TOOL, LiveStepKind.APPROVAL, LiveStepKind.QUESTION).forEach { kind ->
+        val preparing = waiting.copy(kind = LiveStepKind.PREPARING_TOOL, motionPhase = GenerationMotionPhase.STREAM)
+        assertThat(preparing.isStalled(39_999)).isFalse()
+        assertThat(preparing.isStalled(40_000)).isTrue()
+        listOf(LiveStepKind.TOOL, LiveStepKind.APPROVAL, LiveStepKind.QUESTION).forEach { kind ->
             assertThat(waiting.copy(kind = kind).isStalled(1_000_000)).isFalse()
         }
     }
@@ -227,8 +237,12 @@ class LiveStepTest {
         assertThat(after.labelRes).isEqualTo(R.string.live_step_waiting_model)
         assertThat(after.clockSeconds).isEqualTo(30)
         assertThat(after.motionPhase).isEqualTo(GenerationMotionPhase.WAIT)
-        // 正在准备工具调用不会升级。
-        assertThat(waiting.copy(kind = LiveStepKind.PREPARING_TOOL).statusLine(1_000_000).badge).isNull()
+        // 正在准备工具调用超过 30 秒同样触发无响应与停止入口，之前不带标签。
+        val preparing = waiting.copy(kind = LiveStepKind.PREPARING_TOOL, motionPhase = GenerationMotionPhase.STREAM)
+        assertThat(preparing.statusLine(39_999).badge).isNull()
+        val preparingStalled = preparing.statusLine(40_000)
+        assertThat(preparingStalled.badge).isEqualTo(LiveStatusBadge.Stalled)
+        assertThat(preparingStalled.stalled).isTrue()
     }
 
     @Test

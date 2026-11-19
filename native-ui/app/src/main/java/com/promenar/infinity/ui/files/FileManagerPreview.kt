@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.files
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,12 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PictureAsPdf
@@ -49,8 +52,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.promenar.infinity.R
+import com.promenar.infinity.domain.files.FileGraphState
 import com.promenar.infinity.domain.files.FileItem
+import com.promenar.infinity.domain.files.FileKnowledge
 import com.promenar.infinity.domain.files.FilePreview
+import com.promenar.infinity.domain.files.KnowledgeIndexState
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
@@ -69,10 +75,12 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 
 /*
  * 文件预览：双栏布局的右栏与单列布局推入的预览页共用同一份内容。
- * 上方是名称、大小 · 时间与动作按钮（宿主主动作在前，“打开方式”在后），中间按类型预览，下方是信息卡。
+ * 头部左侧为标题与元信息、右侧为宿主页头动作与更多菜单；面包屑或元信息下方按需呈现紧凑资料状态条，
+ * 正文区直接阅读或针对不可内联文件在占位卡内置入“打开方式”，底部保留完整信息卡。
  */
 
 private val CardShape = RoundedCornerShape(20.dp)
+private val KnowledgeStripShape = RoundedCornerShape(14.dp)
 private const val ArchiveEntryLimit = 100
 
 /** 双栏右栏：有预览条目时显示预览，否则显示当前文件夹概要。 */
@@ -103,7 +111,7 @@ internal fun FilePreviewPane(state: FileManagerUiState, actions: FileManagerUiAc
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                PreviewItemMenu(item, state, actions)
+                PreviewHeaderActions(item, state, actions)
             }
             FilePreviewContent(item, state, actions, showMeta = false, modifier = Modifier.weight(1f))
         }
@@ -165,7 +173,7 @@ internal fun FileCompactPreviewPage(
                     )
                 }
             }
-            PreviewItemMenu(item, state, actions)
+            PreviewHeaderActions(item, state, actions)
         }
         if (inner) {
             FileBreadcrumbs(
@@ -180,6 +188,20 @@ internal fun FileCompactPreviewPage(
         }
         FilePreviewContent(item, state, actions, showMeta = !inner, modifier = Modifier.weight(1f))
     }
+}
+
+@Composable
+private fun PreviewHeaderActions(item: FileItem, state: FileManagerUiState, actions: FileManagerUiActions) {
+    val headerActions = actions.host.actionsFor(listOf(item)).filter { it.headerAction }
+    headerActions.forEach { action ->
+        IconButton(
+            onClick = { action.onInvoke(listOf(item)) },
+            modifier = Modifier.testTag(UiTags.fmHostAction(action.id)),
+        ) {
+            Icon(action.icon, contentDescription = action.label)
+        }
+    }
+    PreviewItemMenu(item, state, actions)
 }
 
 @Composable
@@ -213,7 +235,7 @@ private fun FilePreviewContent(
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = InfinitySpacing.Large)
-            .padding(bottom = InfinitySpacing.XLarge),
+            .padding(top = InfinitySpacing.XSmall, bottom = InfinitySpacing.XLarge),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
     ) {
         if (showMeta) {
@@ -223,16 +245,91 @@ private fun FilePreviewContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        item.knowledge?.let { PreviewKnowledgeStatusStrip(it) }
         PreviewActions(item, actions)
-        PreviewBody(item, state.preview, state.previewLoading)
+        PreviewBody(item, state.preview, state.previewLoading) { actions.openWith(item) }
         PreviewInfoCard(item, state)
     }
 }
 
-/** 宿主主动作在前（第一个为主色），“打开方式”在后；放不下时整组竖排，按钮文字不折行。 */
+/** 紧凑资料状态条：仅呈现索引状态、分块数、图谱与失败原因，不重复路径/大小/修改时间。 */
+@Composable
+private fun PreviewKnowledgeStatusStrip(knowledge: FileKnowledge, modifier: Modifier = Modifier) {
+    val stateColor = knowledgeStateColor(knowledge.state)
+    val stateLabel = stringResource(knowledgeStateLabel(knowledge.state))
+    val chunksLabel = knowledge.chunkCount?.let { pluralStringResource(R.plurals.fm_knowledge_chunks, it, it) }
+    val graphLabel = knowledge.graph?.let { graphStatusLabel(it)?.let { res -> stringResource(res) } }
+    val graphExtracted = knowledge.graph == FileGraphState.EXTRACTED
+    val container = if (knowledge.state == KnowledgeIndexState.FAILED) {
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerLow
+    }
+    val border = if (knowledge.state == KnowledgeIndexState.FAILED) {
+        MaterialTheme.colorScheme.error.copy(alpha = 0.35f)
+    } else {
+        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    }
+    Surface(
+        shape = KnowledgeStripShape,
+        color = container,
+        modifier = modifier.fillMaxWidth().border(0.5.dp, border, KnowledgeStripShape),
+    ) {
+        Column(
+            Modifier.padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Small),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+            ) {
+                Box(Modifier.size(8.dp).background(stateColor, CircleShape))
+                InfinityMetaLine(
+                    segments = listOfNotNull(stateLabel, chunksLabel, graphLabel.takeUnless { graphExtracted }),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                if (graphExtracted) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Hub,
+                            contentDescription = graphLabel,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        if (graphLabel != null) {
+                            Text(
+                                text = graphLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                knowledge.collectionTag?.let { FileCollectionTagChip(it) }
+            }
+            knowledge.failureReason?.let { reason ->
+                Text(
+                    text = knowledgeFailureText(reason),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+/** 宿主主动作（第一个为主色）；“打开方式”由不可内联占位卡与更多菜单承载，不再占正文顶部空间。 */
 @Composable
 private fun PreviewActions(item: FileItem, actions: FileManagerUiActions) {
-    val hostActions = actions.host.actionsFor(listOf(item)).filter { it.prominent }
+    val hostActions = actions.host.actionsFor(listOf(item)).filter { it.prominent && !it.headerAction }
+    if (hostActions.isEmpty()) return
     InfinityPillRow(reverseWhenStacked = false) {
         hostActions.forEachIndexed { index, action ->
             InfinityPillButton(
@@ -243,13 +340,6 @@ private fun PreviewActions(item: FileItem, actions: FileManagerUiActions) {
                 modifier = Modifier.testTag(UiTags.fmHostAction(action.id)),
             )
         }
-        InfinityPillButton(
-            text = stringResource(R.string.fm_open_with),
-            onClick = { actions.openWith(item) },
-            tone = if (hostActions.isEmpty()) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
-            icon = Icons.AutoMirrored.Rounded.OpenInNew,
-            modifier = Modifier.testTag(UiTags.FM_PREVIEW_OPEN_WITH),
-        )
     }
 }
 
@@ -261,7 +351,7 @@ private fun PreviewCard(modifier: Modifier = Modifier, content: @Composable Colu
 }
 
 @Composable
-private fun PreviewBody(item: FileItem, preview: FilePreview?, loading: Boolean) {
+private fun PreviewBody(item: FileItem, preview: FilePreview?, loading: Boolean, onOpenWith: () -> Unit) {
     if (loading) {
         Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
             InfinityLoadingIndicator()
@@ -306,14 +396,17 @@ private fun PreviewBody(item: FileItem, preview: FilePreview?, loading: Boolean)
         is FilePreview.Audio -> PreviewPlaceholder(
             icon = Icons.Rounded.AudioFile,
             title = formatMediaDuration(preview.durationMs) ?: stringResource(R.string.fm_preview_audio),
+            onOpenWith = onOpenWith,
         )
         is FilePreview.Video -> PreviewPlaceholder(
             icon = Icons.Rounded.Movie,
             title = formatMediaDuration(preview.durationMs) ?: stringResource(R.string.fm_preview_video),
+            onOpenWith = onOpenWith,
         )
         is FilePreview.Pdf -> PreviewPlaceholder(
             icon = Icons.Rounded.PictureAsPdf,
             title = preview.pageCount?.let { pluralStringResource(R.plurals.fm_pdf_pages, it, it) } ?: stringResource(R.string.fm_preview_pdf),
+            onOpenWith = onOpenWith,
         )
         is FilePreview.Archive -> PreviewCard {
             Text(
@@ -342,17 +435,18 @@ private fun PreviewBody(item: FileItem, preview: FilePreview?, loading: Boolean)
         FilePreview.Unsupported -> PreviewPlaceholder(
             icon = Icons.Rounded.VisibilityOff,
             title = stringResource(R.string.fm_preview_unsupported),
+            onOpenWith = onOpenWith,
         )
     }
 }
 
 @Composable
-private fun PreviewPlaceholder(icon: ImageVector, title: String) {
+private fun PreviewPlaceholder(icon: ImageVector, title: String, onOpenWith: () -> Unit) {
     PreviewCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Large),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
         ) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
             Text(
@@ -360,6 +454,13 @@ private fun PreviewPlaceholder(icon: ImageVector, title: String) {
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.fm_open_with),
+                onClick = onOpenWith,
+                tone = InfinityPillTone.PRIMARY,
+                icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                modifier = Modifier.testTag(UiTags.FM_PREVIEW_OPEN_WITH),
             )
         }
     }

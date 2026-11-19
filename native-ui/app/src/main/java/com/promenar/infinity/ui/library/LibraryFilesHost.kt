@@ -8,11 +8,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.rounded.Category
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.rounded.Edit
+import com.promenar.infinity.data.files.isTextFile
 import com.promenar.infinity.domain.files.FileItem
 import com.promenar.infinity.domain.files.FolderCollectionSummary
+import com.promenar.infinity.domain.files.KnowledgeIndexState
+import com.promenar.infinity.navigation.NavDestinations
+import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.files.FileFolderAction
 import com.promenar.infinity.ui.files.FileHeaderBadge
 import com.promenar.infinity.ui.files.metaSegments
+import com.promenar.infinity.ui.linux.files.LINUX_HOME_LOCATION_ID
+import com.promenar.infinity.ui.linux.files.linuxAbsolutePath
 import com.promenar.infinity.utils.InfinityLogger
 import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.mutableIntStateOf
@@ -68,13 +76,18 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
     var settingsFolder by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
     var batchTarget by remember { mutableStateOf<KgBatchTarget?>(null) }
     var assignTarget by remember { mutableStateOf<List<AssignmentDocument>?>(null) }
+    var pendingIndexedEdit by remember { mutableStateOf<Pair<String, FileItem>?>(null) }
     // 合集设置关闭、批量抽取入队或归属变化后递增，让当前文件夹的合集副标题重读。
     var refreshKey by remember { mutableIntStateOf(0) }
     val fm by controller.state.collectAsState()
+    val rootUuid by host.workspaceRootUuid.collectAsState()
     val current = rememberCurrentFolderCollection(app, fm.location?.id, fm.path, fm.items, refreshKey)
     val settingsLabel = stringResource(R.string.kgc_action_settings)
     val extractLabel = stringResource(R.string.kgc_action_extract)
     val assignLabel = stringResource(R.string.lrc_assign_action)
+    val detailsLabel = stringResource(R.string.library_doc_details)
+    val editLabel = stringResource(R.string.library_doc_edit)
+    val linuxEditLabel = stringResource(R.string.linux_file_host_details)
     val resources = LocalContext.current.resources
     val folderName = fm.path.trimEnd('/').substringAfterLast('/')
     fun refreshListing() {
@@ -107,6 +120,40 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                     )
                 }.orEmpty(),
                 hostActions = listOf(
+                    FileHostAction(
+                        id = "library-file-details", icon = Icons.Outlined.Info, label = detailsLabel,
+                        appliesTo = setOf(FileHostActionScope.FILE), headerAction = true,
+                        visibleFor = { items -> items.singleOrNull()?.knowledge?.documentId != null },
+                        onInvoke = { items -> items.singleOrNull()?.knowledge?.documentId?.let { host.navigator.push(LibraryPageKeys.document(it)) } },
+                    ),
+                    FileHostAction(
+                        id = "library-file-edit", icon = Icons.Rounded.Edit, label = editLabel,
+                        appliesTo = setOf(FileHostActionScope.FILE), headerAction = true,
+                        visibleFor = { items ->
+                            val item = items.singleOrNull()
+                            rootUuid != null && item?.knowledge?.documentId != null && isTextFile(item.name, item.mimeType)
+                        },
+                        onInvoke = { items ->
+                            val item = items.singleOrNull() ?: return@FileHostAction
+                            val knowledge = item.knowledge ?: return@FileHostAction
+                            val docId = knowledge.documentId ?: return@FileHostAction
+                            val root = rootUuid ?: return@FileHostAction
+                            val state = knowledge.state
+                            if (state == KnowledgeIndexState.INDEXED || state == KnowledgeIndexState.INDEXING) {
+                                pendingIndexedEdit = docId to item
+                            } else {
+                                host.onNavigateToSecondary(NavDestinations.docEditor(root, docId))
+                            }
+                        },
+                    ),
+                    FileHostAction(
+                        id = "library-linux-edit", icon = Icons.Rounded.Edit, label = linuxEditLabel,
+                        appliesTo = setOf(FileHostActionScope.FILE), headerAction = true,
+                        visibleFor = { items -> items.singleOrNull()?.ref?.locationId == LINUX_HOME_LOCATION_ID },
+                        onInvoke = { items ->
+                            items.singleOrNull()?.let { host.onNavigateToSecondary(NavDestinations.linuxFile(linuxAbsolutePath(it.ref.path))) }
+                        },
+                    ),
                     FileHostAction(
                         id = "library-folder-extract", icon = Icons.Rounded.AutoAwesome, label = extractLabel,
                         appliesTo = setOf(FileHostActionScope.FOLDER),
@@ -168,6 +215,19 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
             documents = docs,
             onChanged = ::refreshListing,
             onDismiss = { assignTarget = null },
+        )
+    }
+    pendingIndexedEdit?.let { (docId, item) ->
+        InfinityConfirmDialog(
+            title = stringResource(R.string.fm_edit_indexed_title),
+            message = stringResource(R.string.fm_edit_indexed_message, item.name),
+            confirmText = stringResource(R.string.fm_edit_indexed_confirm),
+            icon = Icons.Rounded.Edit,
+            onConfirm = {
+                pendingIndexedEdit = null
+                rootUuid?.let { host.onNavigateToSecondary(NavDestinations.docEditor(it, docId)) }
+            },
+            onCancel = { pendingIndexedEdit = null },
         )
     }
 }

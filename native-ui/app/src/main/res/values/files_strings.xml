@@ -233,5 +233,8 @@
     <string name="fm_error_unsupported">this location does not support it</string>
     <string name="fm_error_conflict">the item changed elsewhere; refresh and try again</string>
     <string name="fm_error_io">a read or write error occurred</string>
+    <string name="fm_edit_indexed_title">Edit indexed document</string>
+    <string name="fm_edit_indexed_message">“%1$s” is indexed in your library. Saving changes will automatically queue vector re-indexing. If a knowledge graph has been extracted, re-extract it from the document details page to stay in sync.</string>
+    <string name="fm_edit_indexed_confirm">Continue editing</string>
 
 </resources>

@@ -1,7 +1,6 @@
 package com.promenar.infinity.ui.pet
 
 import android.graphics.Bitmap
-import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
@@ -11,8 +10,10 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
+import com.promenar.infinity.ui.common.motion.GaussianDiskSpriteCache
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlin.math.sin
 
@@ -23,8 +24,8 @@ import kotlin.math.sin
  */
 internal class PetPerchPainter {
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var glowBlurRadius = 0f
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val glowRect = RectF()
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -101,31 +102,40 @@ internal class PetPerchPainter {
         val blown = exit == PetEngine.PerchExit.BLOWN
         val spread = vanish * if (blown) 90f else 26f
         val glowRadius = 14f * density
-        if (glowRadius != glowBlurRadius) {
-            glowBlurRadius = glowRadius
-            glow.maskFilter = BlurMaskFilter(glowRadius, BlurMaskFilter.Blur.NORMAL)
-        }
-        glow.color = CLOUD_GLOW
         glow.alpha = (opacity * (CLOUD_GLOW ushr 24)).toInt().coerceIn(0, 255)
         fill.shader = null
         fill.color = CLOUD_COLOR
         fill.alpha = (opacity * 0.96f * 255f).toInt().coerceIn(0, 255)
-        // 先画整片光晕再画云体，光晕不会盖到相邻的云团上。
-        repeat(2) { pass ->
-            val paint = if (pass == 0) glow else fill
-            for (index in CLOUD_PUFFS.indices step 3) {
-                val cx = CLOUD_PUFFS[index]
-                val cy = CLOUD_PUFFS[index + 1]
-                val radius = CLOUD_PUFFS[index + 2]
-                val side = if (cx == 0f) 1f else sign(cx)
-                val drift = side * spread * (if (blown) 1f else 0.6f) + if (blown) spread else 0f
-                canvas.drawCircle(
-                    x + (cx + drift) * size * density,
-                    seatY + (cy - vanish * 10f) * size * density,
-                    radius * size * (1f - vanish * 0.4f) * density,
-                    paint,
-                )
-            }
+        // 先画整片无模糊云晕再画云体，避免单帧触发 Skia 高斯掩码临时表面泄漏，同时保持光晕质感一致。
+        for (index in CLOUD_PUFFS.indices step 3) {
+            val cx = CLOUD_PUFFS[index]
+            val cy = CLOUD_PUFFS[index + 1]
+            val radius = CLOUD_PUFFS[index + 2]
+            val side = if (cx == 0f) 1f else sign(cx)
+            val drift = side * spread * (if (blown) 1f else 0.6f) + if (blown) spread else 0f
+            val px = x + (cx + drift) * size * density
+            val py = seatY + (cy - vanish * 10f) * size * density
+            val puffRadius = radius * size * (1f - vanish * 0.4f) * density
+            val sprite = GaussianDiskSpriteCache.get(CLOUD_GLOW, puffRadius, glowRadius)
+            val radiusKey = puffRadius.roundToInt().coerceAtLeast(1).toFloat()
+            val scale = puffRadius / radiusKey
+            val hw = sprite.halfW * scale
+            val hh = sprite.halfH * scale
+            glowRect.set(px - hw, py - hh, px + hw, py + hh)
+            canvas.drawBitmap(sprite.bitmap, null, glowRect, glow)
+        }
+        for (index in CLOUD_PUFFS.indices step 3) {
+            val cx = CLOUD_PUFFS[index]
+            val cy = CLOUD_PUFFS[index + 1]
+            val radius = CLOUD_PUFFS[index + 2]
+            val side = if (cx == 0f) 1f else sign(cx)
+            val drift = side * spread * (if (blown) 1f else 0.6f) + if (blown) spread else 0f
+            canvas.drawCircle(
+                x + (cx + drift) * size * density,
+                seatY + (cy - vanish * 10f) * size * density,
+                radius * size * (1f - vanish * 0.4f) * density,
+                fill,
+            )
         }
     }
 

@@ -125,10 +125,12 @@ data class LiveStep(
     /** 状态行计时起点：重试后从重新连接起算，否则为 [startedAt]。 */
     internal val clockStart: Long? get() = retry?.reconnectAt ?: startedAt
 
-    /** 同一次连接已超过 [LiveStepStallThresholdMs] 仍无输出。只有“等待模型响应”会升级，退避期间不算。 */
+    /** 同一次连接已超过 [LiveStepStallThresholdMs] 仍无输出。“等待模型响应”与尚未落库的工具准备态均会升级，退避期间不算。 */
     internal fun isStalled(nowMs: Long): Boolean {
         val start = clockStart ?: return false
-        return kind == LiveStepKind.WAITING_MODEL && !isBackingOff(nowMs) && nowMs - start >= LiveStepStallThresholdMs
+        return (kind == LiveStepKind.WAITING_MODEL || kind == LiveStepKind.PREPARING_TOOL) &&
+            !isBackingOff(nowMs) &&
+            nowMs - start >= LiveStepStallThresholdMs
     }
 
     /** [nowMs] 时刻的状态行：名称或重试倒计时、计时、行尾标签与动画阶段。 */
@@ -248,9 +250,9 @@ internal fun resolveLiveStep(messages: List<Message>, signals: LiveTurnSignals):
         GenerationPhase.QUEUED,
         GenerationPhase.PREPARING,
         GenerationPhase.BUILDING_CONTEXT,
-        GenerationPhase.CONNECTING,
-        // 工具阶段却没有未完成的调用：工具已结束，正在等模型的下一轮。
-        GenerationPhase.EXECUTING_TOOLS -> waiting
+        GenerationPhase.CONNECTING -> waiting
+        // 工具阶段若最后一条消息已有未登记的 toolCalls，仍处于参数落库/调度前准备态。
+        GenerationPhase.EXECUTING_TOOLS -> preparingToolStep(finalAssistant, waiting) ?: waiting
         GenerationPhase.POST_PROCESSING ->
             finalAssistant?.takeIf { it.content.isNotBlank() }
                 ?.let { LiveStep(LiveStepKind.CONTENT, GenerationMotionPhase.WAIT, targetId = it.id) }
@@ -267,14 +269,18 @@ internal fun resolveLiveStep(messages: List<Message>, signals: LiveTurnSignals):
     }
 }
 
+/** 尚未落库成执行步骤的未决 toolCalls；此时渲染 PREPARING_TOOL（并沿用 waiting 计时以便卡死 30s 触发无响应）。 */
+private fun preparingToolStep(finalAssistant: Message?, waiting: LiveStep): LiveStep? {
+    val final = finalAssistant ?: return null
+    val recorded = final.executionSteps.orEmpty().mapNotNullTo(HashSet()) { it.toolCallId }
+    if (final.toolCalls.orEmpty().none { it.id !in recorded }) return null
+    return waiting.copy(kind = LiveStepKind.PREPARING_TOOL, motionPhase = GenerationMotionPhase.STREAM, retry = null)
+}
+
 /** 模型正在输出（或刚建立连接）时按目标消息的内容判定：工具调用参数 → 正文 → 推理 → 仍在等待。 */
 private fun modelOutputStep(finalAssistant: Message?, signals: LiveTurnSignals, waiting: LiveStep): LiveStep {
     val final = finalAssistant ?: return waiting
-    // 流式期间工具调用先写进消息的 toolCalls，开始执行时才登记调用步骤；有调用尚未登记说明参数还在输出。
-    val recorded = final.executionSteps.orEmpty().mapNotNullTo(HashSet()) { it.toolCallId }
-    if (final.toolCalls.orEmpty().any { it.id !in recorded }) {
-        return waiting.copy(kind = LiveStepKind.PREPARING_TOOL, motionPhase = GenerationMotionPhase.STREAM, retry = null)
-    }
+    preparingToolStep(final, waiting)?.let { return it }
     if (signals.hasStreamingContent || final.content.isNotBlank()) {
         return LiveStep(LiveStepKind.CONTENT, GenerationMotionPhase.STREAM, targetId = final.id)
     }

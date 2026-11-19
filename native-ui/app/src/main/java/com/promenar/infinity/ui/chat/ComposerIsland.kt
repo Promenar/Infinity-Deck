@@ -296,12 +296,12 @@ internal fun Modifier.composerIslandGlow(
     val glowScale = if (surface == ComposerSurfaceStyle.FROSTED) FrostedGlowScale else 1f
     val motion = LocalGenerationMotion.current
     val palette = rememberMotionPalette()
-    val outlinePaints = remember { ComposerOutlinePaints() }
     val errorColor = MaterialTheme.infinityDomainColors.signalDown
     val dark = MaterialTheme.infinityDomainColors.isDark
     val colorMid = remember(colorA, colorB) { com.promenar.infinity.ui.common.hueMidpoint(colorA, colorB) }
     // 静态预览不跑着色器；Android 12 只保留描边。着色器按颜色缓存，重组时不重新编译。
     val inspection = LocalInspectionMode.current
+    val outlinePaints = remember(inspection) { ComposerOutlinePaints(inspection) }
     val haloShader: android.graphics.Shader? = remember(colorA, colorB, errorColor, dark, inspection, outerHalo) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !inspection && outerHalo) {
             composerHaloShader(colorA, colorB, errorColor, dark)
