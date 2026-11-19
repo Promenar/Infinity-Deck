@@ -27,9 +27,15 @@
 
 ## 4. 项目排障沉淀
 
-当前 Android 任务显式指定 `distribution` 风味：日常使用 `:app:testSideloadDebugUnitTest`、`:app:testPlayDebugUnitTest`、`:app:lintSideloadDebug`、`:app:assembleSideloadDebug`、`:app:validateSideloadDebugScreenshotTest`；另构建 `:app:assemblePlayDebug` 并执行 `python3 scripts/ci/check-distribution-manifests.py` 与 `python3 scripts/ci/check-native-page-alignment.py`。Gradle 在 `native-ui/` 运行，Python 检查在仓库根运行。两个渠道的 APK、mapping 与设备构建入口见 [docs/distribution-builds.md](docs/distribution-builds.md)。
+当前 Android 任务显式指定 `distribution` 风味；全量门禁日常使用标准命令包括 `native-ui/` 下的 `:app:testSideloadDebugUnitTest`、`:app:testPlayDebugUnitTest`、`:app:lintSideloadDebug`、`:app:assembleSideloadDebug`、`:app:validateSideloadDebugScreenshotTest`、`:app:assemblePlayDebug`，以及仓库根下的 `bash scripts/ci/android-static-checks.sh`、`python3 scripts/ci/check-distribution-manifests.py`、`python3 scripts/ci/check-native-page-alignment.py`。两个渠道的 APK、mapping 与设备构建入口见 [docs/distribution-builds.md](docs/distribution-builds.md)。
 
-发行前须在本机跑完全量门禁，并安装本机签名的侧载 Release 包完成真机验收；发行流水线只验证本机不覆盖的环境。`release.yml` 保留静态契约、版本输入校验、API 31 / `minimum` deviceTest、API 36 minifiedTest 黑盒及侧载 API 31/36 的签名 APK 冷安装；签名构建只依赖静态检查和版本输入校验，只构建侧载 Release 并检查 16KB 页对齐。GitHub Release 只发布侧载 APK；版本名无后缀或为 `-beta` 时设为 Latest，其它后缀标为预发布。发布等待冷安装与两类设备作业全部通过。API 35/36 的 `full` deviceTest 由仅手动触发的 `device-regression.yml` 按需执行。
+验证与出包门禁按变更范围分为三档执行：
+
+- **L1 局部快门禁（含日常签名包真机验收）**：适用于边界清晰、无跨模块交叉调用的局部 UI 调整、文案/样式微调或独立小修复（包含通过 `scripts/release/build-signed-local.py` 构建签名侧载 Release 包装到真机验收）。执行对应静态检查（`check-text-wrapping.py` 或 `bash scripts/ci/android-static-checks.sh`）、Compose Preview 对照、受影响组件的定向 `:app:validateSideloadDebugScreenshotTest --tests <过滤>`、受影响类的定向 `:app:testSideloadDebugUnitTest --tests <过滤>`（纯视觉无逻辑改动仅编译核验 `:app:compileSideloadDebugKotlin`）以及签名包真机实测；可跳过全量单元测试、全量截图基线、全量 `:app:lintSideloadDebug` 与 `play` 渠道构建。
+- **L2 高风险与共享边界回归**：适用于触及全站共享 UI 原语或全局排版（如 `Type.kt`、`InfinitySettingsItem`、`InfinityDialog`、`MarkdownText`）、Room Schema/迁移、备份恢复、安全/权限/审批、工具执行与协议路由、构建/清单/R8 混淆规则或 `play`/`sideload` 渠道分流的改动。按实际影响面执行完整回归（涉及共享原语或底层核心契约时跑全量单元测试、全量截图校验与全量 Lint；涉及双渠道差异时补跑 Play 单元测试/构建及清单校验）。
+- **L3 对外公开发版门禁（仅限 GitHub Release）**：仅适用于对外推送版本标签触发 `.github/workflows/release.yml` 发布 GitHub Release（不作用于日常构签名包真机验收）。发版目标须具备本机全量门禁与签名侧载 Release 真机验收通过证据；自最近一次全量门禁通过后若源码、资源与构建配置均无实质变动（仅同步版本号、`CHANGELOG.md` 或文档），直接复用既有全量证据并跳过重复执行，仅核验静态检查与发行元数据。
+
+`release.yml` 保留静态契约、版本输入校验、API 31 / `minimum` deviceTest、API 36 minifiedTest 黑盒及侧载 API 31/36 的签名 APK 冷安装；签名构建只依赖静态检查和版本输入校验，只构建侧载 Release 并检查 16KB 页对齐。GitHub Release 只发布侧载 APK；版本名无后缀或为 `-beta` 时设为 Latest，其它后缀标为预发布。发布等待冷安装与两类设备作业全部通过。API 35/36 的 `full` deviceTest 由仅手动触发的 `device-regression.yml` 按需执行。
 
 - **Markdown 渲染排障分层**：遇到“Markdown 标记存在但排版堆成一坨”时，必须先区分两类根因：
   - 文本中已有换行，但渲染库按 CommonMark 软换行规则吞掉换行；
@@ -67,4 +73,4 @@
 - 对外发布：版本提交推送 `main` 后，经用户授权推送注释标签 `v<versionName>`，由 `.github/workflows/release.yml` 构建、验签并发布 GitHub Release；发布说明取自 `CHANGELOG.md` 对应版本小节。流程见 [docs/distribution-builds.md](docs/distribution-builds.md)。
 
 ---
-*规范更新于 2026-11-14。请每次开启新会话时首先阅读本文件，并检查 `.agent/handover.md` 的 Next Steps！*
+*规范更新于 2026-11-19。请每次开启新会话时首先阅读本文件，并检查 `.agent/handover.md` 的 Next Steps！*
