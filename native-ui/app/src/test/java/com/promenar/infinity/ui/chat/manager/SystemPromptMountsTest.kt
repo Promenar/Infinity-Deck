@@ -45,4 +45,19 @@ class SystemPromptMountsTest {
             assertThat(text).doesNotContain("may read, write and delete")
         }
     }
+
+    @Test fun `资料库提示区分读写档位与录音编辑例外`() {
+        val readOnly = mount("reference", ExternalMountPaths.KNOWLEDGE_BASE_SOURCE, "kb-ro").copy(readOnly = true)
+        val readWrite = mount("working", ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE, "kb-rw")
+        for (mode in com.promenar.infinity.domain.model.SessionRunMode.entries) {
+            val text = SystemPromptSections.toolGuidance(setOf("read_file", "write_file"), generic = false,
+                mounts = listOf(readOnly, readWrite), runMode = mode)
+            assertThat(text).contains("`/mnt/reference/`：只读知识库")
+            assertThat(text).contains("录音整理稿 .md 可带 expectedHash 版本化编辑")
+            assertThat(text).contains("`/mnt/working/`：知识库读写")
+            assertThat(text).contains("经审批删除资料文档并同步索引")
+            assertThat(text).contains("原始录音 .wav 只读")
+            assertThat(text).doesNotContain("kb-rw")
+        }
+    }
 }

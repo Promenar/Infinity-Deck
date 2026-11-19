@@ -3,6 +3,13 @@ package com.promenar.infinity.data.storage
 import android.content.Context
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.branch.BranchLinuxWorkspaceOperation
+import com.promenar.infinity.data.agent.AgentRetrievalConfig
+import com.promenar.infinity.data.knowledge.*
+import com.promenar.infinity.data.generation.resolveSessionToolTarget
+import com.promenar.infinity.data.model.RagOptions
+import com.promenar.infinity.data.model.RagReference
+import com.promenar.infinity.data.model.Session
+import com.promenar.infinity.data.rag.FileIndexEvent
 import com.promenar.infinity.data.local.db.dao.ExternalMountDao
 import com.promenar.infinity.data.local.db.entity.ExternalMountEntity
 import com.promenar.infinity.data.local.db.entity.FileEntry
@@ -12,14 +19,24 @@ import com.promenar.infinity.domain.model.SessionRunMode
 import com.promenar.infinity.domain.repository.IFileOperationRepository
 import com.promenar.infinity.domain.repository.IWorkspaceRepository
 import com.promenar.infinity.domain.repository.WriteResult
+import com.promenar.infinity.domain.repository.RenameIndexTarget
+import com.promenar.infinity.domain.repository.RenameResult
 import com.promenar.infinity.domain.storage.ExternalFolderBackend
 import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.storage.ExternalFolderException
 import com.promenar.infinity.domain.storage.ExternalMount
+import com.promenar.infinity.domain.tool.ToolExecutionTargets
 import com.promenar.infinity.recording.LOCAL_RECORDING_MIME
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
+import com.promenar.infinity.ui.chat.manager.registry.toProtocolTool
+import com.promenar.infinity.ui.chat.manager.skills.CreateDirectorySkill
+import com.promenar.infinity.ui.chat.manager.skills.CreateFileSkill
+import com.promenar.infinity.ui.chat.manager.skills.DeleteFileSkill
 import com.promenar.infinity.ui.chat.manager.skills.FilePatchSkill
+import com.promenar.infinity.ui.chat.manager.skills.FileReadSkill
+import com.promenar.infinity.ui.chat.manager.skills.MoveFileSkill
+import com.promenar.infinity.ui.chat.manager.skills.RequestKnowledgeAccessSkill
 import com.promenar.infinity.ui.chat.manager.skills.FileWriteSkill
 import com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess
 import com.promenar.infinity.ui.chat.manager.skills.LinuxSessionFileSkill
@@ -268,6 +285,7 @@ class ExternalKnowledgeBaseMountTest {
             }
             val result = routed.execute(Json.parseToJsonElement(input).jsonObject, invocation)
             assertThat(result.status).isEqualTo("success")
+            assertThat(result.content).contains("资料库录音整理稿已保存并同步工作台：$path")
         }
         runTool(FileWriteSkill(files, workspace), SessionRunMode.BUILTIN,
             """{"path":"$path","expectedHash":"${entry.hash}","content":"内置全量编辑"}""")
@@ -282,6 +300,218 @@ class ExternalKnowledgeBaseMountTest {
         }.code).isEqualTo("ACCESS_DENIED")
         assertThat(markdownFile.readText()).isEqualTo("Linux 补丁编辑")
         assertThat(callbacks.map { it.second }).containsExactly("新稿", "内置全量编辑", "Linux 补丁编辑").inOrder()
+    }
+
+    @Test fun `读写授权整批预检失败时保留已有挂载档位`() = runBlocking<Unit> {
+        val existing = manager.addKnowledgeBase("knowledge", "session", "kb-root")
+        val target = KnowledgeAccessTarget("kb-root", "资料库", 1, "knowledge", "/mnt/knowledge", readOnly = false,
+            alreadyMounted = true, mountedId = existing.id, mountedSourceType = existing.sourceType, mountedReadOnly = true)
+        val denied = KnowledgeAccessTarget("unavailable", "其它资料库", 1, "other", "/mnt/other", readOnly = false)
+        val failure = runCatching { manager.grantKnowledgeBaseAccess("session", listOf(target, denied)) }.exceptionOrNull()
+        assertThat((failure as ExternalFolderException).code).isEqualTo("UNAVAILABLE")
+        assertThat(rows.value.single().sourceType).isEqualTo(ExternalMountPaths.KNOWLEDGE_BASE_SOURCE)
+        assertThat(rows.value.single().readOnly).isTrue()
+    }
+
+    @Test fun `批准读写升级保留挂载身份且两种运行模式走受管文件链路`() = runBlocking<Unit> {
+        val entries = linkedMapOf(rootEntry.uuid to rootEntry)
+        fun add(uuid: String, parent: String?, path: String, mime: String?, bytes: ByteArray? = null): FileEntry {
+            val physical = File(root, path.removePrefix("/"))
+            if (bytes == null) physical.mkdirs() else physical.writeBytes(bytes)
+            return rootEntry.copy(uuid = uuid, parentUuid = parent, name = physical.name, materializedPath = path,
+                mimeType = mime, isDirectory = bytes == null, sizeBytes = bytes?.size?.toLong() ?: 0,
+                hash = bytes?.let(::externalSha256).orEmpty()).also { entries[uuid] = it }
+        }
+        val recording = add("rec", "kb-root", "/访谈.md", LOCAL_RECORDING_MIME, "原稿".toByteArray())
+        val audioBytes = ByteArray(1024 * 1024 + 25) { (it % 251).toByte() }
+        val audio = File(temporary, "original.wav").apply { writeBytes(audioBytes) }
+        val published = mutableListOf<FileIndexEvent>()
+        val deleted = mutableListOf<String>()
+        val saved = mutableListOf<String>()
+        val sink = FileIndexEventSink { published += it }
+        val files = mockk<IFileOperationRepository>()
+        val privateRoot = rootEntry.copy(uuid = "session-root", workspaceRootUuid = "session-root", physicalRootPath = temporary.path)
+        coEvery { workspace.ensureSessionRoot("session") } returns privateRoot
+        coEvery { workspace.getByUuid("kb-root", any()) } answers { entries[secondArg()] }
+        coEvery { workspace.getByMaterializedPath("kb-root", any()) } answers {
+            entries.values.singleOrNull { it.materializedPath == secondArg<String>() }
+        }
+        every { workspace.observeChildren("kb-root", any()) } answers {
+            MutableStateFlow(entries.values.filter { it.parentUuid == secondArg<String>() })
+        }
+        coEvery { workspace.createDirectoryInWorkspace("kb-root", any(), any(), any(), any()) } answers {
+            add(secondArg(), arg(3), arg(4), null)
+        }
+        coEvery { workspace.createFileInWorkspaceStreaming("kb-root", any(), any(), any(), any(), any(), any(), any()) } answers {
+            val buffer = java.io.ByteArrayOutputStream()
+            arg<(java.io.OutputStream) -> Unit>(7)(buffer)
+            add(secondArg(), arg(4), arg(5), arg(3), buffer.toByteArray())
+        }
+        coEvery { workspace.confirmCreatedEntry("kb-root", any()) } just Runs
+        coEvery { files.writeFileAtomicExact("kb-root", any(), any(), "session", any()) } coAnswers {
+            val current = entries.getValue(secondArg())
+            val expected = arg<String>(4)
+            if (current.hash != expected) WriteResult.Conflict(current.hash, expected, "版本冲突") else {
+                val bytes = thirdArg<String>().toByteArray()
+                File(root, current.materializedPath.removePrefix("/")).writeBytes(bytes)
+                val updated = current.copy(hash = externalSha256(bytes), sizeBytes = bytes.size.toLong(), updatedAt = current.updatedAt + 1)
+                entries[current.uuid] = updated
+                sink.publish(FileIndexEvent.Changed("kb-root", current.uuid, updated.hash, updated.updatedAt))
+                WriteResult.Success(updated.hash, targetEpoch = updated.updatedAt)
+            }
+        }
+        fun moveEntry(entry: FileEntry, parent: FileEntry, name: String): RenameResult.Success {
+            val target = parent.materializedPath.trimEnd('/') + "/" + name
+            Files.move(File(root, entry.materializedPath.removePrefix("/")).toPath(), File(root, target.removePrefix("/")).toPath())
+            val updated = entry.copy(name = name, parentUuid = parent.uuid, materializedPath = target, updatedAt = entry.updatedAt + 1)
+            entries[entry.uuid] = updated
+            return RenameResult.Success(name, updated.hash, updated.updatedAt, true,
+                listOf(RenameIndexTarget(entry.uuid, updated.hash, updated.updatedAt)))
+        }
+        coEvery { workspace.rename("kb-root", any(), any(), any()) } answers {
+            val current = entries.getValue(secondArg())
+            moveEntry(current, entries.getValue(current.parentUuid!!), thirdArg())
+        }
+        coEvery { workspace.relocate("kb-root", any(), any(), any(), any(), any()) } answers {
+            val current = entries.getValue(secondArg())
+            check(current.hash == arg<String?>(5))
+            moveEntry(current, entries.getValue(thirdArg()), arg(3))
+        }
+        coEvery { workspace.permanentDeleteIfHash("kb-root", any(), any()) } answers {
+            val entry = entries.getValue(secondArg())
+            check(entry.hash == thirdArg<String>())
+            Files.delete(File(root, entry.materializedPath.removePrefix("/")).toPath())
+            entries.remove(entry.uuid)
+            Unit
+        }
+        coEvery { workspace.permanentDelete("kb-root", any()) } answers {
+            val entry = entries.getValue(secondArg())
+            Files.delete(File(root, entry.materializedPath.removePrefix("/")).toPath())
+            entries.remove(entry.uuid)
+            Unit
+        }
+
+        val access = ExternalFolderManager(context, dao, workspace, sink,
+            knowledgeBaseRoots = { setOf("kb-root") }, knowledgeBaseAllowed = { _, _ -> knowledgeAllowed },
+            backendOverride = {
+                KnowledgeBaseRecordingBackend(fileSystem.backend(root), "kb-root", workspace,
+                    { id -> audio.takeIf { id == "rec" } }, { fileSystem.backend(it) })
+            },
+            fileOperations = files, onRecordingDocumentSaved = { _, content, _ -> saved += content },
+            onRecordingDocumentsDeleted = { deleted += it })
+        val session = Session("session", "agent", ragOptions = RagOptions())
+        val config = AgentRetrievalConfig()
+        val planner = KnowledgeAccessPlanner({ session }, { config }, access, object : KnowledgeCatalogSource {
+            override suspend fun knowledgeBases(session: Session, options: RagOptions) =
+                listOf(KnowledgeBaseSummary("kb-root", "默认资料", 1, true))
+            override suspend fun snapshot(session: Session, options: RagOptions) = KnowledgeCatalogSnapshot()
+            override fun hasIndexedMaterial(session: Session, options: RagOptions) = false
+            override suspend fun documentLocation(sessionId: String, reference: RagReference): KnowledgeDocumentLocation? = null
+        })
+        val request = RequestKnowledgeAccessSkill(planner, { session }, { config }, KnowledgeTurnState())
+        suspend fun requestMode(mode: String, preview: KnowledgeAccessPreview): com.promenar.infinity.data.model.ToolResult =
+            request.execute(Json.parseToJsonElement("""{"reason":"整理资料","mode":"$mode"}""").jsonObject,
+                object : SkillExecutionContext {
+                    override val sessionId = session.id
+                    override val agentId = "agent"
+                    override val workspaceRootUuid = privateRoot.uuid
+                    override val workspacePath: String? = null
+                    override val isApprovalBoundExecution = true
+                    override val approvedExecutionTarget = Json.encodeToString(KnowledgeAccessPreview.serializer(), preview)
+                })
+        val readOnlyPreview = planner.preview(session.id)
+        assertThat(requestMode("read_write", readOnlyPreview).status).isEqualTo("error")
+        assertThat(rows.value).isEmpty()
+        assertThat(requestMode("read_only", readOnlyPreview).content).contains("只读")
+        val originalMount = rows.value.single()
+        assertThat(requestMode("read_write", planner.preview(session.id, accessMode = "read_write")).content).contains("读写")
+        val upgraded = access.visible(session.id).single { it.alias == "knowledge" }
+        assertThat(upgraded.id).isEqualTo(originalMount.id)
+        assertThat(upgraded.sourceType).isEqualTo(ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE)
+        assertThat(upgraded.readOnly).isFalse()
+        assertThat(upgraded.commandAccessible).isFalse()
+
+        val rootfs = mockk<ExternalFolderBackend> {
+            coEvery { stat("/") } returns ExternalFolderEntry("/", "", true, 0, 1, identity = "linux-rootfs")
+        }
+        val linux = LinuxSessionExternalWorkspaceAccess(access, workspace, files, { SessionWorkspace.Private }, rootfs)
+        suspend fun call(skill: SkillDefinition, mode: SessionRunMode, args: String, success: Boolean = true): String {
+            val mounted = MountedWorkspaceSkill(skill, access, workspace, files, sink, captureFileChanges = false)
+            val routed = LinuxSessionFileSkill(mounted, { mode }, linux, workspace, files, sink, captureFileChanges = false)
+            val approval = if (!ToolExecutionTargets.isPathMutation(skill.id)) null else requireNotNull(
+                resolveSessionToolTarget(session.copy(runMode = mode, workspaceRootUuid = privateRoot.uuid),
+                    routed.toProtocolTool(), args, workspace, access, linuxFiles = linux),
+            )
+            val result = routed.execute(Json.parseToJsonElement(args).jsonObject, object : SkillExecutionContext {
+                override val sessionId = session.id
+                override val agentId = "agent"
+                override val workspaceRootUuid = privateRoot.uuid
+                override val workspacePath: String? = null
+                override val runMode = mode
+                override val isApprovalBoundExecution = approval != null
+                override val approvedExecutionTarget = approval
+            })
+            assertThat(result.status).isEqualTo(if (success) "success" else "error")
+            return result.content
+        }
+        val mountPath = "/mnt/knowledge"
+        val audioPath = "$mountPath/访谈.wav"
+        for (mode in listOf(SessionRunMode.BUILTIN, SessionRunMode.LINUX)) {
+            val doc = "${mode.name.lowercase()}.md"
+            val docPath = "$mountPath/$doc"
+            val folder = mode.name.lowercase()
+            val folderPath = "$mountPath/$folder"
+            val moved = "$folderPath/整理.md"
+            assertThat(call(FileReadSkill(files, workspace), mode, """{"path":"$audioPath","mode":"stat"}"""))
+                .contains("sha256: ${externalSha256(audioBytes)}")
+            assertThat(call(FileReadSkill(files, workspace), mode, """{"path":"$audioPath","mode":"page"}""", false))
+                .doesNotContain(externalSha256(audioBytes))
+            for ((skill, input) in listOf(
+                FileWriteSkill(files, workspace) to """{"path":"$audioPath","expectedHash":"hash","content":"改写"}""",
+                FilePatchSkill(files, workspace) to """{"path":"$audioPath","expectedHash":"hash","operations":[]}""",
+                MoveFileSkill(workspace, sink) to """{"path":"$audioPath","newName":"移动.wav"}""",
+                DeleteFileSkill(workspace) to """{"path":"$audioPath"}""",
+            )) assertThat(call(skill, mode, input, false)).contains("READ_ONLY：录音原始音频为只读")
+
+            call(CreateDirectorySkill(workspace), mode, """{"parentPath":"$mountPath","name":"$folder"}""")
+            call(CreateFileSkill(workspace, files), mode, """{"parentPath":"$mountPath","name":"$doc","content":"初稿"}""")
+            val initial = entries.values.single { it.materializedPath == "/$doc" }
+            assertThat(call(FileWriteSkill(files, workspace), mode, """{"path":"$docPath","expectedHash":"${initial.hash}","content":"改稿"}"""))
+                .contains("资料库文档已保存并同步索引：$docPath")
+            val newHash = entries.getValue(initial.uuid).hash
+            assertThat(call(FilePatchSkill(files, workspace), mode,
+                """{"path":"$docPath","expectedHash":"$newHash","operations":[{"action":"replace_lines","startLine":1,"endLine":1,"newContent":"定稿"}]}"""))
+                .contains("资料库文档已保存并同步索引：$docPath")
+            val patchedHash = entries.getValue(initial.uuid).hash
+            call(MoveFileSkill(workspace, sink), mode,
+                """{"path":"$docPath","newParentPath":"$folderPath","newName":"整理.md","expectedHash":"$patchedHash"}""")
+            assertThat(entries.getValue(initial.uuid).materializedPath).isEqualTo("/$folder/整理.md")
+            assertThat(File(root, "$folder/整理.md").readText()).isEqualTo("定稿")
+            call(DeleteFileSkill(workspace), mode, """{"path":"$moved","expectedHash":"$patchedHash"}""")
+            call(DeleteFileSkill(workspace), mode, """{"path":"$folderPath"}""")
+            assertThat(entries).doesNotContainKey(initial.uuid)
+            assertThat(published.filterIsInstance<FileIndexEvent.Changed>().count { it.fileUuid == initial.uuid }).isEqualTo(4)
+        }
+        assertThat(call(FileWriteSkill(files, workspace), SessionRunMode.LINUX,
+            """{"path":"$mountPath/访谈.md","expectedHash":"${recording.hash}","content":"新稿"}"""))
+            .contains("资料库录音整理稿已保存并同步工作台")
+        assertThat(saved).containsExactly("新稿")
+        call(MoveFileSkill(workspace, sink), SessionRunMode.BUILTIN, """{"path":"$mountPath/访谈.md","newName":"采访.md"}""")
+        assertThat(entries.getValue("rec").materializedPath).isEqualTo("/采访.md")
+        call(DeleteFileSkill(workspace), SessionRunMode.LINUX, """{"path":"$mountPath/采访.md"}""")
+        assertThat(deleted).containsExactly("rec")
+        assertThat(audio.readBytes()).isEqualTo(audioBytes)
+
+        knowledgeAllowed = false
+        for (mode in listOf(SessionRunMode.BUILTIN, SessionRunMode.LINUX)) {
+            assertThat(call(FileReadSkill(files, workspace), mode, """{"path":"$mountPath","mode":"stat"}""", false)).contains("ACCESS_DENIED")
+            assertThat(call(CreateFileSkill(workspace, files), mode, """{"parentPath":"$mountPath","name":"denied.md"}""", false)).contains("ACCESS_DENIED")
+        }
+        assertThat(requestMode("read_only", planner.preview(session.id)).content).contains("ACCESS_DENIED")
+        knowledgeAllowed = true
+        assertThat(requestMode("read_only", planner.preview(session.id)).content).contains("只读")
+        assertThat(rows.value.single().id).isEqualTo(originalMount.id)
+        assertThat(rows.value.single().readOnly).isTrue()
     }
 
     @Test fun 父级系统符号链接不影响知识库与录音虚拟音频访问且直连符号链接仍被拒绝() = runBlocking<Unit> {

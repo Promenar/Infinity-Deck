@@ -6,6 +6,7 @@ import com.promenar.infinity.data.agent.KnowledgeFileAccess
 import com.promenar.infinity.data.knowledge.*
 import com.promenar.infinity.data.model.*
 import com.promenar.infinity.data.rag.*
+import com.promenar.infinity.domain.storage.ExternalFolderException
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.ui.chat.manager.KgProvider
 import com.promenar.infinity.ui.chat.manager.RagProvider
@@ -129,13 +130,14 @@ class RequestKnowledgeAccessSkill(
     override val name = id
     override val mcpServerId: String? = null
     override val risk = ToolRisk.ACCESS_GRANT
-    override val description = "申请将可见知识库只读挂载，以便使用 read_file、list_files、search_files 读取全文。reason 说明原因，knowledge_base 可指定知识库名称，省略表示全部可见知识库。所有执行模式都需要用户批准，可读取获批知识库的全部文件。用户拒绝后本轮不得重复申请。memory_* 用于用户长期事实与偏好，knowledge_search 用于只读检索片段。"
-    override val parametersSchema = """{"type":"object","properties":{"reason":{"type":"string"},"knowledge_base":{"type":"string"}},"required":["reason"],"additionalProperties":false}"""
+    override val description = "申请通过文件工具访问可见知识库。mode=read_only（默认）允许读取全部文件和版本化编辑录音整理稿；mode=read_write 还允许整理资料文档。原始录音始终只读。reason 说明原因，knowledge_base 可指定知识库名称，省略表示全部可见知识库。所有执行模式均需用户批准。用户拒绝后本轮不得重复申请。memory_* 用于用户长期事实与偏好，knowledge_search 用于只读检索片段。"
+    override val parametersSchema = """{"type":"object","properties":{"reason":{"type":"string"},"knowledge_base":{"type":"string"},"mode":{"type":"string","enum":["read_only","read_write"],"default":"read_only"}},"required":["reason"],"additionalProperties":false}"""
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
         try {
-            require(args.keys.all { it in setOf("reason", "knowledge_base") } && !args.string("reason").isNullOrBlank()) { "必须说明申请原因" }
+            require(args.keys.all { it in setOf("reason", "knowledge_base", "mode") } && !args.string("reason").isNullOrBlank()) { "必须说明申请原因" }
             val base = if ("knowledge_base" in args) args.string("knowledge_base")?.trim()?.takeIf { it.isNotBlank() }
                 ?: return@withContext ToolResult(id, "知识库名称无效", "error") else null
+            val mode = requireKnowledgeAccessMode(if ("mode" in args) args.string("mode").orEmpty() else KNOWLEDGE_READ_ONLY)
             val session = loadSession(context.sessionId) ?: return@withContext ToolResult(id, "会话不存在", "error")
             val turnId = knowledgeTurnId(session, context.assistantMessageId)
             turns.seed(session, turnId)
@@ -145,12 +147,17 @@ class RequestKnowledgeAccessSkill(
             if (!context.isApprovalBoundExecution || context.approvedExecutionTarget == null)
                 return@withContext ToolResult(id, "需要用户批准后才能挂载知识库", "error")
             val approved = json.decodeFromString<KnowledgeAccessPreview>(requireNotNull(context.approvedExecutionTarget))
-            require(approved.sessionId == session.id && approved.knowledgeBase == base) { "审批目标与申请不一致" }
-            if (!approved.allowed) return@withContext ToolResult(id, approved.reason ?: "文档范围不允许挂载", data = json.encodeToString(approved))
+            require(approved.sessionId == session.id && approved.knowledgeBase == base && approved.accessMode == mode) { "审批目标与申请不一致" }
+            if (!approved.allowed) throw ExternalFolderException("ACCESS_DENIED", approved.reason ?: "文档范围不允许挂载")
             val mounts = planner.mount(approved)
             ToolResult(id, if (mounts.isEmpty()) "当前范围内没有可挂载的知识库" else
-                mounts.joinToString("\n") { "/mnt/${it.alias} · 知识库 · 只读" }, data = json.encodeToString(approved))  // wrap-check: allow 工具结果文本，非界面排版
+                mounts.joinToString("\n") {
+                    val access = if (it.readOnly) "只读（录音整理稿 .md 可带 expectedHash 编辑并同步录音工作台）"
+                        else "读写（可通过文件工具整理资料文档，录音原始音频只读）"
+                    "/mnt/${it.alias} · 知识库 · $access"
+                }, data = json.encodeToString(approved))
         } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: ExternalFolderException) { workspaceTraversalFailure(id, failure) }
         catch (_: Exception) { ToolResult(id, "知识库授权目标已变化或无法挂载，请重新核对可见范围。", "error") }
     }
 }

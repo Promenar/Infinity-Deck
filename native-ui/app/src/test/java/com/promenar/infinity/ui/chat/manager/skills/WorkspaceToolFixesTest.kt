@@ -6,6 +6,9 @@ import com.promenar.infinity.data.rag.FileIndexEventSink
 import com.promenar.infinity.data.repository.WorkspaceLifecycleErrorCode
 import com.promenar.infinity.data.repository.WorkspaceLifecycleException
 import com.promenar.infinity.domain.repository.*
+import com.promenar.infinity.domain.storage.ExternalFolderEntry
+import com.promenar.infinity.domain.storage.ExternalFolderException
+import com.promenar.infinity.domain.storage.ExternalMount
 import com.promenar.infinity.domain.storage.ExternalWorkspaceAccess
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
@@ -36,6 +39,97 @@ class WorkspaceToolFixesTest {
     )
     private fun args(value: String) = Json.parseToJsonElement(value).jsonObject
     private fun wrapped(skill: SkillDefinition) = MountedWorkspaceSkill(skill, mounts, workspace, files, FileIndexEventSink.None, captureFileChanges = false)
+
+    @Test fun `搜索隔离坏挂载并严格校验显式起点`() = runTest {
+        val root = "/mnt"
+        val bad = "$root/bad"
+        val good = "$root/good"
+        val hit = "$good/note.md"
+        fun directory(path: String) = ExternalFolderEntry(path, path.substringAfterLast('/'), true, 0, 1)
+        coEvery { mounts.list("session", root) } returns listOf(directory(bad), directory(good))
+        coEvery { mounts.list("session", bad) } throws ExternalFolderException("ACCESS_DENIED", "授权已撤回")
+        coEvery { mounts.list("session", good) } returns listOf(ExternalFolderEntry(hit, "note.md", false, 0, 1))
+        coEvery { mounts.entry("session", root) } returns entry("external:mnt", root, true)
+        coEvery { mounts.entry("session", bad) } throws ExternalFolderException("ACCESS_DENIED", "授权已撤回")
+        coEvery { mounts.entry("session", good) } returns entry("external:good", good, true)
+        coEvery { mounts.entry("session", hit) } returns entry("external:hit", hit)
+        val search = wrapped(FileSearchSkill(workspace, files))
+        val result = search.execute(args("""{"query":"note","path":"/mnt"}"""), context)
+        assertThat(result.content).contains(hit)
+        assertThat(result.content).contains("跳过 1")
+        assertThat(result.content).contains("ACCESS_DENIED")
+        val denied = search.execute(args("""{"query":"note","path":"$bad"}"""), context)
+        assertThat(denied.status).isEqualTo("error")
+        assertThat(denied.content).contains("ACCESS_DENIED")
+    }
+
+    @Test fun `Linux 默认名称搜索只扫描工作区专用空间与挂载`() = runTest {
+        coEvery { mounts.list("session", "/workspace") } returns listOf(ExternalFolderEntry("/workspace/note.md", "note.md", false, 0, 1))
+        coEvery { mounts.list("session", "/home/session") } returns emptyList()
+        coEvery { mounts.list("session", "/mnt") } returns emptyList()
+        coEvery { mounts.entry("session", "/workspace/note.md") } returns entry("external:note", "/workspace/note.md")
+        val repository = MountedWorkspaceRepository(workspace, mounts, "session", rooted = true, linuxPaths = true)
+        val result = FileSearchSkill(repository, files).execute(args("""{"query":"note"}"""), context)
+        assertThat(result.content).contains("/workspace/note.md")
+        coVerify(exactly = 0) { mounts.list(any(), "/") }
+    }
+
+    @Test fun `内容搜索跳过损坏子目录但保留正常命中并原样抛出取消`() = runTest {
+        val bad = entry("bad", "/bad", true)
+        val good = entry("good", "/good", true)
+        val hit = entry("hit", "/good/note.md")
+        every { workspace.observeChildren("root", "root") } returns kotlinx.coroutines.flow.flowOf(listOf(bad, good))
+        every { workspace.observeChildren("root", "bad") } throws ExternalFolderException("ACCESS_DENIED", "授权已撤回")
+        every { workspace.observeChildren("root", "good") } returns kotlinx.coroutines.flow.flowOf(listOf(hit))
+        coEvery { files.readFileRange("root", "hit", any(), any()) } returns ReadResult("hit", "note.md", 1, 1, 1, "needle", "hash", 1)
+        val skill = FileSearchSkill(workspace, files)
+        val args = args("""{"query":"needle","mode":"content"}""")
+        val result = skill.execute(args, context)
+        assertThat(result.content).contains("/good/note.md:1")
+        assertThat(result.content).contains("ACCESS_DENIED")
+        val cancellation = kotlinx.coroutines.CancellationException("停止检索")
+        every { workspace.observeChildren("root", "bad") } throws cancellation
+        assertThat(runCatching { skill.execute(args, context) }.exceptionOrNull()).isSameInstanceAs(cancellation)
+    }
+
+    @Test fun `挂载列表保留条目查询失败旁的正常兄弟目录`() = runTest {
+        val good = "/mnt/skills"
+        val bad = "/mnt/knowledge"
+        val hit = "$good/readme.md"
+        fun folder(path: String) = ExternalFolderEntry(path, path.substringAfterLast('/'), true, 0, 1)
+        coEvery { mounts.entry("session", "/mnt") } returns entry("external:mounts", "/mnt", true)
+        coEvery { mounts.resolveUuid("session", "external:mounts") } returns "/mnt"
+        coEvery { mounts.resolveUuid("session", "external:skills") } returns good
+        coEvery { mounts.list("session", "/mnt") } returns listOf(folder(bad), folder(good))
+        coEvery { mounts.entry("session", bad) } throws ExternalFolderException("INVALID_PATH", "不允许通过符号链接访问目录（触发段：knowledge）")
+        coEvery { mounts.entry("session", good) } returns entry("external:skills", good, true)
+        coEvery { mounts.list("session", good) } returns listOf(ExternalFolderEntry(hit, "readme.md", false, 0, 1))
+        coEvery { mounts.entry("session", hit) } returns entry("external:readme", hit)
+        val result = wrapped(FileListSkill(workspace)).execute(args("""{"path":"/mnt","depth":2}"""), context)
+        assertThat(result.status).isEqualTo("success")
+        assertThat(result.content).contains(hit)
+        assertThat(result.content).contains("INVALID_PATH")
+        assertThat(result.content).contains("触发段：knowledge")
+    }
+
+    @Test fun `stat 对大二进制文件流式散列并保留只读权限`() = runTest {
+        val path = "/mnt/audio/recording.wav"
+        val bytes = ByteArray(1024 * 1024 + 37) { it.toByte() }
+        val hash = com.promenar.infinity.infra.util.Sha256Utils.hash(bytes)
+        val mount = ExternalMount("audio", "audio", "real_path", "", "session", 1, readOnly = true)
+        coEvery { mounts.visible("session") } returns listOf(mount)
+        coEvery { mounts.entry("session", path) } returns entry("external:audio:file", path)
+            .copy(hash = "", sizeBytes = bytes.size.toLong())
+        coEvery { mounts.readStream<String>("session", path, any(), any()) } coAnswers {
+            arg<suspend (java.io.InputStream) -> String>(3)(bytes.inputStream())
+        }
+        val result = wrapped(FileReadSkill(files, workspace)).execute(args("""{"path":"$path","mode":"stat"}"""), context)
+        assertThat(result.status).isEqualTo("success")
+        assertThat(result.content).contains(bytes.size.toString())
+        assertThat(result.content).contains(hash)
+        assertThat(result.content).contains("只读")
+        coVerify(exactly = 0) { files.readFileWindow(any(), any(), any()) }
+    }
 
     @Test fun `两个写工具在私有与挂载路径给出相同的结构化版本缺参指引`() = runTest {
         for (path in listOf("/a.txt", "/mnt/test/a.txt")) {

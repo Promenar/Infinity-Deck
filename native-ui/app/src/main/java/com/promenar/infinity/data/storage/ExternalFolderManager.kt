@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import com.promenar.infinity.data.knowledge.KnowledgeAccessTarget
 import com.promenar.infinity.data.local.db.dao.ExternalMountDao
 import com.promenar.infinity.data.local.db.entity.ExternalMountEntity
 import com.promenar.infinity.data.local.db.entity.ExternalSnapshotEntity
@@ -15,6 +16,10 @@ import com.promenar.infinity.data.workspace.SessionWorkspaceResolver
 import com.promenar.infinity.domain.repository.IWorkspaceRepository
 import com.promenar.infinity.domain.repository.IFileOperationRepository
 import com.promenar.infinity.domain.repository.WriteResult
+import com.promenar.infinity.domain.repository.RenameResult
+import com.promenar.infinity.data.repository.WorkspaceTextContentPolicy
+import com.promenar.infinity.data.repository.WorkspaceTextOperation
+import com.promenar.infinity.ui.chat.manager.skills.PrivateWorkspaceTransferBackend
 import com.promenar.infinity.domain.storage.*
 import com.promenar.infinity.recording.LOCAL_RECORDING_MIME
 import com.promenar.infinity.recording.recordingLibraryDocumentLock
@@ -53,6 +58,7 @@ class ExternalFolderManager(
     private val backendOverride: ((ExternalMount) -> ExternalFolderBackend?)? = null,
     private val fileOperations: IFileOperationRepository? = null,
     private val recordingAudioFile: ((String) -> File?)? = null,
+    private val onRecordingDocumentsDeleted: (List<String>) -> Unit = {},
     private val onRecordingDocumentSaved: (suspend (docId: String, content: String, newHash: String) -> Unit)? = null,
 ) : ExternalWorkspaceAccess {
     /** 兼容已有的尾随后端替身回调。 */
@@ -149,19 +155,75 @@ class ExternalFolderManager(
         withContext(Dispatchers.IO) { mutex.withLock {
             requireSession(sessionId)
             if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "知识库挂载必须属于会话")
+            knowledgeBaseRoot(rootUuid)
+            requireKnowledgeAccess(sessionId, rootUuid)
             val mount = newMount(alias, ExternalMountPaths.KNOWLEDGE_BASE_SOURCE, rootUuid, sessionId).copy(readOnly = true)
             dao.visible(sessionId).firstOrNull {
-                it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.sourceId == rootUuid
+                it.model().isKnowledgeBaseSource && it.sourceId == rootUuid
             }?.let { existing ->
                 val current = existing.model()
-                requireDirectory(sourceBackend(current).stat("/"))
+                if (!current.readOnly) fail("CONFLICT", "知识库已拥有读写授权，请通过授权流程变更档位")
+                requireDirectory(sourceBackend(current, sessionId).stat("/"))
                 return@withLock current
             }
             checkAlias(mount)
-            requireDirectory(sourceBackend(mount).stat("/"))
+            requireDirectory(sourceBackend(mount, sessionId).stat("/"))
+            requireKnowledgeAccess(sessionId, rootUuid)
             dao.insert(mount.entity())
             mount
         } }
+
+    /** 在管理器写锁内复核整批目标，保留原挂载身份并补偿中途失败。 */
+    internal suspend fun grantKnowledgeBaseAccess(
+        sessionId: String, targets: List<KnowledgeAccessTarget>,
+    ): List<ExternalMount> = withContext(Dispatchers.IO) { mutex.withLock {
+        requireSession(sessionId)
+        if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "知识库挂载必须属于会话")
+        val visible = dao.visible(sessionId).map(ExternalMountEntity::model)
+        val changes = targets.map { target ->
+            requireKnowledgeAccess(sessionId, target.rootUuid)
+            val matching = visible.filter { it.isKnowledgeBaseSource && it.sourceId == target.rootUuid }
+            val existing = matching.singleOrNull()
+            if (matching.size > 1 || (existing != null) != target.alreadyMounted ||
+                existing?.id != target.mountedId || existing?.sourceType != target.mountedSourceType ||
+                existing?.readOnly != target.mountedReadOnly || existing?.let { it.alias != target.alias || it.sessionId != sessionId } == true
+            ) fail("APPROVAL_TARGET_CHANGED", "知识库挂载已变化，请重新申请授权")
+            val source = if (target.readOnly) ExternalMountPaths.KNOWLEDGE_BASE_SOURCE else ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE
+            val mount = (existing ?: newMount(target.alias, source, target.rootUuid, sessionId)).copy(
+                sourceType = source, readOnly = target.readOnly, unavailableReason = null,
+            )
+            checkAlias(mount)
+            requireDirectory(sourceBackend(mount, sessionId).stat("/"))
+            existing to mount
+        }
+        changes.forEach { (_, mount) -> requireKnowledgeAccess(sessionId, mount.sourceId) }
+        currentCoroutineContext().ensureActive()
+        withContext(NonCancellable) {
+            val applied = mutableListOf<Pair<ExternalMount?, ExternalMount>>()
+            try {
+                for ((existing, mount) in changes) {
+                    if (existing == mount) continue
+                    if (existing == null) dao.insert(mount.entity()) else dao.update(mount.entity())
+                    applied += existing to mount
+                }
+            } catch (failure: Exception) {
+                val rollbackFailures = applied.asReversed().mapNotNull { (existing, mount) ->
+                    try {
+                        if (existing == null) dao.delete(mount.id) else dao.update(existing.entity())
+                        null
+                    } catch (rollback: Exception) {
+                        rollback
+                    }
+                }
+                if (rollbackFailures.isNotEmpty()) {
+                    throw ExternalFolderException("RECOVERY_REQUIRED", "知识库授权批次未能完全恢复，请检查会话挂载档位")
+                        .apply { addSuppressed(failure); rollbackFailures.forEach(::addSuppressed) }
+                }
+                throw failure
+            }
+            changes.map { (_, mount) -> mount }
+        }
+    } }
 
     override suspend fun attachLibraryMount(sessionId: String, libraryMountId: String, alias: String?) =
         withContext(Dispatchers.IO) { mutex.withLock {
@@ -238,7 +300,11 @@ class ExternalFolderManager(
     override suspend fun <T> readStream(sessionId: String, virtualPath: String, maxBytes: Long, consume: suspend (java.io.InputStream) -> T): T =
         withContext(Dispatchers.IO) { access(sessionId, virtualPath) { _, backend, path -> backend.readStream(path, maxBytes, consume) } }
 
-    override suspend fun entry(sessionId: String, path: String): FileEntry? = withContext(Dispatchers.IO) {
+    override suspend fun entry(sessionId: String, path: String): FileEntry? = entry(sessionId, path, fillHash = true)
+
+    internal suspend fun statEntry(sessionId: String, path: String): FileEntry? = entry(sessionId, path, fillHash = false)
+
+    private suspend fun entry(sessionId: String, path: String, fillHash: Boolean): FileEntry? = withContext(Dispatchers.IO) {
         val generation = versionGeneration()
         if (!branchWorkspacePaths(sessionId) && ExternalFolderPaths.normalize(path) == "/mnt") return@withContext FileEntry(
             ExternalMountPaths.ROOT_UUID, "", null, "mnt", "", isDirectory = true,
@@ -246,7 +312,7 @@ class ExternalFolderManager(
         )
         access(sessionId, path) { mount, backend, relative ->
             val stat = backend.stat(relative) ?: return@access null
-            val hash = stat.sha256 ?: if (!stat.isDirectory && stat.size <= 1024L * 1024) {
+            val hash = stat.sha256 ?: if (fillHash && !stat.isDirectory && stat.size <= 1024L * 1024) {
                 try { externalSha256(backend.read(relative, 1024L * 1024).also { rememberRead(mount, relative, it, generation) }) }
                 catch (failure: ExternalFolderException) { if (failure.code == "TOO_LARGE") "" else throw failure }
             } else ""
@@ -258,6 +324,7 @@ class ExternalFolderManager(
             FileEntry(
                 uuid = ExternalMountPaths.uuid(mount, relative), parentUuid = parent,
                 name = if (relative == "/") mount.alias else stat.name, hash = hash,
+                mimeType = if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE && !stat.isDirectory) knowledgeEntry(mount, relative)?.mimeType else null,
                 sizeBytes = stat.size, isDirectory = stat.isDirectory, physicalRootPath = "",
                 materializedPath = path, createdAt = mount.createdAt, updatedAt = stat.lastModified,
             )
@@ -288,20 +355,62 @@ class ExternalFolderManager(
     internal suspend fun isWritableKnowledgeRecording(sessionId: String, virtualPath: String): Boolean = withContext(Dispatchers.IO) {
         if (fileOperations == null || ExternalMountPaths.parse(virtualPath) == null) return@withContext false
         val (mount, relative) = resolve(sessionId, virtualPath)
-        mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE &&
-            knowledgeBaseAllowed(sessionId, mount.sourceId) && recordingEntry(mount, relative) != null
+        mount.isKnowledgeBaseSource && knowledgeBaseAllowed(sessionId, mount.sourceId) && recordingEntry(mount, relative) != null
     }
 
-    private suspend fun recordingEntry(mount: ExternalMount, relative: String): FileEntry? {
-        if (mount.sourceType != ExternalMountPaths.KNOWLEDGE_BASE_SOURCE || !relative.endsWith(".md", ignoreCase = true)) return null
-        return workspace.getByMaterializedPath(mount.sourceId, relative)?.takeIf {
-            it.workspaceRootUuid == mount.sourceId && it.materializedPath == relative && it.isActiveRecording()
+    private suspend fun knowledgeEntry(mount: ExternalMount, path: String): FileEntry? =
+        workspace.getByMaterializedPath(mount.sourceId, path)?.takeIf {
+            it.workspaceRootUuid == mount.sourceId && it.materializedPath == path && !it.inRecycleBin
         }
+
+    private suspend fun recordingEntry(mount: ExternalMount, relative: String): FileEntry? =
+        if (mount.isKnowledgeBaseSource && relative.endsWith(".md", ignoreCase = true))
+            knowledgeEntry(mount, relative)?.takeIf(FileEntry::isActiveRecording) else null
+
+    internal suspend fun requireKnowledgeMutation(sessionId: String, path: String, recordingEdit: Boolean = false): Boolean =
+        withContext(Dispatchers.IO) {
+            val (mount, relative) = resolve(sessionId, path)
+            requireKnowledgeAccess(sessionId, mount.sourceId)
+            rejectRecordingAudio(mount, relative)
+            val recording = recordingEdit && fileOperations != null && recordingEntry(mount, relative) != null
+            if (!recording) mount.requireWritable()
+            requireKnowledgeWritable(sessionId, mount, relative)
+            recording
+        }
+
+    internal suspend fun isKnowledgePathWritable(sessionId: String, path: String): Boolean = try {
+        requireKnowledgeMutation(sessionId, path, recordingEdit = true)
+        true
+    } catch (failure: ExternalFolderException) {
+        if (failure.code !in setOf("READ_ONLY", "ACCESS_DENIED")) throw failure
+        false
+    } catch (_: com.promenar.infinity.startup.StartupIsolationException) {
+        false
+    }
+
+    private suspend fun rejectRecordingAudio(mount: ExternalMount, relative: String) {
+        if (!relative.endsWith(".wav", ignoreCase = true)) return
+        val reader = knowledgeReader(mount, knowledgeDisk(mount, knowledgeBaseRoot(mount.sourceId)))
+        if (reader is KnowledgeBaseRecordingBackend && reader.isVirtualAudio(relative)) {
+            fail("READ_ONLY", "录音原始音频为只读")
+        }
+    }
+
+    private suspend fun requireKnowledgeAccess(sessionId: String, rootId: String) {
+        if (!knowledgeBaseAllowed(sessionId, rootId)) fail("ACCESS_DENIED", "当前会话的资料范围不允许访问该知识库挂载")
+    }
+
+    private suspend fun requireKnowledgeWritable(sessionId: String, mount: ExternalMount, relative: String) {
+        requireKnowledgeAccess(sessionId, mount.sourceId)
+        val root = knowledgeBaseRoot(mount.sourceId)
+        StartupWriteBarrier.requireWritable(sessionId = sessionId, rootId = mount.sourceId, path = root.path)
+        StartupWriteBarrier.requireWritable(sessionId = sessionId, path = File(root, relative.removePrefix("/")).canonicalPath)
     }
 
     private suspend fun writeReceipt(sessionId: String, path: String, bytes: ByteArray, expectedSha256: String?, createOnly: Boolean, bindings: MutableMap<String, String>? = null): BoundWrite =
         withContext(Dispatchers.IO) { mutex.withLock {
             val target = resolve(sessionId, path)
+            if (target.first.isKnowledgeBaseSource) requireKnowledgeAccess(sessionId, target.first.sourceId)
             val files = fileOperations
             val recording = if (!createOnly && files != null) recordingEntry(target.first, target.second) else null
             access(sessionId, path, bindings, writing = recording == null, resolved = target) { mount, backend, relative ->
@@ -325,23 +434,22 @@ class ExternalFolderManager(
         expectedSha256: String?,
         files: IFileOperationRepository,
     ): BoundWrite = recordingLibraryDocumentLock(documentId).withLock {
-        if (!knowledgeBaseAllowed(sessionId, mount.sourceId)) fail("ACCESS_DENIED", "当前会话的资料范围不允许写入该知识库挂载")
         val entry = recordingEntry(mount, relative)?.takeIf { it.uuid == documentId }
             ?: fail("CONFLICT", "录音文档位置或身份已变化，请重新读取目标")
-        val root = knowledgeBaseRoot(mount.sourceId)
-        StartupWriteBarrier.requireWritable(sessionId = sessionId, rootId = mount.sourceId, path = root.path)
-        StartupWriteBarrier.requireWritable(sessionId = sessionId, path = File(root, relative.removePrefix("/")).canonicalPath)
+        requireKnowledgeWritable(sessionId, mount, relative)
         val content = try {
             bytes.decodeToString(throwOnInvalidSequence = true)
         } catch (_: CharacterCodingException) {
             fail("INVALID_TEXT", "录音文档必须是有效 UTF-8 文本")
         }
+        WorkspaceTextContentPolicy().validate(entry.name, entry.mimeType, bytes, WorkspaceTextOperation.WRITE)
         currentCoroutineContext().ensureActive()
         withContext(NonCancellable) {
             when (val result = files.writeFileAtomicExact(mount.sourceId, entry.uuid, content, sessionId, expectedSha256 ?: entry.hash)) {
                 is WriteResult.Success -> {
                     remember(mount.id, relative, bytes)
                     onRecordingDocumentSaved?.invoke(entry.uuid, content, result.newHash)
+                    if (!result.indexQueued) fail("INDEX_PENDING", "录音整理稿已保存并同步工作台，索引等待重试。sha256: ${result.newHash}")
                     val saved = workspace.getByUuid(mount.sourceId, entry.uuid)
                         ?: fail("NOT_FOUND", "录音文档写入后不可用")
                     BoundWrite(mount, relative, ExternalFolderEntry(path, saved.name, false, saved.sizeBytes,
@@ -378,7 +486,7 @@ class ExternalFolderManager(
         if (workspaceRootUuid in knowledgeBaseRoots() && knowledgeBaseOwnerRoot(sessionId) != workspaceRootUuid) {
             fail("READ_ONLY", "知识库挂载为只读")
         }
-        namespace(sessionId).filter { it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.sourceId == workspaceRootUuid }
+        namespace(sessionId).filter { it.isKnowledgeBaseSource && it.sourceId == workspaceRootUuid }
             .forEach { it.requireWritable() }
         withContext(ExternalMountOperationBindings(mapOf(mount.alias to mount.id))) {
             val original = entry(sessionId, virtualPath) ?: fail("NOT_FOUND", "源文件不可用")
@@ -412,6 +520,18 @@ class ExternalFolderManager(
         val snapshots = dao.snapshots(mount.id, relative)
         if (snapshots.isEmpty()) false else snapshots.any { it.sourceModified != entry(sessionId, virtualPath)?.updatedAt }
     }
+
+    internal suspend fun moveKnowledgeDocument(sessionId: String, source: String, target: String, expectedHash: String?) =
+        withContext(Dispatchers.IO) { mutex.withLock {
+            access(sessionId, source, writing = true) { sourceMount, _, relative ->
+                val (destinationMount, destination) = resolve(sessionId, target)
+                if (sourceMount.id != destinationMount.id) fail("UNSUPPORTED", "资料库文档移动必须在同一知识库内")
+                if (sourceMount.sourceType != ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE) fail("READ_ONLY", "知识库挂载为只读")
+                val root = knowledgeBaseRoot(sourceMount.sourceId)
+                managedKnowledgeBackend(sourceMount, sessionId, knowledgeReader(sourceMount, knowledgeDisk(sourceMount, root)))
+                    .moveExact(relative, destination, expectedHash)
+            }
+        } }
 
     override fun backend(sessionId: String, mountIds: Map<String, String>): ExternalFolderBackend = object : ExternalFolderBackend {
         private val bindings = mountIds.toMutableMap()
@@ -480,8 +600,8 @@ class ExternalFolderManager(
 
     override suspend fun version(sessionId: String, path: String, hash: String): ByteArray? = withContext(Dispatchers.IO) {
         val (mount, relative) = resolve(sessionId, path)
-        if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) {
-            if (!knowledgeBaseAllowed(sessionId, mount.sourceId)) fail("ACCESS_DENIED", "当前会话的资料范围不允许读取该知识库挂载")
+        if (mount.isKnowledgeBaseSource) {
+            requireKnowledgeAccess(sessionId, mount.sourceId)
             if (relative.endsWith(".wav", ignoreCase = true)) return@withContext null
         }
         if (!Regex("[0-9a-f]{64}").matches(hash)) null else File(versions, versionKey(mount.id, relative, hash)).takeIf { it.isFile }?.readBytes()
@@ -535,7 +655,7 @@ class ExternalFolderManager(
 
     private fun rememberRead(mount: ExternalMount, path: String, bytes: ByteArray, generation: Long) {
         // 音频可通过流读取，版本缓存不留存原始录音的副本。
-        if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && path.endsWith(".wav", ignoreCase = true)) return
+        if (mount.isKnowledgeBaseSource && path.endsWith(".wav", ignoreCase = true)) return
         remember(mount.id, path, bytes, generation)
     }
 
@@ -587,6 +707,10 @@ class ExternalFolderManager(
     private suspend fun <T> access(sessionId: String, path: String, bindings: MutableMap<String, String>? = null, writing: Boolean = false,
         resolved: Pair<ExternalMount, String>? = null, block: suspend (ExternalMount, ExternalFolderBackend, String) -> T): T {
         val (mount, relative) = resolved ?: resolve(sessionId, path)
+        if (mount.isKnowledgeBaseSource) {
+            requireKnowledgeAccess(sessionId, mount.sourceId)
+            if (writing) rejectRecordingAudio(mount, relative)
+        }
         if (writing) mount.requireWritable()
         if (bindings != null) synchronized(bindings) {
             val previous = bindings.putIfAbsent(mount.alias, mount.id)
@@ -594,7 +718,7 @@ class ExternalFolderManager(
         }
         try {
             val result = block(mount, sourceBackend(mount, sessionId), relative)
-            if (mount.unavailableReason != null && !mount.isWorkspaceRoot && !mount.isUserSkills) dao.update(mount.copy(unavailableReason = null).entity())
+            if (mount.unavailableReason != null && !mount.isWorkspaceRoot && !mount.isUserSkills && !mount.isKnowledgeBaseSource) dao.update(mount.copy(unavailableReason = null).entity())
             return result
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
@@ -604,7 +728,7 @@ class ExternalFolderManager(
                 val reason = (failure as? ExternalFolderException)?.message ?: "目录访问被拒绝"
                 fail("UNAVAILABLE", "当前工作区不可用（$reason），不会改用会话私有工作区；请检查目录与授权，或在会话设置中更换工作区")
             }
-            if (unavailable) {
+            if (unavailable && !mount.isKnowledgeBaseSource) {
                 dao.update(mount.copy(unavailableReason = "授权已失效、提供商不可用或存储已卸载，请重新授权").entity())
                 fail("UNAVAILABLE", "挂载不可用，请重新授权或检查存储连接")
             }
@@ -617,19 +741,18 @@ class ExternalFolderManager(
             return if (mount.readOnly || mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) ReadOnlyExternalFolderBackend(startupGuard) else startupGuard
         }
         currentCoroutineContext()[com.promenar.infinity.data.branch.BranchLinuxWorkspaceOperation]
-            ?.takeIf { sessionId != null && !ExternalMountPaths.isLibraryScope(sessionId) && it.sessionId == sessionId && it.mount.id == mount.id }
+            ?.takeIf { sessionId != null && !ExternalMountPaths.isLibraryScope(sessionId) && it.sessionId == sessionId && it.mount.id == mount.id && !mount.isKnowledgeBaseSource }
             ?.let { return guarded(it.backend, it.baseRoot) }
-        if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) {
-            if (sessionId != null && !knowledgeBaseAllowed(sessionId, mount.sourceId)) {
-                fail("ACCESS_DENIED", "当前会话的资料范围不允许读取该知识库挂载")
-            }
-            // 知识库标识是 FileEntry 根 UUID，与自选目录的 WorkspaceEntity.id 不同。
+        if (mount.isKnowledgeBaseSource) {
+            if (sessionId != null) requireKnowledgeAccess(sessionId, mount.sourceId)
             val root = knowledgeBaseRoot(mount.sourceId)
-            val backend = backendOverride?.invoke(mount) ?: RealPathExternalFolderBackend(root).let { disk ->
-                val audio = recordingAudioFile
-                if (audio == null) disk else KnowledgeBaseRecordingBackend(disk, mount.sourceId, workspace, audio)
+            val disk = knowledgeDisk(mount, root)
+            val reader = knowledgeReader(mount, disk)
+            if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE) {
+                val session = sessionId ?: fail("ACCESS_DENIED", "读写知识库必须绑定到获准会话")
+                return guarded(managedKnowledgeBackend(mount, session, reader), root)
             }
-            return guarded(backend, root)
+            return guarded(reader, root)
         }
         if (mount.sourceType == ExternalMountPaths.WORKSPACE_SOURCE) {
             val resolver = workspaces ?: fail("UNAVAILABLE", "工作区不可用")
@@ -656,6 +779,28 @@ class ExternalFolderManager(
         }
         return guarded(backend, File(mount.sourceId).takeIf { mount.sourceType == "real_path" })
     }
+    private fun managedKnowledgeBackend(mount: ExternalMount, sessionId: String, reader: ExternalFolderBackend) =
+        KnowledgeBaseManagedBackend(
+            reader, PrivateWorkspaceTransferBackend(workspace, mount.sourceId, indexEvents),
+            mount.sourceId, sessionId, workspace, fileOperations, indexEvents,
+            find = { knowledgeEntry(mount, it) },
+            checkWrite = {
+                rejectRecordingAudio(mount, it)
+                requireKnowledgeWritable(sessionId, mount, it)
+            },
+            onRecordingDocumentsDeleted = onRecordingDocumentsDeleted,
+        )
+
+    private fun knowledgeDisk(mount: ExternalMount, root: File): ExternalFolderBackend =
+        backendOverride?.invoke(mount) ?: if (mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE)
+            PrivateWorkspaceTransferBackend(workspace, mount.sourceId) else RealPathExternalFolderBackend(root)
+
+    private fun knowledgeReader(mount: ExternalMount, disk: ExternalFolderBackend): ExternalFolderBackend {
+        if (disk is KnowledgeBaseRecordingBackend) return disk
+        val audio = recordingAudioFile ?: return disk
+        return KnowledgeBaseRecordingBackend(disk, mount.sourceId, workspace, audio)
+    }
+
     private suspend fun knowledgeBaseRoot(rootUuid: String): File {
         if (rootUuid !in knowledgeBaseRoots()) fail("UNAVAILABLE", "根目录不属于可用知识库")
         val root = workspace.getByUuid(rootUuid, rootUuid) ?: fail("UNAVAILABLE", "知识库工作区根不可用")
@@ -710,8 +855,12 @@ internal class KnowledgeBaseRecordingBackend(
     private val audioFile: (String) -> File?,
     private val audioBackend: (File) -> ExternalFolderBackend = { RealPathExternalFolderBackend(it) },
 ) : ExternalFolderBackend by ReadOnlyExternalFolderBackend(disk) {
-    private suspend fun recordings() = workspace.observeChildren(rootId, rootId).first().asSequence()
-        .filter { it.workspaceRootUuid == rootId && it.parentUuid == rootId && it.isActiveRecording() }
+    private suspend fun recordings(parent: String): Sequence<FileEntry> {
+        val parentId = if (parent == "/") rootId else workspace.getByMaterializedPath(rootId, parent)
+            ?.takeIf { it.workspaceRootUuid == rootId && it.isDirectory && !it.inRecycleBin }?.uuid ?: return emptySequence()
+        return workspace.observeChildren(rootId, parentId).first().asSequence()
+            .filter { it.workspaceRootUuid == rootId && it.parentUuid == parentId && it.isActiveRecording() }
+    }
 
     private fun FileEntry.wavName() = (if (name.endsWith(".md", ignoreCase = true)) name.dropLast(3) else name) + ".wav"
 
@@ -724,28 +873,29 @@ internal class KnowledgeBaseRecordingBackend(
         ?.let { audioBackend(it.parentFile!!.canonicalFile) to "/${it.name}" }
 
     private suspend fun virtualSource(path: String): Pair<ExternalFolderBackend, String>? {
-        val name = path.removePrefix("/")
-        if ('/' in name || !name.endsWith(".wav") || disk.stat(path) != null) return null
-        return recordings().filter { it.wavName() == name }.firstNotNullOfOrNull(::source)
+        val name = path.substringAfterLast('/')
+        if (!name.endsWith(".wav") || disk.stat(path) != null) return null
+        return recordings(path.substringBeforeLast('/').ifEmpty { "/" }).filter { it.wavName() == name }.firstNotNullOfOrNull(::source)
     }
+
+    internal suspend fun isVirtualAudio(path: String): Boolean = virtualSource(ExternalFolderPaths.normalize(path)) != null
 
     override suspend fun stat(path: String): ExternalFolderEntry? {
         val normalized = ExternalFolderPaths.normalize(path)
         val (backend, sourcePath) = virtualSource(normalized) ?: return disk.stat(normalized)
-        return backend.stat(sourcePath)?.copy(path = normalized, name = normalized.removePrefix("/"))
+        return backend.stat(sourcePath)?.copy(path = normalized, name = normalized.substringAfterLast('/'))
     }
 
     override suspend fun list(path: String): List<ExternalFolderEntry> {
         val normalized = ExternalFolderPaths.normalize(path)
         val physical = disk.list(normalized)
-        if (normalized != "/") return physical
         val names = physical.mapTo(mutableSetOf()) { it.name }
-        val virtual = recordings().mapNotNull { entry ->
+        val virtual = recordings(normalized).mapNotNull { entry ->
             val name = entry.wavName()
             if (name in names) return@mapNotNull null
             val file = audioSourceFile(entry) ?: return@mapNotNull null
             names.add(name)
-            ExternalFolderEntry("/$name", name, false, file.length(), file.lastModified())
+            ExternalFolderEntry(normalized.trimEnd('/') + "/$name", name, false, file.length(), file.lastModified())
         }.toList()
         return (physical + virtual).sortedWith(compareByDescending<ExternalFolderEntry> { it.isDirectory }.thenBy { it.name })
     }
@@ -761,6 +911,156 @@ internal class KnowledgeBaseRecordingBackend(
         val (backend, sourcePath) = virtualSource(normalized) ?: (disk to normalized)
         return backend.readStream(sourcePath, maxBytes, consume)
     }
+}
+
+/** 受管资料库的变更经 Room 工作区事务，音频投影只提供读能力。 */
+private class KnowledgeBaseManagedBackend(
+    private val reader: ExternalFolderBackend,
+    private val transfer: PrivateWorkspaceTransferBackend,
+    private val rootId: String,
+    private val sessionId: String,
+    private val workspace: IWorkspaceRepository,
+    private val files: IFileOperationRepository?,
+    private val indexEvents: FileIndexEventSink,
+    private val find: suspend (String) -> FileEntry?,
+    private val checkWrite: suspend (String) -> Unit,
+    private val onRecordingDocumentsDeleted: (List<String>) -> Unit,
+) : ExternalFolderBackend by ReadOnlyExternalFolderBackend(reader) {
+    override suspend fun availableBytes(path: String) = transfer.availableBytes(path)
+
+    override suspend fun write(path: String, content: ByteArray, expectedSha256: String?, createOnly: Boolean): ExternalFolderEntry {
+        val target = mutationPath(path)
+        val current = find(target)
+        if (current?.isDirectory == true) reject("IS_DIRECTORY", "目标是目录")
+        if (current?.isActiveRecording() == true) reject("READ_ONLY", "录音整理稿须通过带版本的录音整理稿写入入口")
+        WorkspaceTextContentPolicy().validate(target.substringAfterLast('/'), current?.mimeType, content, WorkspaceTextOperation.WRITE)
+        if (createOnly) {
+            if (current != null) reject("CONFLICT", "目标已存在")
+            currentCoroutineContext().ensureActive()
+            return withContext(NonCancellable) {
+                val created = transfer.write(target, content, expectedSha256, true)
+                if (!transfer.confirmCreated()) reject("INDEX_PENDING", "资料库文档已创建，索引等待重试")
+                created
+            }
+        }
+        val entry = current ?: reject("NOT_FOUND", "资料库文档不存在")
+        val expected = expectedSha256 ?: reject("MISSING_VERSION", "资料库文档写入必须提供 expectedHash")
+        val repository = files ?: reject("UNAVAILABLE", "资料库文件写入服务不可用")
+        checkWrite(target)
+        if (find(target)?.uuid != entry.uuid) reject("CONFLICT", "目标已移动或替换，请重新读取")
+        return when (val result = repository.writeFileAtomicExact(rootId, entry.uuid, content.decodeToString(), sessionId, expected)) {
+            is WriteResult.Success -> {
+                if (!result.indexQueued) reject("INDEX_PENDING", "资料库文档已保存，索引等待重试。sha256: ${result.newHash}")
+                ExternalFolderEntry(target, entry.name, false, content.size.toLong(), result.targetEpoch ?: entry.updatedAt, result.newHash, entry.uuid)
+            }
+            is WriteResult.Conflict -> reject("CONFLICT", result.message)
+            WriteResult.NotFound -> reject("NOT_FOUND", "资料库文档不存在")
+        }
+    }
+
+    override suspend fun createDirectory(path: String): ExternalFolderEntry {
+        val target = mutationPath(path)
+        if (find(target) != null) reject("CONFLICT", "目标已存在")
+        currentCoroutineContext().ensureActive()
+        return withContext(NonCancellable) {
+            transfer.createDirectory(target).also { transfer.confirmCreated() }
+        }
+    }
+
+    override suspend fun move(sourcePath: String, targetPath: String) = moveExact(sourcePath, targetPath, null)
+
+    suspend fun moveExact(sourcePath: String, targetPath: String, expectedHash: String?) {
+        val source = mutationPath(sourcePath)
+        val target = mutationPath(targetPath)
+        val entry = find(source) ?: reject("NOT_FOUND", "来源条目不存在")
+        if (source == target) {
+            if (expectedHash != null && (entry.isDirectory || entry.hash != expectedHash)) reject("CONFLICT", "expected_sha256 与来源不一致")
+            return
+        }
+        val parent = find(target.substringBeforeLast('/').ifEmpty { "/" }) ?: reject("NOT_FOUND", "目标目录不存在")
+        if (!parent.isDirectory) reject("NOT_DIRECTORY", "目标父项不是目录")
+        if (find(target) != null) reject("CONFLICT", "目标已存在")
+        if (entry.isActiveRecording() && !target.endsWith(".md", ignoreCase = true)) reject("INVALID_PATH", "录音整理稿须保留 .md 扩展名")
+        if (entry.isDirectory && expectedHash != null) reject("INVALID_ARGUMENT", "目录移动不支持文件 SHA-256 条件")
+        val name = target.substringAfterLast('/')
+        currentCoroutineContext().ensureActive()
+        withContext(NonCancellable) {
+            checkWrite(source)
+            checkWrite(target)
+            if (find(source)?.uuid != entry.uuid || find(target.substringBeforeLast('/').ifEmpty { "/" })?.uuid != parent.uuid) {
+                reject("CONFLICT", "来源或目标目录已移动，请重新读取")
+            }
+            val result = try {
+                if (entry.parentUuid == parent.uuid && expectedHash == null) workspace.rename(rootId, entry.uuid, name, entry.name)
+                else workspace.relocate(rootId, entry.uuid, parent.uuid, name, entry.name, expectedHash)
+            } catch (failure: IllegalStateException) {
+                if (failure.message.orEmpty().contains("expected_sha256")) reject("CONFLICT", "expected_sha256 与来源不一致")
+                throw failure
+            }
+            when (result) {
+                is RenameResult.Success -> {
+                    var pending = false
+                    for (item in result.affectedTargets) {
+                        try {
+                            indexEvents.publish(FileIndexEvent.Changed(rootId, item.fileUuid, item.targetHash, item.targetEpoch))
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            pending = true
+                        }
+                    }
+                    if (pending) reject("INDEX_PENDING", "资料库条目已移动，部分索引等待重试")
+                }
+                is RenameResult.Conflict -> reject("CONFLICT", "来源名称已变化，请重新读取")
+                RenameResult.NotFound -> reject("NOT_FOUND", "来源条目不存在")
+            }
+        }
+    }
+
+    override suspend fun delete(path: String, expectedSha256: String?) {
+        val target = mutationPath(path)
+        val entry = find(target) ?: reject("NOT_FOUND", "删除目标不存在")
+        if (entry.isDirectory && expectedSha256 != null) reject("INVALID_ARGUMENT", "目录删除不支持文件 SHA-256 条件")
+        val recordings = recordingIds(entry)
+        currentCoroutineContext().ensureActive()
+        withContext(NonCancellable) {
+            checkWrite(target)
+            if (find(target)?.uuid != entry.uuid) reject("CONFLICT", "删除目标已移动或替换，请重新读取")
+            if (entry.isDirectory || (expectedSha256 == null && !entry.isActiveRecording())) {
+                workspace.permanentDelete(rootId, entry.uuid)
+            } else try {
+                workspace.permanentDeleteIfHash(rootId, entry.uuid, expectedSha256 ?: entry.hash)
+            } catch (failure: IllegalStateException) {
+                if (failure.message.orEmpty().contains("expected_sha256")) reject("CONFLICT", "删除前来源已改变")
+                throw failure
+            }
+            val removed = recordings.filter { workspace.getByUuid(rootId, it) == null }
+            if (removed.isNotEmpty()) onRecordingDocumentsDeleted(removed)
+        }
+    }
+
+    private suspend fun recordingIds(entry: FileEntry): List<String> {
+        val pending = ArrayDeque(listOf(entry))
+        val recordings = mutableListOf<String>()
+        while (pending.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
+            val item = pending.removeFirst()
+            if (item.isActiveRecording()) recordings += item.uuid
+            if (item.isDirectory) pending.addAll(workspace.observeChildren(rootId, item.uuid).first().filter {
+                it.workspaceRootUuid == rootId && it.parentUuid == item.uuid && !it.inRecycleBin
+            })
+        }
+        return recordings
+    }
+
+    private suspend fun mutationPath(path: String): String {
+        val normalized = ExternalFolderPaths.normalize(path)
+        if (normalized == "/") reject("INVALID_PATH", "不能变更知识库根目录")
+        checkWrite(normalized)
+        return normalized
+    }
+
+    private fun reject(code: String, message: String): Nothing = throw ExternalFolderException(code, message)
 }
 
 private fun ExternalMountEntity.model() = ExternalMount(id, alias, sourceType, sourceId, scopeKey, createdAt, unavailableReason,

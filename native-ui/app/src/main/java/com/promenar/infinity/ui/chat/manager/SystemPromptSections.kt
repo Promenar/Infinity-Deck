@@ -4,6 +4,7 @@ import com.promenar.infinity.AppBrand
 import com.promenar.infinity.data.skills.DiscoveredSkill
 import com.promenar.infinity.data.skills.SkillStatus
 import com.promenar.infinity.data.storage.isUserSkills
+import com.promenar.infinity.data.storage.isKnowledgeBaseSource
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
 import com.promenar.infinity.domain.tool.LinuxExecRouting
 import com.promenar.infinity.domain.model.SessionRunMode
@@ -288,17 +289,18 @@ object SystemPromptSections {
     /** 挂载别名与设备路径都由用户输入，截断后写入提示，避免挤占上下文。 */
     private fun mountedFolders(mounts: List<com.promenar.infinity.domain.storage.ExternalMount>, usesLinux: Boolean): String? {
         val visible = mounts.filterNot { it.isUserSkills || usesLinux && it.sourceType != "real_path" &&
-            it.sourceType != com.promenar.infinity.data.storage.ExternalMountPaths.KNOWLEDGE_BASE_SOURCE }.sortedBy { it.alias }
+            !it.isKnowledgeBaseSource }.sortedBy { it.alias }
         if (visible.isEmpty()) return null
         return buildString {
             appendLine("### Mounted Folders")
-            appendLine("- 文件工具通过 `/mnt/<alias>/` 访问会话挂载；标记为只读的挂载只允许读取、列目录和搜索。")
+            appendLine("- 文件工具通过 `/mnt/<alias>/` 访问会话挂载。")
             visible.forEach { mount ->
                 val alias = mount.alias.take(64)
                 val realPath = runCatching { com.promenar.infinity.data.storage.ExternalMountPaths.commandAccess(mount).realPath }.getOrNull()
                 appendLine(when {
                     mount.unavailableReason != null -> "- `/mnt/$alias/`: currently unavailable; ask the user to check or re-authorize it."
-                    mount.sourceType == com.promenar.infinity.data.storage.ExternalMountPaths.KNOWLEDGE_BASE_SOURCE -> "- `/mnt/$alias/`：只读；仅文件工具可访问，命令无法访问知识库挂载。"
+                    mount.isKnowledgeBaseSource && mount.readOnly -> "- `/mnt/$alias/`：只读知识库。普通资料和原始录音 .wav 可读取；录音整理稿 .md 可带 expectedHash 版本化编辑并同步录音工作台。仅文件工具可访问，命令无法访问知识库挂载。"
+                    mount.isKnowledgeBaseSource -> "- `/mnt/$alias/`：知识库读写。文件工具可创建、编辑、在库内移动与经审批删除资料文档并同步索引；录音整理稿 .md 同步录音工作台，原始录音 .wav 只读。仅文件工具可访问。"
                     mount.readOnly -> "- `/mnt/$alias/`：只读；仅允许读取、列目录和搜索。"
                     realPath != null && usesLinux -> "- `/mnt/$alias/`：Linux 命令与文件工具使用同一路径。"
                     realPath != null -> "- `/mnt/$alias/`: commands reach it at the real path `${realPath.take(256)}`."

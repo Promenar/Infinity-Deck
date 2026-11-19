@@ -8,6 +8,8 @@ import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.rag.resolveEffectiveRagOptions
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.ExternalFolderManager
+import com.promenar.infinity.data.storage.isKnowledgeBaseSource
 import com.promenar.infinity.domain.storage.ExternalFolderException
 import com.promenar.infinity.domain.storage.ExternalMount
 import com.promenar.infinity.domain.storage.ExternalWorkspaceAccess
@@ -24,6 +26,9 @@ data class KnowledgeAccessTarget(
     val path: String,
     val readOnly: Boolean = true,
     val alreadyMounted: Boolean = false,
+    val mountedId: String? = null,
+    val mountedSourceType: String? = null,
+    val mountedReadOnly: Boolean? = null,
 )
 
 @Serializable
@@ -33,7 +38,18 @@ data class KnowledgeAccessPreview(
     val allowed: Boolean,
     val reason: String? = null,
     val knowledgeBases: List<KnowledgeAccessTarget> = emptyList(),
+    val accessMode: String = KNOWLEDGE_READ_ONLY,
 )
+
+internal const val KNOWLEDGE_READ_ONLY = "read_only"
+internal const val KNOWLEDGE_READ_WRITE = "read_write"
+
+internal fun requireKnowledgeAccessMode(mode: String): String {
+    if (mode != KNOWLEDGE_READ_ONLY && mode != KNOWLEDGE_READ_WRITE) {
+        throw ExternalFolderException("INVALID_ARGUMENT", "mode 必须为 read_only 或 read_write")
+    }
+    return mode
+}
 
 /** 预览无写入；批准的完整预览在执行前重新解析并核验。 */
 class KnowledgeAccessPlanner(
@@ -45,9 +61,13 @@ class KnowledgeAccessPlanner(
         resolveEffectiveRagOptions(session.ragOptions, memoryPolicy = config?.memoryPolicy ?: AgentMemoryPolicy())
     },
 ) {
-    suspend fun preview(sessionId: String, knowledgeBase: String? = null): KnowledgeAccessPreview {
+    suspend fun preview(
+        sessionId: String, knowledgeBase: String? = null, accessMode: String = KNOWLEDGE_READ_ONLY,
+    ): KnowledgeAccessPreview {
+        requireKnowledgeAccessMode(accessMode)
+        val readOnly = accessMode != KNOWLEDGE_READ_WRITE
         val selectedName = knowledgeBase?.trim()?.takeIf(String::isNotEmpty)
-        fun denied(reason: String) = KnowledgeAccessPreview(sessionId, selectedName, false, reason)
+        fun denied(reason: String) = KnowledgeAccessPreview(sessionId, selectedName, false, reason, accessMode = accessMode)
         val session = loadSession(sessionId) ?: return denied("会话不存在")
         val config = loadAgentConfig(session.agentId) ?: AgentRetrievalConfig()
         if (!session.options.toolsEnabled) return denied("本会话已关闭工具，知识库文件访问未启用")
@@ -63,42 +83,61 @@ class KnowledgeAccessPlanner(
         val mounts = externalAccess.visible(sessionId)
         val occupied = mounts.mapTo(linkedSetOf()) { it.alias }
         val targets = selected.map { root ->
-            val matching = mounts.filter { it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.sourceId == root.rootUuid }
+            val matching = mounts.filter { it.isKnowledgeBaseSource && it.sourceId == root.rootUuid }
             if (matching.size > 1) return denied("同一知识库存在重复挂载，请整理后申请")
             val existing = matching.singleOrNull()
-            if (existing != null && !existing.readOnly) return denied("已有知识库挂载不是只读，无法授予访问")
+            if (existing?.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && !existing.readOnly) {
+                return denied("已有知识库挂载只读状态无效，无法授予访问")
+            }
             val alias = existing?.alias ?: uniqueAlias(if (root.isDefault) "knowledge" else root.title, occupied)
             occupied += alias
-            KnowledgeAccessTarget(root.rootUuid, root.title, root.documentCount, alias, "/mnt/$alias", alreadyMounted = existing != null)
+            KnowledgeAccessTarget(
+                root.rootUuid, root.title, root.documentCount, alias, "/mnt/$alias", readOnly = readOnly,
+                alreadyMounted = existing != null, mountedId = existing?.id, mountedSourceType = existing?.sourceType,
+                mountedReadOnly = existing?.readOnly,
+            )
         }
-        return KnowledgeAccessPreview(sessionId, selectedName, true, knowledgeBases = targets)
+        return KnowledgeAccessPreview(sessionId, selectedName, true, knowledgeBases = targets, accessMode = accessMode)
     }
 
-    suspend fun mount(approved: KnowledgeAccessPreview): List<ExternalMount> = mountMutex.withLock {
-        mountApproved(approved)
+    suspend fun mount(approved: KnowledgeAccessPreview): List<ExternalMount> {
+        val snapshot = approved.copy(knowledgeBases = approved.knowledgeBases.toList())
+        return mountMutex.withLock { mountApproved(snapshot) }
     }
 
     private suspend fun mountApproved(approved: KnowledgeAccessPreview): List<ExternalMount> {
-        if (!approved.allowed || approved.knowledgeBases.isEmpty() || approved.knowledgeBases.any { !it.readOnly }) {
+        val readOnly = requireKnowledgeAccessMode(approved.accessMode) == KNOWLEDGE_READ_ONLY
+        if (!approved.allowed || approved.knowledgeBases.isEmpty() || approved.knowledgeBases.any { it.readOnly != readOnly }) {
             throw ExternalFolderException("ACCESS_DENIED", approved.reason ?: "知识库访问未获有效授权")
         }
-        if (preview(approved.sessionId, approved.knowledgeBase) != approved) {
+        if (preview(approved.sessionId, approved.knowledgeBase, approved.accessMode) != approved) {
             throw ExternalFolderException("APPROVAL_TARGET_CHANGED", "知识库访问目标或范围已变化，请重新申请授权")
         }
-        return approved.knowledgeBases.map { target ->
-            if (target.alreadyMounted) {
-                externalAccess.visible(approved.sessionId).singleOrNull {
-                    it.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE && it.sourceId == target.rootUuid &&
-                        it.alias == target.alias && it.readOnly
-                } ?: throw ExternalFolderException("APPROVAL_TARGET_CHANGED", "知识库挂载已变化，请重新申请授权")
-            } else {
-                externalAccess.addKnowledgeBase(target.alias, approved.sessionId, target.rootUuid).also { mount ->
-                    if (mount.sourceType != ExternalMountPaths.KNOWLEDGE_BASE_SOURCE || mount.sourceId != target.rootUuid ||
-                        mount.alias != target.alias || mount.sessionId != approved.sessionId || !mount.readOnly) {
-                        throw ExternalFolderException("ACCESS_DENIED", "知识库挂载结果与已批准目标不一致")
-                    }
-                }
+        val source = if (readOnly) ExternalMountPaths.KNOWLEDGE_BASE_SOURCE else ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE
+        if (externalAccess is ExternalFolderManager) {
+            return externalAccess.grantKnowledgeBaseAccess(approved.sessionId, approved.knowledgeBases)
+        }
+        val mounted = externalAccess.visible(approved.sessionId)
+        val pending = approved.knowledgeBases.map { target ->
+            val current = mounted.singleOrNull {
+                it.isKnowledgeBaseSource && it.sourceId == target.rootUuid && it.alias == target.alias &&
+                    it.id == target.mountedId && it.sourceType == target.mountedSourceType && it.readOnly == target.mountedReadOnly
             }
+            if (target.alreadyMounted && current == null) {
+                throw ExternalFolderException("APPROVAL_TARGET_CHANGED", "知识库挂载已变化，请重新申请授权")
+            }
+            if (!readOnly || current != null && (current.sourceType != source || !current.readOnly)) {
+                throw ExternalFolderException("UNSUPPORTED", "挂载管理器不支持更改知识库授权级别")
+            }
+            current to target
+        }
+        return pending.map { (current, target) ->
+            val mount = current ?: externalAccess.addKnowledgeBase(target.alias, approved.sessionId, target.rootUuid)
+            if (mount.sourceType != source || mount.sourceId != target.rootUuid ||
+                mount.alias != target.alias || mount.sessionId != approved.sessionId || mount.readOnly != readOnly) {
+                throw ExternalFolderException("ACCESS_DENIED", "知识库挂载结果与已批准目标不一致")
+            }
+            mount
         }
     }
 

@@ -1,6 +1,15 @@
 package com.promenar.infinity.ui.chat.manager.skills
 
 import com.promenar.infinity.data.model.ToolResult
+import com.promenar.infinity.data.local.db.entity.FileEntry
+import com.promenar.infinity.data.storage.externalStreamHash
+import com.promenar.infinity.data.storage.externalSnapshotMime
+import com.promenar.infinity.domain.storage.ExternalFolderException
+import com.promenar.infinity.startup.StartupWriteBarrier
+import com.promenar.infinity.ui.chat.diff.PrivateWorkspaceReader
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.promenar.infinity.data.repository.WorkspaceTextPolicyException
 import com.promenar.infinity.data.repository.WorkspaceTextContentPolicy
 import com.promenar.infinity.data.repository.WorkspaceTextErrorCode
@@ -28,16 +37,18 @@ class FileReadSkill(
     override val id = "read_file"
     override val name = "read_file"
     override val description = "读取工作区文本文件，每行带 `行号| ` 前缀（前缀不属于文件内容，patch_file 的行号即以此为准）。用 uuid 或 path 指定文件；支持分页（offset/limit）和行号范围（startLine/endLine）两种模式。" +
+        "大文件和 .wav、.pdf 等二进制可用 mode=stat 查看类型、大小、权限和兼容 expectedHash 的流式 sha256。" +
         "单文件最多 100 MiB，每次最多 2000 行、约 190 KB；结果的“后续”行给出下一次的 startLine，超长行另给 lineByteOffset。"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
-    override val parametersSchema = """{"type":"object","properties":{"uuid":{"type":"string","description":"文件UUID"},"path":{"type":"string","description":"文件路径，如 /docs/a.md"},"mode":{"type":"string","enum":["page","range"],"default":"page"},"offset":{"type":"integer","description":"分页偏移(行号，0-based)"},"limit":{"type":"integer","description":"分页大小(行数，最多2000)","default":200},"startLine":{"type":"integer","description":"起始行号(1-based)"},"endLine":{"type":"integer","description":"结束行号(1-based)，一次最多返回2000行"},"lineByteOffset":{"type":"integer","description":"续读超长行：起始行内的字节偏移，取结果“后续”行给出的值","default":0}}}"""
+    override val parametersSchema = """{"type":"object","properties":{"uuid":{"type":"string","description":"文件UUID"},"path":{"type":"string","description":"文件路径，如 /docs/a.md"},"mode":{"type":"string","enum":["page","range","stat"],"default":"page"},"offset":{"type":"integer","description":"分页偏移(行号，0-based)"},"limit":{"type":"integer","description":"分页大小(行数，最多2000)","default":200},"startLine":{"type":"integer","description":"起始行号(1-based)"},"endLine":{"type":"integer","description":"结束行号(1-based)，一次最多返回2000行"},"lineByteOffset":{"type":"integer","description":"续读超长行：起始行内的字节偏移，取结果“后续”行给出的值","default":0}}}"""
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
+        val mode = args.stringArgument("mode") ?: "page"
+        if (mode == "stat") return stat(args, context)
         val (resolvedUuid, resolveError) = resolveWorkspaceFileUuid(workspaceRepo, context.workspaceRootUuid, args, id)
         if (resolveError != null) return resolveError
         val uuid = resolvedUuid!!
-        val mode = args.stringArgument("mode") ?: "page"
         val lineByteOffset = (args["lineByteOffset"] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull ?: 0L
         if (lineByteOffset < 0) return workspaceToolError(id, "lineByteOffset 不能为负数")
 
@@ -82,7 +93,86 @@ class FileReadSkill(
             }
         ))
     }
+
+    private suspend fun stat(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
+        try {
+            val repository = workspaceRepo ?: throw ExternalFolderException("UNAVAILABLE", "当前工作区元数据不可用")
+            val root = context.workspaceRootUuid
+            val uuid = args.stringArgument("uuid")?.trim()?.takeIf(String::isNotEmpty)
+            val path = args.stringArgument("path")?.takeIf(String::isNotBlank)?.let {
+                if (repository is MountedWorkspaceRepository) repository.normalizeSearchPath(it) else normalizeWorkspaceToolPath(it)
+            }
+            if (uuid == null && path == null) throw ExternalFolderException("INVALID_ARGUMENT", "缺少 uuid 或 path 参数")
+            val entry = (when {
+                repository is MountedWorkspaceRepository -> repository.statEntry(root, uuid, path)
+                uuid != null -> repository.getByUuid(root, uuid)
+                else -> repository.getByMaterializedPath(root, requireNotNull(path))
+            }) ?: throw ExternalFolderException("NOT_FOUND", "目标条目不存在")
+            val stat = if (repository is MountedWorkspaceRepository) repository.fileStat(context, entry)
+                else privateFileStat(repository, root, entry.materializedPath, entry, context.sessionId)
+            val type = if (entry.isDirectory) "目录" else "文件"
+            val mime = if (entry.isDirectory) null else entry.mimeType ?: externalSnapshotMime(entry.name)
+            val permission = if (stat.writable) "可读写" else "只读"
+            ToolResult(
+                "read_file_stat_${System.currentTimeMillis()}",
+                buildString {
+                    appendLine("条目: ${entry.materializedPath} [uuid=${entry.uuid}]")
+                    appendLine("类型: $type" + (mime?.let { " ($it)" } ?: ""))
+                    appendLine("大小: ${entry.sizeBytes} B")
+                    appendLine("权限: $permission")
+                    appendLine("更新时间: ${entry.updatedAt}")
+                    stat.hash?.let { appendLine("sha256: $it") }
+                }.trimEnd(),
+                data = buildJsonObject {
+                    put("uuid", entry.uuid)
+                    put("path", entry.materializedPath)
+                    put("type", if (entry.isDirectory) "directory" else "file")
+                    mime?.let { put("mimeType", it) }
+                    put("sizeBytes", entry.sizeBytes)
+                    put("updatedAt", entry.updatedAt)
+                    put("writable", stat.writable)
+                    stat.hash?.let { put("sha256", it) }
+                }.toString(),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: com.promenar.infinity.data.repository.WorkspaceFileTooLargeException) {
+            workspaceTraversalFailure(id, ExternalFolderException("TOO_LARGE", "文件超过 100 MiB 元数据散列预算"))
+        } catch (failure: Exception) {
+            workspaceTraversalFailure(id, failure)
+        }
+    }
+
 }
+
+internal data class WorkspaceFileStat(val hash: String?, val writable: Boolean)
+
+internal suspend fun privateFileStat(
+    workspace: IWorkspaceRepository,
+    root: String,
+    path: String,
+    entry: FileEntry,
+    sessionId: String,
+    reader: PrivateWorkspaceReader = PrivateWorkspaceReader.Default,
+): WorkspaceFileStat {
+    val writable = !StartupWriteBarrier.isReadOnly(
+        rootId = root, sessionId = sessionId,
+        path = entry.physicalRootPath.takeIf(String::isNotBlank)?.let { java.io.File(it, path.removePrefix("/")).path },
+    )
+    val hash = workspaceStatHash(entry) { reader.readStream(workspace, root, path, ReadWindowRequest.MAX_FILE_BYTES, ::externalStreamHash) }
+    return WorkspaceFileStat(hash, writable)
+}
+
+internal suspend fun workspaceStatHash(entry: FileEntry, readHash: suspend () -> String): String? {
+    if (entry.isDirectory) return null
+    if (STAT_SHA256.matches(entry.hash)) return entry.hash
+    if (entry.sizeBytes > ReadWindowRequest.MAX_FILE_BYTES) {
+        throw ExternalFolderException("TOO_LARGE", "文件超过 100 MiB 元数据散列预算")
+    }
+    return readHash()
+}
+
+private val STAT_SHA256 = Regex("[0-9a-f]{64}")
 
 private fun returnedRange(result: ReadWindowResult): String = when {
     result.endLine < result.startLine -> "未返回内容"

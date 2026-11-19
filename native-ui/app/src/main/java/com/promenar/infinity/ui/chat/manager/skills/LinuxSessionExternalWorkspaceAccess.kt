@@ -10,6 +10,8 @@ import com.promenar.infinity.data.repository.WorkspaceTextOperation
 import com.promenar.infinity.data.repository.WorkspaceTextPolicyException
 import com.promenar.infinity.data.remote.protocol.ProtocolTool
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.ExternalFolderManager
+import com.promenar.infinity.data.storage.isKnowledgeBaseSource
 import com.promenar.infinity.data.storage.ExternalTreeTransfer
 import com.promenar.infinity.data.storage.externalSnapshotMime
 import com.promenar.infinity.data.storage.isUserSkills
@@ -57,6 +59,7 @@ class LinuxSessionExternalWorkspaceAccess(
             ?: selectedDirectory ?: LinuxSessionPaths.WORKSPACE_ROOT
     }
     private val versions = LinuxVersionSnapshots(VERSION_BYTES)
+    internal val knowledgeManager: ExternalFolderManager? get() = original as? ExternalFolderManager
 
     override fun observeMounts(sessionId: String) = original.observeMounts(sessionId).map { mounts -> mounts.filter(::allowed) }
     override suspend fun visible(sessionId: String): List<ExternalMount> = operation {
@@ -99,11 +102,15 @@ class LinuxSessionExternalWorkspaceAccess(
         workspace.getByUuid(current.root.uuid, uuid)?.materializedPath?.let { LinuxSessionPaths.PRIVATE_ROOT + it.takeUnless { it == "/" }.orEmpty() }
     }
 
-    override suspend fun entry(sessionId: String, path: String): FileEntry? = operation {
+    override suspend fun entry(sessionId: String, path: String): FileEntry? = entry(sessionId, path, fillHash = true)
+
+    internal suspend fun statEntry(sessionId: String, path: String): FileEntry? = entry(sessionId, path, fillHash = false)
+
+    private suspend fun entry(sessionId: String, path: String, fillHash: Boolean): FileEntry? = operation {
         val current = namespace(sessionId)
         val normalized = normalize(current, path)
-        val stat = stat(sessionId, current, normalized) ?: return@operation null
-        val hash = stat.sha256 ?: if (!stat.isDirectory && stat.size <= VERSION_BYTES) {
+        val stat = stat(sessionId, current, normalized, fillHash) ?: return@operation null
+        val hash = stat.sha256?.takeIf(String::isNotBlank) ?: if (fillHash && !stat.isDirectory && stat.size <= VERSION_BYTES) {
             Sha256Utils.hash(read(sessionId, normalized, VERSION_BYTES))
         } else ""
         FileEntry(
@@ -361,14 +368,17 @@ class LinuxSessionExternalWorkspaceAccess(
             val uuid = (values[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim().orEmpty()
             if (uuid.isNotEmpty()) {
                 val path = resolveUuid(sessionId, uuid) ?: fail("NOT_FOUND", "条目不属于当前 Linux 会话")
-                values[key] = JsonPrimitive(entry(sessionId, workspaceAlias(current, path))?.uuid ?: fail("NOT_FOUND", "条目不存在"))
+                val actual = workspaceAlias(current, path)
+                val entry = if (tool == "read_file" && (args["mode"] as? JsonPrimitive)?.content == "stat")
+                    statEntry(sessionId, actual) else entry(sessionId, actual)
+                values[key] = JsonPrimitive(entry?.uuid ?: fail("NOT_FOUND", "条目不存在"))
             }
         }
         listOf("path", "parentPath", "newParentPath").forEach { key ->
             (values[key] as? JsonPrimitive)?.takeIf { it.isString }?.let { values[key] = JsonPrimitive(workspaceAlias(current, it.content)) }
         }
         // 通用工具会 trim 路径参数；以 UUID 传递末尾空白的分支根，防止缺省父目录被改写。
-        if (current.branch != null && current.workingDirectory != current.workingDirectory.trim()) {
+        if (tool != "search_files" && current.branch != null && current.workingDirectory != current.workingDirectory.trim()) {
             for ((pathKey, uuidKey) in mapOf("path" to if (tool == "list_files") "parentUuid" else "uuid", "parentPath" to "parentUuid", "newParentPath" to "newParentUuid")) {
                 if ((values[pathKey] as? JsonPrimitive)?.content == current.workingDirectory) {
                     values[uuidKey] = JsonPrimitive(entry(sessionId, current.workingDirectory)?.uuid ?: fail("NOT_FOUND", "分支目录不存在"))
@@ -450,9 +460,35 @@ class LinuxSessionExternalWorkspaceAccess(
 
     /** MIME 只选择文本类型，UTF-8、NUL 与预算门禁继续核验真实字节。 */
     internal suspend fun textMime(sessionId: String, path: String): String? = operation {
-        when (route(namespace(sessionId), path).kind) {
+        val current = namespace(sessionId)
+        val target = route(current, path)
+        when (target.kind) {
             LinuxSessionPathKind.PRIVATE, LinuxSessionPathKind.ROOTFS -> "text/plain"
+            LinuxSessionPathKind.EXTERNAL -> if (visible(sessionId).any { it.alias == ExternalMountPaths.parse(target.path)?.first && it.isKnowledgeBaseSource }) {
+                withExternal(current, sessionId, target.path) { original.entry(sessionId, it)?.mimeType }
+            } else null
             else -> null
+        }
+    }
+
+    internal suspend fun isPathWritable(sessionId: String, path: String): Boolean = operation {
+        val current = namespace(sessionId)
+        val target = route(current, path)
+        if (target.kind == LinuxSessionPathKind.MOUNTS) return@operation false
+        if (target.kind == LinuxSessionPathKind.EXTERNAL &&
+            visible(sessionId).any { it.alias == ExternalMountPaths.parse(target.path)?.first && it.isKnowledgeBaseSource }) {
+            return@operation withExternal(current, sessionId, target.path) {
+                knowledgeManager?.isKnowledgePathWritable(sessionId, it) ?: false
+            }
+        }
+        try {
+            requireWritable(sessionId, current, path)
+            true
+        } catch (failure: ExternalFolderException) {
+            if (failure.code !in setOf("READ_ONLY", "ACCESS_DENIED")) throw failure
+            false
+        } catch (_: com.promenar.infinity.startup.StartupIsolationException) {
+            false
         }
     }
 
@@ -534,14 +570,16 @@ class LinuxSessionExternalWorkspaceAccess(
         return path
     }
 
-    private suspend fun stat(sessionId: String, current: Namespace, path: String): ExternalFolderEntry? {
+    private suspend fun stat(sessionId: String, current: Namespace, path: String, fillHash: Boolean = true): ExternalFolderEntry? {
         val target = route(current, path)
+        suspend fun originalEntry(actual: String) = if (!fillHash && original is ExternalFolderManager) original.statEntry(sessionId, actual)
+            else original.entry(sessionId, actual)
         return when (target.kind) {
             LinuxSessionPathKind.PRIVATE -> privateBackend(current).stat(target.path)?.copy(path = path)
-            LinuxSessionPathKind.WORKSPACE -> withOriginalBindings(current, workspacePaths = true) { original.entry(sessionId, target.path) }?.let {
+            LinuxSessionPathKind.WORKSPACE -> withOriginalBindings(current, workspacePaths = true) { originalEntry(target.path) }?.let {
                 ExternalFolderEntry(path, it.name, it.isDirectory, it.sizeBytes, it.updatedAt, it.hash)
             }
-            LinuxSessionPathKind.EXTERNAL -> withExternal(current, sessionId, target.path) { original.entry(sessionId, it) }?.let {
+            LinuxSessionPathKind.EXTERNAL -> withExternal(current, sessionId, target.path) { originalEntry(it) }?.let {
                 ExternalFolderEntry(path, it.name, it.isDirectory, it.sizeBytes, it.updatedAt, it.hash)
             }
             LinuxSessionPathKind.MOUNTS -> directory(path)
@@ -648,8 +686,7 @@ class LinuxSessionExternalWorkspaceAccess(
         // 目录工作区可能位于共享存储（FUSE 不支持用户属性），不向用户目录写 nonce；与工作区 id、路径一起只取 inode，不含设备号。
         return com.promenar.infinity.data.repository.PersistentFileIdentity.inode(attributes.fileKey())
     }
-    private fun allowed(mount: ExternalMount) = mount.sourceType == "real_path" ||
-        mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE || mount.isUserSkills
+    private fun allowed(mount: ExternalMount) = mount.sourceType == "real_path" || mount.isKnowledgeBaseSource || mount.isUserSkills
     private fun directory(path: String) = ExternalFolderEntry(path, path.substringAfterLast('/'), true, 0, 0)
     private fun parent(path: String) = path.substringBeforeLast('/').ifEmpty { "/" }
     private fun child(path: String, name: String) = path.trimEnd('/') + "/$name"
