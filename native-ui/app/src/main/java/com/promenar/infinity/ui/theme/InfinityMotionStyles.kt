@@ -30,14 +30,14 @@ enum class ComposerGlowStyle {
 
 /** 输入框浮岛的材质。 */
 enum class ComposerSurfaceStyle {
-    /** 毛玻璃：半透明表面，背后的会话内容实时模糊，上沿一道细高光；生成光效沿用所选流光样式但减弱。 */
+    /** 熏黑透视玻璃（深色近纯黑半透，浅色冷白磨砂）：背后会话实时模糊，生成时叠加运行坞点阵屏内光源照亮与上沿受光高光。 */
     FROSTED,
-    /** 环境光：实色表面，不画超出浮岛边界的光晕；生成时阶段色从运行坞点阵屏一侧在浮岛内部漫开。 */
+    /** 环境光（无模糊省电档）：纯实色深黑/纯白表面，生成时阶段色从运行坞点阵屏一侧在浮岛内部漫开。 */
     AMBIENT;
 
     companion object {
         internal fun fromPreferenceValue(value: String?): ComposerSurfaceStyle =
-            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: AMBIENT
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: FROSTED
     }
 }
 
@@ -110,8 +110,8 @@ data class InfinityMotionStyles(
     val composer: ComposerGlowStyle = ComposerGlowStyle.MATERIAL_ONLY,
     val indicator: GenerationIndicatorStyle = GenerationIndicatorStyle.MATRIX,
     val emptyChat: EmptyChatStyle = EmptyChatStyle.LED_MORPH,
-    /** 输入框浮岛的材质。 */
-    val surface: ComposerSurfaceStyle = ComposerSurfaceStyle.AMBIENT,
+    /** 输入框浮岛的材质；默认熏黑透视玻璃。 */
+    val surface: ComposerSurfaceStyle = ComposerSurfaceStyle.FROSTED,
     /** 运行坞右侧是否显示点阵波形屏；与 [composer] 的浮岛流光互相独立。 */
     val runDockScope: Boolean = true,
     /** 运行坞点阵屏是否显示数字读数；关闭时波形铺满整块屏。 */

@@ -1,9 +1,11 @@
 package com.promenar.infinity.ui.chat
 
+import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -53,19 +55,25 @@ internal fun rememberComposerBackdrop(surface: ComposerSurfaceStyle): ComposerBa
 internal fun Modifier.composerBackdropSource(backdrop: ComposerBackdrop?): Modifier = backdropSource(backdrop)
 
 /**
- * 浮岛表面层：铺在浮岛内容最底下、已被浮岛形状裁剪。毛玻璃材质画模糊后的背景与半透明色；
- * 环境光材质只在生成、出错或完成时从点阵屏一侧漫开一层阶段色柔光，空闲时什么都不画。纯装饰，不进入无障碍树。
+ * 浮岛表面层：铺在浮岛内容最底下、已被浮岛形状裁剪。
+ * 熏黑透视玻璃先画实时模糊背景与熏黑半透明遮罩，再叠加从点阵屏漫开的内部阶段光散射；
+ * 环境光材质不模糊背景，仅画内部柔光。空闲时两种材质都不画额外柔光，纯装饰不进入无障碍树。
  */
 @Composable
 internal fun ComposerIslandSurface(state: ComposerGlowState, modifier: Modifier = Modifier) {
-    val styles = LocalInfinityMotionStyles.current
-    when (styles.surface) {
-        ComposerSurfaceStyle.FROSTED -> FrostedBackdrop(
-            source = LocalComposerBackdrop.current,
-            tint = composerIslandMaterial().frostedTint ?: Color.Transparent,
-            modifier = modifier,
-        )
-        ComposerSurfaceStyle.AMBIENT -> AmbientWash(state, modifier.clearAndSetSemantics {})
+    when (LocalInfinityMotionStyles.current.surface) {
+        ComposerSurfaceStyle.FROSTED -> {
+            val tint = composerIslandMaterial().frostedTint ?: Color.Transparent
+            Box(modifier.clearAndSetSemantics {}) {
+                FrostedBackdrop(
+                    source = LocalComposerBackdrop.current,
+                    tint = tint,
+                    modifier = Modifier.matchParentSize(),
+                )
+                AmbientWash(state, frosted = true, modifier = Modifier.matchParentSize())
+            }
+        }
+        ComposerSurfaceStyle.AMBIENT -> AmbientWash(state, frosted = false, modifier = modifier.clearAndSetSemantics {})
     }
 }
 
@@ -96,19 +104,27 @@ private fun washUsesTertiary(phase: GenerationMotionPhase): Boolean =
     phase == GenerationMotionPhase.TOOL || phase == GenerationMotionPhase.APPROVAL
 
 @Composable
-private fun AmbientWash(state: ComposerGlowState, modifier: Modifier) {
+private fun AmbientWash(state: ComposerGlowState, frosted: Boolean, modifier: Modifier) {
     val palette = rememberMotionPalette()
     val motion = LocalGenerationMotion.current
     val domain = MaterialTheme.infinityDomainColors
     val errorColor = domain.signalDown
-    // 深色底上柔光要更亮才看得出，浅色底压低避免发脏。
-    val peak = if (palette.dark) 0.34f else 0.22f
+    val peak = if (palette.dark) 0.38f else 0.24f
     Spacer(
         modifier.drawWithCache {
             val rx = size.width * 0.78f
             val ry = maxOf(size.height * 0.95f, 56.dp.toPx())
             fun gradient(color: Color) = RadialGradient(0f, 0f, rx, color.toArgb(), color.copy(alpha = 0f).toArgb(), Shader.TileMode.CLAMP)
             val shaders = arrayOf(gradient(palette.a), gradient(palette.b), gradient(errorColor))
+            val rimPad = 16.dp.toPx()
+            val rimHeight = 1.5.dp.toPx()
+            fun rimGradient(color: Color): Shader {
+                val edge = Color.Transparent.toArgb()
+                val peakCol = color.toArgb()
+                return LinearGradient(rimPad, 0f, (size.width - rimPad).coerceAtLeast(rimPad + 1f), 0f,
+                    intArrayOf(edge, edge, peakCol, edge), floatArrayOf(0f, 0.25f, 0.75f, 1f), Shader.TileMode.CLAMP)
+            }
+            val rimShaders = if (frosted) arrayOf(rimGradient(palette.a), rimGradient(palette.b), rimGradient(errorColor)) else null
             val local = Matrix()
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             onDrawBehind {
@@ -120,19 +136,24 @@ private fun AmbientWash(state: ComposerGlowState, modifier: Modifier) {
                 local.postTranslate(anchor.x, anchor.y)
                 shaders.forEach { it.setLocalMatrix(local) }
                 val time = state.timeSeconds
-                fun wash(shader: Shader, alpha: Float) {
+                fun wash(index: Int, alpha: Float) {
                     if (alpha <= 0.004f) return
-                    paint.shader = shader
+                    paint.shader = shaders[index]
                     paint.alpha = (255 * clamp01(alpha)).roundToInt()
                     drawIntoCanvas { it.nativeCanvas.drawRect(0f, 0f, size.width, size.height, paint) }
+                    if (rimShaders != null && size.width > rimPad * 2f) {
+                        paint.shader = rimShaders[index]
+                        paint.alpha = (255 * clamp01(alpha * 1.45f)).roundToInt()
+                        drawIntoCanvas { it.nativeCanvas.drawRect(rimPad, 0f, size.width - rimPad, rimHeight, paint) }
+                    }
                 }
                 if (gen > 0f) for (phase in GenerationMotionPhase.entries) {
                     val weight = motion.weight(phase)
                     if (weight <= 0.004f) continue
-                    wash(shaders[if (washUsesTertiary(phase)) 1 else 0], peak * gen * weight * washLevel(phase, time, state.act))
+                    wash(if (washUsesTertiary(phase)) 1 else 0, peak * gen * weight * washLevel(phase, time, state.act))
                 }
-                // 出错的整圈泛色在环境光材质下也收进浮岛内部。
-                wash(shaders[2], peak * 1.3f * error)
+                // 出错的整圈泛色在内部柔光与顶边受光线上同样平滑退去。
+                wash(2, peak * 1.3f * error)
             }
         },
     )

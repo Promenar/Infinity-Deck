@@ -14,6 +14,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.65.0-beta] - 2026-11-20
+
+- **折叠屏内屏 40dp 纯黑/纯白极简电路分支侧栏**：
+  - 将 [HubThreePane.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/hub/HubThreePane.kt) 折叠态会话窄栏由 `72dp` 头像条收窄至 `40dp` 纯色（随主题使用深色纯黑/浅色纯白表面底色），移除 `AgentAvatar`、长按 Peek 与底部 `+` 按钮，仅保留顶部展开按钮与逐节点直击切换，为右侧内容区释放更多横向视野（[LibraryScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryScreen.kt) 资料导航 rail 保持 `72dp`）；
+  - 新增按 `parentSessionId` 聚类并补全根节点祖先的 `hubStripClusters`（抵御缺失父节点与环形引用），以高对比度电路总线（主干、直角折角与 L 形分支拐角）结合无损径向光晕状态点阵珠呈现生成态（流光三点/工具绿脉动）及待批准/待回答/排队状态（同步接入 [AgentHubScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/hub/AgentHubScreen.kt) 活跃生成快照并补齐分支与状态语义测试）。
+- **熏黑透视玻璃默认浮岛材质与点阵屏内光透射**：
+  - 将 [InfinityMotionStyles.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/InfinityMotionStyles.kt) 默认浮岛材质切换为 `ComposerSurfaceStyle.FROSTED`；将深色材质 token（[Color.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/Color.kt)、[ComposerIsland.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ComposerIsland.kt)）升级为近纯黑熏黑透视玻璃（`InfinityObsidianGlassTint` @ 78% 与浅色纯净冷白磨砂）与高对比度 `AMBIENT` 无模糊熏黑实底省电档，同时保持零 `BlurMaskFilter` 约束；
+  - 重构 [ComposerSurface.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ComposerSurface.kt)，在 `FROSTED` 玻璃层内叠加与点阵屏联动的内光源漫射 `AmbientWash` 与顶部 `1.5dp` 相位受光细描边，静置时融入纯黑底色、生成时被点阵光漫射照亮并兼顾后方聊天文字可读性。
+
 - **升级 Ktor 至 3.6.1 并加固生图与影视制作工具契约**：
   - 将 [native-ui/app/build.gradle.kts](native-ui/app/build.gradle.kts) 全套 Ktor 客户端与 Mock 依赖由 `2.3.7` 升级至 `3.6.1`（对齐 `kotlinx-coroutines 1.11.0`，根治 `ImageGenClient` 多图 Multipart 编辑与 [WebDavBackupClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/remote/webdav/WebDavBackupClient.kt) 流式写入在 OkHttp 引擎下触发 `EventLoopKt.processNextEventInCurrentThread` 的 `NoSuchMethodError` 崩溃），并补齐真实 `HttpClient(OkHttp)` 回环上传回归测试；
   - 加固 [ImageGenerationRequest.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/ImageGenerationRequest.kt)、[ImageGenerationInputReader.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/ImageGenerationInputReader.kt)、[ImageGenerationSkill.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/ImageGenerationSkill.kt) 与 [ImageGenClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/rag/ImageGenClient.kt)：提交前严格拒绝未知参考图别名字段（提示使用数组键 `images`）、支持制作工作区相对路径映射并区分无效路径/越界/未找到等错误原因、以结构化错误字段精准识别 `moderation` 参数拒绝；

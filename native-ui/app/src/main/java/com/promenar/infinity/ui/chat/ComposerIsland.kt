@@ -46,6 +46,9 @@ import com.promenar.infinity.ui.common.motion.slowBlink
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.ComposerGlowStyle
 import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
+import com.promenar.infinity.ui.theme.InfinityObsidianGlassTint
+import com.promenar.infinity.ui.theme.InfinityObsidianSolidChip
+import com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer
 import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -65,8 +68,10 @@ internal val ComposerToolbarInset = 8.dp
 internal const val ComposerGlowPeriodSeconds = 2.8f
 
 /**
- * 浮岛材质。环境光为实色：深色沿用底部导航栏的抬升底色与低透明描边，浅色改用纯白底，层次靠短投影与描边。
- * 毛玻璃时容器透明，底色由 [ComposerIslandSurface] 画模糊背景再叠 [frostedTint]；描边改为浅色亮边，深浅色都画上沿 1px 内高光。
+ * 浮岛材质。
+ * 熏黑透视玻璃（[ComposerSurfaceStyle.FROSTED]）：容器透明，由 [ComposerIslandSurface] 先画模糊背景并叠 [frostedTint]
+ * （深色沉降为近纯黑熏黑半透，浅色保留纯净冷白磨砂），上沿辅以 1px 受光内高光与轮廓细描边；生成态在玻璃内叠加点阵屏柔光散射。
+ * 环境光（[ComposerSurfaceStyle.AMBIENT]）：无模糊省电实底（深色取主题熏黑实底 token，浅色纯白），内部靠点阵柔光与高光区分层次。
  */
 internal data class ComposerIslandMaterial(
     val container: Color,
@@ -78,33 +83,33 @@ internal data class ComposerIslandMaterial(
     val frostedTint: Color? = null,
 )
 
-@Composable
-internal fun composerIslandMaterial(): ComposerIslandMaterial {
-    val scheme = MaterialTheme.colorScheme
-    val dark = MaterialTheme.infinityDomainColors.isDark
-    val style = LocalComposerIslandStyle.current
+internal fun resolveComposerIslandMaterial(
+    scheme: androidx.compose.material3.ColorScheme,
+    dark: Boolean,
+    surface: ComposerSurfaceStyle,
+    layered: Boolean,
+): ComposerIslandMaterial {
     fun rim(color: Color, alpha: Float) = BorderStroke(1.dp, color.copy(alpha = alpha))
-    if (LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED) {
+    if (surface == ComposerSurfaceStyle.FROSTED) {
         return if (dark) {
             ComposerIslandMaterial(
                 container = Color.Transparent,
-                border = rim(scheme.onSurface, 0.14f),
-                topHighlight = scheme.onSurface.copy(alpha = 0.16f),
-                chip = scheme.onSurface.copy(alpha = 0.08f),
-                frostedTint = scheme.surfaceContainer.copy(alpha = 0.6f),
+                border = rim(InfinityPureWhite, 0.12f),
+                topHighlight = InfinityPureWhite.copy(alpha = 0.14f),
+                chip = InfinityPureWhite.copy(alpha = 0.06f),
+                frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.78f),
             )
         } else {
             ComposerIslandMaterial(
                 container = Color.Transparent,
-                border = rim(scheme.outlineVariant, 0.5f),
-                topHighlight = InfinityPureWhite.copy(alpha = 0.9f),
+                border = rim(scheme.outlineVariant, 0.45f),
+                topHighlight = InfinityPureWhite.copy(alpha = 0.92f),
                 chip = scheme.onSurface.copy(alpha = 0.05f),
-                frostedTint = scheme.surfaceContainerLowest.copy(alpha = 0.6f),
+                frostedTint = InfinityPureWhite.copy(alpha = 0.78f),
             )
         }
     }
-    if (style.layered) {
-        // 分层：底色比卡片高一级，实色描边；深色上沿提亮一档，胶囊用最高一级底色配细描边。
+    if (layered) {
         return if (dark) {
             ComposerIslandMaterial(
                 container = scheme.surfaceContainerHigh,
@@ -123,10 +128,10 @@ internal fun composerIslandMaterial(): ComposerIslandMaterial {
     }
     return if (dark) {
         ComposerIslandMaterial(
-            container = scheme.surfaceContainer,
-            border = rim(scheme.outlineVariant, 0.41f),
-            topHighlight = null,
-            chip = scheme.surfaceContainerHigh,
+            container = InfinityObsidianSolidContainer,
+            border = rim(InfinityPureWhite, 0.13f),
+            topHighlight = InfinityPureWhite.copy(alpha = 0.14f),
+            chip = InfinityObsidianSolidChip,
         )
     } else {
         ComposerIslandMaterial(
@@ -137,6 +142,14 @@ internal fun composerIslandMaterial(): ComposerIslandMaterial {
         )
     }
 }
+
+@Composable
+internal fun composerIslandMaterial(): ComposerIslandMaterial = resolveComposerIslandMaterial(
+    scheme = MaterialTheme.colorScheme,
+    dark = MaterialTheme.infinityDomainColors.isDark,
+    surface = LocalInfinityMotionStyles.current.surface,
+    layered = LocalComposerIslandStyle.current.layered,
+)
 
 /** 光带两端颜色：深色直接用主色与第三色；浅色主题的主色偏深，提亮并加饱和后才像“发光”。 */
 @Composable

@@ -145,7 +145,7 @@ class AgentHubScreenContractTest {
     }
 
     @Test
-    fun `all four avatar surfaces pass raw icon and color to the shared avatar`() {
+    fun `hub avatar surfaces pass raw icon and color while 40dp strip omits avatars`() {
         val hub = hubSource.readText()
         val three = projectRoot.resolve("src/main/java/com/promenar/infinity/ui/hub/HubThreePane.kt").readText()
         val edit = projectRoot.resolve("src/main/java/com/promenar/infinity/ui/hub/AgentEditScreen.kt").readText()
@@ -156,7 +156,7 @@ class AgentHubScreenContractTest {
         }
         assertThat(hub).contains("icon = item.agent.icon")
         assertThat(hub).contains("icon = agent.icon")
-        assertThat(three).contains("icon = entry.agent.agent.icon")
+        assertThat(three).doesNotContain("AgentAvatar(")
         assertThat(edit).contains("AgentAvatarCodec.decode(selectedIcon)")
         assertThat(edit).contains("AgentAvatarPickerSheet(")
         assertThat(edit).doesNotContain("ColorPickerPanel(")

@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -25,14 +27,18 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.ViewSidebar
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Start
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,14 +55,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -71,6 +84,8 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.rememberNavController
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.Session
+import com.promenar.infinity.domain.generation.GenerationPhase
+import com.promenar.infinity.domain.generation.GenerationTaskSnapshot
 import com.promenar.infinity.navigation.HUB_PANE_EMPTY
 import com.promenar.infinity.navigation.HubPaneNavigator
 import com.promenar.infinity.navigation.InfinityPageNavHost
@@ -82,17 +97,25 @@ import com.promenar.infinity.navigation.isPaneRootEntry
 import com.promenar.infinity.navigation.trackSettingsPaneStack
 import com.promenar.infinity.ui.MainTabsState
 import com.promenar.infinity.ui.chat.LocalChatNavigationIcon
-import com.promenar.infinity.ui.common.AgentAvatar
+import com.promenar.infinity.ui.common.motion.MotionPalette
+import com.promenar.infinity.ui.common.motion.rememberMotionClock
+import com.promenar.infinity.ui.common.motion.rememberMotionPalette
+import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.infinityDomainColors
-import kotlinx.coroutines.flow.first
 import com.promenar.infinity.ui.theme.selectionIndicator
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlinx.coroutines.flow.first
 
 /** 三列时会话助手列表的宽度。 */
 internal val HubListPaneWidth = 296.dp
 
-/** 展开后列表收成的图标条宽度。 */
+/** 资料页等沿用两栏收窄边栏时的宽度。 */
 internal val HubStripWidth = 72.dp
+
+/** 对话页展开后极简纯图形会话条宽度。 */
+internal val HubSessionStripWidth = 40.dp
 
 /** 图标条展开成的窄列表宽度。 */
 internal val HubDrawerWidth = 256.dp
@@ -127,13 +150,13 @@ internal data class HubPaneGeometry(
 
 internal fun hubPaneGeometry(windowWidth: Dp, railWidth: Dp, expanded: Boolean): HubPaneGeometry {
     val threePaneDetailStart = railWidth + HubListPaneWidth
-    val detailStart = if (expanded) HubStripWidth else threePaneDetailStart
+    val detailStart = if (expanded) HubSessionStripWidth else threePaneDetailStart
     return HubPaneGeometry(
         listStart = railWidth,
         threePaneDetailStart = threePaneDetailStart,
         detailStart = detailStart,
         detailWidth = (windowWidth - detailStart).coerceAtLeast(0.dp),
-        shift = threePaneDetailStart - HubStripWidth,
+        shift = threePaneDetailStart - HubSessionStripWidth,
     )
 }
 
@@ -146,10 +169,18 @@ class HubThreePaneHost internal constructor(
     val paneGraph: NavGraphBuilder.(HubPaneNavigator) -> Unit,
 )
 
-/** 图标条上的一个会话。 */
+/** 会话条上的一个会话。 */
 internal data class HubStripEntry(val session: Session, val agent: AgentDisplayItem)
 
-/** 图标条列出与首页“置顶”“最近”相同的会话；当前会话不在其中时排在最前。 */
+/** 按根会话归组的会话家族：同助手多组分支各自独立成簇，避免在 40dp 极简条里混在一起。 */
+internal data class HubStripCluster(
+    val root: HubStripEntry,
+    val branches: List<HubStripEntry> = emptyList(),
+)
+
+/**
+ * 列出置顶与最近会话；当前会话不在其中时排在最前，并为可见分支补齐仍在非系统助手下的祖先根会话。
+ */
 internal fun hubStripEntries(
     agents: List<AgentDisplayItem>,
     sessionsByAgent: Map<String, List<Session>>,
@@ -160,8 +191,46 @@ internal fun hubStripEntries(
     val listed = (sections.pinnedSessions + sections.sessions).map { it.session }
     val selected = selectedSessionId?.takeIf { id -> listed.none { it.id == id } }
         ?.let { id -> sessionsByAgent.values.firstNotNullOfOrNull { list -> list.firstOrNull { it.id == id } } }
-    return (listOfNotNull(selected) + listed).mapNotNull { session ->
+    val base = (listOfNotNull(selected) + listed).filter { it.agentId in byId }
+    val knownIds = base.mapTo(mutableSetOf()) { it.id }
+    val visibleById = agents.flatMap { sessionsByAgent[it.agent.id].orEmpty() }.associateBy { it.id }
+    val extraAncestors = mutableListOf<Session>()
+    for (session in base) {
+        val visited = mutableSetOf(session.id)
+        var parentId = session.parentSessionId
+        while (parentId != null && visited.add(parentId)) {
+            val parent = visibleById[parentId] ?: break
+            if (knownIds.add(parent.id)) extraAncestors += parent
+            parentId = parent.parentSessionId
+        }
+    }
+    return (base + extraAncestors).mapNotNull { session ->
         byId[session.agentId]?.let { HubStripEntry(session, it) }
+    }
+}
+
+/** 将扁平条按 [Session.parentSessionId] 聚为独立家族，处理缺失父级与循环引用。 */
+internal fun hubStripClusters(entries: List<HubStripEntry>): List<HubStripCluster> {
+    if (entries.isEmpty()) return emptyList()
+    val byId = entries.associateBy { it.session.id }
+    fun resolveRootId(entry: HubStripEntry): String {
+        val visited = linkedSetOf(entry.session.id)
+        var current = entry.session
+        while (current.parentSessionId != null) {
+            val parent = byId[current.parentSessionId]?.session ?: return current.id
+            if (!visited.add(parent.id)) return visited.min()
+            current = parent
+        }
+        return current.id
+    }
+    val branchesByRoot = linkedMapOf<String, MutableList<HubStripEntry>>()
+    for (entry in entries) {
+        val rootId = resolveRootId(entry)
+        val branches = branchesByRoot.getOrPut(rootId) { mutableListOf() }
+        if (entry.session.id != rootId) branches += entry
+    }
+    return branchesByRoot.map { (rootId, branches) ->
+        HubStripCluster(root = byId.getValue(rootId), branches = branches)
     }
 }
 
@@ -177,6 +246,7 @@ internal fun HubThreePane(
     activity: Map<String, HubSessionActivity>,
     empty: @Composable (openSession: (String) -> Unit) -> Unit,
     list: @Composable (openSession: (String) -> Unit, closeSessions: (Set<String>) -> Unit) -> Unit,
+    generation: Map<String, GenerationTaskSnapshot> = emptyMap(),
 ) {
     val state = host.state
     val paneNav = rememberNavController()
@@ -262,6 +332,7 @@ internal fun HubThreePane(
                 enabled = state.hubExpanded,
                 onOpenList = { state.hubDrawerOpen = true },
                 onSelect = openSession,
+                generation = generation,
             )
         },
     ) {
@@ -336,7 +407,7 @@ internal fun HubThreePaneLayout(
         if (stripShown) {
             Box(
                 Modifier
-                    .width(HubStripWidth)
+                    .width(HubSessionStripWidth)
                     .fillMaxHeight()
                     .zIndex(1f)
                     .graphicsLayer { alpha = expansion() }
@@ -387,7 +458,7 @@ internal fun HubExpandButton(expanded: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** 展开后的图标条：顶部按钮展开成窄列表，其下每个会话一个助手头像，角标标出生成中、待批准、待回答与排队中。 */
+/** 展开后的 40dp 极简纯图形会话条：顶部展开抽屉，下方以电路家族连线区分同助手多组分支，传达实时状态与选中项。 */
 @Composable
 internal fun HubSessionStrip(
     entries: List<HubStripEntry>,
@@ -396,8 +467,13 @@ internal fun HubSessionStrip(
     enabled: Boolean,
     onOpenList: () -> Unit,
     onSelect: (String) -> Unit,
+    generation: Map<String, GenerationTaskSnapshot> = emptyMap(),
 ) {
     val container = MaterialTheme.colorScheme.surface
+    val clusters = remember(entries) { hubStripClusters(entries) }
+    val hasGenerating = entries.any { activity[it.session.id] == HubSessionActivity.GENERATING }
+    val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val clock = rememberMotionClock(running = hasGenerating && animate)
     Column(
         Modifier
             .fillMaxSize()
@@ -406,34 +482,54 @@ internal fun HubSessionStrip(
             .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         IconButton(
             onClick = onOpenList,
             enabled = enabled,
-            modifier = Modifier.size(48.dp).testTag(HubThreePaneTags.STRIP_OPEN_LIST),
+            modifier = Modifier
+                .size(32.dp)
+                .border(
+                    width = 0.75.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.50f),
+                    shape = RoundedCornerShape(10.dp),
+                )
+                .testTag(HubThreePaneTags.STRIP_OPEN_LIST),
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.ViewSidebar,
                 contentDescription = stringResource(R.string.hub_strip_open_list),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                // 侧栏图标的窄栏画在左侧，与图标条所在一致。
-                modifier = Modifier.graphicsLayer { scaleX = -1f },
+                // 侧栏图标的窄栏画在左侧，与会话条所在一致。
+                modifier = Modifier
+                    .size(17.dp)
+                    .graphicsLayer { scaleX = -1f },
             )
         }
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f),
+        )
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
         ) {
-            items(entries, key = { it.session.id }) { entry ->
-                HubStripItem(
-                    entry = entry,
-                    activity = activity[entry.session.id],
-                    selected = entry.session.id == selectedSessionId,
+            items(clusters, key = { it.root.session.id }) { cluster ->
+                HubStripClusterSection(
+                    cluster = cluster,
+                    activity = activity,
+                    generation = generation,
+                    selectedSessionId = selectedSessionId,
                     enabled = enabled,
-                    badgeBorder = container,
-                    onClick = { onSelect(entry.session.id) },
+                    surfaceColor = container,
+                    timeSeconds = { clock.time },
+                    onSelect = onSelect,
                 )
             }
         }
@@ -441,22 +537,170 @@ internal fun HubSessionStrip(
 }
 
 @Composable
-private fun HubStripItem(
+private fun HubStripClusterSection(
+    cluster: HubStripCluster,
+    activity: Map<String, HubSessionActivity>,
+    generation: Map<String, GenerationTaskSnapshot>,
+    selectedSessionId: String?,
+    enabled: Boolean,
+    surfaceColor: Color,
+    timeSeconds: () -> Float,
+    onSelect: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        HubStripNodeRow(
+            entry = cluster.root,
+            isRoot = true,
+            hasBranches = cluster.branches.isNotEmpty(),
+            isLastBranch = cluster.branches.isEmpty(),
+            nodeActivity = activity[cluster.root.session.id],
+            phase = generation[cluster.root.session.id]?.phase,
+            selected = cluster.root.session.id == selectedSessionId,
+            enabled = enabled,
+            surfaceColor = surfaceColor,
+            timeSeconds = timeSeconds,
+            onSelect = onSelect,
+        )
+        cluster.branches.forEachIndexed { index, branch ->
+            HubStripNodeRow(
+                entry = branch,
+                isRoot = false,
+                hasBranches = false,
+                isLastBranch = index == cluster.branches.lastIndex,
+                nodeActivity = activity[branch.session.id],
+                phase = generation[branch.session.id]?.phase,
+                selected = branch.session.id == selectedSessionId,
+                enabled = enabled,
+                surfaceColor = surfaceColor,
+                timeSeconds = timeSeconds,
+                onSelect = onSelect,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HubStripNodeRow(
     entry: HubStripEntry,
-    activity: HubSessionActivity?,
+    isRoot: Boolean,
+    hasBranches: Boolean,
+    isLastBranch: Boolean,
+    nodeActivity: HubSessionActivity?,
+    phase: GenerationPhase?,
     selected: Boolean,
     enabled: Boolean,
-    badgeBorder: Color,
-    onClick: () -> Unit,
+    surfaceColor: Color,
+    timeSeconds: () -> Float,
+    onSelect: (String) -> Unit,
 ) {
     val title = entry.session.title.ifBlank { stringResource(R.string.hub_session_untitled) }
-    val activityLabel = activity?.let { stringResource(hubSessionActivityLabel(it)) }
+    val activityLabel = nodeActivity?.let { stringResource(hubSessionActivityLabel(it)) }
+    val palette = rememberMotionPalette()
+    val warningColor = MaterialTheme.infinityDomainColors.warning
+    val traceColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f)
+    val primary = MaterialTheme.colorScheme.primary
+    val onSurfaceVar = MaterialTheme.colorScheme.onSurfaceVariant
+    val selectedBg = MaterialTheme.colorScheme.selectionIndicator(surfaceColor)
+    val isTool = nodeActivity == HubSessionActivity.GENERATING && phase == GenerationPhase.EXECUTING_TOOLS
+
     Box(
-        Modifier
-            .size(56.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) MaterialTheme.colorScheme.selectionIndicator() else Color.Transparent)
-            .clickable(enabled = enabled, onClick = onClick)
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (isRoot) 26.dp else 28.dp)
+            .drawWithContent {
+                val cy = size.height / 2f
+                val rootCenterX = size.width * 0.50f
+                val trunkX = size.width * 0.25f
+                val branchCenterX = size.width * 0.58f
+
+                if (selected) {
+                    drawRoundRect(
+                        color = selectedBg,
+                        topLeft = Offset(3.dp.toPx(), 2.dp.toPx()),
+                        size = Size(size.width - 6.dp.toPx(), size.height - 4.dp.toPx()),
+                        cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx()),
+                    )
+                    drawRoundRect(
+                        color = primary,
+                        topLeft = Offset(0.5.dp.toPx(), 5.dp.toPx()),
+                        size = Size(2.5.dp.toPx(), size.height - 10.dp.toPx()),
+                        cornerRadius = CornerRadius(1.25.dp.toPx(), 1.25.dp.toPx()),
+                    )
+                }
+
+                if (isRoot && hasBranches) {
+                    drawLine(
+                        color = traceColor,
+                        start = Offset(trunkX, cy + 4.dp.toPx()),
+                        end = Offset(trunkX, size.height),
+                        strokeWidth = 1.35.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                } else if (!isRoot) {
+                    drawLine(
+                        color = traceColor,
+                        start = Offset(trunkX, 0f),
+                        end = Offset(trunkX, if (isLastBranch) cy else size.height),
+                        strokeWidth = 1.35.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                    drawLine(
+                        color = traceColor,
+                        start = Offset(trunkX, cy),
+                        end = Offset(branchCenterX - 8.dp.toPx(), cy),
+                        strokeWidth = 1.35.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+
+                val cx = if (isRoot) rootCenterX else branchCenterX
+                when (nodeActivity) {
+                    HubSessionActivity.GENERATING -> drawStripLedBeads(
+                        isTool = isTool,
+                        palette = palette,
+                        center = Offset(cx, cy),
+                        beadRadiusPx = 1.75.dp.toPx(),
+                        spacingPx = 4.6.dp.toPx(),
+                        timeSeconds = timeSeconds(),
+                    )
+                    null -> {
+                        if (isRoot) {
+                            val w = 14.dp.toPx()
+                            val h = 6.8.dp.toPx()
+                            drawRoundRect(
+                                color = if (selected) primary else onSurfaceVar.copy(alpha = 0.58f),
+                                topLeft = Offset(cx - w / 2f, cy - h / 2f),
+                                size = Size(w, h),
+                                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx()),
+                                style = Stroke(width = 1.4.dp.toPx()),
+                            )
+                        } else {
+                            drawCircle(
+                                color = if (selected) primary else onSurfaceVar.copy(alpha = 0.52f),
+                                radius = 2.4.dp.toPx(),
+                                center = Offset(cx, cy),
+                            )
+                        }
+                    }
+                    HubSessionActivity.AWAITING_APPROVAL,
+                    HubSessionActivity.AWAITING_ANSWER,
+                    HubSessionActivity.QUEUED,
+                    -> Unit
+                }
+
+                if (isRoot && entry.session.isPinned) {
+                    drawCircle(
+                        color = primary,
+                        radius = 2.dp.toPx(),
+                        center = Offset(size.width - 6.dp.toPx(), 4.5.dp.toPx()),
+                    )
+                }
+                drawContent()
+            }
+            .clickable(enabled = enabled, role = Role.Button, onClick = { onSelect(entry.session.id) })
             .semantics {
                 contentDescription = "$title，${entry.agent.title}"
                 this.selected = selected
@@ -465,28 +709,117 @@ private fun HubStripItem(
             .testTag(HubThreePaneTags.stripSession(entry.session.id)),
         contentAlignment = Alignment.Center,
     ) {
-        Box {
-            AgentAvatar(
-                icon = entry.agent.agent.icon,
-                color = entry.agent.agent.color,
-                seed = entry.agent.agent.id,
-                name = entry.agent.title,
-                photoUri = entry.agent.agent.avatarPath,
-                size = 36.dp,
-            )
-            if (activity != null) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = 3.dp, y = 3.dp)
-                        .size(14.dp)
-                        .border(2.dp, badgeBorder, CircleShape)
-                        .padding(2.dp)
-                        .background(hubSessionActivityColor(activity), CircleShape)
-                        .testTag(HubThreePaneTags.stripBadge(entry.session.id, activity)),
-                )
+        if (nodeActivity == HubSessionActivity.AWAITING_APPROVAL ||
+            nodeActivity == HubSessionActivity.AWAITING_ANSWER ||
+            nodeActivity == HubSessionActivity.QUEUED
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(start = if (isRoot) 0.dp else 7.dp)
+                    .testTag(HubThreePaneTags.stripBadge(entry.session.id, nodeActivity)),
+                contentAlignment = Alignment.Center,
+            ) {
+                HubStripBadgeGlyph(nodeActivity, palette, warningColor)
             }
+        } else if (nodeActivity == HubSessionActivity.GENERATING) {
+            Box(
+                Modifier
+                    .size(1.dp)
+                    .testTag(HubThreePaneTags.stripBadge(entry.session.id, nodeActivity)),
+            )
         }
+    }
+}
+
+private fun DrawScope.drawStripLedBeads(
+    isTool: Boolean,
+    palette: MotionPalette,
+    center: Offset,
+    beadRadiusPx: Float,
+    spacingPx: Float,
+    timeSeconds: Float,
+) {
+    val beadCount = 3
+    val startX = center.x - (beadCount - 1) * spacingPx / 2f
+    val offColor = palette.muted.copy(alpha = if (palette.dark) 0.22f else 0.24f)
+    for (i in 0 until beadCount) {
+        val cx = startX + i * spacingPx
+        val (color, glowAlpha) = if (isTool) {
+            val active = i % 2 == 0
+            if (active) {
+                val pulse = if (timeSeconds > 0f) {
+                    0.5f + 0.5f * cos((timeSeconds * 5.2f + i * PI.toFloat()))
+                } else 1f
+                palette.b.copy(alpha = 0.45f + 0.55f * pulse) to (0.35f + 0.35f * pulse)
+            } else {
+                offColor to 0f
+            }
+        } else if (timeSeconds > 0f) {
+            val wave = 0.5f + 0.5f * cos(timeSeconds * 6f - i * 1.15f)
+            val base = if (wave > 0.72f) palette.hot else palette.a
+            base.copy(alpha = 0.35f + 0.65f * wave) to (0.18f + 0.54f * wave)
+        } else {
+            val base = if (i == beadCount - 1) palette.hot else palette.a
+            val g = if (i == beadCount - 1) 0.72f else 0.42f
+            base to g
+        }
+        if (glowAlpha > 0.01f) {
+            val haloR = beadRadiusPx * 3.1f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(color.copy(alpha = glowAlpha), Color.Transparent),
+                    center = Offset(cx, center.y),
+                    radius = haloR,
+                ),
+                radius = haloR,
+                center = Offset(cx, center.y),
+            )
+        }
+        drawCircle(color = color, radius = beadRadiusPx, center = Offset(cx, center.y))
+    }
+}
+
+@Composable
+private fun HubStripBadgeGlyph(
+    activity: HubSessionActivity,
+    palette: MotionPalette,
+    warningColor: Color,
+) {
+    val tint = when (activity) {
+        HubSessionActivity.AWAITING_APPROVAL -> palette.b
+        HubSessionActivity.AWAITING_ANSWER -> warningColor
+        HubSessionActivity.QUEUED -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
+        HubSessionActivity.GENERATING -> return
+    }
+    val glowAlpha = when (activity) {
+        HubSessionActivity.AWAITING_APPROVAL -> 0.42f
+        HubSessionActivity.AWAITING_ANSWER -> 0.40f
+        else -> 0f
+    }
+    Box(
+        modifier = Modifier
+            .size(16.dp)
+            .drawWithContent {
+                if (glowAlpha > 0f) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(tint.copy(alpha = glowAlpha), Color.Transparent),
+                            center = Offset(size.width / 2f, size.height / 2f),
+                            radius = size.minDimension * 0.56f,
+                        ),
+                    )
+                }
+                drawContent()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        val icon = when (activity) {
+            HubSessionActivity.AWAITING_APPROVAL -> Icons.Rounded.Shield
+            HubSessionActivity.AWAITING_ANSWER -> Icons.AutoMirrored.Rounded.HelpOutline
+            HubSessionActivity.QUEUED -> Icons.Rounded.Schedule
+            HubSessionActivity.GENERATING -> return@Box
+        }
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(if (activity == HubSessionActivity.QUEUED) 10.5.dp else 11.dp))
     }
 }
 
@@ -496,15 +829,6 @@ internal fun hubSessionActivityLabel(activity: HubSessionActivity): Int = when (
     HubSessionActivity.AWAITING_APPROVAL -> R.string.hub_session_awaiting_approval
     HubSessionActivity.AWAITING_ANSWER -> R.string.ask_card_status_waiting
     HubSessionActivity.QUEUED -> R.string.ask_card_status_queued
-}
-
-/** 角标颜色：与列表行状态文字同色，生成中用主色。 */
-@Composable
-private fun hubSessionActivityColor(activity: HubSessionActivity): Color = when (activity) {
-    HubSessionActivity.GENERATING -> MaterialTheme.colorScheme.primary
-    HubSessionActivity.AWAITING_APPROVAL -> MaterialTheme.colorScheme.tertiary
-    HubSessionActivity.AWAITING_ANSWER -> MaterialTheme.infinityDomainColors.warning
-    HubSessionActivity.QUEUED -> MaterialTheme.colorScheme.outline
 }
 
 /** 会话列没有会话时：提示从左侧选择，或直接新建对话。 */

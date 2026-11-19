@@ -273,6 +273,7 @@ fun AgentHubScreen(
                 )
             },
             list = { open, close -> HubListContent(open, selectedSessionId, close) },
+            generation = activeGeneration,
         )
     } else {
         HubListContent(onNavigateToChat, null)

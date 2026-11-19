@@ -1,7 +1,12 @@
 package com.promenar.infinity.ui.chat
 
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import org.junit.Test
 
 class ComposerSurfaceTest {
@@ -31,5 +36,29 @@ class ComposerSurfaceTest {
         val anchor = composerWashAnchor(Offset.Unspecified, width = 200f, height = 100f, dp = 3f)
         assertThat(anchor.x).isEqualTo(100f)
         assertThat(anchor.y).isWithin(1e-3f).of(30f)
+    }
+
+    @Test
+    fun `深色熏黑玻璃与暗黑省电实底脱离灰底并保留冷白浅色`() {
+        val darkScheme = darkColorScheme()
+        val frostedDark = resolveComposerIslandMaterial(darkScheme, dark = true, ComposerSurfaceStyle.FROSTED, layered = false)
+        assertThat(frostedDark.container).isEqualTo(Color.Transparent)
+        val darkTint = checkNotNull(frostedDark.frostedTint)
+        assertThat(darkTint.alpha).isWithin(1e-3f).of(0.78f)
+        assertThat(darkTint.red).isLessThan(0.05f)
+        assertThat(darkTint.blue).isLessThan(0.05f)
+        assertThat(frostedDark.topHighlight).isNotNull()
+
+        val ambientDark = resolveComposerIslandMaterial(darkScheme, dark = true, ComposerSurfaceStyle.AMBIENT, layered = false)
+        assertThat(ambientDark.frostedTint).isNull()
+        assertThat(ambientDark.container.red).isLessThan(0.05f)
+        assertThat(ambientDark.container.blue).isLessThan(0.05f)
+        assertThat(ambientDark.topHighlight).isNotNull()
+
+        val lightScheme = lightColorScheme()
+        val frostedLight = resolveComposerIslandMaterial(lightScheme, dark = false, ComposerSurfaceStyle.FROSTED, layered = false)
+        val lightTint = checkNotNull(frostedLight.frostedTint)
+        assertThat(lightTint.copy(alpha = 1f)).isEqualTo(InfinityPureWhite)
+        assertThat(lightTint.alpha).isWithin(1e-3f).of(0.78f)
     }
 }

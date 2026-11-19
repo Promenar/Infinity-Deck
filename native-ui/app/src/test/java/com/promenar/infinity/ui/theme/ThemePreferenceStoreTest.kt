@@ -246,7 +246,7 @@ class ThemePreferenceStoreTest {
         assertThat(motion.scopeDigits).isTrue()
         assertThat(motion.indicator).isEqualTo(GenerationIndicatorStyle.MATRIX)
         assertThat(motion.emptyChat).isEqualTo(EmptyChatStyle.LED_MORPH)
-        assertThat(motion.surface).isEqualTo(ComposerSurfaceStyle.AMBIENT)
+        assertThat(motion.surface).isEqualTo(ComposerSurfaceStyle.FROSTED)
         assertThat(motion).isEqualTo(InfinityMotionStyles())
     }
 
@@ -256,7 +256,7 @@ class ThemePreferenceStoreTest {
             every { getString("motion_composer_glow", any()) } returns "aurora"
             every { getString("motion_generation_indicator", any()) } returns "wave"
             every { getString("motion_empty_chat", any()) } returns "flow"
-            every { getString("motion_composer_surface", any()) } returns "frosted"
+            every { getString("motion_composer_surface", any()) } returns "ambient"
         }
 
         val motion = ThemePreferenceStore(contextFor(prefs)).state.value.motion
@@ -264,7 +264,7 @@ class ThemePreferenceStoreTest {
         assertThat(motion.composer).isEqualTo(ComposerGlowStyle.AURORA)
         assertThat(motion.indicator).isEqualTo(GenerationIndicatorStyle.WAVE)
         assertThat(motion.emptyChat).isEqualTo(EmptyChatStyle.FLOW)
-        assertThat(motion.surface).isEqualTo(ComposerSurfaceStyle.FROSTED)
+        assertThat(motion.surface).isEqualTo(ComposerSurfaceStyle.AMBIENT)
     }
 
     @Test
@@ -302,9 +302,9 @@ class ThemePreferenceStoreTest {
 
     @Test
     fun `浮岛材质回退与写入`() {
-        assertThat(ComposerSurfaceStyle.fromPreferenceValue(null)).isEqualTo(ComposerSurfaceStyle.AMBIENT)
-        assertThat(ComposerSurfaceStyle.fromPreferenceValue("glassy")).isEqualTo(ComposerSurfaceStyle.AMBIENT)
-        assertThat(ComposerSurfaceStyle.fromPreferenceValue("FROSTED")).isEqualTo(ComposerSurfaceStyle.FROSTED)
+        assertThat(ComposerSurfaceStyle.fromPreferenceValue(null)).isEqualTo(ComposerSurfaceStyle.FROSTED)
+        assertThat(ComposerSurfaceStyle.fromPreferenceValue("glassy")).isEqualTo(ComposerSurfaceStyle.FROSTED)
+        assertThat(ComposerSurfaceStyle.fromPreferenceValue("AMBIENT")).isEqualTo(ComposerSurfaceStyle.AMBIENT)
         assertThat(ComposerGlowStyle.fromPreferenceValue("removed")).isEqualTo(ComposerGlowStyle.MATERIAL_ONLY)
         assertThat(GenerationIndicatorStyle.fromPreferenceValue(null)).isEqualTo(GenerationIndicatorStyle.MATRIX)
         assertThat(EmptyChatStyle.fromPreferenceValue("led_morph")).isEqualTo(EmptyChatStyle.LED_MORPH)
@@ -313,9 +313,9 @@ class ThemePreferenceStoreTest {
         every { editor.putString(any(), any()) } returns editor
         val prefs = mockk<SharedPreferences>(relaxed = true) { every { edit() } returns editor }
         val store = ThemePreferenceStore(contextFor(prefs))
-        store.setComposerSurfaceStyle(ComposerSurfaceStyle.FROSTED)
-        assertThat(store.state.value.motion.surface).isEqualTo(ComposerSurfaceStyle.FROSTED)
-        verify { editor.putString("motion_composer_surface", "frosted") }
+        store.setComposerSurfaceStyle(ComposerSurfaceStyle.AMBIENT)
+        assertThat(store.state.value.motion.surface).isEqualTo(ComposerSurfaceStyle.AMBIENT)
+        verify { editor.putString("motion_composer_surface", "ambient") }
     }
 
     @Test

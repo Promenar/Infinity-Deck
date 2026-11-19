@@ -31,12 +31,13 @@ private val coder = AgentDisplayItem(Agent(id = "coder", name = "Coder", icon = 
 private val architect = AgentDisplayItem(Agent(id = "architect", name = "Architect", color = "#4CAF7D"), "架构师", "接口与契约")
 private val writer = AgentDisplayItem(Agent(id = "writer", name = "Writer", icon = "📝", color = "#E0A030"), "写作助手", "周报与文档")
 
-private fun session(id: String, agentId: String, title: String, minutesAgo: Long, pinned: Boolean = false) =
-    Session(id = id, agentId = agentId, title = title, isPinned = pinned, createdAt = 0, updatedAt = NOW - minutesAgo * 60_000)
+private fun session(id: String, agentId: String, title: String, minutesAgo: Long, pinned: Boolean = false, parentId: String? = null) =
+    Session(id = id, agentId = agentId, title = title, isPinned = pinned, parentSessionId = parentId, createdAt = 0, updatedAt = NOW - minutesAgo * 60_000)
 
 private val sessions = mapOf(
     "coder" to listOf(
         session("s-layout", "coder", "折叠屏内屏首页三列布局、右列独立导航与展开动画的实现方案评审", 2, pinned = true),
+        session("s-layout-branch", "coder", "40dp 电路侧栏与纯黑熏黑玻璃复核分支", 1, parentId = "s-layout"),
         session("s-ci", "coder", "修复截图测试在夜间构建中偶发失败", 30),
     ),
     "architect" to listOf(
@@ -48,6 +49,7 @@ private val sessions = mapOf(
 
 private val activity = mapOf(
     "s-layout" to HubSessionActivity.GENERATING,
+    "s-layout-branch" to HubSessionActivity.GENERATING,
     "s-ask" to HubSessionActivity.AWAITING_ANSWER,
     "s-weekly" to HubSessionActivity.AWAITING_APPROVAL,
     "s-queue" to HubSessionActivity.QUEUED,
