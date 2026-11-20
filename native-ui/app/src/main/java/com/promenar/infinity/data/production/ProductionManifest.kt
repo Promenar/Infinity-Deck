@@ -57,7 +57,15 @@ object ProductionManifestCodec {
         require(revision >= 0) { "清单修订号不能为负数。" }
         validate(p)
         validateProductionReviews(p, revision)
-        val changed = p.cuts.map { it.changedAt } + p.changeRequests.map { it.changedAt } + p.reviewRounds.map { it.revision } + listOf(p.policyChangedAt) + p.stages.map { it.changedAt } + p.assets.map { it.changedAt } + p.seasons.flatMap { season -> season.episodes.flatMap { ep -> listOf(ep.changedAt) + ep.scenes.flatMap { scene -> listOf(scene.changedAt) + scene.shots.map { it.changedAt } } } }
+        val changed = p.cuts.map { it.changedAt } +
+            p.changeRequests.map { it.changedAt } +
+            p.reviewRounds.map { it.revision } +
+            listOf(p.policyChangedAt) +
+            p.stages.map { it.changedAt } +
+            p.assets.map { it.changedAt } +
+            p.assets.flatMap { it.looks }.mapNotNull { it.contentChangedAt } +
+            p.assets.mapNotNull { it.viewsContentChangedAt } +
+            p.seasons.flatMap { season -> season.episodes.flatMap { ep -> listOf(ep.changedAt) + ep.scenes.flatMap { scene -> listOf(scene.changedAt) + scene.shots.map { it.changedAt } } } }
         require(changed.all { it in 0..revision }) { "实体修订号不能大于清单修订号，请检查清单。" }
     }
 
@@ -68,6 +76,7 @@ object ProductionManifestCodec {
         fun unique(values: List<String>, field: String) = require(values.distinct().size == values.size) { "$field 标识重复，请使用唯一标识。" }
         fun path(value: String?) { if (value != null) validatePath(value) }
         require(p.policyChangedAt >= 0) { "项目设置修订号不能为负数。" }
+        p.defaultVideoChannelId?.let { title(it, "默认视频模型") }
         unique(p.changeRequests.map { it.id }, "变更请求")
         require(p.id.isNotBlank()) { "项目 id 不能为空。" }
         title(p.title, "项目标题")
@@ -145,10 +154,16 @@ object ProductionManifestCodec {
             require(asset.kind == AssetKind.CHARACTER || asset.looks.isEmpty() && asset.referenceVoice == null) { "造型和参考语音仅用于角色资产。" }
             unique(asset.looks.map { it.id }, "造型")
             asset.looks.forEach { look ->
-                title(look.id, "造型标识"); title(look.name, "造型名称"); unique(look.slots.map { it.id }, "参考位")
+                title(look.id, "造型标识"); title(look.name, "造型名称"); note(look.note, "造型说明"); path(look.sheetPath); note(look.sheetNote, "整卡说明"); require(look.contentChangedAt == null || look.contentChangedAt >= 0) { "造型修订号不能为负数。" }
+                unique(look.slots.map { it.id }, "参考位")
                 require(look.slots.map { it.id }.containsAll(ProductionRules.defaultSlotOrder)) { "造型必须包含三个默认参考位。" }
-                look.slots.forEach { slot -> title(slot.id, "参考位标识"); title(slot.name, "参考位名称"); path(slot.path); require(slot.version == null || slot.version > 0) { "参考位版本必须为正整数。" } }
+                look.slots.forEach { slot -> title(slot.id, "参考位标识"); title(slot.name, "参考位名称"); path(slot.path); note(slot.note, "参考位说明"); require(slot.version == null || slot.version > 0) { "参考位版本必须为正整数。" } }
             }
+            require(asset.referenceViews.isEmpty() || asset.kind in setOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE)) { "参考视图组仅用于场景、道具与画风资产。" }
+            require(asset.referenceViews.size <= 30) { "每个资产最多 30 个参考视图。" }
+            unique(asset.referenceViews.map { it.id }, "参考视图")
+            asset.referenceViews.forEach { slot -> title(slot.id, "参考视图标识"); title(slot.name, "参考视图名称"); path(slot.path); note(slot.note, "参考视图说明"); require(slot.version == null || slot.version > 0) { "参考视图版本必须为正整数。" } }
+            require(asset.viewsContentChangedAt == null || asset.viewsContentChangedAt >= 0) { "参考视图组修订号不能为负数。" }
             asset.referenceVoice?.let { voice -> path(voice.path); note(voice.transcript, "转写"); note(voice.voiceSetting, "音色设定"); note(voice.tone, "语气") }
             require(asset.currentVersion == null || asset.versions.any { it.number == asset.currentVersion }) { "资产当前版本不存在。" }
         }

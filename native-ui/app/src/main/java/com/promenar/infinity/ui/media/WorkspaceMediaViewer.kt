@@ -17,26 +17,36 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.res.stringResource
-import com.promenar.infinity.R
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.promenar.infinity.ui.common.InfinityModalSheet
-import com.promenar.infinity.ui.common.InfinitySheetHeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.R
 import com.promenar.infinity.domain.media.MediaKind
 import com.promenar.infinity.domain.media.MediaResolution
-import com.promenar.infinity.ui.renderer.ImageLightbox
-import com.promenar.infinity.ui.renderer.ImageLightboxActions
-import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.annotation.LocalImageAnnotationLauncher
+import com.promenar.infinity.ui.common.InfinityModalSheet
+import com.promenar.infinity.ui.common.InfinitySheetHeight
+import com.promenar.infinity.ui.renderer.ImageLightboxActions
+import com.promenar.infinity.ui.renderer.ImageLightboxGallery
+import com.promenar.infinity.ui.renderer.ImageLightboxPage
+import com.promenar.infinity.ui.theme.InfinitySpacing
 
-/** 工作区图片查看器：沿用 [ImageLightbox]，保存、分享与用其它应用打开均经工作区来源，提示显示在查看器窗口内。 */
+/** 多图查看器条目：包含工作区路径与可选的顶栏标题/说明。 */
+data class WorkspaceImageItem(
+    val path: String,
+    val title: String? = null,
+    val subtitle: String? = null,
+)
+
+/** 工作区图片查看器：沿用 [ImageLightboxGallery]，保存、分享与用其它应用打开均经工作区来源，提示显示在查看器窗口内。 */
 @Composable
 fun WorkspaceImageViewer(
     available: MediaResolution.Available,
     model: WorkspaceMediaModel,
     onDismiss: () -> Unit,
+    title: String? = null,
+    subtitle: String? = null,
 ) {
     val environment = LocalWorkspaceMedia.current ?: return
     val hostState = remember { SnackbarHostState() }
@@ -44,20 +54,31 @@ fun WorkspaceImageViewer(
     CompositionLocalProvider(LocalMediaMessenger provides messenger) {
         val runner = rememberMediaActionRunner(environment)
         val annotate = LocalImageAnnotationLauncher.current
-        ImageLightbox(
-            imageUrl = model.toUri(),
-            model = model,
+        val displayTitle = title?.takeIf(String::isNotBlank) ?: mediaDisplayName(model.path)
+        val page = remember(model, displayTitle, subtitle) {
+            ImageLightboxPage(
+                imageUrl = model.toUri(),
+                model = model,
+                title = displayTitle,
+                subtitle = subtitle,
+            )
+        }
+        ImageLightboxGallery(
+            pages = listOf(page),
+            startIndex = 0,
             onDismiss = onDismiss,
-            actions = ImageLightboxActions(
-                onSave = { runner.save(available) },
-                onShare = { runner.share(available) },
-                onOpenWith = { runner.openWith(available) },
-                onAnnotate = annotate?.let { launch -> { onDismiss(); launch(model.path) } },
-            ),
+            actionsForPage = {
+                ImageLightboxActions(
+                    onSave = { runner.save(available) },
+                    onShare = { runner.share(available) },
+                    onOpenWith = { runner.openWith(available) },
+                    onAnnotate = annotate?.let { launch -> { onDismiss(); launch(model.path) } },
+                )
+            },
             overlay = {
                 MediaSnackbarHost(
                     hostState = hostState,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
                 )
             },
         )
@@ -65,7 +86,7 @@ fun WorkspaceImageViewer(
 }
 
 /**
- * 组内图片的全屏查看器：沿用 [ImageLightbox]，两侧按钮在 [paths] 之间切换，左上角显示页码，从 [startIndex] 开始。
+ * 组内图片的全屏查看器：沿用 [ImageLightboxGallery]，支持左右手势滑动切换与双指/双击缩放（1×–5×）、底部 90° 旋转。
  * 当前项尚未解析或不可用时仍保留查看器窗口，保存与分享提示文件不可用。
  */
 @Composable
@@ -74,45 +95,64 @@ fun WorkspaceImageGroupViewer(
     startIndex: Int,
     onDismiss: () -> Unit,
 ) {
+    val items = remember(paths) { paths.map { WorkspaceImageItem(path = it) } }
+    WorkspaceImageGroupViewer(items = items, startIndex = startIndex, onDismiss = onDismiss)
+}
+
+/** 带自定义标题与副标题的多图全屏工作区查看器。 */
+@JvmName("WorkspaceImageGroupItemsViewer")
+@Composable
+fun WorkspaceImageGroupViewer(
+    items: List<WorkspaceImageItem>,
+    startIndex: Int,
+    onDismiss: () -> Unit,
+) {
     val environment = LocalWorkspaceMedia.current ?: return
-    if (paths.isEmpty()) return
-    var index by rememberSaveable { mutableIntStateOf(startIndex.coerceIn(0, paths.lastIndex)) }
-    val current = index.coerceIn(0, paths.lastIndex)
-    val path = paths[current]
-    val resolved = rememberWorkspaceMediaResolution(environment, path)
-    val available = resolved?.available
-    val model = WorkspaceMediaModel(environment.sessionId, path, resolved?.identity)
+    if (items.isEmpty()) return
+    var currentIndex by rememberSaveable { mutableIntStateOf(startIndex.coerceIn(0, items.lastIndex)) }
+    val resolvedItems = items.map { item ->
+        val resolved = rememberWorkspaceMediaResolution(environment, item.path)
+        val model = WorkspaceMediaModel(environment.sessionId, item.path, resolved?.identity)
+        Triple(item, resolved?.available, model)
+    }
+    val pages = resolvedItems.map { (item, _, model) ->
+        ImageLightboxPage(
+            imageUrl = model.toUri(),
+            model = model,
+            title = item.title?.takeIf(String::isNotBlank) ?: mediaDisplayName(item.path),
+            subtitle = item.subtitle,
+        )
+    }
     val hostState = remember { SnackbarHostState() }
     val messenger = rememberSnackbarMediaMessenger(hostState)
     val unavailableText = stringResource(R.string.media_failure_unavailable)
     CompositionLocalProvider(LocalMediaMessenger provides messenger) {
         val runner = rememberMediaActionRunner(environment)
-        fun withAvailable(action: (MediaResolution.Available) -> Unit): () -> Unit = {
-            if (available != null) action(available) else messenger.show(unavailableText, true)
-        }
         val annotate = LocalImageAnnotationLauncher.current
-        ImageLightbox(
-            imageUrl = model.toUri(),
-            model = model,
+        ImageLightboxGallery(
+            pages = pages,
+            startIndex = currentIndex,
             onDismiss = onDismiss,
-            actions = ImageLightboxActions(
-                onSave = withAvailable(runner::save),
-                onShare = withAvailable(runner::share),
-                onOpenWith = withAvailable(runner::openWith),
-                onAnnotate = annotate?.let { launch -> withAvailable { onDismiss(); launch(path) } },
-            ),
-            overlay = {
-                MediaPagerControls(
-                    index = current,
-                    count = paths.size,
-                    onPrevious = { index = (current - 1).coerceAtLeast(0) },
-                    onNext = { index = (current + 1).coerceAtMost(paths.lastIndex) },
-                    counterAlignment = Alignment.TopStart,
-                    modifier = Modifier.padding(8.dp),
+            onPageChanged = { currentIndex = it },
+            actionsForPage = { pageIndex ->
+                val target = resolvedItems.getOrNull(pageIndex)
+                val available = target?.second
+                fun withAvailable(action: (MediaResolution.Available) -> Unit): () -> Unit = {
+                    if (available != null) action(available) else messenger.show(unavailableText, true)
+                }
+                ImageLightboxActions(
+                    onSave = withAvailable(runner::save),
+                    onShare = withAvailable(runner::share),
+                    onOpenWith = withAvailable(runner::openWith),
+                    onAnnotate = annotate?.let { launch ->
+                        withAvailable { onDismiss(); launch(target!!.first.path) }
+                    },
                 )
+            },
+            overlay = {
                 MediaSnackbarHost(
                     hostState = hostState,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 72.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp),
                 )
             },
         )

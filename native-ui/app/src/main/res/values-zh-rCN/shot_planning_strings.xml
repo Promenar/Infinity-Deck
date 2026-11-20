@@ -5,6 +5,7 @@
     <string name="shot_plan_unlocked">场尚未锁定：%1$s</string>
     <string name="shot_plan_no_channel">没有支持当前模式的通道：%1$s</string>
     <string name="shot_plan_missing_input">输入不存在或类型不符：%1$s</string>
+    <string name="shot_plan_mode_mismatch_separate">当前视频通道需要分张单视图，但「%1$s」仅登记了多视图资产卡，请补充单视图或切换入参模式</string>
     <string name="shot_plan_overflow">输入超出通道上限：%1$s</string>
     <string name="shot_plan_invalid">生成规划不完整：%1$s</string>
     <string name="shot_plan_backend">通道后端尚未配置：%1$s</string>

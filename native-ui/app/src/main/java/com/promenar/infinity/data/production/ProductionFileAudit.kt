@@ -36,7 +36,12 @@ fun findUnregisteredProductionFiles(production: Production, paths: List<String>)
             shot.takes.forEach { take -> add(take.path); plan(take.planSnapshot); take.segments.forEach { add(it.path) } }
             shot.chains.forEach { chain -> plan(chain.planSnapshot); chain.outputPath?.let(::add); chain.segments.forEach { segment -> segment.path?.let(::add); segment.firstFramePath?.let(::add); segment.taskOutputPath?.let(::add) } }
         } }
-        production.assets.forEach { asset -> asset.versions.forEach { add(it.path) }; asset.looks.flatMap { it.slots }.forEach { it.path?.let(::add) }; asset.referenceVoice?.path?.let(::add) }
+        production.assets.forEach { asset ->
+            asset.versions.forEach { add(it.path) }
+            asset.looks.forEach { look -> look.sheetPath?.let(::add); look.slots.forEach { it.path?.let(::add) } }
+            asset.referenceViews.forEach { it.path?.let(::add) }
+            asset.referenceVoice?.path?.let(::add)
+        }
         production.runs.forEach { run -> run.resultPath?.let(::add); run.segments.forEach { add(it.path) } }
         production.cuts.forEach { cut -> cut.clips.forEach { it.path?.let(::add) }; cut.export?.let { add(it.videoPath); it.subtitlePath?.let(::add) } }
     }

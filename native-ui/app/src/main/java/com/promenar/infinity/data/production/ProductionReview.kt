@@ -8,9 +8,17 @@ enum class ReviewKind { @SerialName("approve") APPROVE, @SerialName("reject") RE
 
 @Serializable
 enum class ReviewTargetKind {
-    @SerialName("take") TAKE, @SerialName("asset_version") ASSET_VERSION, @SerialName("script") SCRIPT,
-    @SerialName("scene") SCENE, @SerialName("cut") CUT, @SerialName("change") CHANGE_REQUEST,
-    @SerialName("project") PROJECT, @SerialName("episode") EPISODE, @SerialName("shot") SHOT,
+    @SerialName("take") TAKE,
+    @SerialName("asset_version") ASSET_VERSION,
+    @SerialName("asset_look") ASSET_LOOK,
+    @SerialName("asset_views") ASSET_VIEWS,
+    @SerialName("script") SCRIPT,
+    @SerialName("scene") SCENE,
+    @SerialName("cut") CUT,
+    @SerialName("change") CHANGE_REQUEST,
+    @SerialName("project") PROJECT,
+    @SerialName("episode") EPISODE,
+    @SerialName("shot") SHOT,
 }
 
 @Serializable
@@ -22,6 +30,7 @@ data class ReviewTarget(
     val takeId: String? = null,
     val assetId: String? = null,
     val version: Int? = null,
+    val lookId: String? = null,
     val cutId: String? = null,
     val requestId: String? = null,
 ) {
@@ -30,6 +39,8 @@ data class ReviewTarget(
     companion object {
         fun take(episodeId: String, shotCode: String, takeId: String) = ReviewTarget(ReviewTargetKind.TAKE, episodeId = episodeId, shotCode = shotCode, takeId = takeId)
         fun assetVersion(assetId: String, version: Int) = ReviewTarget(ReviewTargetKind.ASSET_VERSION, assetId = assetId, version = version)
+        fun assetLook(assetId: String, lookId: String) = ReviewTarget(ReviewTargetKind.ASSET_LOOK, assetId = assetId, lookId = lookId)
+        fun assetViews(assetId: String) = ReviewTarget(ReviewTargetKind.ASSET_VIEWS, assetId = assetId)
         fun script(episodeId: String) = ReviewTarget(ReviewTargetKind.SCRIPT, episodeId = episodeId)
         fun scene(episodeId: String, sceneCode: String) = ReviewTarget(ReviewTargetKind.SCENE, episodeId = episodeId, sceneCode = sceneCode)
         fun cut(cutId: String) = ReviewTarget(ReviewTargetKind.CUT, cutId = cutId)
@@ -120,11 +131,13 @@ internal fun ReviewTarget.requireReviewShape() {
         ReviewTargetKind.SHOT -> ReviewTarget.shot(requireNotNull(target.episodeId) { "缺少集标识。" }, requireNotNull(target.shotCode) { "缺少镜头标识。" })
         ReviewTargetKind.TAKE -> ReviewTarget.take(requireNotNull(target.episodeId) { "缺少集标识。" }, requireNotNull(target.shotCode) { "缺少镜头标识。" }, requireNotNull(target.takeId) { "缺少候选标识。" })
         ReviewTargetKind.ASSET_VERSION -> ReviewTarget.assetVersion(requireNotNull(target.assetId) { "缺少资产标识。" }, requireNotNull(target.version) { "缺少版本号。" })
+        ReviewTargetKind.ASSET_LOOK -> ReviewTarget.assetLook(requireNotNull(target.assetId) { "缺少资产标识。" }, requireNotNull(target.lookId) { "缺少造型标识。" })
+        ReviewTargetKind.ASSET_VIEWS -> ReviewTarget.assetViews(requireNotNull(target.assetId) { "缺少资产标识。" })
         ReviewTargetKind.CUT -> ReviewTarget.cut(requireNotNull(target.cutId) { "缺少剪辑标识。" })
         ReviewTargetKind.CHANGE_REQUEST -> ReviewTarget.change(requireNotNull(target.requestId) { "缺少改动请求标识。" })
     }
     require(target == canonical) { "审核对象包含不匹配的标识。" }
-    require(listOfNotNull(target.episodeId, target.sceneCode, target.shotCode, target.takeId, target.assetId, target.cutId, target.requestId).all { it.isNotBlank() } &&
+    require(listOfNotNull(target.episodeId, target.sceneCode, target.shotCode, target.takeId, target.assetId, target.lookId, target.cutId, target.requestId).all { it.isNotBlank() } &&
         (target.version == null || target.version > 0)) { "审核对象标识无效。" }
 }
 
@@ -137,6 +150,8 @@ internal fun Production.requireReviewTarget(target: ReviewTarget) {
         ReviewTargetKind.SHOT -> reviewShot(target) != null
         ReviewTargetKind.TAKE -> reviewShot(target)?.takes?.any { it.id == target.takeId } == true
         ReviewTargetKind.ASSET_VERSION -> assets.any { it.id == target.assetId && it.versions.any { version -> version.number == target.version } }
+        ReviewTargetKind.ASSET_LOOK -> assets.any { it.id == target.assetId && it.kind == AssetKind.CHARACTER && it.looks.any { look -> look.id == target.lookId } }
+        ReviewTargetKind.ASSET_VIEWS -> assets.any { it.id == target.assetId && it.kind in setOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE) }
         ReviewTargetKind.CUT -> cuts.any { it.id == target.cutId }
         ReviewTargetKind.CHANGE_REQUEST -> changeRequests.any { it.id == target.requestId && reviewShot(ReviewTarget.shot(it.episodeId, it.shotCode)) != null }
     }
@@ -161,6 +176,20 @@ internal fun stampProductionContent(before: Production, after: Production, revis
             },
         )
     }) },
+    assets = after.assets.map { asset ->
+        val oldAsset = before.assets.firstOrNull { it.id == asset.id }
+        val updatedLooks = asset.looks.map { look ->
+            val oldLook = oldAsset?.looks?.firstOrNull { it.id == look.id }
+            val changed = oldLook == null || oldLook.name != look.name || oldLook.note != look.note ||
+                oldLook.sheetPath != look.sheetPath || oldLook.sheetNote != look.sheetNote || oldLook.slots != look.slots
+            if (changed) look.copy(contentChangedAt = revision) else look
+        }
+        val viewsChanged = if (asset.referenceViews.isEmpty()) false else oldAsset == null || oldAsset.referenceViews != asset.referenceViews
+        asset.copy(
+            looks = updatedLooks,
+            viewsContentChangedAt = if (viewsChanged) revision else asset.viewsContentChangedAt,
+        )
+    },
     cuts = after.cuts.map { cut ->
         val old = before.cuts.firstOrNull { it.id == cut.id }
         if (old == null || old.clips != cut.clips || old.burnSubtitles != cut.burnSubtitles || old.export != cut.export)

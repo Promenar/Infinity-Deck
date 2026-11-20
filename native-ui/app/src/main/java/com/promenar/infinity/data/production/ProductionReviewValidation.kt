@@ -46,6 +46,10 @@ internal fun validateProductionReviews(p: Production, revision: Long = Long.MAX_
             ReviewTargetKind.ASSET_VERSION -> {
                 require(draft.group == ReviewTarget(ReviewTargetKind.ASSET_VERSION, assetId = draft.group.assetId) && !draft.group.assetId.isNullOrBlank() && draft.assetStatus != null) { "缺少资产回退状态。" }
             }
+            ReviewTargetKind.ASSET_LOOK, ReviewTargetKind.ASSET_VIEWS -> {
+                draft.group.requireReviewShape()
+                require(draft.locked != null && draft.assetStatus != null) { "缺少造型或视图回退状态。" }
+            }
             ReviewTargetKind.SCRIPT, ReviewTargetKind.SCENE -> { draft.group.requireReviewShape(); require(draft.locked != null) { "缺少锁定回退状态。" } }
             ReviewTargetKind.CUT, ReviewTargetKind.CHANGE_REQUEST -> draft.group.requireReviewShape()
             else -> throw IllegalArgumentException("审核基线对象无效。")

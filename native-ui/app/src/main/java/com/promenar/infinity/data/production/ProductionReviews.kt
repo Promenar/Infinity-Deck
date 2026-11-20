@@ -118,10 +118,14 @@ internal object ProductionReviews {
     private fun baseline(p: Production, group: ReviewTarget): ReviewDraft {
         val verdicts = p.currentReviewVerdicts().filter { it.target.reviewGroup() == group }
         val shot = if (group.kind == ReviewTargetKind.SHOT) p.reviewShot(group) else null
-        val asset = if (group.kind == ReviewTargetKind.ASSET_VERSION) p.assets.firstOrNull { it.id == group.assetId } else null
+        val asset = if (group.kind in setOf(ReviewTargetKind.ASSET_VERSION, ReviewTargetKind.ASSET_LOOK, ReviewTargetKind.ASSET_VIEWS)) {
+            p.assets.firstOrNull { it.id == group.assetId }
+        } else null
         val locked = when (group.kind) {
             ReviewTargetKind.SCRIPT -> p.reviewEpisode(group.episodeId)?.scriptLocked
             ReviewTargetKind.SCENE -> p.reviewEpisode(group.episodeId)?.scenes?.firstOrNull { it.code == group.sceneCode }?.storyboardLocked
+            ReviewTargetKind.ASSET_LOOK -> asset?.looks?.firstOrNull { it.id == group.lookId }?.locked
+            ReviewTargetKind.ASSET_VIEWS -> asset?.viewsLocked
             else -> null
         }
         val change = p.changeRequests.firstOrNull { group.kind == ReviewTargetKind.CHANGE_REQUEST && it.id == group.requestId }
@@ -158,13 +162,32 @@ internal object ProductionReviews {
                 if (asset.id != group.assetId) asset else {
                     val approved = verdicts.firstOrNull { it.kind == ReviewKind.APPROVE }?.target?.version
                     val version = if (pending) approved ?: draft.displacements.lastOrNull { it.approvedVersion != null }?.approvedVersion ?: draft.currentVersion else draft.currentVersion
+                    val versionRejected = verdicts.any { it.kind == ReviewKind.REJECT && it.target.version == version }
+                    val anyLocked = approved != null || asset.looks.any { it.locked } || asset.viewsLocked
                     val status = when {
-                        !pending -> requireNotNull(draft.assetStatus)
-                        approved != null -> AssetStatus.LOCKED
-                        verdicts.any { it.kind == ReviewKind.REJECT && it.target.version == version } -> AssetStatus.REDO
+                        !pending && !anyLocked -> requireNotNull(draft.assetStatus)
+                        anyLocked -> AssetStatus.LOCKED
+                        pending && versionRejected -> AssetStatus.REDO
                         else -> requireNotNull(draft.assetStatus)
                     }
                     asset.copy(currentVersion = version, status = status, changedBy = ChangeSource.USER, changedAt = revision)
+                }
+            })
+            ReviewTargetKind.ASSET_LOOK -> result = result.copy(assets = result.assets.map { asset ->
+                if (asset.id != group.assetId) asset else {
+                    val locked = if (pending) current?.kind == ReviewKind.APPROVE else requireNotNull(draft.locked)
+                    val updatedLooks = asset.looks.map { look -> if (look.id == group.lookId) look.copy(locked = locked) else look }
+                    val updatedAsset = asset.copy(looks = updatedLooks)
+                    val status = deriveAssetReviewStatus(result, updatedAsset, draft, pending, current?.kind == ReviewKind.REJECT)
+                    updatedAsset.copy(status = status, changedBy = ChangeSource.USER, changedAt = revision)
+                }
+            })
+            ReviewTargetKind.ASSET_VIEWS -> result = result.copy(assets = result.assets.map { asset ->
+                if (asset.id != group.assetId) asset else {
+                    val locked = if (pending) current?.kind == ReviewKind.APPROVE else requireNotNull(draft.locked)
+                    val updatedAsset = asset.copy(viewsLocked = locked)
+                    val status = deriveAssetReviewStatus(result, updatedAsset, draft, pending, current?.kind == ReviewKind.REJECT)
+                    updatedAsset.copy(status = status, changedBy = ChangeSource.USER, changedAt = revision)
                 }
             })
             ReviewTargetKind.SCRIPT, ReviewTargetKind.SCENE -> result = result.copy(seasons = result.seasons.map { season ->
@@ -192,5 +215,29 @@ internal object ProductionReviews {
             else -> error("不支持的审核效果。")
         }
         return result
+    }
+
+    private fun deriveAssetReviewStatus(
+        production: Production,
+        asset: Asset,
+        draft: ReviewDraft,
+        pending: Boolean,
+        triggerRejected: Boolean,
+    ): AssetStatus {
+        val allVerdicts = production.currentReviewVerdicts().filter { it.target.assetId == asset.id }
+        val approvedVersion = allVerdicts.any { it.target.kind == ReviewTargetKind.ASSET_VERSION && it.kind == ReviewKind.APPROVE }
+        val hasLookOrViewRejection = allVerdicts.any {
+            it.target.kind in setOf(ReviewTargetKind.ASSET_LOOK, ReviewTargetKind.ASSET_VIEWS) && it.kind == ReviewKind.REJECT
+        }
+        val legacyVersionLocked = draft.assetStatus == AssetStatus.LOCKED && asset.currentVersion != null &&
+            allVerdicts.none { it.target.kind == ReviewTargetKind.ASSET_VERSION && it.target.version == asset.currentVersion && it.kind == ReviewKind.REJECT } &&
+            !hasLookOrViewRejection
+        val anyLocked = approvedVersion || asset.looks.any { it.locked } || asset.viewsLocked || (!pending && legacyVersionLocked)
+        return when {
+            pending && (triggerRejected || allVerdicts.any { it.kind == ReviewKind.REJECT }) && !anyLocked -> AssetStatus.REDO
+            hasLookOrViewRejection -> AssetStatus.REDO
+            anyLocked -> AssetStatus.LOCKED
+            else -> requireNotNull(draft.assetStatus)
+        }
     }
 }

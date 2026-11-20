@@ -14,8 +14,14 @@
     <string name="media_action_view">查看</string>
     <string name="media_action_close">关闭</string>
     <string name="media_action_locate">在资源管理器中定位</string>
-    <string name="media_action_reset_zoom">重置缩放</string>
-    <string name="media_action_rotate">旋转</string>
+    <string name="media_action_reset_zoom">重置缩放与旋转</string>
+    <string name="media_action_rotate">顺时针旋转 90°</string>
+    <string name="media_lightbox_action_reset">复位</string>
+    <string name="media_lightbox_action_rotate">旋转</string>
+    <string name="media_lightbox_action_save">保存</string>
+    <string name="media_lightbox_action_share">分享</string>
+    <string name="media_lightbox_action_annotate">标注</string>
+    <string name="media_lightbox_action_open_with">打开</string>
     <string name="media_unavailable_title">文件不可用</string>
     <string name="media_unavailable_not_found">不存在</string>
     <string name="media_unavailable_invalid_path">无效路径</string>

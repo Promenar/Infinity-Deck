@@ -74,12 +74,22 @@ object ProductionEngine {
                         val inputs = if ("inputs" in op) decodeProductionField(op, "inputs") else old.inputs
                         if ("inputs" in op) inputs.forEach { media(it.path) }
                         val preview = if ("preview" !in op) old.preview else if (op["preview"] == JsonNull) null else PreviewKind.entries[enumText(text(op, "preview"), productionPreviews, "preview")]
+                        val appearances = if ("appearances" !in op) old.appearances else {
+                            val rawAppearances = op["appearances"] as? JsonArray
+                            decodeProductionField<List<ShotAppearance>>(op, "appearances").mapIndexed { idx, app ->
+                                val rawObj = rawAppearances?.getOrNull(idx) as? JsonObject
+                                if (rawObj != null && "referenceSlotIds" !in rawObj) {
+                                    val look = p.assets.firstOrNull { it.id == app.characterAssetId && it.kind == AssetKind.CHARACTER }?.looks?.firstOrNull { it.id == app.lookId }
+                                    if (look != null) app.copy(referenceSlotIds = ProductionRules.defaultSlotsForAppearance(look)) else app
+                                } else app
+                            }
+                        }
                         val updated = old.copy(title = if ("title" in op) text(op, "title") else old.title, size = optional(op, "size", old.size), durationSeconds = if ("duration_seconds" in op) number(op, "duration_seconds") else old.durationSeconds, mode = if ("mode" in op) mode(op, "mode") else old.mode, prompt = if ("prompt" in op && !old.promptUserEdited) text(op, "prompt") else old.prompt, inputs = inputs, preview = preview, previewPath = optional(op, "preview_path", old.previewPath), agentNote = optional(op, "agent_note", old.agentNote),
                             camera = optional(op, "camera", old.camera), cameraMovement = optional(op, "camera_movement", old.cameraMovement),
                             visual = optional(op, "visual", old.visual), performance = optional(op, "performance", old.performance),
                             dialogue = if ("dialogue" in op) decodeProductionField(op, "dialogue") else old.dialogue,
                             sound = optional(op, "sound", old.sound), transition = optional(op, "transition", old.transition), continuity = optional(op, "continuity", old.continuity),
-                            appearances = if ("appearances" in op) decodeProductionField(op, "appearances") else old.appearances,
+                            appearances = appearances,
                             locationAssetId = optional(op, "location_asset_id", old.locationAssetId),
                             propAssetIds = if ("prop_asset_ids" in op) decodeProductionField(op, "prop_asset_ids") else old.propAssetIds,
                             channelId = optional(op, "channel_id", old.channelId), changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev)
@@ -111,15 +121,127 @@ object ProductionEngine {
                         val id = text(op, "id"); val old = p.assets.firstOrNull { it.id == id }; old?.let(::checkAsset)
                         val kind = AssetKind.entries[enumText(text(op, "kind"), productionAssetKinds, "kind")]
                         require(old == null || old.status != AssetStatus.LOCKED || old.kind == kind && old.name == text(op, "name")) { "资产 $id 已锁定，请先由用户解锁后修改名称或种类。" }
-                        val a = (old ?: Asset(id, kind, text(op, "name"))).copy(kind = kind, name = text(op, "name"), description = optional(op, "description", old?.description), looks = if ("looks" in op) decodeProductionField(op, "looks") else old?.looks ?: emptyList(), referenceVoice = if ("reference_voice" in op) decodeProductionField(op, "reference_voice") else old?.referenceVoice, changedBy = old?.changedBy ?: ChangeSource.AGENT, changedAt = if (old?.changedBy == ChangeSource.USER) old?.changedAt ?: rev else rev)
-                        if ("looks" in op) a.looks.flatMap { it.slots }.mapNotNull { it.path }.forEach(::media)
-                        if ("reference_voice" in op) a.referenceVoice?.path?.let(::media)
+                        val looks = if ("looks" in op) {
+                            decodeProductionField<List<CharacterLook>>(op, "looks").map { newLook ->
+                                val prev = old?.looks?.firstOrNull { it.id == newLook.id }
+                                require(prev == null || !prev.locked || (prev.name == newLook.name && prev.note == newLook.note && prev.sheetPath == newLook.sheetPath && prev.sheetNote == newLook.sheetNote && prev.slots == newLook.slots)) {
+                                    "造型 ${prev?.name} 已锁定，请先由用户解锁。"
+                                }
+                                newLook.copy(locked = prev?.locked ?: false, contentChangedAt = prev?.contentChangedAt)
+                            }
+                        } else old?.looks ?: emptyList()
+                        val referenceViews = if ("reference_views" in op) {
+                            require(kind in setOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE)) { "reference_views 仅用于场景、道具与画风资产。" }
+                            val incoming = decodeProductionField<List<ReferenceSlot>>(op, "reference_views")
+                            require(old == null || !old.viewsLocked || old.referenceViews == incoming) { "资产参考视图组已锁定，请先由用户解锁。" }
+                            incoming
+                        } else old?.referenceViews ?: emptyList()
+                        if ("looks" in op) looks.forEach { look -> look.sheetPath?.let(::media); look.slots.mapNotNull { it.path }.forEach(::media) }
+                        if ("reference_views" in op) referenceViews.mapNotNull { it.path }.forEach(::media)
+                        if ("reference_voice" in op) decodeProductionField<ReferenceVoice?>(op, "reference_voice")?.path?.let(::media)
+                        val hasNewVisualMedia = ("looks" in op && looks.any { it.sheetPath != null || it.slots.any { slot -> !slot.path.isNullOrBlank() } }) ||
+                            ("reference_views" in op && referenceViews.any { !it.path.isNullOrBlank() })
+                        val nextStatus = if (hasNewVisualMedia && (old?.status ?: AssetStatus.DRAFT) in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old?.status ?: AssetStatus.DRAFT
+                        val a = (old ?: Asset(id, kind, text(op, "name"))).copy(
+                            kind = kind,
+                            name = text(op, "name"),
+                            description = optional(op, "description", old?.description),
+                            looks = looks,
+                            referenceVoice = if ("reference_voice" in op) decodeProductionField(op, "reference_voice") else old?.referenceVoice,
+                            referenceViews = referenceViews,
+                            status = nextStatus,
+                            changedBy = old?.changedBy ?: ChangeSource.AGENT,
+                            changedAt = if (old?.changedBy == ChangeSource.USER) old?.changedAt ?: rev else rev,
+                        )
                         p = p.copy(assets = if (old == null) p.assets + a else p.assets.map { if (it.id == id) a else it })
                     }
                     "add_asset_version" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old); val path = text(op, "path"); media(path)
                         val number = (old.versions.maxOfOrNull { it.number } ?: 0) + 1
                         setAsset(old.copy(versions = old.versions + AssetVersion(number, path, now, optional(op, "note", null), taskId = optional(op, "task_id", null)), currentVersion = if (old.status == AssetStatus.LOCKED) old.currentVersion else number, status = if (old.status == AssetStatus.LOCKED) old.status else AssetStatus.REVIEW, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                    }
+                    "upsert_look" -> {
+                        val old = asset(text(op, "asset_id")); checkAsset(old)
+                        require(old.kind == AssetKind.CHARACTER) { "仅角色资产支持造型。" }
+                        val lookId = text(op, "look_id")
+                        val prev = old.looks.firstOrNull { it.id == lookId }
+                        require(prev == null || !prev.locked) { "造型 ${prev?.name} 已锁定，请先由用户解锁。" }
+                        val sheetPath = optional(op, "sheet_path", prev?.sheetPath)
+                        sheetPath?.let(::media)
+                        val baseSlots = prev?.slots ?: defaultReferenceSlots()
+                        val mergedSlots = if ("slots" !in op) baseSlots else {
+                            val incoming = decodeProductionField<List<ReferenceSlot>>(op, "slots")
+                            val byId = baseSlots.associateBy { it.id }.toMutableMap()
+                            incoming.forEach { slot -> byId[slot.id] = slot }
+                            val orderedDefaults = ProductionRules.defaultSlotOrder.map { id -> byId.getValue(id) }
+                            val customIds = (baseSlots.map { it.id } + incoming.map { it.id }).distinct().filter { it !in ProductionRules.defaultSlotOrder }
+                            orderedDefaults + customIds.map { id -> byId.getValue(id) }
+                        }
+                        mergedSlots.mapNotNull { it.path }.forEach(::media)
+                        val updatedLook = (prev ?: CharacterLook(lookId, text(op, "name"))).copy(
+                            name = text(op, "name"),
+                            note = optional(op, "note", prev?.note),
+                            sheetPath = sheetPath,
+                            sheetNote = optional(op, "sheet_note", prev?.sheetNote),
+                            slots = mergedSlots,
+                            locked = false,
+                        )
+                        val hasMedia = updatedLook.sheetPath != null || updatedLook.slots.any { !it.path.isNullOrBlank() }
+                        val nextStatus = if (hasMedia && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
+                        val nextLooks = if (prev == null) old.looks + updatedLook else old.looks.map { if (it.id == lookId) updatedLook else it }
+                        setAsset(old.copy(looks = nextLooks, status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                    }
+                    "set_look_slot" -> {
+                        val old = asset(text(op, "asset_id")); checkAsset(old)
+                        require(old.kind == AssetKind.CHARACTER) { "仅角色资产支持造型槽位。" }
+                        val lookId = text(op, "look_id")
+                        val prev = old.looks.firstOrNull { it.id == lookId } ?: throw IllegalArgumentException("造型 $lookId 不存在，请先用 upsert_look 创建。")
+                        require(!prev.locked) { "造型 ${prev.name} 已锁定，请先由用户解锁。" }
+                        val slotId = text(op, "slot_id")
+                        val existing = prev.slots.firstOrNull { it.id == slotId }
+                        if (existing == null) require("name" in op && op["name"] != JsonNull) { "新增参考位 $slotId 须提供 name。" }
+                        val defaultName = defaultReferenceSlots().firstOrNull { it.id == slotId }?.name ?: slotId
+                        val nextName = if ("name" in op && op["name"] != JsonNull) text(op, "name") else existing?.name ?: defaultName
+                        val nextPath = optional(op, "path", existing?.path)
+                        nextPath?.let(::media)
+                        val nextNote = optional(op, "note", existing?.note)
+                        val updatedSlot = (existing ?: ReferenceSlot(slotId, nextName)).copy(name = nextName, path = nextPath, note = nextNote)
+                        val nextSlots = if (existing == null) prev.slots + updatedSlot else prev.slots.map { if (it.id == slotId) updatedSlot else it }
+                        val updatedLook = prev.copy(slots = nextSlots)
+                        val nextStatus = if (nextPath != null && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
+                        setAsset(old.copy(looks = old.looks.map { if (it.id == lookId) updatedLook else it }, status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                    }
+                    "set_asset_view" -> {
+                        val old = asset(text(op, "asset_id")); checkAsset(old)
+                        require(old.kind in setOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE)) { "set_asset_view 仅用于场景、道具与画风资产。" }
+                        require(!old.viewsLocked) { "资产参考视图组已锁定，请先由用户解锁。" }
+                        val viewId = text(op, "view_id")
+                        val removeView = "remove" in op && bool(op, "remove")
+                        val existing = old.referenceViews.firstOrNull { it.id == viewId }
+                        val nextViews = if (removeView) {
+                            require(existing != null) { "参考视图 $viewId 不存在。" }
+                            old.referenceViews.filterNot { it.id == viewId }
+                        } else {
+                            if (existing == null) require("name" in op && op["name"] != JsonNull) { "新建参考视图 $viewId 须提供 name。" }
+                            val nextName = if ("name" in op && op["name"] != JsonNull) text(op, "name") else existing!!.name
+                            val nextPath = optional(op, "path", existing?.path)
+                            nextPath?.let(::media)
+                            val nextNote = optional(op, "note", existing?.note)
+                            val updatedSlot = (existing ?: ReferenceSlot(viewId, nextName)).copy(name = nextName, path = nextPath, note = nextNote)
+                            require(existing != null || old.referenceViews.size < 30) { "每个资产最多 30 个参考视图。" }
+                            if (existing == null) old.referenceViews + updatedSlot else old.referenceViews.map { if (it.id == viewId) updatedSlot else it }
+                        }
+                        val addedImage = !removeView && nextViews.firstOrNull { it.id == viewId }?.path != null
+                        val nextStatus = if (addedImage && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
+                        setAsset(old.copy(referenceViews = nextViews, status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                    }
+                    "set_video_settings" -> {
+                        check(p.policyChangedBy, p.policyChangedAt, "项目设置")
+                        val nextChannel = optional(op, "default_video_channel_id", p.defaultVideoChannelId)
+                        val nextMode = if ("reference_input_mode" !in op) p.referenceInputMode
+                            else if (op["reference_input_mode"] == JsonNull) null
+                            else ReferenceInputMode.entries[enumText(text(op, "reference_input_mode"), productionReferenceInputModes, "reference_input_mode")]
+                        p = p.copy(defaultVideoChannelId = nextChannel, referenceInputMode = nextMode, policyChangedAt = if (p.policyChangedBy == ChangeSource.USER) p.policyChangedAt else rev)
                     }
                     "set_asset_status" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old); require(old.status != AssetStatus.LOCKED) { "资产 ${old.id} 已锁定，请先由用户解锁。" }

@@ -27,6 +27,14 @@ fun isSentRejectionUnresolved(production: Production, entry: ReviewEntry): Boole
         ReviewTargetKind.ASSET_VERSION -> production.assets.firstOrNull { it.id == target.assetId }?.let { asset ->
             asset.versions.any { it.number == target.version } && asset.versions.none { it.number > requireNotNull(target.version) }
         } ?: false
+        ReviewTargetKind.ASSET_LOOK -> production.assets.firstOrNull { it.id == target.assetId }?.let { asset ->
+            asset.looks.firstOrNull { it.id == target.lookId }?.let { look ->
+                (look.contentChangedAt ?: asset.changedAt) <= sentRevision
+            }
+        } ?: false
+        ReviewTargetKind.ASSET_VIEWS -> production.assets.firstOrNull { it.id == target.assetId }?.let { asset ->
+            (asset.viewsContentChangedAt ?: asset.changedAt) <= sentRevision
+        } ?: false
         ReviewTargetKind.SCRIPT -> production.reviewEpisode(target.episodeId)?.let { (it.contentChangedAt ?: it.changedAt) <= sentRevision } ?: false
         ReviewTargetKind.SCENE -> production.reviewEpisode(target.episodeId)?.scenes?.firstOrNull { it.code == target.sceneCode }?.let { (it.contentChangedAt ?: it.changedAt) <= sentRevision } ?: false
         ReviewTargetKind.CUT -> production.cuts.firstOrNull { it.id == target.cutId }?.let { (it.contentChangedAt ?: it.changedAt) <= sentRevision } ?: false

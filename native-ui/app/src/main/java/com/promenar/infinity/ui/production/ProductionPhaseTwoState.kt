@@ -172,18 +172,36 @@ fun Production.stageProgressCounts(stage: ProductionStage): Pair<Int, Int>? {
 internal fun shortTrackSpeaker(name: String): String =
     name.substringBefore(" · ").substringBefore("（").substringBefore("(").trim().ifBlank { name } // wrap-check: allow 拆出主角色称呼，不拼接元数据
 
-fun resolvedShotChannel(shot: Shot, channels: List<MediaChannel>, order: List<String>): MediaChannel? {
+fun resolvedShotChannel(shot: Shot, channels: List<MediaChannel>, order: List<String>, defaultChannelId: String? = null): MediaChannel? {
     val choices = channelChoices(channels, order, shot.mode)
-    return if (shot.channelId == null) choices.firstOrNull() else choices.firstOrNull { it.id == shot.channelId }
+    return when {
+        shot.channelId != null -> choices.firstOrNull { it.id == shot.channelId }
+        !defaultChannelId.isNullOrBlank() -> choices.firstOrNull { it.id == defaultChannelId } ?: choices.firstOrNull()
+        else -> choices.firstOrNull()
+    }
 }
 
 fun Production.importedReferencePaths(shot: Shot): List<String> = (
     shot.appearances.flatMap { appearance ->
         val asset = findAsset(appearance.characterAssetId)
-        val lookSlots = asset?.looks?.firstOrNull { it.id == appearance.lookId }?.slots
-            ?.filter { it.id in appearance.referenceSlotIds }?.mapNotNull { it.path }.orEmpty()
-        lookSlots.ifEmpty { if (asset?.looks.isNullOrEmpty()) listOfNotNull(asset?.currentPath()) else emptyList() }
-    } + shot.inputs.map { it.path } + listOfNotNull(shot.locationAssetId?.let { findAsset(it)?.currentPath() }) + shot.propAssetIds.mapNotNull { findAsset(it)?.currentPath() }
+        val look = asset?.looks?.firstOrNull { it.id == appearance.lookId }
+        val inputMode = effectiveReferenceInputMode()
+        if (inputMode == ReferenceInputMode.SHEET && !look?.sheetPath.isNullOrBlank()) {
+            listOfNotNull(look?.sheetPath)
+        } else {
+            val lookSlots = look?.slots?.filter { it.id in appearance.referenceSlotIds }?.mapNotNull { it.path }.orEmpty()
+            lookSlots.ifEmpty { if (asset?.looks.isNullOrEmpty()) listOfNotNull(asset?.currentPath()) else emptyList() }
+        }
+    } + shot.inputs.map { it.path } +
+        (listOfNotNull(shot.locationAssetId) + shot.propAssetIds).flatMap { id ->
+            val asset = findAsset(id)
+            val inputMode = effectiveReferenceInputMode()
+            if (inputMode == ReferenceInputMode.SEPARATE && asset?.populatedReferenceViews()?.isNotEmpty() == true) {
+                asset.populatedReferenceViews().mapNotNull { it.path }
+            } else {
+                listOfNotNull(asset?.currentPath() ?: asset?.populatedReferenceViews()?.firstOrNull()?.path)
+            }
+        }
     ).distinct()
 
 fun modeSelectionAction(location: ShotLocation, mode: ShotMode, channels: List<MediaChannel>, order: List<String>): ProductionUserAction.SetShotPlan {

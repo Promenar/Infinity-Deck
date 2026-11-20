@@ -35,6 +35,8 @@ class AndroidReviewMessageStrings(private val context: Context) : ReviewMessageS
         "shot" -> R.string.production_review_message_shot
         "take" -> R.string.production_review_message_take
         "asset" -> R.string.production_review_message_asset
+        "asset_look" -> R.string.production_review_message_asset_look
+        "asset_views" -> R.string.production_review_message_asset_views
         "script" -> R.string.production_review_message_script
         "scene" -> R.string.production_review_message_scene
         "cut" -> R.string.production_review_message_cut
@@ -101,6 +103,12 @@ internal fun reviewTargetLabel(p: Production, target: ReviewTarget, strings: Rev
         ReviewTargetKind.SHOT -> shotName()
         ReviewTargetKind.TAKE -> strings.text("take", shotName(), shot?.takes?.indexOfFirst { it.id == target.takeId }?.takeIf { it >= 0 }?.plus(1) ?: target.takeId.orEmpty())
         ReviewTargetKind.ASSET_VERSION -> strings.text("asset", p.assets.firstOrNull { it.id == target.assetId }?.name ?: target.assetId.orEmpty(), target.version ?: "?")
+        ReviewTargetKind.ASSET_LOOK -> {
+            val asset = p.assets.firstOrNull { it.id == target.assetId }
+            val lookName = asset?.looks?.firstOrNull { it.id == target.lookId }?.name ?: target.lookId.orEmpty()
+            strings.text("asset_look", asset?.name ?: target.assetId.orEmpty(), lookName)
+        }
+        ReviewTargetKind.ASSET_VIEWS -> strings.text("asset_views", p.assets.firstOrNull { it.id == target.assetId }?.name ?: target.assetId.orEmpty())
         ReviewTargetKind.SCRIPT -> strings.text("script", episodeName)
         ReviewTargetKind.SCENE -> strings.text("scene", episodeName, target.sceneCode.orEmpty(), episode?.scenes?.firstOrNull { it.code == target.sceneCode }?.heading.orEmpty())
         ReviewTargetKind.CUT -> {

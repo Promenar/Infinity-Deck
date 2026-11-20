@@ -144,6 +144,28 @@ internal fun ProductionMediaReference(path: String, modifier: Modifier = Modifie
     }
 }
 
+/** 制作面板内的多图查看器：先把每张图的相对路径映射为工作区路径，再交给 [com.promenar.infinity.ui.media.WorkspaceImageGroupViewer]。 */
+@Composable
+internal fun ProductionImageGroupViewer(
+    items: List<com.promenar.infinity.ui.media.WorkspaceImageItem>,
+    startIndex: Int,
+    onDismiss: () -> Unit,
+) {
+    val environment = LocalWorkspaceMedia.current ?: return
+    if (items.isEmpty()) return
+    val states = items.map { rememberProductionPath(environment, it.path) }
+    if (states.any { it is ProductionPathState.Loading }) return
+    val mapped = items.zip(states).map { (item, state) ->
+        val path = (state as? ProductionPathState.Ready)?.path ?: item.path
+        item.copy(path = path)
+    }
+    com.promenar.infinity.ui.media.WorkspaceImageGroupViewer(
+        items = mapped,
+        startIndex = startIndex,
+        onDismiss = onDismiss,
+    )
+}
+
 /** 状态色调，映射到主题的状态色。 */
 internal enum class ProductionTone { NEUTRAL, INFO, WARNING, SUCCESS, ERROR }
 

@@ -10,6 +10,8 @@
     <string name="production_review_message_shot">%1$s / %2$s · %3$s</string>
     <string name="production_review_message_take">%1$s / 候选 %2$s</string>
     <string name="production_review_message_asset">%1$s / 版本 %2$s</string>
+    <string name="production_review_message_asset_look">%1$s / 造型 %2$s</string>
+    <string name="production_review_message_asset_views">%1$s / 参考视图组</string>
     <string name="production_review_message_script">%1$s / 剧本</string>
     <string name="production_review_message_scene">%1$s / %2$s · %3$s</string>
     <string name="production_review_message_cut">%1$s / 剪辑 v%2$s</string>

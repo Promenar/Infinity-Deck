@@ -235,4 +235,87 @@ class ShotGenerationPlannerTest {
         assertEquals(listOf("ref/char-v2.png", "ref/pier.png"), deduped.inputs.map { it.path })
     }
 
+    @Test fun `项目默认视频通道优先于全局顺序并可被单镜头通道覆写`() = runTest {
+        val c1 = planningChannel("global-first")
+        val c2 = planningChannel("project-default")
+        val c3 = planningChannel("shot-override")
+        val registry = PlanningRegistry(c1, c2, c3)
+        store.production = store.production.copy(defaultVideoChannelId = "project-default")
+        val fromProject = planner(registry).preview("s", "S1E01", "SC01-01")
+        assertEquals("project-default", fromProject.channel?.id)
+        assertTrue(fromProject.channelIsDefault)
+
+        edit { it.copy(channelId = "shot-override") }
+        val fromShot = planner(registry).preview("s", "S1E01", "SC01-01")
+        assertEquals("shot-override", fromShot.channel?.id)
+        assertFalse(fromShot.channelIsDefault)
+    }
+
+    @Test fun `双模入参在整卡模式优先直接引用整卡并在分张模式拦截仅整卡`() = runTest {
+        files.bytes["ref/coat-sheet.png"] = byteArrayOf(11)
+        files.bytes["ref/pier-wide.png"] = byteArrayOf(12)
+        files.bytes["ref/pier-facade.png"] = byteArrayOf(13)
+        store.production = store.production.copy(
+            referenceInputMode = ReferenceInputMode.SHEET,
+            assets = listOf(
+                Asset(
+                    id = "lin",
+                    kind = AssetKind.CHARACTER,
+                    name = "林晚",
+                    status = AssetStatus.LOCKED,
+                    looks = listOf(
+                        CharacterLook(
+                            id = "coat",
+                            name = "风衣",
+                            sheetPath = "ref/coat-sheet.png",
+                            slots = listOf(
+                                ReferenceSlot("front", "正面", "ref/front.png"),
+                                ReferenceSlot("back", "背面", "ref/back.png"),
+                            ),
+                            locked = true,
+                        ),
+                    ),
+                ),
+                Asset(
+                    id = "pier",
+                    kind = AssetKind.LOCATION,
+                    name = "码头",
+                    versions = listOf(AssetVersion(1, "ref/pier.png", 1)),
+                    currentVersion = 1,
+                    status = AssetStatus.LOCKED,
+                    referenceViews = listOf(
+                        ReferenceSlot("wide", "全景", "ref/pier-wide.png"),
+                        ReferenceSlot("facade", "门头", "ref/pier-facade.png"),
+                    ),
+                    viewsLocked = true,
+                ),
+            ),
+        )
+        // 整卡模式直接使用 look.sheetPath 与 location.currentVersionPath，不触发拼合也不取分张图
+        val sheetPreview = planner().preview("s", "S1E01", "SC01-01")
+        assertNull(sheetPreview.blockedReason)
+        assertEquals(listOf("ref/coat-sheet.png", "ref/pier.png"), sheetPreview.inputs.map { it.path })
+
+        // 切换为分张模式后，使用分张槽位与自由视角组
+        store.production = store.production.copy(referenceInputMode = ReferenceInputMode.SEPARATE)
+        val separatePreview = planner().preview("s", "S1E01", "SC01-01")
+        assertNull(separatePreview.blockedReason)
+        assertEquals(
+            listOf("ref/back.png", "ref/front.png", "ref/pier-wide.png", "ref/pier-facade.png"),
+            separatePreview.inputs.map { it.path },
+        )
+
+        // 若造型仅登记整卡而无分张单图，在分张模式下阻断提示 mode_mismatch_separate
+        store.production = store.production.copy(
+            assets = store.production.assets.map { asset ->
+                if (asset.id != "lin") asset else asset.copy(
+                    looks = listOf(CharacterLook("coat", "风衣", sheetPath = "ref/coat-sheet.png", locked = true)),
+                )
+            },
+        )
+        val blockedPreview = planner().preview("s", "S1E01", "SC01-01")
+        assertTrue(blockedPreview.blockedReason.orEmpty().contains("需要分张单视图"))
+        assertTrue(planner().generate("s", "S1E01", "SC01-01") is ShotGenerateResult.Rejected)
+    }
+
 }

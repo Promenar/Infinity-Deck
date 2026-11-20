@@ -270,11 +270,15 @@ private val productionUpdateDescription = """
     upsert_shot 必填 episode_id、scene_code、code，新建还须 title、duration_seconds。可选 title、duration_seconds、size、camera、camera_movement、visual、performance、dialogue、sound、transition、continuity、appearances、location_asset_id、prop_asset_ids、channel_id、mode、prompt、inputs、preview、preview_path、agent_note、change_note、position。
     set_shot_status 必填 episode_id、shot_code、status（todo、generating、review）。
     add_take 必填 episode_id、shot_code、path、service，可选 model、mode、task_id、usage_ref、plan_snapshot、note。提供 task_id 时须提供实际 plan_snapshot。
-    upsert_asset 必填 id、kind（character、location、prop、style、sound）、name，可选 description、looks、reference_voice。造型和参考语音用于 character。
-    add_asset_version 必填 asset_id、path，可选 note、task_id。
+    upsert_asset 必填 id、kind（character、location、prop、style、sound）、name，可选 description、looks、reference_voice、reference_views。looks 与 reference_voice 仅用于 character；reference_views 仅用于 location、prop、style。
+    add_asset_version 必填 asset_id、path，可选 note、task_id。仅用于定妆概念迭代版本（v1→v2 互斥替换）或单图多视图整卡主图；严禁用 v1–v3 版本代替多视角三视图。
+    upsert_look 必填 asset_id、look_id、name，可选 note、sheet_path、sheet_note、slots。用于为角色增量新增或更新造型，支持单图多视图整卡（sheet_path）与分张单视图组（slots）二选一或同时登记；省略 slots 时保留既有或填默认三项（front/side/back）。
+    set_look_slot 必填 asset_id、look_id、slot_id，可选 name、path、note（path 为 null 可清空）。用于单视角槽位增量更新，新增自定义槽位须提供 name。
+    set_asset_view 必填 asset_id、view_id，可选 name、path、note、remove（布尔）。用于为 location、prop、style 资产增量增删或更新自由命名单视图组。
     set_asset_status 必填 asset_id、status（draft、review）。
     set_stage 必填 stage（script、visual_dev、storyboard、animatic、generation、sound、edit）、status（not_started、in_progress、skipped），可选 note。
     set_bible 必填 documents。
+    set_video_settings 可选 default_video_channel_id、reference_input_mode（sheet 或 separate，至少提供一项，传 null 跟随通道默认）。
     set_experimental 与 set_preview_enabled 各必填布尔值 enabled。
     remove 必填 target（season、episode、scene、shot、asset）、非空且无重复的 ids 字符串数组。target 为 scene 或 shot 时还必填 episode_id。
     mode 为 text、first_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。路径保存为工作区相对路径，可使用同一会话文件工具给出的工作区虚拟路径。
@@ -313,7 +317,7 @@ private fun productionFieldSchema(key: String): JsonObject = buildJsonObject {
     val type = when (key) {
         "number", "position" -> "integer"
         "duration_seconds" -> "number"
-        "enabled" -> "boolean"
+        "enabled", "remove" -> "boolean"
         "plan_snapshot", "reference_voice" -> "object"
         in productionNestedFields -> "array"
         else -> "string"
@@ -330,6 +334,7 @@ private fun productionFieldSchema(key: String): JsonObject = buildJsonObject {
         "stage" -> productionStages
         "status" -> (productionShotStatuses + productionAssetStatuses + productionStageStatuses).distinct()
         "target" -> productionRemoveTargets
+        "reference_input_mode" -> productionReferenceInputModes
         else -> emptyList()
     }
     if (choices.isNotEmpty()) put("enum", JsonArray(choices.map(::JsonPrimitive) + if (nullable) listOf(JsonNull) else emptyList()))
@@ -340,18 +345,25 @@ private val productionFieldDescriptions = mapOf(
     "id" to "当前操作要新增或更新的季、集或资产标识。", "season_id" to "所属季，如 S1。",
     "episode_id" to "所属集，如 S1E01。", "scene_code" to "所属场，如 SC01。",
     "shot_code" to "既有镜头编号，如 SC01-01。", "asset_id" to "既有资产的小写标识。",
+    "look_id" to "角色造型的标识，如 coat。", "slot_id" to "造型参考位标识（默认 front、side、back 或自定义标识）。",
+    "view_id" to "场景/道具/画风资产的自由参考视角标识。",
     "code" to "场或镜头的编号。", "number" to "从 1 起算的序号。", "title" to "季、集或镜头标题。",
     "heading" to "场标题，通常包含内外景、地点与时间。", "script_path" to "剧本文档的工作区路径。",
     "duration_seconds" to "镜头时长，单位秒。", "size" to "镜头景别。", "camera" to "机位或拍摄角度。",
     "camera_movement" to "摄影机运动。", "visual" to "画面内容。", "performance" to "表演说明。",
     "sound" to "声音设计。", "transition" to "镜头之间的转场。", "continuity" to "连续性要求。",
     "location_asset_id" to "地点资产的标识。", "channel_id" to "生成通道标识。",
+    "default_video_channel_id" to "项目默认视频通道标识；null 表示跟随全局默认。",
+    "reference_input_mode" to "参考资产入参模式：sheet（多视图资产卡整图）或 separate（分张单视图组）；null 跟随通道推荐。",
     "mode" to "镜头生成模式。", "prompt" to "镜头生成提示词，最多 7000 字。",
     "preview" to "预览类别。", "preview_path" to "预览文件的工作区路径。",
+    "sheet_path" to "造型单图多视图资产卡的工作区路径；null 可清空。",
+    "sheet_note" to "造型多视图整卡说明；null 可清空。",
     "agent_note" to "智能体处理结果。", "change_note" to "待审改动的说明。", "position" to "场内位置，从 0 起算。",
-    "status" to "状态，具体允许取值由 op 决定。", "kind" to "资产类别。", "name" to "资产显示名称。",
-    "description" to "资产说明。", "path" to "候选或资产版本的工作区媒体路径。",
+    "status" to "状态，具体允许取值由 op 决定。", "kind" to "资产类别。", "name" to "资产、造型或视角显示名称。",
+    "description" to "资产说明。", "path" to "候选、资产版本或参考视图的工作区媒体路径。",
     "service" to "候选的生成服务名称。", "model" to "候选使用的模型。", "task_id" to "对应生成任务标识。",
-    "usage_ref" to "生成计费记录的引用。", "note" to "候选、资产版本或阶段的说明。",
+    "usage_ref" to "生成计费记录的引用。", "note" to "候选、资产版本、造型、视角或阶段的说明。",
     "stage" to "制作阶段。", "enabled" to "启用或关闭对应开关。", "target" to "要移除的实体类别。",
+    "remove" to "为 true 时移除对应参考视图。",
 )

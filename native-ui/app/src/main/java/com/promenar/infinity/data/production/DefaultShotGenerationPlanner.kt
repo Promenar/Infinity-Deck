@@ -15,6 +15,7 @@ val ChineseShotPlanningMessages = ShotPlanningMessages { key, detail -> when (ke
     "no_channel" -> "没有支持当前模式的通道：$detail"
     "no_channel_mode" -> "没有支持当前模式的通道"
     "missing_input" -> "输入不存在或类型不符：$detail"
+    "mode_mismatch_separate" -> "当前视频通道需要分张单视图，但「$detail」仅登记了多视图资产卡，请补充单视图或切换入参模式"
     "overflow" -> "输入超出通道上限：$detail"
     "invalid_plan" -> "生成规划不完整：$detail"
     "unavailable_backend" -> "通道后端尚未配置：$detail"
@@ -63,13 +64,24 @@ class DefaultShotGenerationPlanner(
         val shot = scene.shots.first { it.code == shotCode }
         val mode = shot.mode.toGenerationMode()
         val ordered = registry.observeChannels().first()
-        val channel = if (shot.channelId.isNullOrBlank()) resolveDefaultChannel(MediaGroup.VIDEO, mode, ordered)
-            else registry.channel(shot.channelId)?.takeIf { it.group == MediaGroup.VIDEO && mode in it.capabilities.modes }
+        val explicitChannelId = shot.channelId?.takeIf { it.isNotBlank() }
+        val projectDefaultId = p.defaultVideoChannelId?.takeIf { it.isNotBlank() }
+        val channel = when {
+            explicitChannelId != null -> registry.channel(explicitChannelId)?.takeIf { it.group == MediaGroup.VIDEO && mode in it.capabilities.modes }
+            projectDefaultId != null -> registry.channel(projectDefaultId)?.takeIf { it.group == MediaGroup.VIDEO && mode in it.capabilities.modes }
+                ?: resolveDefaultChannel(MediaGroup.VIDEO, mode, ordered)
+            else -> resolveDefaultChannel(MediaGroup.VIDEO, mode, ordered)
+        }
+        val inputMode = p.effectiveReferenceInputMode(channel)
         val issues = mutableListOf<String>()
         if (!p.experimental && !scene.storyboardLocked) issues += text("unlocked", scene.code)
-        if (channel == null) issues += shot.channelId?.let { text("no_channel", it) } ?: text("no_channel_mode", "")
-        val warnings = shot.appearances.mapNotNull { appearance -> p.assets.find { it.id == appearance.characterAssetId }?.takeIf { it.status != AssetStatus.LOCKED }?.name }
-            .distinct().map { text("reference_review", it) }.toMutableList()
+        if (channel == null) issues += explicitChannelId?.let { text("no_channel", it) } ?: text("no_channel_mode", "")
+        val warnings = shot.appearances.mapNotNull { appearance ->
+            val asset = p.assets.find { it.id == appearance.characterAssetId } ?: return@mapNotNull null
+            val look = asset.looks.find { it.id == appearance.lookId }
+            val settled = look?.locked == true || asset.status == AssetStatus.LOCKED
+            if (settled) null else asset.name
+        }.distinct().map { text("reference_review", it) }.toMutableList()
         val packed = mutableListOf<PlannedInput>()
         suspend fun input(path: String?, title: String, detail: String, role: MediaRole = MediaRole.REFERENCE, expectedKind: InputKind? = null) {
             if (path == null) { issues += text("missing_input", title); return }
@@ -95,33 +107,73 @@ class DefaultShotGenerationPlanner(
             shot.appearances.forEach { appearance ->
                 val character = p.assets.find { it.id == appearance.characterAssetId && it.kind == AssetKind.CHARACTER }
                 val look = character?.looks?.find { it.id == appearance.lookId }
-                // 尚未拆分三视图造型但已有版本图时，自动回退到版本图作为角色参考，并避免与显式输入重复。
+                // 尚未拆分造型但已有版本图时，自动回退到版本图作为角色参考，并避免与显式输入重复。
                 val fallbackPath = if (character != null && look == null && character.looks.isEmpty()) character.currentVersionPath() else null
                 if (fallbackPath != null) {
                     if (packed.none { it.path == fallbackPath }) input(fallbackPath, character!!.name, "版本图", expectedKind = InputKind.IMAGE)
                     return@forEach
                 }
                 if (character == null || look == null) { issues += text("missing_input", "${appearance.characterAssetId}/${appearance.lookId}"); return@forEach }
+                val sheetPath = look.sheetPath?.takeIf(String::isNotBlank)
                 val selectedIds = appearance.referenceSlotIds
                 val selected = selectedIds.mapNotNull { id -> look.slots.find { it.id == id }.also { if (it == null) issues += text("missing_input", "${character.name}/$id") } }
-                val composite = channel?.capabilities?.characterReferenceMode == CharacterReferenceMode.COMPOSITE
-                val order = if (channel == null || composite) ProductionRules.defaultSlotOrder else channel.capabilities.referenceOrder.map(::canonicalSlot)
+                val order = if (channel == null || inputMode == ReferenceInputMode.SHEET) ProductionRules.defaultSlotOrder else channel.capabilities.referenceOrder.map(::canonicalSlot)
                 val slots = selected.sortedWith(compareBy<ReferenceSlot> { slot -> order.indexOf(canonicalSlot(slot.id)).let { if (it < 0) Int.MAX_VALUE else it } }.thenBy { it.id })
-                if (composite) {
-                    val paths = mutableListOf<String>()
-                    slots.forEach { slot ->
-                        val path = slot.path
-                        if (path == null || kindOf(sessionId, path) != InputKind.IMAGE || !files.isImageOrVideo(sessionId, path)) issues += text("missing_input", "${character.name}/${slot.name}")
-                        else { ProductionManifestCodec.validatePath(path); paths += path }
+                if (inputMode == ReferenceInputMode.SHEET) {
+                    if (sheetPath != null) {
+                        if (packed.none { it.path == sheetPath }) input(sheetPath, "${character.name} · ${look.name}", "多视图资产卡", expectedKind = InputKind.IMAGE)
+                    } else if (slots.isEmpty() && look.populatedSlots().isEmpty()) {
+                        issues += text("missing_input", "${character.name} · ${look.name}")
+                    } else {
+                        val paths = mutableListOf<String>()
+                        slots.forEach { slot ->
+                            val path = slot.path
+                            if (path == null || kindOf(sessionId, path) != InputKind.IMAGE || !files.isImageOrVideo(sessionId, path)) issues += text("missing_input", "${character.name}/${slot.name}")
+                            else { ProductionManifestCodec.validatePath(path); paths += path }
+                        }
+                        if (paths.size == 1) input(paths.single(), "${character.name} · ${slots.first().name}", look.name, expectedKind = InputKind.IMAGE)
+                        else if (paths.isNotEmpty()) packed += PlannedInput(null, "${character.name} · ${look.name}", slots.joinToString(" / ") { it.name }, InputKind.IMAGE, MediaRole.REFERENCE, null, paths)
                     }
-                    if (paths.isNotEmpty()) packed += PlannedInput(null, "${character.name} · ${look.name}", slots.joinToString(" / ") { it.name }, InputKind.IMAGE, MediaRole.REFERENCE, null, paths)
-                } else slots.forEach { slot -> input(slot.path, "${character.name} · ${slot.name}", look.name, expectedKind = InputKind.IMAGE) }
+                } else {
+                    if (sheetPath != null && (look.populatedSlots().isEmpty() || (selected.isNotEmpty() && slots.all { it.path.isNullOrBlank() }))) {
+                        issues += text("mode_mismatch_separate", "${character.name} · ${look.name}")
+                    } else {
+                        slots.forEach { slot -> input(slot.path, "${character.name} · ${slot.name}", look.name, expectedKind = InputKind.IMAGE) }
+                    }
+                }
             }
             (listOfNotNull(shot.locationAssetId) + shot.propAssetIds).forEach { id ->
                 val asset = p.assets.find { it.id == id }
                 val versionPath = asset?.currentVersionPath()
-                if (versionPath == null || packed.none { it.path == versionPath }) {
-                    input(versionPath, asset?.name ?: id, asset?.kind?.name?.lowercase().orEmpty())
+                val viewSlots = asset?.populatedReferenceViews().orEmpty()
+                val kindDetail = asset?.kind?.name?.lowercase().orEmpty()
+                if (inputMode == ReferenceInputMode.SHEET) {
+                    when {
+                        versionPath != null -> if (packed.none { it.path == versionPath }) input(versionPath, asset.name, kindDetail)
+                        viewSlots.size == 1 -> {
+                            val singlePath = viewSlots.single().path
+                            if (singlePath == null || packed.none { it.path == singlePath }) input(singlePath, "${asset?.name ?: id} · ${viewSlots.single().name}", kindDetail, expectedKind = InputKind.IMAGE)
+                        }
+                        viewSlots.size >= 2 -> {
+                            val validPaths = mutableListOf<String>()
+                            viewSlots.forEach { slot ->
+                                val path = slot.path
+                                if (path == null || kindOf(sessionId, path) != InputKind.IMAGE || !files.isImageOrVideo(sessionId, path)) issues += text("missing_input", "${asset?.name ?: id}/${slot.name}")
+                                else { ProductionManifestCodec.validatePath(path); validPaths += path }
+                            }
+                            if (validPaths.isNotEmpty()) packed += PlannedInput(null, asset?.name ?: id, viewSlots.joinToString(" / ") { it.name }, InputKind.IMAGE, MediaRole.REFERENCE, null, validPaths)
+                        }
+                        else -> input(null, asset?.name ?: id, kindDetail)
+                    }
+                } else {
+                    if (viewSlots.isNotEmpty()) {
+                        viewSlots.forEach { slot ->
+                            val path = slot.path
+                            if (path == null || packed.none { it.path == path }) input(path, "${asset?.name ?: id} · ${slot.name}", kindDetail, expectedKind = InputKind.IMAGE)
+                        }
+                    } else if (versionPath == null || packed.none { it.path == versionPath }) {
+                        input(versionPath, asset?.name ?: id, kindDetail)
+                    }
                 }
             }
             shot.dialogue.filter { it.audioSource == DialogueAudioSource.NATIVE }.map { it.characterAssetId }.distinct().forEach { id ->

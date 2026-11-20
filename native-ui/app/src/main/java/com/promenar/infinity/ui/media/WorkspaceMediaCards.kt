@@ -203,6 +203,7 @@ fun WorkspaceImageCard(
     modifier: Modifier = Modifier,
     style: MediaCardStyle = MediaCardStyle.MARKDOWN,
     cropToFill: Boolean = false,
+    onOpen: (() -> Unit)? = null,
 ) {
     val ref = available.ref
     val name = mediaDisplayName(ref.path)
@@ -220,7 +221,9 @@ fun WorkspaceImageCard(
             .then(sizing)
             .clip(if (style == MediaCardStyle.TOOL) ToolThumbnailShape else CardShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable(role = Role.Image, onClickLabel = stringResource(R.string.media_action_view)) { showViewer = true }
+            .clickable(role = Role.Image, onClickLabel = stringResource(R.string.media_action_view)) {
+                if (onOpen != null) onOpen() else showViewer = true
+            }
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
@@ -630,16 +633,20 @@ private fun toolMediaSizing(ratio: Float): Modifier =
 fun ToolMediaList(media: List<MediaRef>, modifier: Modifier = Modifier) {
     val images = media.filter { it.kind == MediaKind.IMAGE }
     val others = media.filter { it.kind != MediaKind.IMAGE }
+    var groupStart by remember(media) { mutableStateOf<Int?>(null) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
         if (images.size == 1) {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 WorkspaceMediaReference(path = images.single().path, hint = images.single(), style = MediaCardStyle.TOOL)
             }
         } else if (images.size > 1) {
-            images.chunked(2).forEach { row ->
+            images.chunked(2).forEachIndexed { rowIdx, row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                    row.forEach { ref ->
-                        Box(Modifier.weight(1f).aspectRatio(1f)) { ToolGridImage(ref) }
+                    row.forEachIndexed { colIdx, ref ->
+                        val imageIdx = rowIdx * 2 + colIdx
+                        Box(Modifier.weight(1f).aspectRatio(1f)) {
+                            ToolGridImage(ref, onOpen = { groupStart = imageIdx })
+                        }
                     }
                     if (row.size == 1) Box(Modifier.weight(1f))
                 }
@@ -649,10 +656,17 @@ fun ToolMediaList(media: List<MediaRef>, modifier: Modifier = Modifier) {
             WorkspaceMediaReference(path = ref.path, hint = ref, style = MediaCardStyle.TOOL)
         }
     }
+    groupStart?.let { start ->
+        WorkspaceImageGroupViewer(
+            items = images.map { WorkspaceImageItem(it.path, title = mediaDisplayName(it.path)) },
+            startIndex = start,
+            onDismiss = { groupStart = null },
+        )
+    }
 }
 
 @Composable
-private fun ToolGridImage(ref: MediaRef) {
+private fun ToolGridImage(ref: MediaRef, onOpen: (() -> Unit)? = null) {
     val environment = LocalWorkspaceMedia.current
     if (environment == null) {
         WorkspaceMediaUnavailable(path = ref.path, reason = null, onLocate = null, modifier = Modifier.fillMaxSize())
@@ -666,6 +680,7 @@ private fun ToolGridImage(ref: MediaRef) {
             alt = null,
             style = MediaCardStyle.TOOL,
             cropToFill = true,
+            onOpen = onOpen,
         )
         is MediaResolution.Unavailable -> Box(
             modifier = Modifier
@@ -685,9 +700,10 @@ private fun ToolGridImage(ref: MediaRef) {
     }
 }
 
-/** 生图编辑模式的参考图：标签加一排小方图，点开看原图。 */
+/** 生图编辑模式的参考图：标签加一排小方图，点开看原图（支持左右滑切）。 */
 @Composable
 fun ToolReferenceThumbnails(paths: List<String>, modifier: Modifier = Modifier) {
+    var groupStart by remember(paths) { mutableStateOf<Int?>(null) }
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -699,9 +715,9 @@ fun ToolReferenceThumbnails(paths: List<String>, modifier: Modifier = Modifier) 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
-        paths.take(MAX_REFERENCE_THUMBNAILS).forEach { path ->
+        paths.take(MAX_REFERENCE_THUMBNAILS).forEachIndexed { idx, path ->
             Box(Modifier.size(40.dp)) {
-                ToolGridImage(MediaRef(path, mediaMimeFromPath(path), MediaKind.IMAGE, 0))
+                ToolGridImage(MediaRef(path, mediaMimeFromPath(path), MediaKind.IMAGE, 0), onOpen = { groupStart = idx })
             }
         }
         if (paths.size > MAX_REFERENCE_THUMBNAILS) {
@@ -712,6 +728,13 @@ fun ToolReferenceThumbnails(paths: List<String>, modifier: Modifier = Modifier) 
                 maxLines = 1,
             )
         }
+    }
+    groupStart?.let { start ->
+        WorkspaceImageGroupViewer(
+            items = paths.map { WorkspaceImageItem(it, title = mediaDisplayName(it)) },
+            startIndex = start,
+            onDismiss = { groupStart = null },
+        )
     }
 }
 

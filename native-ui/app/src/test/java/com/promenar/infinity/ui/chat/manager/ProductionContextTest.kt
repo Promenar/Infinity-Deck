@@ -17,9 +17,21 @@ class ProductionContextTest {
         assertThat(text).contains("production_get")
         assertThat(text).contains("production_plan")
         assertThat(text).contains("production_generate")
+        assertThat(text).contains("upsert_look")
         assertThat(text).contains("按回合以消息发来")
         assertThat(text).doesNotContain("付费任务")
         assertThat(text).contains("\"truncated\":true")
+    }
+
+    @Test fun `项目上下文暴露默认视频通道与参考入参模式`() {
+        val project = Production(
+            "p", "项目", ProductionKind.FILM, "productions/p", createdAt = 1, updatedAt = 1,
+            defaultVideoChannelId = "comfyui:h3-ref",
+            referenceInputMode = ReferenceInputMode.SEPARATE,
+        )
+        val text = productionContext(ProductionSnapshot(project, 1, ManifestSync.InSync), 0)
+        assertThat(text).contains("\"default_video_channel_id\":\"comfyui:h3-ref\"")
+        assertThat(text).contains("\"reference_input_mode\":\"separate\"")
     }
 
     @Test fun `未结事项摘要接在项目数据之后且不受项目数据截断影响`() {

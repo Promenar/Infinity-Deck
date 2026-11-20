@@ -86,6 +86,30 @@ object ProductionUserEngine {
                 ProductionRules.applyChanges(old, ProductionRules.changes(old, action.proposed))
             }
             is ProductionUserAction.SetExperimental -> p = p.copy(experimental = action.enabled, policyChangedBy = ChangeSource.USER, policyChangedAt = revision)
+            is ProductionUserAction.SetVideoSettings -> p = p.copy(defaultVideoChannelId = action.defaultVideoChannelId, referenceInputMode = action.referenceInputMode, policyChangedBy = ChangeSource.USER, policyChangedAt = revision)
+            is ProductionUserAction.AddAssetView -> {
+                var found = false
+                p = p.copy(assets = p.assets.map { asset ->
+                    if (asset.id != action.assetId) asset else {
+                        found = true
+                        require(asset.kind in setOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE)) { "仅场景、道具与画风资产支持参考视图。" }
+                        require(asset.referenceViews.size < 30 && asset.referenceViews.none { it.id == action.slot.id }) { "参考视图已存在或超出数量上限。" }
+                        asset.copy(referenceViews = asset.referenceViews + action.slot, changedBy = ChangeSource.USER, changedAt = revision)
+                    }
+                })
+                require(found) { "资产不存在。" }
+            }
+            is ProductionUserAction.RemoveAssetView -> {
+                var found = false
+                p = p.copy(assets = p.assets.map { asset ->
+                    if (asset.id != action.assetId) asset else {
+                        found = true
+                        require(asset.referenceViews.any { it.id == action.slotId }) { "参考视图不存在。" }
+                        asset.copy(referenceViews = asset.referenceViews.filterNot { it.id == action.slotId }, changedBy = ChangeSource.USER, changedAt = revision)
+                    }
+                })
+                require(found) { "资产不存在。" }
+            }
             is ProductionUserAction.SetShotPlan -> updateShot(action.episodeId, action.shotCode) { it.copy(channelId = action.channelId, mode = action.mode) }
             is ProductionUserAction.ClearPromptEdited -> updateShot(action.episodeId, action.shotCode) { it.copy(promptUserEdited = false) }
             is ProductionUserAction.SetCharacterLook -> updateContent(action.episodeId, action.shotCode) { shot ->

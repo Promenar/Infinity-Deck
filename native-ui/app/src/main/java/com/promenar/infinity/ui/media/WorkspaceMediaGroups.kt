@@ -69,6 +69,10 @@ internal fun mediaGalleryOverflow(itemCount: Int): Int = (itemCount - MEDIA_GALL
 internal fun mediaGroupImagePaths(items: List<MarkdownMediaReference>): List<String> =
     items.filter { mediaKindForFileName(mediaDisplayName(it.path)) == MediaKind.IMAGE }.map { it.path }
 
+internal fun mediaGroupImageItems(items: List<MarkdownMediaReference>): List<WorkspaceImageItem> =
+    items.filter { mediaKindForFileName(mediaDisplayName(it.path)) == MediaKind.IMAGE }
+        .map { WorkspaceImageItem(path = it.path, title = it.label ?: mediaDisplayName(it.path)) }
+
 /** 第 [itemIndex] 项在 [mediaGroupImagePaths] 中的下标；该项不是图片时返回 -1。 */
 internal fun mediaGroupImageViewerStart(items: List<MarkdownMediaReference>, itemIndex: Int): Int {
     if (itemIndex !in items.indices) return -1
@@ -118,7 +122,7 @@ internal fun WorkspaceMediaGallery(items: List<MarkdownMediaReference>, modifier
         }
     }
     viewerStart?.let { start ->
-        WorkspaceImageGroupViewer(paths = mediaGroupImagePaths(items), startIndex = start, onDismiss = { viewerStart = null })
+        WorkspaceImageGroupViewer(items = mediaGroupImageItems(items), startIndex = start, onDismiss = { viewerStart = null })
     }
 }
 
@@ -210,7 +214,7 @@ internal fun WorkspaceMediaCarousel(items: List<MarkdownMediaReference>, modifie
         )
     }
     viewerStart?.let { start ->
-        WorkspaceImageGroupViewer(paths = mediaGroupImagePaths(items), startIndex = start, onDismiss = { viewerStart = null })
+        WorkspaceImageGroupViewer(items = mediaGroupImageItems(items), startIndex = start, onDismiss = { viewerStart = null })
     }
 }
 

@@ -620,7 +620,7 @@ private fun OutputShotRow(production: Production, location: ShotLocation, servic
                 val channel = services.channelLabelSegments(take.source.service).formatChannelLabel()
                 stringResource(R.string.p2_candidates_channel, shot.takes.size, channel)
             } else {
-                val channelId = resolvedShotChannel(shot, channels, channelOrder)?.id ?: shot.channelId
+                val channelId = resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)?.id ?: shot.channelId
                 val channel = channelId?.let(services.channelLabelSegments) ?: listOf(stringResource(R.string.p2_default_channel))
                 (channel + shot.mode.label()).joinToString(" · ") // wrap-check: allow 产出列表副标题固定单行省略
             }

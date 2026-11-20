@@ -8,7 +8,8 @@ import kotlinx.serialization.json.*
 internal data class ProductionOperationFields(val required: Set<String>, val optional: Set<String>)
 
 private fun fields(required: String, optional: String = "") = ProductionOperationFields(
-    required.split(' ').toSet(), optional.split(' ').filter(String::isNotEmpty).toSet(),
+    required.split(' ').filter(String::isNotEmpty).toSet(),
+    optional.split(' ').filter(String::isNotEmpty).toSet(),
 )
 
 internal val productionOperationFields = linkedMapOf(
@@ -22,11 +23,15 @@ internal val productionOperationFields = linkedMapOf(
     ),
     "set_shot_status" to fields("episode_id shot_code status"),
     "add_take" to fields("episode_id shot_code path service", "model mode task_id usage_ref plan_snapshot note"),
-    "upsert_asset" to fields("id kind name", "description looks reference_voice"),
+    "upsert_asset" to fields("id kind name", "description looks reference_voice reference_views"),
     "add_asset_version" to fields("asset_id path", "note task_id"),
+    "upsert_look" to fields("asset_id look_id name", "note sheet_path sheet_note slots"),
+    "set_look_slot" to fields("asset_id look_id slot_id", "name path note"),
+    "set_asset_view" to fields("asset_id view_id", "name path note remove"),
     "set_asset_status" to fields("asset_id status"),
     "set_stage" to fields("stage status", "note"),
     "set_bible" to fields("documents"),
+    "set_video_settings" to fields("", "default_video_channel_id reference_input_mode"),
     "set_experimental" to fields("enabled"),
     "set_preview_enabled" to fields("enabled"),
     "remove" to fields("target ids", "episode_id"),
@@ -45,10 +50,12 @@ internal val productionRemoveTargets = listOf("season", "episode", "scene", "sho
 internal val productionShotStatuses = listOf("todo", "generating", "review")
 internal val productionAssetStatuses = listOf("draft", "review")
 internal val productionStageStatuses = listOf("not_started", "in_progress", "skipped")
+internal val productionReferenceInputModes = listOf("sheet", "separate")
 internal val nullableProductionOperationFields = setOf(
     "title", "script_path", "size", "camera", "camera_movement", "visual", "performance", "sound", "transition",
     "continuity", "location_asset_id", "channel_id", "mode", "preview", "preview_path", "agent_note", "change_note",
     "model", "task_id", "usage_ref", "note", "description", "reference_voice",
+    "sheet_path", "sheet_note", "path", "default_video_channel_id", "reference_input_mode",
 )
 private val foldedKeyNames = productionOperationFields.values
     .flatMap { it.required + it.optional }.distinct().associateBy { it.replace("_", "") }
@@ -57,7 +64,9 @@ internal val productionNestedFields = mapOf(
     "inputs" to "[{role: first_frame|last_frame|anchor|reference, path, label?, assetId?, atSeconds?}]",
     "dialogue" to "[{characterAssetId, text, tone?, audioSource?: native|dubbed}]",
     "appearances" to "[{characterAssetId, lookId, referenceSlotIds?: 字符串数组}]",
-    "looks" to "[{id, name, slots?: [{id, name, path?, version?}]}]，slots 须含 front、side、back，省略时自动填入这三项",
+    "looks" to "[{id, name, note?, sheetPath?, sheetNote?, slots?: [{id, name, path?, version?, note?}]}]，slots 须含 front、side、back，省略时自动填入这三项",
+    "slots" to "[{id, name, path?, version?, note?}]",
+    "reference_views" to "[{id, name, path?, version?, note?}]（用于 location、prop、style 的自由多视角）",
     "reference_voice" to "{path?, transcript?, voiceSetting?, tone?} 或 null",
     "plan_snapshot" to "{mode, inputs, prompt, channelId?, mediaInputs?: [{location, kind, role}], specs?: {resolution?, durationSeconds?, width?, height?, frames?, seed?, durationSecondsExact?}, generationMode?, templateFingerprint?, params?}",
     "documents" to "[{title, path}]",
@@ -209,8 +218,8 @@ internal fun validateProductionOperation(op: JsonObject, name: String?) {
                 val duration = primitive?.takeUnless { it.isString }?.doubleOrNull
                 require(duration != null && duration.isFinite() && duration > 0) { "duration_seconds 必须是有限正数，单位为秒。" }
             }
-            "enabled" -> require(primitive?.takeUnless { it.isString }?.booleanOrNull != null) { "enabled 必须是布尔值 true 或 false。" }
-            "ids", "prop_asset_ids", "dialogue", "appearances", "looks", "inputs", "reference_voice", "plan_snapshot", "documents" -> Unit
+            "enabled", "remove" -> require(primitive?.takeUnless { it.isString }?.booleanOrNull != null) { "$key 必须是布尔值 true 或 false。" }
+            "ids", "prop_asset_ids", "dialogue", "appearances", "looks", "slots", "reference_views", "inputs", "reference_voice", "plan_snapshot", "documents" -> Unit
             else -> {
                 val string = requireNotNull(text(key)) { "$key 必须是字符串。" }
                 when (key) {
@@ -225,6 +234,8 @@ internal fun validateProductionOperation(op: JsonObject, name: String?) {
                         else -> assetId
                     })
                     "code" -> matches(key, string, if (name == "upsert_scene") sceneCode else shotCode)
+                    "look_id", "slot_id", "view_id", "default_video_channel_id" -> require(string.isNotBlank() && string.length <= 120) { "$key 需为 1～120 字。" }
+                    "reference_input_mode" -> choice(key, string, productionReferenceInputModes)
                     "mode" -> choice(key, string, productionModes)
                     "preview" -> choice(key, string, productionPreviews)
                     "stage" -> choice(key, string, productionStages)
@@ -237,7 +248,7 @@ internal fun validateProductionOperation(op: JsonObject, name: String?) {
                     })
                     "name", "title", "heading", "service" -> require(string.isNotBlank() && string.length <= 120) { "$key 需为 1～120 字。" }
                     "prompt" -> require(string.length <= 7000) { "prompt 最多 7000 字。" }
-                    "note", "agent_note", "description", "camera", "camera_movement", "visual", "performance",
+                    "note", "agent_note", "description", "sheet_note", "camera", "camera_movement", "visual", "performance",
                     "sound", "transition", "continuity" -> require(string.length <= 1000) { "$key 最多 1000 字。" }
                 }
             }
@@ -247,6 +258,9 @@ internal fun validateProductionOperation(op: JsonObject, name: String?) {
         "upsert_episode" -> require(text("id")!!.startsWith("${text("season_id")}E")) { "id 必须属于 season_id，例如 S1 对应 S1E01。" }
         "upsert_shot" -> require(text("code")!!.startsWith("${text("scene_code")}-")) { "code 必须属于 scene_code，例如 SC01 对应 SC01-01。" }
         "add_take" -> require(text("task_id") == null || "plan_snapshot" in op) { "提供 task_id 时必须提供实际规划 plan_snapshot。" }
+        "set_video_settings" -> require("default_video_channel_id" in op || "reference_input_mode" in op) {
+            "set_video_settings 至少需提供 default_video_channel_id 或 reference_input_mode。"
+        }
         "remove" -> {
             val target = text("target")
             val needsEpisode = target in setOf("scene", "shot")
@@ -271,8 +285,8 @@ internal inline fun normalizeProductionOperation(
 ): JsonObject = buildJsonObject {
     for ((key, value) in op) {
         val result = when (key) {
-            "path", "script_path", "preview_path" -> if (value == JsonNull) value else {
-                JsonPrimitive(normalize(key, value.jsonPrimitive.content, key == "path"))
+            "path", "script_path", "preview_path", "sheet_path" -> if (value == JsonNull) value else {
+                JsonPrimitive(normalize(key, value.jsonPrimitive.content, key in setOf("path", "sheet_path")))
             }
             "inputs" -> {
                 val inputs = decodeProductionList<ShotInput>(op, key)
@@ -307,14 +321,53 @@ internal inline fun normalizeProductionOperation(
                 require(looks.isEmpty() || op["kind"]?.jsonPrimitive?.content == "character") { "looks 仅用于 kind=character 的角色资产。" }
                 require(looks.map { it.id }.distinct().size == looks.size) { "looks 的 id 不能重复。" }
                 Json.encodeToJsonElement(looks.mapIndexed { lookIndex, look ->
+                    require(look.id.isNotBlank() && look.id.length <= 120 && look.name.isNotBlank() && look.name.length <= 120) {
+                        "looks[$lookIndex] 的 id 和 name 需为 1～120 字。"
+                    }
+                    require((look.note?.length ?: 0) <= 1000 && (look.sheetNote?.length ?: 0) <= 1000) {
+                        "looks[$lookIndex] 说明最多 1000 字。"
+                    }
                     val ids = look.slots.map { it.id }
                     val missing = ProductionRules.defaultSlotOrder - ids.toSet()
                     require(missing.isEmpty()) { "looks 造型 ${look.id} 的 slots 缺少 ${missing.joinToString("、")}。可省略 slots 使用默认三项。" }
                     require(ids.distinct().size == ids.size) { "looks 造型 ${look.id} 的 slots.id 不能重复。" }
-                    look.copy(slots = look.slots.mapIndexed { slotIndex, slot ->
-                        require(slot.version == null || slot.version > 0) { "looks.slots.version 必须是正整数。" }
-                        slot.copy(path = slot.path?.let { normalize("looks[$lookIndex].slots[$slotIndex].path", it, true) })
-                    })
+                    look.copy(
+                        sheetPath = look.sheetPath?.let { normalize("looks[$lookIndex].sheetPath", it, true) },
+                        slots = look.slots.mapIndexed { slotIndex, slot ->
+                            require(slot.version == null || slot.version > 0) { "looks.slots.version 必须是正整数。" }
+                            require((slot.note?.length ?: 0) <= 1000) { "looks.slots.note 最多 1000 字。" }
+                            slot.copy(path = slot.path?.let { normalize("looks[$lookIndex].slots[$slotIndex].path", it, true) })
+                        },
+                    )
+                })
+            }
+            "slots" -> {
+                val slots = decodeProductionList<ReferenceSlot>(op, key)
+                require(slots.map { it.id }.distinct().size == slots.size) { "slots 的 id 不能重复。" }
+                Json.encodeToJsonElement(slots.mapIndexed { slotIndex, slot ->
+                    require(slot.id.isNotBlank() && slot.id.length <= 120 && slot.name.isNotBlank() && slot.name.length <= 120) {
+                        "slots[$slotIndex] 的 id 和 name 需为 1～120 字。"
+                    }
+                    require(slot.version == null || slot.version > 0) { "slots.version 必须是正整数。" }
+                    require((slot.note?.length ?: 0) <= 1000) { "slots.note 最多 1000 字。" }
+                    slot.copy(path = slot.path?.let { normalize("slots[$slotIndex].path", it, true) })
+                })
+            }
+            "reference_views" -> {
+                val views = decodeProductionList<ReferenceSlot>(op, key)
+                val kind = op["kind"]?.jsonPrimitive?.content
+                require(views.isEmpty() || kind in setOf("location", "prop", "style")) {
+                    "reference_views 仅用于 location、prop、style 资产。"
+                }
+                require(views.size <= 30) { "reference_views 最多 30 项。" }
+                require(views.map { it.id }.distinct().size == views.size) { "reference_views 的 id 不能重复。" }
+                Json.encodeToJsonElement(views.mapIndexed { i, slot ->
+                    require(slot.id.isNotBlank() && slot.id.length <= 120 && slot.name.isNotBlank() && slot.name.length <= 120) {
+                        "reference_views[$i] 的 id 和 name 需为 1～120 字。"
+                    }
+                    require(slot.version == null || slot.version > 0) { "reference_views.version 必须是正整数。" }
+                    require((slot.note?.length ?: 0) <= 1000) { "reference_views.note 最多 1000 字。" }
+                    slot.copy(path = slot.path?.let { normalize("reference_views[$i].path", it, true) })
                 })
             }
             "reference_voice" -> {

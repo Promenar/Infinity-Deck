@@ -5,6 +5,7 @@
     <string name="shot_plan_unlocked">Scene is unlocked: %1$s</string>
     <string name="shot_plan_no_channel">No channel supports this mode: %1$s</string>
     <string name="shot_plan_missing_input">Input is missing or has the wrong type: %1$s</string>
+    <string name="shot_plan_mode_mismatch_separate">The selected video channel needs separate single views, but "%1$s" only has a multi-view card. Add single views or switch the input mode.</string>
     <string name="shot_plan_overflow">Inputs exceed the channel limit: %1$s</string>
     <string name="shot_plan_invalid">Generation plan is incomplete: %1$s</string>
     <string name="shot_plan_backend">Channel backend is unavailable: %1$s</string>

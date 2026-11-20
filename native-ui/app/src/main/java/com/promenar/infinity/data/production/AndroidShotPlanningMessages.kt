@@ -11,6 +11,7 @@ class AndroidShotPlanningMessages(private val context: Context) : ShotPlanningMe
         "no_channel" -> R.string.shot_plan_no_channel
         "no_channel_mode" -> R.string.shot_plan_no_channel_mode
         "missing_input" -> R.string.shot_plan_missing_input
+        "mode_mismatch_separate" -> R.string.shot_plan_mode_mismatch_separate
         "overflow" -> R.string.shot_plan_overflow
         "invalid_plan" -> R.string.shot_plan_invalid
         "unavailable_backend" -> R.string.shot_plan_backend

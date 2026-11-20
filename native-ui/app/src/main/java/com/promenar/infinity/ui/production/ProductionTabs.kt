@@ -70,11 +70,14 @@ import com.promenar.infinity.data.production.Episode
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ProductionStage
 import com.promenar.infinity.data.production.ProductionUserAction
+import com.promenar.infinity.data.production.ReferenceInputMode
 import com.promenar.infinity.data.production.ReviewTarget
 import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.Shot
 import com.promenar.infinity.data.production.ShotMode
 import com.promenar.infinity.data.production.StageStatus
+import com.promenar.infinity.data.production.coverPreviewPath
+import com.promenar.infinity.data.production.effectiveReferenceInputMode
 import com.promenar.infinity.domain.mediagen.CharacterReferenceMode
 import com.promenar.infinity.domain.mediagen.MediaChannel
 import com.promenar.infinity.domain.media.MediaResolution
@@ -645,14 +648,14 @@ internal fun DialogueLine(name: String, text: String, tone: String?, modifier: M
 @Composable
 private fun PlanLine(shot: Shot, production: Production, services: ProductionPanelServices, channels: List<MediaChannel>, channelOrder: List<String>) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val channel = resolvedShotChannel(shot, channels, channelOrder)
+    val channel = resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)
     val channelName = when {
         shot.channelId != null -> services.channelLabelSegments(shot.channelId)
         channel != null -> services.channelLabelSegments(channel.id)
         else -> listOf(stringResource(R.string.p2_waiting_channel))
     }
     val packing = if (shot.mode == ShotMode.REFERENCE && channel != null) stringResource(
-        if (channel.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_composite else R.string.p2_separate,
+        if (production.effectiveReferenceInputMode(channel) == ReferenceInputMode.SHEET) R.string.p2_composite else R.string.p2_separate,
     ) else null
     val paths = production.importedReferencePaths(shot).take(4)
     val voice = shot.dialogue.any { it.audioSource == DialogueAudioSource.NATIVE }
@@ -756,7 +759,7 @@ internal fun ProductionAssetsTab(
         }
         items(assets, key = { it.id }) { asset ->
             AssetCard(asset, production, usageCount = production.shotsUsingAsset(asset.id), modifier = Modifier.animateItem(), onClick = {
-                if (asset.kind == AssetKind.CHARACTER) onOpenCharacter(asset.id) else openAssetId = asset.id
+                if (asset.kind != AssetKind.SOUND) onOpenCharacter(asset.id) else openAssetId = asset.id
             })
         }
     }
@@ -781,11 +784,24 @@ internal fun ProductionAssetsTab(
 @Composable
 private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val versionNumber = asset.currentVersion ?: asset.versions.maxByOrNull { it.number }?.number
-    val chip = versionNumber?.let { number ->
-        production.reviewChipSpec(
-            ReviewTarget.assetVersion(asset.id, number),
-            settled = asset.status == AssetStatus.LOCKED && number == asset.currentVersion,
+    val chip = when {
+        asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty() -> {
+            val primaryLook = asset.looks.first()
+            production.reviewChipSpec(
+                ReviewTarget.assetLook(asset.id, primaryLook.id),
+                settled = primaryLook.locked || asset.status == AssetStatus.LOCKED,
+            )
+        }
+        asset.kind != AssetKind.SOUND && asset.referenceViews.isNotEmpty() && versionNumber == null ->
+            production.reviewChipSpec(
+                ReviewTarget.assetViews(asset.id),
+                settled = asset.viewsLocked || asset.status == AssetStatus.LOCKED,
+            )
+        versionNumber != null -> production.reviewChipSpec(
+            ReviewTarget.assetVersion(asset.id, versionNumber),
+            settled = asset.status == AssetStatus.LOCKED && versionNumber == asset.currentVersion,
         )
+        else -> null
     } ?: ProductionChipSpec(asset.status.label(), asset.status.tone())
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -795,7 +811,7 @@ private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0,
     ) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(1.35f).clip(RoundedCornerShape(12.dp))) {
-                val path = asset.currentPath() ?: asset.looks.firstOrNull()?.slots?.firstOrNull { !it.path.isNullOrBlank() }?.path
+                val path = asset.coverPreviewPath()
                 if (asset.kind == AssetKind.SOUND && path == null) {
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.tertiaryContainer), contentAlignment = Alignment.Center) {
                         Icon(Icons.Rounded.GraphicEq, null, Modifier.size(44.dp), MaterialTheme.colorScheme.onTertiaryContainer)
@@ -812,6 +828,10 @@ private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0,
                 if (asset.kind == AssetKind.CHARACTER) Row(Modifier.align(Alignment.BottomStart).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     if (asset.looks.isNotEmpty()) ClipBadge(stringResource(R.string.p2_look_count, asset.looks.size))
                     if (asset.referenceVoice?.path != null) ClipBadge(stringResource(R.string.p2_voice_badge))
+                } else if (asset.kind != AssetKind.SOUND && asset.referenceViews.isNotEmpty()) {
+                    Row(Modifier.align(Alignment.BottomStart).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        ClipBadge(stringResource(R.string.p2_views_count, asset.referenceViews.size))
+                    }
                 }
             }
             Text(
@@ -824,6 +844,7 @@ private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0,
             )
             val metaParts = listOfNotNull(
                 versionNumber?.let { stringResource(R.string.production_panel_version, it) },
+                stringResource(R.string.p2_views_count, asset.referenceViews.size).takeIf { versionNumber == null && asset.referenceViews.isNotEmpty() },
                 usageCount.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.production_panel_asset_usage, it, it) },
             )
             val subtitle = if (metaParts.isNotEmpty()) metaParts.joinToString(" · ") // wrap-check: allow 资产卡片底栏版本号与引用数固定单行省略

@@ -22,36 +22,53 @@
 | upsert_shot | episode_id, scene_code, code，新建还需 title, duration_seconds | title, duration_seconds, size, camera, camera_movement, visual, performance, dialogue, sound, transition, continuity, appearances, location_asset_id, prop_asset_ids, channel_id, mode, prompt, inputs, preview, preview_path, agent_note, change_note, position |
 | set_shot_status | episode_id, shot_code, status | |
 | add_take | episode_id, shot_code, path, service，有 task_id 时须提供实际 plan_snapshot | model, mode, task_id, usage_ref, plan_snapshot, note |
-| upsert_asset | id, kind, name | description, looks, reference_voice |
+| upsert_asset | id, kind, name | description, looks, reference_voice, reference_views |
 | add_asset_version | asset_id, path | note, task_id |
+| upsert_look | asset_id, look_id, name | note, sheet_path, sheet_note, slots |
+| set_look_slot | asset_id, look_id, slot_id | name, path, note |
+| set_asset_view | asset_id, view_id | name, path, note, remove |
 | set_asset_status | asset_id, status | |
 | set_stage | stage, status | note |
 | set_bible | documents | |
+| set_video_settings | （至少任选一可选字段） | default_video_channel_id, reference_input_mode |
 | set_experimental | enabled | |
 | set_preview_enabled | enabled | |
 | remove | target, ids，scene、shot 还需 episode_id | |
 
 - 季 `S[0-9]+`（S1），集 `S[0-9]+E[0-9]{2,}`（S1E01，须属该季），场 `SC[0-9]+`（SC01），镜头 `SC[0-9]+-[0-9]+`（SC01-01，须属该场）。资产 `[a-z][a-z0-9-]*`，最多 48 字符。number 为正整数，duration_seconds 为有限正数，position 从 0 起算。
 - status 取值按操作区分。镜头用 todo、generating、review，资产用 draft、review，阶段用 not_started、in_progress、skipped。stage 为 script、visual_dev、storyboard、animatic、generation、sound、edit。
-- kind 为 character、location、prop、style、sound。mode 为 text、first_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。remove 的 target 为 season、episode、scene、shot、asset，ids 是按目标格式填写的非空无重复字符串数组。enabled 为布尔值。
+- kind 为 character、location、prop、style、sound。mode 为 text、first_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。remove 的 target 为 season、episode、scene、shot、asset，ids 是按目标格式填写的非空无重复字符串数组。enabled 与 remove 为布尔值。
+- **双模参考资产与版本分工红线**：
+  - `versions`（`add_asset_version`）：仅用于同一定妆或原画的**纵向迭代替换**（`v1 → v2` 在面板中互斥审批，同时只生效一版）或**单图多视图整卡主图**；**禁止**用 `v1/v2/v3` 存放同一套造型的正/侧/背，也**禁止**因拆分三视图而另外新建重复角色资产。
+  - **角色双模（`looks` / `upsert_look` / `set_look_slot`）**：同一造型同时支持单图多视图整卡（`sheet_path`/`sheet_note`，适合 Seedance 等直接接收整卡的模型）和分张单视图组（`slots` 里的 `front`/`side`/`back` 及自定义位，适合 H3 等分张多参模型）；支持二选一登记或双模并存，提交后即可由用户在造型区独立批准定稿。
+  - **场景 / 道具 / 画风双模（`versions` + `reference_views` / `set_asset_view`）**：同样支持单图整卡（`add_asset_version`）和自由命名单视图组（`set_asset_view`，如全景、门头、细节），按项目设置的 `reference_input_mode`（`sheet` 或 `separate`）自动适配规划与提交。
 - 外层字段用表中的 snake_case，嵌套字段使用下列精确拼写。问号表示可选。
   - dialogue 为 `[{characterAssetId, text, tone?, audioSource?}]`，audioSource 取 native（默认）或 dubbed。
-  - appearances 为 `[{characterAssetId, lookId, referenceSlotIds?}]`，referenceSlotIds 为字符串数组。prop_asset_ids 为资产 ID 字符串数组。
-  - looks 为 `[{id, name, slots?: [{id, name, path?, version?}]}]`。角色造型省略 slots 时默认 front、side、back。显式传 slots 须包含这三项，可附加其他参考位。version 为正整数。
+  - appearances 为 `[{characterAssetId, lookId, referenceSlotIds?}]`，referenceSlotIds 为字符串数组（省略时自动选取该造型已备齐的默认视角，显式传空数组表示暂不引用）。prop_asset_ids 为资产 ID 字符串数组。
+  - looks 为 `[{id, name, note?, sheetPath?, sheetNote?, slots?: [{id, name, path?, version?, note?}]}]`。`upsert_asset` 显式传 `slots` 须包含 `front`/`side`/`back`；推荐使用增量操作 `upsert_look` / `set_look_slot`。
+  - reference_views 为 `[{id, name, path?, version?, note?}]`，用于 location、prop、style 资产的自由多视角单图组。
   - reference_voice 为 `{path?, transcript?, voiceSetting?, tone?}` 或 null。looks 和参考语音用于 character。配乐等音频成品登记到 sound 资产。
   - inputs 为 `[{role, path, label?, assetId?, atSeconds?}]`，最多 12 项。role 为 first_frame、last_frame、anchor、reference。非负 atSeconds 仅用于 anchor。
   - plan_snapshot 为 `{mode, inputs, prompt, channelId?, mediaInputs?, specs?, generationMode?, templateFingerprint?, params?}`。mediaInputs 每项用 location、kind、role。specs 可含 resolution、durationSeconds、width、height、frames、seed、durationSecondsExact。documents 为 `[{title, path}]`。
 - 优先使用工作区相对路径，如 `productions/demo/ep1.md`。普通会话的 `/productions/demo/ep1.md`，以及 Linux 当前工作区下的 `/workspace/...`、登记的工作区目录或 `/home/session/...`，会归一后写入清单。独立私有目录保留归属。制作相对路径也可直接用于参考图。禁止 URI、点路径、空段、反斜杠、Linux 系统根和不属于项目的外部挂载。媒体须已保存到工作区。调用 `generate_image` 时参考图放在数组 `images`，例如 `{"prompt":"调整光线","images":["productions/demo/assets/hero.png"]}`。
 
-### 批次一 建季、集、场与资产
+### 批次一 建季、集、场、视频设置与双模资产
 
 ```json
 {
   "operations": [
+    {"op":"set_video_settings","default_video_channel_id":"comfy:h3-ref2va","reference_input_mode":"separate"},
     {"op":"upsert_season","id":"S1","number":1},
     {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"归港","script_path":"productions/demo/ep1.md"},
     {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"外景 港口 黄昏"},
-    {"op":"upsert_asset","id":"lin-wan","kind":"character","name":"林晚","looks":[{"id":"coat","name":"风衣"}],"reference_voice":{"path":"productions/demo/assets/lin-wan.wav"}},
+    {"op":"upsert_asset","id":"lin-wan","kind":"character","name":"林晚","description":"28岁，深色风衣。","reference_voice":{"path":"productions/demo/assets/lin-wan.wav"}},
+    {"op":"upsert_look","asset_id":"lin-wan","look_id":"coat","name":"风衣","sheet_path":"productions/demo/assets/lin-wan-sheet.png","sheet_note":"三视图定稿整卡","slots":[
+      {"id":"front","name":"正面全身","path":"productions/demo/assets/lin-wan-front.png","note":"正面单图 2x"},
+      {"id":"side","name":"侧面全身","path":"productions/demo/assets/lin-wan-side.png","note":"侧面单图 2x"},
+      {"id":"back","name":"背面全身","path":"productions/demo/assets/lin-wan-back.png","note":"背面单图 2x"}
+    ]},
+    {"op":"upsert_asset","id":"harbor-pier","kind":"location","name":"雾港老码头"},
+    {"op":"set_asset_view","asset_id":"harbor-pier","view_id":"wide","name":"全景主视角","path":"productions/demo/assets/pier-wide.png"},
     {"op":"upsert_asset","id":"harbor-score","kind":"sound","name":"港口配乐"}
   ]
 }
@@ -62,7 +79,7 @@
 ```json
 {
   "operations": [
-    {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"林晚回望","duration_seconds":4,"mode":"first_frame","dialogue":[{"characterAssetId":"lin-wan","text":"船到了。","audioSource":"native"}],"appearances":[{"characterAssetId":"lin-wan","lookId":"coat"}],"inputs":[{"role":"first_frame","path":"productions/demo/assets/harbor.png"}]},
+    {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"林晚回望","duration_seconds":4,"mode":"reference","dialogue":[{"characterAssetId":"lin-wan","text":"船到了。","audioSource":"native"}],"appearances":[{"characterAssetId":"lin-wan","lookId":"coat","referenceSlotIds":["front","side","back"]}],"location_asset_id":"harbor-pier"},
     {"op":"add_take","episode_id":"S1E01","shot_code":"SC01-01","path":"productions/demo/S1E01/takes/harbor.mp4","service":"已完成的生成任务"}
   ]
 }

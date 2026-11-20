@@ -15,7 +15,13 @@
     <string name="media_action_close">Close</string>
     <string name="media_action_locate">Locate in explorer</string>
     <string name="media_action_reset_zoom">Reset zoom</string>
-    <string name="media_action_rotate">Rotate</string>
+    <string name="media_action_rotate">Rotate 90° clockwise</string>
+    <string name="media_lightbox_action_reset">Reset</string>
+    <string name="media_lightbox_action_rotate">Rotate</string>
+    <string name="media_lightbox_action_save">Save</string>
+    <string name="media_lightbox_action_share">Share</string>
+    <string name="media_lightbox_action_annotate">Markup</string>
+    <string name="media_lightbox_action_open_with">Open</string>
     <string name="media_unavailable_title">File unavailable</string>
     <string name="media_unavailable_not_found">Does not exist</string>
     <string name="media_unavailable_invalid_path">Invalid path</string>

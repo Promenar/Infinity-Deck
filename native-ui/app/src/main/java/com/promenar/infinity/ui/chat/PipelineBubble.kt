@@ -1622,12 +1622,22 @@ private fun ToolInvocationCard(
             if (!resultMedia.isNullOrEmpty()) {
                 com.promenar.infinity.ui.media.ToolMediaList(media = resultMedia)
             }
-            images.take(4).forEach { imageModel ->
+            val displayedImages = images.take(4)
+            var groupViewerStart by remember(displayedImages) { mutableStateOf<Int?>(null) }
+            displayedImages.forEachIndexed { idx, imageModel ->
                 ChatImageThumbnail(
                     imageModel = imageModel,
                     contentDescription = stringResource(R.string.chat_cd_tool_image),
                     modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 220.dp).clip(MaterialTheme.shapes.small),
                     contentScale = ContentScale.Fit,
+                    onOpen = if (displayedImages.size > 1) ({ groupViewerStart = idx }) else null,
+                )
+            }
+            groupViewerStart?.let { start ->
+                com.promenar.infinity.ui.renderer.ImageLightboxGallery(
+                    pages = displayedImages.map { com.promenar.infinity.ui.renderer.ImageLightboxPage(imageUrl = it) },
+                    startIndex = start,
+                    onDismiss = { groupViewerStart = null },
                 )
             }
             // 成功结果的文本是给模型的上下文，经“完整结果”查看；卡内只留错误说明。
@@ -2007,19 +2017,29 @@ fun UserMessageBubble(
                     ) {
                         if (!message.userDocuments.isNullOrEmpty()) MessageDocumentSummary(message.userDocuments.orEmpty())
                         if (!message.userImages.isNullOrEmpty()) {
+                            val userImages = message.userImages.orEmpty()
+                            var viewerStart by remember(userImages) { mutableStateOf<Int?>(null) }
                             Row(
                                 modifier = Modifier.widthIn(max = bubbleMaxWidth).horizontalScroll(rememberScrollState()).testTag("CHAT_USER_IMAGES"),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                message.userImages.orEmpty().forEach { dataUrl ->
+                                userImages.forEachIndexed { idx, dataUrl ->
                                     ChatImageThumbnail(
                                         imageModel = dataUrl,
                                         contentDescription = stringResource(R.string.chat_cd_attached_image),
                                         modifier = Modifier.size(160.dp).clip(RoundedCornerShape(12.dp))
                                             .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                                         contentScale = ContentScale.Crop,
+                                        onOpen = if (userImages.size > 1) ({ viewerStart = idx }) else null,
                                     )
                                 }
+                            }
+                            viewerStart?.let { start ->
+                                com.promenar.infinity.ui.renderer.ImageLightboxGallery(
+                                    pages = userImages.map { com.promenar.infinity.ui.renderer.ImageLightboxPage(imageUrl = it) },
+                                    startIndex = start,
+                                    onDismiss = { viewerStart = null },
+                                )
                             }
                         }
                         if (legacyAttachments.isNotEmpty()) LegacyAttachmentSummary(legacyAttachments)
@@ -2127,6 +2147,7 @@ private fun UserMessageInlineEditorCard(
             }
 
             if (retainedImages.isNotEmpty() || retainedDocuments.isNotEmpty()) {
+                var editViewerStart by remember(retainedImages) { mutableStateOf<Int?>(null) }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2147,6 +2168,7 @@ private fun UserMessageInlineEditorCard(
                                 contentDescription = stringResource(R.string.chat_cd_attached_image),
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
+                                onOpen = if (retainedImages.size > 1) ({ editViewerStart = idx }) else null,
                             )
                             val removeImageCd = stringResource(R.string.chat_cd_remove_image)
                             Box(
@@ -2181,6 +2203,13 @@ private fun UserMessageInlineEditorCard(
                             onRemove = { retainedDocuments = retainedDocuments.filterNot { it.id == doc.id } },
                         )
                     }
+                }
+                editViewerStart?.let { start ->
+                    com.promenar.infinity.ui.renderer.ImageLightboxGallery(
+                        pages = retainedImages.map { com.promenar.infinity.ui.renderer.ImageLightboxPage(imageUrl = it) },
+                        startIndex = start.coerceIn(0, (retainedImages.size - 1).coerceAtLeast(0)),
+                        onDismiss = { editViewerStart = null },
+                    )
                 }
             }
 
@@ -2467,6 +2496,7 @@ private fun ChatImageThumbnail(
     contentDescription: String,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
+    onOpen: (() -> Unit)? = null,
 ) {
     var showLightbox by remember(imageModel) { mutableStateOf(false) }
     val press = remember { MutableInteractionSource() }
@@ -2474,7 +2504,9 @@ private fun ChatImageThumbnail(
     coil3.compose.AsyncImage(
         model = imageModel,
         contentDescription = contentDescription,
-        modifier = modifier.dimOnPress(press).clickable(interactionSource = press, indication = null) { showLightbox = true },
+        modifier = modifier.dimOnPress(press).clickable(interactionSource = press, indication = null) {
+            if (onOpen != null) onOpen() else showLightbox = true
+        },
         contentScale = contentScale,
     )
     if (showLightbox) {

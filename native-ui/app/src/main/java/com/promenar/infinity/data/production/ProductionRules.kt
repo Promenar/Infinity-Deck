@@ -10,6 +10,14 @@ object ProductionRules {
 
     fun defaultSlotIds(look: CharacterLook): List<String> = defaultSlotOrder.filter { id -> look.slots.any { it.id == id } }
 
+    /** 新建分镜或省略 referenceSlotIds 时选用的默认视角列表：有图默认位优先，否则有图自定义位，否则空。 */
+    fun defaultSlotsForAppearance(look: CharacterLook): List<String> {
+        val populatedDefaults = defaultSlotOrder.filter { id -> look.slots.any { it.id == id && !it.path.isNullOrBlank() } }
+        if (populatedDefaults.isNotEmpty()) return populatedDefaults
+        val anyPopulated = look.populatedSlots().map { it.id }
+        return if (anyPopulated.isNotEmpty()) anyPopulated else defaultSlotIds(look)
+    }
+
     /** 使用场内最大序号加一，并保留既有数字宽度；空场从 01 开始。 */
     fun nextShotCode(scene: Scene): String {
         val suffixes = scene.shots.map { it.code.removePrefix("${scene.code}-") }
@@ -51,12 +59,18 @@ object ProductionRules {
     fun referenceWarnings(production: Production, shot: Shot): List<String> = shot.appearances.mapNotNull { appearance ->
         val asset = production.assets.firstOrNull { it.id == appearance.characterAssetId && it.kind == AssetKind.CHARACTER }
         val look = asset?.looks?.firstOrNull { it.id == appearance.lookId }
+        val inputMode = production.effectiveReferenceInputMode()
+        val lookSettled = look?.locked == true || asset?.status == AssetStatus.LOCKED
+        val missingSelectedSlot = look != null && appearance.referenceSlotIds.any { id -> look.slots.none { it.id == id && !it.path.isNullOrBlank() } }
         when {
             asset == null -> "角色 ${appearance.characterAssetId} 不存在。"
-            asset.status != AssetStatus.LOCKED -> "角色 ${asset.name} 的参考包尚未定稿。"
+            !lookSettled -> "角色 ${asset.name} 的参考包尚未定稿。"
             look == null && asset.looks.isEmpty() && asset.currentVersionPath() != null -> null
             look == null -> "角色 ${asset.name} 的造型不存在。"
-            defaultSlotOrder.any { id -> look.slots.none { it.id == id && it.path != null } } || appearance.referenceSlotIds.any { id -> look.slots.none { it.id == id && it.path != null } } -> "角色 ${asset.name} 的所选参考位尚未备齐。"
+            inputMode == ReferenceInputMode.SHEET && (!look.sheetPath.isNullOrBlank() || look.populatedSlots().isNotEmpty()) -> null
+            inputMode == ReferenceInputMode.SHEET -> "角色 ${asset.name} 的造型整卡与分张视角均尚未备齐。"
+            look.populatedSlots().isEmpty() && !look.sheetPath.isNullOrBlank() -> "角色 ${asset.name} 仅登记了多视图整卡，当前分张模式需要分张单视图。"
+            missingSelectedSlot -> "角色 ${asset.name} 的所选参考位尚未备齐。"
             else -> null
         }
     }

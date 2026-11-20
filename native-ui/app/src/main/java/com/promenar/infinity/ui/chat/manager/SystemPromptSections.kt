@@ -228,6 +228,7 @@ object SystemPromptSections {
         }
         if (toolNames.any { it in setOf("production_define", "production_attach", "production_get", "production_update", "production_remove") }) {
             appendLine("- 长片或剧集制作有三种起步方式：用 production_attach 导入已有 production.json。用 production_define 建新项目并用 production_update 批量建项。也可先读取原剧本、小说等文档，再拆解成季、集、场、镜头和资产录入。参数与示例按需读取 read_skill_file(name=\"infinity-deck\", path=\"references/production.md\")。生成候选用 production_update 的 add_take 登记，面板供用户审核。")
+            appendLine("- 视觉参考资产遵循项目「默认视频模型 × 入参模式（多视图整卡 sheet / 分张单视图 separate）」：人物三视图用 upsert_look / set_look_slot，场景/道具/画风分视角用 set_asset_view，支持整卡与分张二选一或双模并存；禁止另建多余资产或用 v1–v3 版本代替多视角。")
             appendLine("- 面板审核按回合到达。收到“制作审核”消息后逐条处理批准、否决与建议，并用 production_update 的 agent_note 或 change_note 等字段写明处理结果；用 production_get 的 changes 范围读取审核轮次与未结事项。")
             appendLine("- 失败任务由你判断重新生成还是换方案；镜头或资产的生成次数达到提醒阈值 ${com.promenar.infinity.data.production.PRODUCTION_COST_ALERT_COUNT} 次时，先向用户说明再继续生成。")
         }

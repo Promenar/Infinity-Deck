@@ -10,6 +10,8 @@
     <string name="production_review_message_shot">%1$s / %2$s · %3$s</string>
     <string name="production_review_message_take">%1$s / Take %2$s</string>
     <string name="production_review_message_asset">%1$s / Version %2$s</string>
+    <string name="production_review_message_asset_look">%1$s / Look %2$s</string>
+    <string name="production_review_message_asset_views">%1$s / Reference views</string>
     <string name="production_review_message_script">%1$s / Script</string>
     <string name="production_review_message_scene">%1$s / %2$s · %3$s</string>
     <string name="production_review_message_cut">%1$s / Cut v%2$s</string>

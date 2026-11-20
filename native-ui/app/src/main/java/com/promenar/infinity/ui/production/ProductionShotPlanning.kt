@@ -203,11 +203,22 @@ internal fun ProductionShotDetail(
                         }
                     }
                     if (shot.appearances.isNotEmpty()) item("characters") {
+                        val effectiveChannel = remember(shot.channelId, shot.mode, channels, channelOrder, production.defaultVideoChannelId) {
+                            resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)
+                        }
+                        val effectiveMode = production.effectiveReferenceInputMode(effectiveChannel)
                         Column {
                             ProductionSectionHeader(stringResource(R.string.p2_character_refs))
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 shot.appearances.forEach { appearance ->
-                                    CharacterReferenceCard(appearance, production, !working, onOpen = { onOpenCharacter(appearance.characterAssetId) }, onLook = { lookCharacter = appearance.characterAssetId; sheet = PlanningSheet.LOOK }) { look, slotId ->
+                                    CharacterReferenceCard(
+                                        appearance = appearance,
+                                        production = production,
+                                        enabled = !working,
+                                        inputMode = effectiveMode,
+                                        onOpen = { onOpenCharacter(appearance.characterAssetId) },
+                                        onLook = { lookCharacter = appearance.characterAssetId; sheet = PlanningSheet.LOOK },
+                                    ) { look, slotId ->
                                         val updated = appearance.toggleSlot(look, slotId)
                                         onRun(ProductionUserAction.ToggleReferenceSlot(episodeId, shot.code, appearance.characterAssetId, slotId, slotId in updated.referenceSlotIds))
                                     }
@@ -216,7 +227,7 @@ internal fun ProductionShotDetail(
                         }
                     }
                     item("channel-mode") {
-                        val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)
+                        val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)
                         val noChannel = resolvedChannel == null
                         val channelName = preview?.channelLabel?.takeIf(String::isNotBlank)
                             ?.split(" $InfinityMetaSeparator ") ?: shot.channelId?.let(services.channelLabelSegments)
@@ -245,9 +256,10 @@ internal fun ProductionShotDetail(
                     }
                     item("inputs") {
                         val inputs = preview?.inputs.orEmpty()
-                        val noChannel = (if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)) == null
-                        val packing = preview?.channel?.takeIf { shot.mode == ShotMode.REFERENCE && shot.appearances.isNotEmpty() }?.let {
-                            stringResource(if (it.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_composite else R.string.p2_separate)
+                        val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)
+                        val noChannel = resolvedChannel == null
+                        val packing = resolvedChannel?.takeIf { shot.mode == ShotMode.REFERENCE && (shot.appearances.isNotEmpty() || shot.locationAssetId != null || shot.propAssetIds.isNotEmpty()) }?.let {
+                            stringResource(if (production.effectiveReferenceInputMode(it) == ReferenceInputMode.SHEET) R.string.p2_composite else R.string.p2_separate)
                         }
                         val images = inputs.count { it.kind == InputKind.IMAGE }
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -409,12 +421,20 @@ private fun ShotFieldGrid(shot: Shot, production: Production) {
     }
 }
 
-/** 角色参考卡：带头像缩略图；有造型时切造型与参考位，未拆造型有版本图时明确标为“使用版本图”。 */
+/** 角色参考卡：带头像缩略图；有造型时依入参模式展示整卡标记或分张参考位，未拆造型有版本图时标为“使用版本图”。 */
 @Composable
-private fun CharacterReferenceCard(appearance: ShotAppearance, production: Production, enabled: Boolean, onOpen: () -> Unit, onLook: () -> Unit, onToggle: (CharacterLook, String) -> Unit) {
+private fun CharacterReferenceCard(
+    appearance: ShotAppearance,
+    production: Production,
+    enabled: Boolean,
+    inputMode: ReferenceInputMode,
+    onOpen: () -> Unit,
+    onLook: () -> Unit,
+    onToggle: (CharacterLook, String) -> Unit,
+) {
     val asset = production.findAsset(appearance.characterAssetId)
     val look = asset?.looks?.firstOrNull { it.id == appearance.lookId }
-    val thumbPath = asset?.currentPath() ?: look?.slots?.firstOrNull { !it.path.isNullOrBlank() }?.path
+    val thumbPath = asset?.coverPreviewPath()
     val usesVersionFallback = look == null && asset?.looks.isNullOrEmpty()
     val hasVersion = asset?.currentPath() != null
     val scheme = MaterialTheme.colorScheme
@@ -466,8 +486,16 @@ private fun CharacterReferenceCard(appearance: ShotAppearance, production: Produ
                         }
                     }
                 }
-                if (look != null) Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    look.slots.forEach { slot -> InfinityChip(slot.displayName(), selected = slot.id in appearance.referenceSlotIds, enabled = enabled, onClick = { onToggle(look, slot.id) }) }
+                if (look != null) {
+                    if (inputMode == ReferenceInputMode.SHEET && !look.sheetPath.isNullOrBlank()) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ProductionStatusChip(stringResource(R.string.p2_using_sheet_image_full), ProductionTone.INFO)
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            look.slots.forEach { slot -> InfinityChip(slot.displayName(), selected = slot.id in appearance.referenceSlotIds, enabled = enabled, onClick = { onToggle(look, slot.id) }) }
+                        }
+                    }
                 }
             }
         }

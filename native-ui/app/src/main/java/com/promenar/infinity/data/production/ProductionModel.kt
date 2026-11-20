@@ -42,6 +42,15 @@ enum class AssetKind { @SerialName("character") CHARACTER, @SerialName("location
 @Serializable
 enum class ShotMode { @SerialName("text") TEXT, @SerialName("first_frame") FIRST_FRAME, @SerialName("first_last") FIRST_LAST, @SerialName("reference") REFERENCE }
 
+/** 项目级参考资产入参模式：多视图资产卡整图（如 Seedance）或分张单视图组（如 H3）。 */
+@Serializable
+enum class ReferenceInputMode { @SerialName("sheet") SHEET, @SerialName("separate") SEPARATE }
+
+fun com.promenar.infinity.domain.mediagen.CharacterReferenceMode.toReferenceInputMode(): ReferenceInputMode = when (this) {
+    com.promenar.infinity.domain.mediagen.CharacterReferenceMode.COMPOSITE -> ReferenceInputMode.SHEET
+    com.promenar.infinity.domain.mediagen.CharacterReferenceMode.SEPARATE -> ReferenceInputMode.SEPARATE
+}
+
 /** 镜头输入的职责。关键帧在任何模式下都可作为锁定（首帧、尾帧、锚点）或强参考（reference）。 */
 @Serializable
 enum class InputRole { @SerialName("first_frame") FIRST_FRAME, @SerialName("last_frame") LAST_FRAME, @SerialName("anchor") ANCHOR, @SerialName("reference") REFERENCE }
@@ -166,10 +175,19 @@ data class TakePlanSnapshot(val channelId: String? = null, val mode: ShotMode, v
 data class ShotAudio(val id: String, val path: String, val dialogueIndex: Int, val taskId: String, val planSnapshot: TakePlanSnapshot, val createdAt: Long)
 
 @Serializable
-data class ReferenceSlot(val id: String, val name: String, val path: String? = null, val version: Int? = null)
+data class ReferenceSlot(val id: String, val name: String, val path: String? = null, val version: Int? = null, val note: String? = null)
 
 @Serializable
-data class CharacterLook(val id: String, val name: String, val slots: List<ReferenceSlot> = defaultReferenceSlots())
+data class CharacterLook(
+    val id: String,
+    val name: String,
+    val slots: List<ReferenceSlot> = defaultReferenceSlots(),
+    val note: String? = null,
+    val sheetPath: String? = null,
+    val sheetNote: String? = null,
+    val locked: Boolean = false,
+    val contentChangedAt: Long? = null,
+)
 
 fun defaultReferenceSlots() = listOf(ReferenceSlot("front", "正面全身"), ReferenceSlot("side", "侧面全身"), ReferenceSlot("back", "背面全身"))
 
@@ -239,11 +257,25 @@ data class Asset(
     val changedAt: Long = 0,
     val looks: List<CharacterLook> = emptyList(),
     val referenceVoice: ReferenceVoice? = null,
+    val referenceViews: List<ReferenceSlot> = emptyList(),
+    val viewsLocked: Boolean = false,
+    val viewsContentChangedAt: Long? = null,
 )
 
 /** 返回当前选中版本或最新版本的路径；未生成任何版本时为 null。 */
 fun Asset.currentVersionPath(): String? =
     (versions.firstOrNull { it.number == currentVersion } ?: versions.maxByOrNull { it.number })?.path
+
+fun CharacterLook.populatedSlots(): List<ReferenceSlot> = slots.filter { !it.path.isNullOrBlank() }
+
+fun Asset.populatedReferenceViews(): List<ReferenceSlot> = referenceViews.filter { !it.path.isNullOrBlank() }
+
+/** 用于资产列表或默认参考卡的封面图路径：优先版本图，其次造型整卡/分张槽位或自由视角图。 */
+fun Asset.coverPreviewPath(): String? =
+    currentVersionPath()
+        ?: looks.firstNotNullOfOrNull { it.sheetPath?.takeIf(String::isNotBlank) }
+        ?: looks.flatMap { it.slots }.firstNotNullOfOrNull { it.path?.takeIf(String::isNotBlank) }
+        ?: referenceViews.firstNotNullOfOrNull { it.path?.takeIf(String::isNotBlank) }
 
 @Serializable
 data class Production(
@@ -276,7 +308,13 @@ data class Production(
     val reviewDrafts: List<ReviewDraft> = emptyList(),
     val runs: List<ProductionRun> = emptyList(),
     val unregisteredFiles: List<String> = emptyList(),
+    val defaultVideoChannelId: String? = null,
+    val referenceInputMode: ReferenceInputMode? = null,
 )
+
+/** 项目的当前生效参考入参模式：显式设定优先，否则跟随对应（或默认）视频通道能力。 */
+fun Production.effectiveReferenceInputMode(channel: com.promenar.infinity.domain.mediagen.MediaChannel? = null): ReferenceInputMode =
+    referenceInputMode ?: channel?.capabilities?.characterReferenceMode?.toReferenceInputMode() ?: ReferenceInputMode.SEPARATE
 
 /** 清单文件与数据库的同步状态。 */
 sealed interface ManifestSync {
@@ -335,6 +373,9 @@ sealed interface ProductionUserAction {
     data class RemoveReferenceSlot(val assetId: String, val lookId: String, val slotId: String) : ProductionUserAction
     data class EditPrompt(val episodeId: String, val shotCode: String, val prompt: String) : ProductionUserAction
     data class SetStage(val stage: ProductionStage, val status: StageStatus) : ProductionUserAction
+    data class SetVideoSettings(val defaultVideoChannelId: String?, val referenceInputMode: ReferenceInputMode?) : ProductionUserAction
+    data class AddAssetView(val assetId: String, val slot: ReferenceSlot) : ProductionUserAction
+    data class RemoveAssetView(val assetId: String, val slotId: String) : ProductionUserAction
 }
 
 enum class ManifestResolution {

@@ -24,9 +24,13 @@ class DefaultProductionProcessing(
     private val mutex = ProductionSubmissionMutex
     private suspend fun load(session: String) = requireNotNull(store.load(session)) { "当前会话没有制作项目。" }
     override suspend fun operations(sessionId: String, episodeId: String, shotCode: String): ShotOperations = withContext(Dispatchers.IO) {
-        val shot = load(sessionId).production.requiredShot(episodeId, shotCode)
+        val p = load(sessionId).production
+        val shot = p.requiredShot(episodeId, shotCode)
         val channels = registry.observeChannels().first()
-        val selected = shot.channelId?.let { id -> channels.firstOrNull { it.id == id } } ?: if (shot.channelId == null) resolveDefaultChannel(MediaGroup.VIDEO, shot.mode.toGenerationMode(), channels) else null
+        val projectDefault = p.defaultVideoChannelId?.takeIf { it.isNotBlank() }
+        val selected = shot.channelId?.let { id -> channels.firstOrNull { it.id == id } }
+            ?: projectDefault?.let { id -> channels.firstOrNull { it.id == id && shot.mode.toGenerationMode() in it.capabilities.modes } }
+            ?: if (shot.channelId == null) resolveDefaultChannel(MediaGroup.VIDEO, shot.mode.toGenerationMode(), channels) else null
         val states = templates()
         resolveShotOperations(selected, channels, states.map { it.template }) { t -> states.any { it.template == t && it.ready } }
     }

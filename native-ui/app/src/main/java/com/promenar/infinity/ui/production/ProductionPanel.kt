@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -78,7 +79,19 @@ import com.promenar.infinity.domain.mediagen.MediaChannel
 import com.promenar.infinity.domain.mediagen.MediaGroup
 import com.promenar.infinity.data.production.AssetKind
 import com.promenar.infinity.data.production.AssetStatus
+import com.promenar.infinity.data.production.ReferenceInputMode
+import com.promenar.infinity.data.production.ShotMode
+import com.promenar.infinity.data.production.effectiveReferenceInputMode
+import com.promenar.infinity.data.production.toReferenceInputMode
+import com.promenar.infinity.domain.mediagen.CharacterReferenceMode
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySwitch
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
 
 /** 面板加载状态。 */
 private sealed interface ProductionLoad {
@@ -220,7 +233,7 @@ internal fun decodeProductionPage(token: String): ProductionPage? {
             val shotCode = URLDecoder.decode(rest.substringAfter(':'), "UTF-8")
             if (episodeId.isNotEmpty() && shotCode.isNotEmpty()) ProductionPage.Shot(episodeId, shotCode) else null
         }
-        "char" -> {
+        "char", "asset" -> {
             val assetId = URLDecoder.decode(rest, "UTF-8")
             if (assetId.isNotEmpty()) ProductionPage.Character(assetId) else null
         }
@@ -228,7 +241,7 @@ internal fun decodeProductionPage(token: String): ProductionPage? {
     }
 }
 
-/** 压入子页：已在栈顶则不重复压入；与次顶层相同时弹出顶层回退（避免镜头 ↔ 角色往复套娃）。 */
+/** 压入子页：已在栈顶则不重复压入；与次顶层相同时弹出顶层回退（避免镜头 ↔ 资产往复套娃）。 */
 internal fun pushProductionPage(stack: List<String>, next: String): List<String> = when {
     stack.lastOrNull() == next -> stack
     stack.dropLast(1).lastOrNull() == next -> stack.dropLast(1)
@@ -240,7 +253,7 @@ internal fun initialProductionPageStack(
     initialShot: Pair<String, String>?,
     initialAssetId: String?,
 ): List<String> = when {
-    initialAssetId != null && production.findAsset(initialAssetId)?.kind == AssetKind.CHARACTER ->
+    initialAssetId != null && production.findAsset(initialAssetId)?.kind != AssetKind.SOUND && production.findAsset(initialAssetId) != null ->
         listOf(encodeProductionPage(ProductionPage.Character(initialAssetId)))
     initialShot != null ->
         listOf(encodeProductionPage(ProductionPage.Shot(initialShot.first, initialShot.second)))
@@ -253,7 +266,7 @@ internal fun reconcileProductionPageStack(
     awaitingNewShot: Boolean,
 ): List<String> = stack.filterIndexed { index, token ->
     when (val page = decodeProductionPage(token)) {
-        is ProductionPage.Character -> production.findAsset(page.assetId)?.kind == AssetKind.CHARACTER
+        is ProductionPage.Character -> production.findAsset(page.assetId)?.let { it.kind != AssetKind.SOUND } == true
         is ProductionPage.Shot -> production.findShot(page.episodeId, page.shotCode) != null ||
             (awaitingNewShot && index == stack.lastIndex)
         null -> false
@@ -285,7 +298,7 @@ fun ProductionPanelContent(
     var outputFilter by rememberSaveable(production.id) { mutableStateOf(OutputFilter.ALL) }
     var detailInitialTab by rememberSaveable(production.id) { mutableStateOf(initialShotTab) }
     var pageStack by rememberSaveable(production.id) { mutableStateOf(initialProductionPageStack(production, initialShot, initialAssetId)) }
-    var openSheetAssetId by rememberSaveable(production.id) { mutableStateOf(initialAssetId?.takeIf { production.findAsset(it)?.kind != AssetKind.CHARACTER }) }
+    var openSheetAssetId by rememberSaveable(production.id) { mutableStateOf(initialAssetId?.takeIf { production.findAsset(it)?.kind == AssetKind.SOUND }) }
     val signals = production.tabSignals()
     var addedShotAtRevision by rememberSaveable(production.id) { mutableStateOf<Long?>(null) }
     var storyboardEpisodeId by rememberSaveable(production.id) { mutableStateOf(initialShot?.first) }
@@ -395,8 +408,19 @@ fun ProductionPanelContent(
                             val asset = production.findAsset(currentPage.assetId)
                             Column(Modifier.fillMaxSize()) {
                                 error?.let { InfinityStatusStrip(InfinityStatusKind.Error, it, onDismiss = { error = null }, modifier = Modifier.padding(16.dp)) }
-                                if (asset?.kind == AssetKind.CHARACTER) {
-                                    ProductionCharacterPage(asset, production, busy, { pageStack = pageStack.dropLast(1) }, openShot, run, submit, Modifier.weight(1f))
+                                if (asset != null && asset.kind != AssetKind.SOUND) {
+                                    ProductionCharacterPage(
+                                        asset = asset,
+                                        production = production,
+                                        busy = busy,
+                                        onBack = { pageStack = pageStack.dropLast(1) },
+                                        onShot = openShot,
+                                        onRun = run,
+                                        onSubmit = submit,
+                                        modifier = Modifier.weight(1f),
+                                        channels = channels,
+                                        channelOrder = channelOrder,
+                                    )
                                 }
                             }
                         }
@@ -422,7 +446,7 @@ fun ProductionPanelContent(
                             }
                         }
                         null -> Column(Modifier.fillMaxSize()) {
-                            ProductionHeader(snapshot, onBack, busy, services, run, onResolve = { resolution -> onResolve(resolution).also { error = it } })
+                            ProductionHeader(snapshot, onBack, busy, services, channels, channelOrder, run, onResolve = { resolution -> onResolve(resolution).also { error = it } })
                             ManifestBanner(snapshot.manifest, onResolve = { resolution ->
                                 onResolve(resolution).also { error = it }
                             })
@@ -465,7 +489,7 @@ fun ProductionPanelContent(
                                         production, tasks, busy, services,
                                         onScene = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD },
                                         onAsset = { assetId ->
-                                            if (production.findAsset(assetId)?.kind == AssetKind.CHARACTER) openCharacter(assetId)
+                                            if (production.findAsset(assetId)?.kind != AssetKind.SOUND) openCharacter(assetId)
                                             else openSheetAssetId = assetId
                                         },
                                         onRun = run, onSubmit = submit, onCancelTask = onCancelTask, channels = channels,
@@ -511,13 +535,15 @@ fun ProductionPanelContent(
     }
 }
 
-/** 页头：返回、项目名与一行信息（类型 · 集数 · 镜头数 · 画幅），右侧“更多”菜单。 */
+/** 页头：返回、项目名与一行信息（类型 · 集数 · 镜头数 · 画幅），右侧“更多”菜单（项目视频与参考入参设置、流程与文件）。 */
 @Composable
 private fun ProductionHeader(
     snapshot: ProductionSnapshot,
     onBack: (() -> Unit)?,
     busy: Boolean,
     services: ProductionPanelServices,
+    channels: List<MediaChannel>,
+    channelOrder: List<String>,
     onRun: (ProductionUserAction) -> Unit,
     onResolve: suspend (ManifestResolution) -> String?,
 ) {
@@ -525,9 +551,18 @@ private fun ProductionHeader(
     val episodes = production.episodes()
     val stats = production.shotStats()
     var menu by remember { mutableStateOf(false) }
+    var modelPicker by remember { mutableStateOf(false) }
     var rebuilding by remember { mutableStateOf(false) }
     val locate = LocalWorkspaceMedia.current?.onLocate
     val scope = rememberCoroutineScope()
+    val videoChannels = remember(channels, channelOrder) {
+        channelChoices(channels, channelOrder, ShotMode.REFERENCE)
+            .ifEmpty { channelChoices(channels, channelOrder, ShotMode.TEXT) }
+            .ifEmpty { channels.filter { it.group == MediaGroup.VIDEO }.distinctBy { it.id } }
+    }
+    val selectedChannel = production.defaultVideoChannelId?.let { id -> videoChannels.firstOrNull { it.id == id } }
+        ?: videoChannels.firstOrNull()
+    val effectiveMode = production.effectiveReferenceInputMode(selectedChannel)
     ProductionTopBar(
         title = production.title,
         meta = listOfNotNull(
@@ -547,38 +582,162 @@ private fun ProductionHeader(
         }
     }
     if (menu) {
+        val scheme = MaterialTheme.colorScheme
         InfinityBottomSheet(show = true, onDismiss = { menu = false }, title = production.title, scrollContent = true) {
-            Column(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Small)) {
-                ProductionRow(
-                    stringResource(R.string.p2_media_models),
-                    icon = Icons.Rounded.Hub,
-                    enabled = services.onOpenMediaModels != null,
-                    onClick = services.onOpenMediaModels?.let { open -> { menu = false; open() } },
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Small),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+            ) {
+                ProductionSection(stringResource(R.string.p2_video_settings_section)) {
+                    val valueSegments = when {
+                        production.defaultVideoChannelId == null -> listOf(stringResource(R.string.p2_follow_global_default))
+                        selectedChannel != null -> services.channelLabelSegments(selectedChannel.id)
+                        else -> listOf(production.defaultVideoChannelId)
+                    }
+                    val subtitleSegments = listOfNotNull(
+                        selectedChannel?.capabilities?.maxImages?.takeIf { it > 0 }?.let {
+                            stringResource(R.string.p2_channel_max_images, it)
+                        },
+                        selectedChannel?.let { ch ->
+                            stringResource(
+                                if (ch.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_recommend_sheet
+                                else R.string.p2_recommend_separate,
+                            )
+                        },
+                    )
+                    ProductionRow(
+                        title = stringResource(R.string.p2_default_video_model),
+                        icon = Icons.Rounded.Hub,
+                        subtitleSegments = subtitleSegments.takeIf { it.isNotEmpty() },
+                        subtitleMaxLines = 2,
+                        valueSegments = valueSegments,
+                        enabled = !busy && videoChannels.isNotEmpty(),
+                        onClick = { modelPicker = true },
+                    )
+                    HorizontalDivider(
+                        Modifier.padding(horizontal = InfinitySpacing.RowHorizontal),
+                        color = scheme.outlineVariant.copy(alpha = 0.45f),
+                    )
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.p2_reference_input_mode),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = scheme.onSurface,
+                        )
+                        InfinitySegmentedControl(
+                            segments = listOf(
+                                InfinitySegment(ReferenceInputMode.SHEET, stringResource(R.string.p2_input_mode_sheet)),
+                                InfinitySegment(ReferenceInputMode.SEPARATE, stringResource(R.string.p2_input_mode_separate)),
+                            ),
+                            selected = effectiveMode,
+                            onSelect = { mode ->
+                                onRun(ProductionUserAction.SetVideoSettings(production.defaultVideoChannelId, mode))
+                            },
+                            enabled = !busy,
+                            fillWidth = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = scheme.surfaceContainerHigh.copy(alpha = 0.72f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = scheme.primary,
+                                    modifier = Modifier.padding(top = 1.dp).size(16.dp),
+                                )
+                                Text(
+                                    text = stringResource(R.string.p2_reference_input_mode_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(
+                        Modifier.padding(horizontal = InfinitySpacing.RowHorizontal),
+                        color = scheme.outlineVariant.copy(alpha = 0.45f),
+                    )
+                    ProductionRow(
+                        title = stringResource(R.string.p2_manage_media_models),
+                        icon = Icons.Rounded.SwapHoriz,
+                        enabled = services.onOpenMediaModels != null,
+                        onClick = services.onOpenMediaModels?.let { open -> { menu = false; open() } },
+                    )
+                }
+                ProductionSection(stringResource(R.string.p2_workflow_and_files)) {
+                    ProductionRow(
+                        stringResource(R.string.p2_experimental),
+                        icon = Icons.Rounded.Science,
+                        subtitle = stringResource(R.string.p2_experimental_detail),
+                        chevron = false,
+                        enabled = !busy,
+                        trailing = { InfinitySwitch(checked = production.experimental, onCheckedChange = null, enabled = !busy) },
+                        role = Role.Switch,
+                        onClick = { onRun(ProductionUserAction.SetExperimental(!production.experimental)) },
+                    )
+                    if (locate != null) ProductionRow(
+                        stringResource(R.string.p2_open_in_files),
+                        icon = Icons.Rounded.FolderOpen,
+                        subtitle = production.rootPath,
+                        subtitleMaxLines = 1,
+                        onClick = { menu = false; locate(production.rootPath) },
+                    )
+                    if (snapshot.manifest is ManifestSync.ExternalChange) ProductionRow(
+                        stringResource(R.string.p2_rebuild_from_manifest),
+                        icon = Icons.Rounded.Restore,
+                        enabled = !busy,
+                        onClick = { menu = false; rebuilding = true },
+                    )
+                }
+            }
+        }
+    }
+    if (modelPicker) {
+        val options = buildList {
+            add(
+                ProductionChoice(
+                    value = "",
+                    label = stringResource(R.string.p2_follow_global_default),
+                    detail = videoChannels.firstOrNull()?.let { services.channelLabelSegments(it.id).formatChannelLabel() },
+                ),
+            )
+            videoChannels.forEach { channel ->
+                val rec = stringResource(
+                    if (channel.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_recommend_sheet
+                    else R.string.p2_recommend_separate,
                 )
-                ProductionRow(
-                    stringResource(R.string.p2_experimental),
-                    icon = Icons.Rounded.Science,
-                    subtitle = stringResource(R.string.p2_experimental_detail),
-                    chevron = false,
-                    enabled = !busy,
-                    trailing = { InfinitySwitch(checked = production.experimental, onCheckedChange = null, enabled = !busy) },
-                    role = Role.Switch,
-                    onClick = { onRun(ProductionUserAction.SetExperimental(!production.experimental)) },
-                )
-                if (locate != null) ProductionRow(
-                    stringResource(R.string.p2_open_in_files),
-                    icon = Icons.Rounded.FolderOpen,
-                    subtitle = production.rootPath,
-                    subtitleMaxLines = 1,
-                    onClick = { menu = false; locate(production.rootPath) },
-                )
-                if (snapshot.manifest is ManifestSync.ExternalChange) ProductionRow(
-                    stringResource(R.string.p2_rebuild_from_manifest),
-                    icon = Icons.Rounded.Restore,
-                    enabled = !busy,
-                    onClick = { menu = false; rebuilding = true },
+                add(
+                    ProductionChoice(
+                        value = channel.id,
+                        label = channel.id,
+                        labelSegments = services.channelLabelSegments(channel.id),
+                        detail = rec,
+                    ),
                 )
             }
+        }
+        ProductionChoiceSheet(
+            title = stringResource(R.string.p2_default_video_model),
+            options = options,
+            selected = production.defaultVideoChannelId.orEmpty(),
+            onDismiss = { modelPicker = false },
+            emptyText = stringResource(R.string.p2_no_channels),
+        ) { chosenId ->
+            val targetId = chosenId.takeIf { it.isNotEmpty() }
+            val chosen = targetId?.let { id -> videoChannels.firstOrNull { it.id == id } }
+            val recMode = chosen?.capabilities?.characterReferenceMode?.toReferenceInputMode()
+            onRun(ProductionUserAction.SetVideoSettings(targetId, recMode))
         }
     }
     if (rebuilding) {
