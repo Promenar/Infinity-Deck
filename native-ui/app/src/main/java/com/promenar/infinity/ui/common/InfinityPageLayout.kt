@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -29,14 +31,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTheme
+import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,8 +62,15 @@ fun InfinityPageLayout(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    // 可滚动页的正文从毛玻璃顶栏下滚过；不可滚动页（终端等）正文仍从顶栏下沿开始。
-    val backdrop = rememberBackdropSource(enabled = showTopBar && scrollable)
+    val frostedSurface = LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED
+    // 可滚动页且处于毛玻璃材质时，正文从毛玻璃顶栏下滚过；环境光实底档关闭实时录制，正文保留可透视延伸几何并在顶栏层覆盖实底。
+    val backdrop = rememberBackdropSource(enabled = showTopBar && scrollable && frostedSurface)
+    val underTopBar = showTopBar && scrollable
+    val topDividerAlpha by animateFloatAsState(
+        targetValue = if (scrollBehavior.state.overlappedFraction > 0.01f) 1f else 0f,
+        animationSpec = tween(150),
+        label = "infinity_page_top_divider",
+    )
     // 检视器是会话内的浮动卡片，不贴系统栏，不再留系统栏内边距。
     val insets = if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) WindowInsets(0) else WindowInsets.systemBars
 
@@ -66,9 +78,9 @@ fun InfinityPageLayout(
         modifier = modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (LocalFrostedChromeMaterial.current != null) Color.Transparent else MaterialTheme.colorScheme.background,
         topBar = {
-            if (showTopBar) FrostedTopBar(backdrop) { TopAppBar(
+            if (showTopBar) FrostedTopBar(backdrop, bottomEdgeAlpha = topDividerAlpha) { TopAppBar(
                 title = {
                     if (titleContent != null) titleContent() else Column(modifier = Modifier.padding(start = if (onBack != null) 0.dp else 4.dp)) {
                         InfinityHeaderTitle(
@@ -105,8 +117,6 @@ fun InfinityPageLayout(
     ) { paddingValues ->
         val layoutDirection = LocalLayoutDirection.current
         val topInset = paddingValues.calculateTopPadding()
-        // 正文延伸到毛玻璃顶栏后方时，顶栏高度改为滚动内容的上留白。
-        val underTopBar = backdrop != null
         Box(
             modifier = Modifier
                 .fillMaxSize()

@@ -26,10 +26,12 @@ fun BettboxListGroup(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(20.dp)
+    val chrome = LocalFrostedChromeMaterial.current
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = chrome?.innerCard ?: MaterialTheme.colorScheme.surfaceContainerLow,
+        border = chrome?.innerCardBorder,
     ) {
         // 组内行等高：有一行带副标题，其余单行项也取双行高。
         ProvideGroupedPress { ProvideUniformRowHeight { Column(content = content) } }
@@ -49,9 +51,10 @@ fun ProvideGroupedPress(content: @Composable () -> Unit) {
 @Composable
 fun Modifier.bettboxListGroup(): Modifier {
     val shape = RoundedCornerShape(20.dp)
+    val cardColor = LocalFrostedChromeMaterial.current?.innerCard ?: MaterialTheme.colorScheme.surfaceContainerLow
     return this
         .clip(shape)
-        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+        .background(cardColor)
 }
 
 /**
@@ -61,6 +64,7 @@ fun Modifier.bettboxListGroup(): Modifier {
 @Composable
 fun Modifier.bettboxListGroupItem(index: Int, count: Int): Modifier {
     val radius = 20.dp
+    val cardColor = LocalFrostedChromeMaterial.current?.innerCard ?: MaterialTheme.colorScheme.surfaceContainerLow
     val shape = RoundedCornerShape(
         topStart = if (index == 0) radius else 0.dp,
         topEnd = if (index == 0) radius else 0.dp,
@@ -69,5 +73,5 @@ fun Modifier.bettboxListGroupItem(index: Int, count: Int): Modifier {
     )
     return this
         .clip(shape)
-        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+        .background(cardColor)
 }

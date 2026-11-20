@@ -73,7 +73,7 @@ fun InfinityTabHeader(
     Column(
         modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
+            .then(if (LocalFrostedChromeMaterial.current != null) Modifier else Modifier.background(MaterialTheme.colorScheme.background))
             .windowInsetsPadding(WindowInsets.statusBars),
     ) {
         Row(

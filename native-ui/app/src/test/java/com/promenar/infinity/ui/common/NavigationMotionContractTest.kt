@@ -129,7 +129,9 @@ class NavigationMotionContractTest {
 
         val pages = read("app/src/main/java/com/promenar/infinity/navigation/PageTransitions.kt")
         assertThat(pages).contains("modifier = modifier.clipToBounds(),")
-        assertThat(pages).contains(".background(background),")
+        assertThat(pages).contains("val chrome = LocalFrostedChromeMaterial.current")
+        assertThat(pages).contains("chrome == null -> background")
+        assertThat(pages).contains(".background(frameBackground),")
         assertThat(pages).contains("propagateMinConstraints = true,")
 
         val motion = source("theme/Motion.kt")

@@ -24,7 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 
 /** 宽屏设置右列的根层页面为 true：页面仍有标题，但不画返回按钮，离开它靠左列或主导航。 */
 val LocalInfinitySettingsPaneRoot = compositionLocalOf { false }
@@ -66,7 +68,12 @@ fun InfinitySettingsPageLayout(
 ) {
     val embedded = LocalInfinitySettingsEmbedded.current
     if (embedded != null) {
-        Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val inFloatingChrome = LocalFrostedChromeMaterial.current != null
+        Box(
+            modifier
+                .fillMaxSize()
+                .then(if (inFloatingChrome) Modifier else Modifier.background(MaterialTheme.colorScheme.background)),
+        ) {
             CompositionLocalProvider(LocalInfinitySettingsEmbedded provides null) {
                 content(
                     PaddingValues(
@@ -80,17 +87,18 @@ fun InfinitySettingsPageLayout(
         }
         return
     }
-    // 标准顶栏是毛玻璃：正文录进背景来源，从顶栏下滚过时透出模糊内容。主标签页自定义页头不参与。
-    val frosted = if (header != null) headerFrosted else showTopBar
+    // 标准顶栏在毛玻璃材质下录进背景来源，从顶栏下滚过时透出熏黑模糊内容；环境光档关闭录制并切至熏黑实底。主标签页自定义页头不参与。
+    val frosted = (if (header != null) headerFrosted else showTopBar) &&
+        LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED
     val backdrop = rememberBackdropSource(enabled = frosted)
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (LocalFrostedChromeMaterial.current != null) Color.Transparent else MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.systemBars,
         topBar = {
             if (header != null) {
-                if (headerFrosted) FrostedTopBar(backdrop) { header() } else header()
-            } else if (showTopBar) FrostedTopBar(backdrop) {
+                if (headerFrosted) FrostedTopBar(backdrop, bottomEdgeAlpha = 1f) { header() } else header()
+            } else if (showTopBar) FrostedTopBar(backdrop, bottomEdgeAlpha = 1f) {
                 if (search != null) InfinitySearchTopBar(
                     title = title,
                     search = search,

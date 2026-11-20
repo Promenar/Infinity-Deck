@@ -97,11 +97,19 @@ import com.promenar.infinity.navigation.isPaneRootEntry
 import com.promenar.infinity.navigation.trackSettingsPaneStack
 import com.promenar.infinity.ui.MainTabsState
 import com.promenar.infinity.ui.chat.LocalChatNavigationIcon
+import com.promenar.infinity.ui.common.FrostedChromeBackdropLayer
+import com.promenar.infinity.ui.common.FrostedChromeRole
+import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
+import com.promenar.infinity.ui.common.backdropSource
 import com.promenar.infinity.ui.common.motion.MotionPalette
 import com.promenar.infinity.ui.common.motion.rememberMotionClock
 import com.promenar.infinity.ui.common.motion.rememberMotionPalette
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
+import com.promenar.infinity.ui.common.rememberBackdropSource
+import com.promenar.infinity.ui.common.rememberFrostedChromeMaterial
+import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
 import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.selectionIndicator
 import kotlin.math.PI
@@ -379,8 +387,12 @@ internal fun HubThreePaneLayout(
         val drawerWidthPx = with(density) { HubDrawerWidth.toPx() }
         val background = MaterialTheme.colorScheme.background
         val divider = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        val drawerChrome = rememberFrostedChromeMaterial(FrostedChromeRole.FLOATING_DRAWER)
+        val drawerBackdrop = rememberBackdropSource(
+            enabled = drawerShown && LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED,
+        )
 
-        // 列表：三列时在导航栏右侧；展开时随整排左移淡出；窄列表打开时同一份列表移到左缘浮在会话之上。
+        // 列表：三列时在导航栏右侧；展开时随整排左移淡出；窄列表打开时同一份列表移到左缘浮在会话之上并启用熏黑毛玻璃（或环境光实底）。
         Box(
             Modifier
                 .offset(x = if (drawerShown) 0.dp else geometry.listStart)
@@ -400,43 +412,63 @@ internal fun HubThreePaneLayout(
                         shadowElevation = 0f
                     }
                 }
-                .background(background)
+                .then(if (drawerShown) Modifier else Modifier.background(background))
                 .testTag(HubThreePaneTags.LIST),
-        ) { list() }
-
-        if (stripShown) {
-            Box(
-                Modifier
-                    .width(HubSessionStripWidth)
-                    .fillMaxHeight()
-                    .zIndex(1f)
-                    .graphicsLayer { alpha = expansion() }
-                    .testTag(HubThreePaneTags.STRIP),
-            ) { strip() }
+        ) {
+            if (drawerShown) {
+                FrostedChromeBackdropLayer(
+                    source = drawerBackdrop,
+                    material = drawerChrome,
+                    highlightHeight = 48.dp,
+                    rightEdgeBorder = true,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+            CompositionLocalProvider(LocalFrostedChromeMaterial provides drawerChrome.takeIf { drawerShown }) {
+                list()
+            }
         }
 
-        Box(
-            Modifier
-                .offset(x = geometry.detailStart)
-                .width(geometry.detailWidth)
-                .fillMaxHeight()
-                .zIndex(2f)
-                .graphicsLayer { translationX = geometry.detailTranslation(expansion()).toPx() }
-                .background(background)
-                .drawWithContent {
-                    drawContent()
-                    drawLine(divider, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
-                }
-                .testTag(HubThreePaneTags.DETAIL),
-        ) { detail() }
+        Box(Modifier.fillMaxSize().zIndex(1f).backdropSource(drawerBackdrop)) {
+            if (stripShown) {
+                Box(
+                    Modifier
+                        .width(HubSessionStripWidth)
+                        .fillMaxHeight()
+                        .zIndex(1f)
+                        .graphicsLayer { alpha = expansion() }
+                        .testTag(HubThreePaneTags.STRIP),
+                ) { strip() }
+            }
+
+            Box(
+                Modifier
+                    .offset(x = geometry.detailStart)
+                    .width(geometry.detailWidth)
+                    .fillMaxHeight()
+                    .zIndex(2f)
+                    .graphicsLayer { translationX = geometry.detailTranslation(expansion()).toPx() }
+                    .background(background)
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(divider, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1.dp.toPx())
+                    }
+                    .testTag(HubThreePaneTags.DETAIL),
+            ) { detail() }
+        }
 
         if (drawerShown) {
+            val scrimAlpha = if (drawerChrome.isFrosted) {
+                if (MaterialTheme.infinityDomainColors.isDark) 0.24f else 0.18f
+            } else {
+                0.32f
+            }
             Box(
                 Modifier
                     .fillMaxSize()
                     .zIndex(3f)
                     .graphicsLayer { alpha = drawerProgress() }
-                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = scrimAlpha))
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismissDrawer)
                     .testTag(HubThreePaneTags.SCRIM),
             )

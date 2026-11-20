@@ -3,24 +3,33 @@ package com.promenar.infinity.ui.common
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Shader
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -31,9 +40,17 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
+import com.promenar.infinity.ui.theme.InfinityObsidianGlassTint
+import com.promenar.infinity.ui.theme.InfinityObsidianSolidChip
+import com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
+import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.roundToInt
 
 /** 毛玻璃背景模糊半径；饱和度略微提高，模糊后的正文颜色不发灰。 */
@@ -135,19 +152,266 @@ private fun frostedRenderEffect(radiusPx: Float): RenderEffect {
     ).asComposeRenderEffect()
 }
 
-/** 二级页顶栏叠在模糊正文上的底色不透明度：内容从顶栏下滚过时隐约可见，标题仍清晰。 */
-private const val FrostedHeaderTintAlpha = 0.55f
+/** 使用统一熏黑毛玻璃 / 环境光材质体系的界面角色。 */
+enum class FrostedChromeRole {
+    TOP_BAR,
+    FLOATING_INSPECTOR,
+    FLOATING_STRIP,
+    FLOATING_DRAWER,
+}
 
 /**
- * 二级页毛玻璃顶栏容器：顶栏本身用透明底色放在 [content] 里，背后画 [source] 的模糊正文与半透明页面底色。
- * 正文需挂 [backdropSource] 并从顶栏下方延伸到屏幕顶端，才能看到滚过的内容。
+ * 界面外框与顶栏的表面材质规格：
+ * 在毛玻璃材质下提供熏黑（[InfinityObsidianGlassTint]）或冷白（[InfinityPureWhite]）半透遮罩、外描边、顶缘内高光与内嵌半透芯片；
+ * 在环境光省电档下同步降级为熏黑实底（[InfinityObsidianSolidContainer]、芯片 [InfinityObsidianSolidChip]）。
+ */
+@Immutable
+data class FrostedChromeMaterial(
+    val container: Color,
+    val frostedTint: Color?,
+    val border: BorderStroke?,
+    val topHighlight: Color?,
+    val innerCard: Color,
+    val innerCardBorder: BorderStroke?,
+    val edgeDivider: Color,
+    val isFrosted: Boolean,
+)
+
+/** 当前悬浮面板向下传递的外框材质；固定或全屏实底页面时为 null。 */
+val LocalFrostedChromeMaterial = staticCompositionLocalOf<FrostedChromeMaterial?> { null }
+
+/** 按角色与主题档位解析与输入浮岛视觉对齐的材质规格。 */
+internal fun resolveFrostedChromeMaterial(
+    role: FrostedChromeRole,
+    scheme: ColorScheme,
+    dark: Boolean,
+    surface: ComposerSurfaceStyle,
+): FrostedChromeMaterial {
+    fun hairline(color: Color, alpha: Float, width: Dp = 1.dp) = BorderStroke(width, color.copy(alpha = alpha))
+
+    if (surface == ComposerSurfaceStyle.FROSTED) {
+        return when (role) {
+            FrostedChromeRole.TOP_BAR -> if (dark) {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.76f),
+                    border = null,
+                    topHighlight = null,
+                    innerCard = InfinityPureWhite.copy(alpha = 0.07f),
+                    innerCardBorder = hairline(InfinityPureWhite, 0.10f, 0.5.dp),
+                    edgeDivider = InfinityPureWhite.copy(alpha = 0.10f),
+                    isFrosted = true,
+                )
+            } else {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityPureWhite.copy(alpha = 0.78f),
+                    border = null,
+                    topHighlight = null,
+                    innerCard = scheme.onSurface.copy(alpha = 0.05f),
+                    innerCardBorder = hairline(scheme.outlineVariant, 0.42f, 0.5.dp),
+                    edgeDivider = scheme.outlineVariant.copy(alpha = 0.45f),
+                    isFrosted = true,
+                )
+            }
+
+            FrostedChromeRole.FLOATING_INSPECTOR -> if (dark) {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.82f),
+                    border = hairline(InfinityPureWhite, 0.12f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.14f),
+                    innerCard = InfinityPureWhite.copy(alpha = 0.07f),
+                    innerCardBorder = hairline(InfinityPureWhite, 0.08f, 0.5.dp),
+                    edgeDivider = InfinityPureWhite.copy(alpha = 0.10f),
+                    isFrosted = true,
+                )
+            } else {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityPureWhite.copy(alpha = 0.82f),
+                    border = hairline(scheme.outlineVariant, 0.45f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.92f),
+                    innerCard = scheme.onSurface.copy(alpha = 0.05f),
+                    innerCardBorder = hairline(scheme.outlineVariant, 0.42f, 0.5.dp),
+                    edgeDivider = scheme.outlineVariant.copy(alpha = 0.45f),
+                    isFrosted = true,
+                )
+            }
+
+            FrostedChromeRole.FLOATING_STRIP -> if (dark) {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.78f),
+                    border = hairline(InfinityPureWhite, 0.12f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.14f),
+                    innerCard = InfinityPureWhite.copy(alpha = 0.06f),
+                    innerCardBorder = hairline(InfinityPureWhite, 0.08f, 0.5.dp),
+                    edgeDivider = InfinityPureWhite.copy(alpha = 0.10f),
+                    isFrosted = true,
+                )
+            } else {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityPureWhite.copy(alpha = 0.78f),
+                    border = hairline(scheme.outlineVariant, 0.45f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.92f),
+                    innerCard = scheme.onSurface.copy(alpha = 0.05f),
+                    innerCardBorder = hairline(scheme.outlineVariant, 0.42f, 0.5.dp),
+                    edgeDivider = scheme.outlineVariant.copy(alpha = 0.45f),
+                    isFrosted = true,
+                )
+            }
+
+            FrostedChromeRole.FLOATING_DRAWER -> if (dark) {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.82f),
+                    border = hairline(InfinityPureWhite, 0.12f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.10f),
+                    innerCard = InfinityPureWhite.copy(alpha = 0.08f),
+                    innerCardBorder = hairline(InfinityPureWhite, 0.09f, 0.5.dp),
+                    edgeDivider = InfinityPureWhite.copy(alpha = 0.12f),
+                    isFrosted = true,
+                )
+            } else {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityPureWhite.copy(alpha = 0.82f),
+                    border = hairline(scheme.outlineVariant, 0.45f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.92f),
+                    innerCard = scheme.onSurface.copy(alpha = 0.06f),
+                    innerCardBorder = hairline(scheme.outlineVariant, 0.45f, 0.5.dp),
+                    edgeDivider = scheme.outlineVariant.copy(alpha = 0.45f),
+                    isFrosted = true,
+                )
+            }
+        }
+    }
+
+    val isHeader = role == FrostedChromeRole.TOP_BAR
+    return if (dark) {
+        FrostedChromeMaterial(
+            container = InfinityObsidianSolidContainer,
+            frostedTint = null,
+            border = if (isHeader) null else hairline(InfinityPureWhite, 0.13f),
+            topHighlight = if (isHeader) null else InfinityPureWhite.copy(alpha = 0.14f),
+            innerCard = InfinityObsidianSolidChip,
+            innerCardBorder = hairline(InfinityPureWhite, 0.08f, 0.5.dp),
+            edgeDivider = InfinityPureWhite.copy(alpha = 0.12f),
+            isFrosted = false,
+        )
+    } else {
+        FrostedChromeMaterial(
+            container = scheme.surfaceContainerLowest,
+            frostedTint = null,
+            border = if (isHeader) null else hairline(scheme.outlineVariant, 0.56f),
+            topHighlight = null,
+            innerCard = scheme.surfaceContainerLow,
+            innerCardBorder = hairline(scheme.outlineVariant, 0.45f, 0.5.dp),
+            edgeDivider = scheme.outlineVariant.copy(alpha = 0.50f),
+            isFrosted = false,
+        )
+    }
+}
+
+@Composable
+fun rememberFrostedChromeMaterial(role: FrostedChromeRole): FrostedChromeMaterial = resolveFrostedChromeMaterial(
+    role = role,
+    scheme = MaterialTheme.colorScheme,
+    dark = MaterialTheme.infinityDomainColors.isDark,
+    surface = LocalInfinityMotionStyles.current.surface,
+)
+
+/**
+ * 在容器最底层绘制实时模糊底 + 熏黑/冷白半透遮罩（或环境光实底），并叠加可选的顶缘内高光、
+ * 单侧右缘亮边（用于贴屏幕左缘抽屉）与底缘分割细线。纯装饰不进入无障碍树。
  */
 @Composable
-fun FrostedTopBar(source: BackdropSource?, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+fun FrostedChromeBackdropLayer(
+    source: BackdropSource?,
+    material: FrostedChromeMaterial,
+    modifier: Modifier = Modifier,
+    highlightHeight: Dp = 48.dp,
+    rightEdgeBorder: Boolean = false,
+    bottomHairlineAlpha: Float = 0f,
+) {
+    val bottomAlphaState = rememberUpdatedState(bottomHairlineAlpha.coerceIn(0f, 1f))
+    val borderStroke = material.border
+    val borderColor = (borderStroke?.brush as? SolidColor)?.value ?: Color.Transparent
+    val borderWidth = borderStroke?.width ?: 0.dp
+    val edgeDivider = material.edgeDivider
+
+    Box(modifier.clearAndSetSemantics {}) {
+        if (material.frostedTint != null) {
+            FrostedBackdrop(
+                source = source,
+                tint = material.frostedTint,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else {
+            Spacer(Modifier.matchParentSize().background(material.container))
+        }
+        Spacer(
+            Modifier
+                .matchParentSize()
+                .drawWithCache {
+                    val hiPx = highlightHeight.toPx().coerceAtMost(size.height)
+                    val hiBrush = material.topHighlight?.takeIf { hiPx > 0f }?.let {
+                        Brush.verticalGradient(
+                            0f to it,
+                            1f to Color.Transparent,
+                            startY = 0f,
+                            endY = hiPx,
+                        )
+                    }
+                    val rightBorderPx = if (rightEdgeBorder) borderWidth.toPx() else 0f
+                    val hairlinePx = 0.75.dp.toPx()
+                    onDrawBehind {
+                        if (hiBrush != null) {
+                            drawRect(brush = hiBrush, size = Size(size.width, hiPx))
+                        }
+                        if (rightBorderPx > 0f && borderColor.alpha > 0f) {
+                            drawLine(
+                                color = borderColor,
+                                start = Offset(size.width - rightBorderPx / 2f, 0f),
+                                end = Offset(size.width - rightBorderPx / 2f, size.height),
+                                strokeWidth = rightBorderPx,
+                            )
+                        }
+                        val bottomAlpha = bottomAlphaState.value
+                        if (bottomAlpha > 0f) {
+                            drawLine(
+                                color = edgeDivider.copy(alpha = edgeDivider.alpha * bottomAlpha),
+                                start = Offset(0f, size.height - hairlinePx / 2f),
+                                end = Offset(size.width, size.height - hairlinePx / 2f),
+                                strokeWidth = hairlinePx,
+                            )
+                        }
+                    }
+                },
+        )
+    }
+}
+
+/**
+ * 全站毛玻璃顶栏容器：顶栏本身用透明底色放在 [content] 里，背后画与输入浮岛同源的熏黑/冷白磨砂层
+ * （或在环境光省电档下降级为熏黑实底）；正文需挂 [backdropSource] 并从顶栏下方延伸到屏幕顶端。
+ */
+@Composable
+fun FrostedTopBar(
+    source: BackdropSource?,
+    modifier: Modifier = Modifier,
+    bottomEdgeAlpha: Float = 0f,
+    content: @Composable () -> Unit,
+) {
+    val material = rememberFrostedChromeMaterial(FrostedChromeRole.TOP_BAR)
     Box(modifier) {
-        FrostedBackdrop(
+        FrostedChromeBackdropLayer(
             source = source,
-            tint = MaterialTheme.colorScheme.background.copy(alpha = FrostedHeaderTintAlpha),
+            material = material,
+            highlightHeight = 0.dp,
+            bottomHairlineAlpha = bottomEdgeAlpha,
             modifier = Modifier.matchParentSize(),
         )
         content()

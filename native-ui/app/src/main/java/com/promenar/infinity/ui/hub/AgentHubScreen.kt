@@ -686,7 +686,7 @@ internal fun AgentHubScreenContent(
     }
     Scaffold(
         modifier = Modifier.testTag(UiTags.HUB_ROOT),
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = if (LocalFrostedChromeMaterial.current != null) Color.Transparent else MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -1008,6 +1008,7 @@ private fun HubSessionRow(
     val time = remember(session.updatedAt) {
         formatHubSessionTime(session.updatedAt, System.currentTimeMillis())
     }
+    val chrome = LocalFrostedChromeMaterial.current
     Box {
         InfinitySettingsRowLayout(
             title = session.title.ifBlank { stringResource(R.string.hub_session_untitled) },
@@ -1017,7 +1018,7 @@ private fun HubSessionRow(
             modifier = Modifier
                 .testTag(tag)
                 // 内屏三列：会话列正在显示的会话与设置目录的选中项同样高亮。
-                .then(if (selected) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+                .then(if (selected) Modifier.background(chrome?.innerCard ?: MaterialTheme.colorScheme.secondaryContainer) else Modifier)
                 .semantics {
                     if (selected) this.selected = true
                     listOfNotNull(branchState.takeIf { isBranch }, pinnedState.takeIf { session.isPinned }, activityState)

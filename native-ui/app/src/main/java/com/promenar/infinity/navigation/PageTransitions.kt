@@ -53,6 +53,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
 import com.promenar.infinity.ui.theme.InfinityMotion
 
 /**
@@ -231,11 +232,18 @@ private fun PageFrame(scope: AnimatedContentScope, entryId: String, content: @Co
     ) { state ->
         if (state == EnterExitState.Visible || layers?.layerOf(entryId) != PageLayer.UNDER) 0f else 1f
     }
+    val chrome = LocalFrostedChromeMaterial.current
+    val transitioning = transition.currentState != transition.targetState
+    val layer = layers?.layerOf(entryId) ?: PageLayer.NONE
+    val frameBackground = when {
+        chrome == null -> background
+        transitioning && layer == PageLayer.TOP -> chrome.frostedTint?.copy(alpha = 0.94f) ?: chrome.container
+        else -> Color.Transparent
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .drawWithContent {
-                val layer = layers?.layerOf(entryId) ?: PageLayer.NONE
                 if (layer == PageLayer.TOP && transition.currentState != transition.targetState) {
                     val width = InfinityMotion.PageEdgeShadowWidthDp.dp.toPx()
                     drawRect(
@@ -252,7 +260,7 @@ private fun PageFrame(scope: AnimatedContentScope, entryId: String, content: @Co
                 val amount = if (layer == PageLayer.UNDER) dim.value else 0f
                 if (amount > 0f) drawRect(Color.Black.copy(alpha = maxDim * amount))
             }
-            .background(background),
+            .background(frameBackground),
         contentAlignment = Alignment.TopStart,
         propagateMinConstraints = true,
     ) { content() }

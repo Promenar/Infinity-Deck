@@ -1007,10 +1007,12 @@ fun ChatScreenContent(
             summary = hubSummaries::get,
             onOpen = openHubPage,
         )
-        // 会话列表把自己录进背景来源：毛玻璃顶栏始终使用；输入浮岛只在毛玻璃材质下使用。
-        val chatBackdrop = com.promenar.infinity.ui.common.rememberBackdropSource()
+        // 会话列表把自己录进背景来源：仅在毛玻璃材质下启用录制；环境光省电档跳过背景录制，顶栏/悬浮检视器/胶囊条/浮岛同步切至实底。
         val composerSurface = LocalInfinityMotionStyles.current.surface
-        val composerBackdrop = chatBackdrop.takeIf { composerSurface == com.promenar.infinity.ui.theme.ComposerSurfaceStyle.FROSTED }
+        val chatBackdrop = com.promenar.infinity.ui.common.rememberBackdropSource(
+            enabled = composerSurface == com.promenar.infinity.ui.theme.ComposerSurfaceStyle.FROSTED,
+        )
+        val composerBackdrop = chatBackdrop
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
@@ -1806,6 +1808,8 @@ fun ChatScreenContent(
                             widened = inspectorWidened,
                             onToggleWiden = { inspectorWidened = !inspectorWidened },
                             onCollapse = { actions.onSetInspectorPages(emptyList()) },
+                            floating = inspectorFloats,
+                            backdrop = chatBackdrop,
                             onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
                         ) {
                             // 跨组换页签整体横向过渡；同组（文件、Git、浏览器）由页面层自己过渡，页面层只组合一份。
@@ -1917,6 +1921,7 @@ fun ChatScreenContent(
                                     ),
                                 )
                             },
+                            backdrop = chatBackdrop,
                             onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
                         )
                     }
@@ -2895,8 +2900,13 @@ internal fun ChatTopBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         modifier = Modifier.testTag("chat_top_bar"),
     )
-    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant,
-        modifier = Modifier.align(Alignment.BottomCenter).alpha(dividerAlpha))
+    HorizontalDivider(
+        thickness = 0.75.dp,
+        color = com.promenar.infinity.ui.common.rememberFrostedChromeMaterial(
+            com.promenar.infinity.ui.common.FrostedChromeRole.TOP_BAR,
+        ).edgeDivider,
+        modifier = Modifier.align(Alignment.BottomCenter).alpha(dividerAlpha),
+    )
     }
 }
 

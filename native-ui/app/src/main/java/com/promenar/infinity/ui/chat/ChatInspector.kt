@@ -80,9 +80,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.BackdropSource
+import com.promenar.infinity.ui.common.FrostedChromeBackdropLayer
+import com.promenar.infinity.ui.common.FrostedChromeRole
+import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
 import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityPaneTags
+import com.promenar.infinity.ui.common.rememberFrostedChromeMaterial
 import com.promenar.infinity.ui.startup.StartupNotice
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -121,53 +126,75 @@ internal fun ChatInspectorCard(
     onToggleWiden: () -> Unit,
     onCollapse: () -> Unit,
     modifier: Modifier = Modifier,
+    floating: Boolean = false,
+    backdrop: BackdropSource? = null,
     onLockTouch: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val paneLabel = stringResource(R.string.chat_inspector_label)
     val haptics = LocalInfinityHaptics.current
+    val chrome = if (floating) rememberFrostedChromeMaterial(FrostedChromeRole.FLOATING_INSPECTOR) else null
     Surface(
         modifier = modifier.semantics { paneTitle = paneLabel }.testTag(InfinityPaneTags.INSPECTOR),
         shape = InspectorShape,
-        color = MaterialTheme.colorScheme.background,
-        border = inspectorBorder(),
+        color = when {
+            chrome == null -> MaterialTheme.colorScheme.background
+            chrome.frostedTint != null -> Color.Transparent
+            else -> chrome.container
+        },
+        border = chrome?.border ?: inspectorBorder(),
         shadowElevation = 8.dp,
     ) {
-        Column(Modifier.fillMaxSize()) {
-            CompositionLocalProvider(LocalInfinityPanePresentation provides InfinityPanePresentation.Inspector) {
-                Box(Modifier.weight(1f).fillMaxWidth(), content = content)
-            }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-            // 页签与操作都在底栏：展开的内屏双手持握时拇指在下方，不必伸到屏幕顶部；收起留在最右，与边缘条底部的展开按钮同处。
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                // 页签区只用操作按钮之外的宽度：放得下就全部显示（当前页签带名称），放不下时队尾的页签收进“更多”菜单。
-                // 不横向滚动：固定模式下底栏紧贴屏幕底边，横滑会与系统手势冲突，滚动视口也会把最后一个页签切成半截。
-                InspectorTabRow(
-                    entries = entries,
-                    root = root,
-                    onSelect = { entry -> haptics.select(entry.page == root); entry.onOpen() },
-                    modifier = Modifier.weight(1f),
+        Box(Modifier.fillMaxSize()) {
+            if (chrome != null) {
+                FrostedChromeBackdropLayer(
+                    source = backdrop,
+                    material = chrome,
+                    highlightHeight = 56.dp,
+                    modifier = Modifier.matchParentSize(),
                 )
-                // 宽窗口没有运行坞，生成中的触摸锁放在检视器底栏。
-                onLockTouch?.let { TouchLockButton(onLock = it) }
-                IconButton(onClick = { haptics.toggle(!widened); onToggleWiden() }, modifier = Modifier.testTag(ChatInspectorTags.WIDEN)) {
-                    Icon(
-                        if (widened) Icons.Rounded.CloseFullscreen else Icons.Rounded.OpenInFull,
-                        contentDescription = stringResource(if (widened) R.string.chat_inspector_restore_width else R.string.chat_inspector_widen),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
+            }
+            CompositionLocalProvider(LocalFrostedChromeMaterial provides chrome) {
+                Column(Modifier.fillMaxSize()) {
+                    CompositionLocalProvider(LocalInfinityPanePresentation provides InfinityPanePresentation.Inspector) {
+                        Box(Modifier.weight(1f).fillMaxWidth(), content = content)
+                    }
+                    HorizontalDivider(
+                        color = chrome?.edgeDivider?.copy(alpha = 0.7f)
+                            ?: MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                     )
-                }
-                IconButton(onClick = { haptics.toggle(false); onCollapse() }, modifier = Modifier.testTag(ChatInspectorTags.COLLAPSE)) {
-                    Icon(
-                        Icons.Rounded.KeyboardDoubleArrowRight,
-                        contentDescription = stringResource(R.string.chat_inspector_collapse),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // 页签与操作都在底栏：展开的内屏双手持握时拇指在下方，不必伸到屏幕顶部；收起留在最右，与边缘条底部的展开按钮同处。
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        // 页签区只用操作按钮之外的宽度：放得下就全部显示（当前页签带名称），放不下时队尾的页签收进“更多”菜单。
+                        // 不横向滚动：固定模式下底栏紧贴屏幕底边，横滑会与系统手势冲突，滚动视口也会把最后一个页签切成半截。
+                        InspectorTabRow(
+                            entries = entries,
+                            root = root,
+                            onSelect = { entry -> haptics.select(entry.page == root); entry.onOpen() },
+                            modifier = Modifier.weight(1f),
+                        )
+                        // 宽窗口没有运行坞，生成中的触摸锁放在检视器底栏。
+                        onLockTouch?.let { TouchLockButton(onLock = it) }
+                        IconButton(onClick = { haptics.toggle(!widened); onToggleWiden() }, modifier = Modifier.testTag(ChatInspectorTags.WIDEN)) {
+                            Icon(
+                                if (widened) Icons.Rounded.CloseFullscreen else Icons.Rounded.OpenInFull,
+                                contentDescription = stringResource(if (widened) R.string.chat_inspector_restore_width else R.string.chat_inspector_widen),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        IconButton(onClick = { haptics.toggle(false); onCollapse() }, modifier = Modifier.testTag(ChatInspectorTags.COLLAPSE)) {
+                            Icon(
+                                Icons.Rounded.KeyboardDoubleArrowRight,
+                                contentDescription = stringResource(R.string.chat_inspector_collapse),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -271,13 +298,15 @@ private fun InspectorTab(entry: PanelHubEntry, selected: Boolean, showLabel: Boo
         else -> scheme.onSurfaceVariant
     }
     val description = entry.description()
+    val chrome = LocalFrostedChromeMaterial.current
     // 可点的 Surface 自带最小触控尺寸：可见底色 40dp 高，触控高度补足 48dp；宽度至少 48dp。
     // 未被 Agent 调用过的条目灰调显示、不可点按。
     Surface(
         onClick = onClick,
         enabled = entry.available,
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) scheme.surfaceContainerHigh else Color.Transparent,
+        color = if (selected) (chrome?.innerCard ?: scheme.surfaceContainerHigh) else Color.Transparent,
+        border = if (selected) chrome?.innerCardBorder else null,
         modifier = Modifier
             .height(40.dp)
             .widthIn(min = InspectorTabWidth)
@@ -371,56 +400,66 @@ internal fun ChatInspectorStrip(
     entries: List<PanelHubEntry>,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
+    backdrop: BackdropSource? = null,
     onLockTouch: (() -> Unit)? = null,
 ) {
     val haptics = LocalInfinityHaptics.current
+    val chrome = rememberFrostedChromeMaterial(FrostedChromeRole.FLOATING_STRIP)
     Surface(
         modifier = modifier.testTag(InfinityPaneTags.INSPECTOR_STRIP),
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.background,
-        border = inspectorBorder(),
+        color = if (chrome.frostedTint != null) Color.Transparent else chrome.container,
+        border = chrome.border,
         shadowElevation = 6.dp,
     ) {
-        Column(Modifier.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Column(
-                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                entries.forEach { entry ->
-                    val description = entry.description()
-                    val interaction = remember { MutableInteractionSource() }
-                    val tint = if (entry.available) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                    // 不用 IconButton：它把内容裁成 40dp 圆，伸出图标的角标会被切掉；按压圆单独一层画。
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clickable(
-                                interactionSource = interaction,
-                                indication = null,
-                                enabled = entry.available,
-                                role = Role.Button,
-                                onClick = { haptics.toggle(true); entry.onOpen() },
-                            )
-                            .semantics { contentDescription = description }
-                            .testTag(ChatInspectorTags.stripItem(entry.page)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(Modifier.size(40.dp).pressFeedback(interaction, CircleShape))
-                        PanelHubIcon(entry, tint)
+        Box {
+            FrostedChromeBackdropLayer(
+                source = backdrop,
+                material = chrome,
+                highlightHeight = 36.dp,
+                modifier = Modifier.matchParentSize(),
+            )
+            Column(Modifier.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    entries.forEach { entry ->
+                        val description = entry.description()
+                        val interaction = remember { MutableInteractionSource() }
+                        val tint = if (entry.available) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        // 不用 IconButton：它把内容裁成 40dp 圆，伸出图标的角标会被切掉；按压圆单独一层画。
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clickable(
+                                    interactionSource = interaction,
+                                    indication = null,
+                                    enabled = entry.available,
+                                    role = Role.Button,
+                                    onClick = { haptics.toggle(true); entry.onOpen() },
+                                )
+                                .semantics { contentDescription = description }
+                                .testTag(ChatInspectorTags.stripItem(entry.page)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(Modifier.size(40.dp).pressFeedback(interaction, CircleShape))
+                            PanelHubIcon(entry, tint)
+                        }
                     }
                 }
-            }
-            HorizontalDivider(
-                modifier = Modifier.width(24.dp).padding(vertical = 2.dp),
-                color = MaterialTheme.colorScheme.outlineVariant,
-            )
-            onLockTouch?.let { TouchLockButton(onLock = it) }
-            IconButton(onClick = { haptics.toggle(true); onExpand() }, modifier = Modifier.testTag(ChatInspectorTags.EXPAND)) {
-                Icon(
-                    Icons.Rounded.KeyboardDoubleArrowLeft,
-                    contentDescription = stringResource(R.string.chat_inspector_expand),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                HorizontalDivider(
+                    modifier = Modifier.width(24.dp).padding(vertical = 2.dp),
+                    color = chrome.edgeDivider,
                 )
+                onLockTouch?.let { TouchLockButton(onLock = it) }
+                IconButton(onClick = { haptics.toggle(true); onExpand() }, modifier = Modifier.testTag(ChatInspectorTags.EXPAND)) {
+                    Icon(
+                        Icons.Rounded.KeyboardDoubleArrowLeft,
+                        contentDescription = stringResource(R.string.chat_inspector_expand),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

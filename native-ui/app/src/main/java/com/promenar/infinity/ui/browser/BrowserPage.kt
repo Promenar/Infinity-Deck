@@ -100,6 +100,7 @@ import com.promenar.infinity.data.browser.BrowserHandoffReason
 import com.promenar.infinity.data.browser.BrowserMode
 import com.promenar.infinity.data.browser.BrowserUiState
 import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
+import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
 import com.promenar.infinity.ui.common.InfinityPanePresentation
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -140,7 +141,7 @@ fun BrowserPage(sessionId: String, onBack: (() -> Unit)?) {
 @Composable
 internal fun browserPageModifier(): Modifier = Modifier
     .fillMaxSize()
-    .background(MaterialTheme.colorScheme.background)
+    .then(if (LocalFrostedChromeMaterial.current != null) Modifier else Modifier.background(MaterialTheme.colorScheme.background))
     .then(
         if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) Modifier
         else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),

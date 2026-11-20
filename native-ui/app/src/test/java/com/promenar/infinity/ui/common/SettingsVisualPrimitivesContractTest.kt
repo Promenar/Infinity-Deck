@@ -17,7 +17,7 @@ class SettingsVisualPrimitivesContractTest {
         assertThat(source).contains("fun InfinitySettingsPageLayout(")
         assertThat(source).contains("TopAppBar(")
         assertThat(source).contains("InfinityBackButton(")
-        assertThat(source).contains("containerColor = MaterialTheme.colorScheme.background")
+        assertThat(source).contains("containerColor = if (LocalFrostedChromeMaterial.current != null) Color.Transparent else MaterialTheme.colorScheme.background")
         assertThat(source).contains("modifier = modifier.fillMaxSize()")
         assertThat(source).contains("MaterialTheme.typography.titleLarge")
         assertThat(source).doesNotContain("parentTypography.copy(")

@@ -229,6 +229,7 @@ fun BoxScope.InfinityPaneLevel(
     val visibleState = rememberUpdatedState(visible)
     val topState = rememberUpdatedState(top)
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val chrome = LocalFrostedChromeMaterial.current
     AnimatedVisibility(
         visible = visible,
         enter = enter,
@@ -239,8 +240,16 @@ fun BoxScope.InfinityPaneLevel(
         if (back != null) {
             DisposableEffect(back, key) { onDispose { back.dismissed(key) } }
         }
+        val transitioning = transition.currentState != transition.targetState
+        val surfaceColor = when {
+            chrome == null -> MaterialTheme.colorScheme.background
+            transitioning -> chrome.frostedTint?.copy(alpha = 0.94f) ?: chrome.container
+            else -> Color.Transparent
+        }
+        // 检视器悬浮态下外层表面透明：多层叠放且静止时把被压在下层的面板隐去，防止文字穿出顶层卡片。
+        val hideBuried = chrome != null && visible && !top && !transitioning && back == null
         Surface(
-            color = MaterialTheme.colorScheme.background,
+            color = surfaceColor,
             modifier = Modifier
                 .fillMaxSize()
                 .then(
@@ -248,6 +257,7 @@ fun BoxScope.InfinityPaneLevel(
                         paneBackLayer(back.phase, back.target, key, visibleState.value, topState.value)
                     },
                 )
+                .then(if (hideBuried) Modifier.graphicsLayer { alpha = 0f } else Modifier)
                 .testTag(InfinityPaneTags.level(key)),
         ) {
             InfinityBackScope(active = top, content = content)

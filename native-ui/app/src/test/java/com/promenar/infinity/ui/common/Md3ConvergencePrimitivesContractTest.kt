@@ -69,7 +69,7 @@ class Md3ConvergencePrimitivesContractTest {
         assertThat(source).contains("WindowInsets.systemBars")
         assertThat(source).contains("imePadding()")
         assertThat(source).contains("MaterialTheme.colorScheme")
-        assertThat(source).contains("containerColor = MaterialTheme.colorScheme.background")
+        assertThat(source).contains("containerColor = if (LocalFrostedChromeMaterial.current != null) Color.Transparent else MaterialTheme.colorScheme.background")
         assertThat(source).contains("Scaffold(")
     }
 }
