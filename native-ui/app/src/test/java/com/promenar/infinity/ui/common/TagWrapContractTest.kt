@@ -23,6 +23,8 @@ class TagWrapContractTest {
         "common/params/SamplingParamsEditor.kt",
         "linux/output/CommandOutputScreen.kt",
         "linux/settings/LinuxManageContent.kt",
+        // 场头卡片仅含「场号 · 编号」与当前审核状态 2 枚固定徽标，窄屏大字号下自动折行防挤压。
+        "production/ProductionManagement.kt",
         "settings/AgentSkillsSection.kt",
         "settings/TailscalePeerPath.kt",
         "settings/ThemeScreen.kt",

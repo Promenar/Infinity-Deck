@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.66.3-beta] - 2026-11-20
+
+- **制作面板审批状态徽章统一与结构化反馈（[InfinityBottomSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityBottomSheet.kt)、[ProductionComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionComponents.kt)、[ProductionReviewUi.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionReviewUi.kt)、[ProductionCharacter.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionCharacter.kt)、[ProductionShotDetail.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionShotDetail.kt)、[ProductionProgressUi.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionProgressUi.kt)、[ProductionShotPlanning.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionShotPlanning.kt)、[ProductionCutPage.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionCutPage.kt)、[ProductionManagement.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionManagement.kt)、[ProductionTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionTabs.kt)）**：
+  - 统一审批状态徽章为**一物一标合并发送态**（`待审` / `已批准 · 未发送` / `已否决 · 未发送` / `已批准 · 已排队` / `已否决 · 已排队`），并将 `ProductionReviewNotes` 重构为浅错误色带细描边的「否决原因」容器与高表面「待发送建议」（右置静默「未发送」文字）；新增支持 `overlay = true` 高对比角标的 `ProductionStatusChip`、支持 `titleTrailing` 的 `InfinityBottomSheet` 与独立页内卡 `ProductionReviewCard`；
+  - 彻底移除角色详情、非角色资产弹层、配乐版本弹层与审核弹层的同屏双标/三标冗余重复，将唯一徽章统一锚定在版本栏或弹层标题行右侧；将候选与粗剪审批收拢至 `ProductionReviewCard`；将场头卡片状态移至首行 `FlowRow` 紧随场号胶囊、剧本项升级为两段式卡片、资产网格徽章移至缩略图右上角并同步修复总览单集剧本行真实审核状态映射；新增隔离高保真原型 [ProductionReviewBadgePrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/production/ProductionReviewBadgePrototype.kt) 与 [ProductionReviewUiTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/production/ProductionReviewUiTest.kt) 防回归断言。
+
 ## [0.66.2-beta] - 2026-11-20
 
 - **远程面板无参子页令牌解码修复（[RemotePage.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/remote/RemotePage.kt)、[ProductionPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPanel.kt)、[NavigationMotionContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/NavigationMotionContractTest.kt)）**：

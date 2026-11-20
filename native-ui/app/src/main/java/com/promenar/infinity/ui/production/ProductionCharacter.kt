@@ -50,6 +50,12 @@ internal fun ProductionCharacterPage(asset: Asset, production: Production, busy:
         )
         LazyColumn(Modifier.weight(1f), contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item("overview") {
+                val versionChip = version?.let { selected ->
+                    production.reviewChipSpec(
+                        ReviewTarget.assetVersion(asset.id, selected.number),
+                        settled = asset.status == AssetStatus.LOCKED && selected.number == asset.currentVersion,
+                    )
+                } ?: ProductionChipSpec(asset.status.label(), asset.status.tone())
                 Surface(shape = RoundedCornerShape(20.dp), color = scheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -76,7 +82,7 @@ internal fun ProductionCharacterPage(asset: Asset, production: Production, busy:
                                     }
                                 }
                             }
-                            ProductionStatusChip(asset.status.label(), asset.status.tone())
+                            ProductionStatusChip(versionChip.text, versionChip.tone)
                         }
                         if (version != null) {
                             key(version.path) {
@@ -92,6 +98,7 @@ internal fun ProductionCharacterPage(asset: Asset, production: Production, busy:
                         asset.userNote?.takeIf(String::isNotBlank)?.let { NoteBlock(stringResource(R.string.production_panel_section_user_note), it) }
                         if (version != null) {
                             val target = ReviewTarget.assetVersion(asset.id, version.number)
+                            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.45f))
                             ProductionReviewBlock(
                                 production = production,
                                 target = target,
@@ -100,6 +107,7 @@ internal fun ProductionCharacterPage(asset: Asset, production: Production, busy:
                                 onRun = onRun,
                                 onSubmit = onSubmit,
                                 settled = asset.status == AssetStatus.LOCKED && version.number == asset.currentVersion,
+                                showStatus = false,
                             )
                             val unsentCount = LocalProductionSend.current?.count ?: 0
                             if (unsentCount > 0 && production.unsentReviews().any { it.target == target }) {

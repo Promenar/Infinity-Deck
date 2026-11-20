@@ -16,8 +16,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -223,6 +225,7 @@ fun InfinityBottomSheet(
     show: Boolean,
     onDismiss: () -> Unit,
     title: String? = null,
+    titleTrailing: (@Composable () -> Unit)? = null,
     height: InfinitySheetHeight = INFINITY_BOTTOM_SHEET_DEFAULT_HEIGHT,
     modifier: Modifier = Modifier,
     dismissEnabled: Boolean = true,
@@ -256,7 +259,7 @@ fun InfinityBottomSheet(
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 if (title != null) {
-                    InfinityHeaderTitle(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    InfinityBottomSheetTitle(title, titleTrailing, MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 content()
@@ -308,16 +311,41 @@ fun InfinityBottomSheet(
                 .padding(bottom = 32.dp)
         ) {
             if (title != null) {
-                InfinityHeaderTitle(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                InfinityBottomSheetTitle(title, titleTrailing, MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
             content()
         }
+    }
+}
+
+@Composable
+private fun InfinityBottomSheetTitle(
+    title: String,
+    titleTrailing: (@Composable () -> Unit)?,
+    style: androidx.compose.ui.text.TextStyle,
+) {
+    if (titleTrailing != null) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            InfinityHeaderTitle(
+                text = title,
+                style = style,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            titleTrailing()
+        }
+    } else {
+        InfinityHeaderTitle(
+            text = title,
+            style = style,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

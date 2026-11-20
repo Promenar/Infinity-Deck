@@ -21,6 +21,9 @@
         <item quantity="other">Queued · Round %1$d · %2$d items</item>
     </plurals>
     <string name="production_review_reason">Reason</string>
+    <string name="production_review_reject_reason">Rejection reason</string>
+    <string name="production_review_pending_suggestion">Pending suggestion</string>
+    <string name="production_review_card_title">%1$s · Review</string>
     <string name="production_review_content">Suggestion</string>
     <string name="production_review_actions">Review</string>
     <string name="production_review_busy">Session unavailable · Not sent</string>

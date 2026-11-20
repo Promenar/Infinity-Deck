@@ -487,10 +487,12 @@ private fun ScoreVersionRow(asset: Asset, version: AssetVersion, production: Pro
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
-            production.reviewChipSpec(
-                ReviewTarget.assetVersion(asset.id, version.number),
-                settled = asset.status == AssetStatus.LOCKED && version.number == asset.currentVersion,
-            )?.let { ProductionStatusChip(it.text, it.tone) }
+            if (!selected) {
+                production.reviewChipSpec(
+                    ReviewTarget.assetVersion(asset.id, version.number),
+                    settled = asset.status == AssetStatus.LOCKED && version.number == asset.currentVersion,
+                )?.let { ProductionStatusChip(it.text, it.tone) }
+            }
             if (selected) Icon(Icons.Rounded.Check, null, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
         }
         ProductionVoiceWaveform(version.path)

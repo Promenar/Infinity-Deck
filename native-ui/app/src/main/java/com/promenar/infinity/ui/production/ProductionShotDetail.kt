@@ -23,7 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -137,17 +139,29 @@ internal fun ProductionAssetSheet(
     var versionNumber by rememberSaveable(asset.id) { mutableStateOf(asset.currentVersion ?: asset.versions.maxOfOrNull { it.number }) }
     val version = asset.versions.firstOrNull { it.number == versionNumber } ?: asset.versions.maxByOrNull { it.number }
     val usage = production.shotsUsingAsset(asset.id)
-    InfinityBottomSheet(show = true, onDismiss = onDismiss, title = asset.name, scrollContent = true) {
+    val versionChip = version?.let { selected ->
+        production.reviewChipSpec(
+            ReviewTarget.assetVersion(asset.id, selected.number),
+            settled = asset.status == AssetStatus.LOCKED && selected.number == asset.currentVersion,
+        )
+    } ?: ProductionChipSpec(asset.status.label(), asset.status.tone())
+    InfinityBottomSheet(
+        show = true,
+        onDismiss = onDismiss,
+        title = asset.name,
+        titleTrailing = { ProductionStatusChip(versionChip.text, versionChip.tone) },
+        scrollContent = true,
+    ) {
         Column(Modifier.fillMaxWidth().testTag(ProductionUiTags.ASSET_SHEET), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-                InfinityMetaLine(
-                    segments = listOf(asset.kind.label(), pluralStringResource(R.plurals.production_panel_asset_usage, usage, usage)),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                ProductionStatusChip(asset.status.label(), asset.status.tone())
-            }
+            InfinityMetaLine(
+                segments = listOfNotNull(
+                    asset.kind.label(),
+                    pluralStringResource(R.plurals.production_panel_asset_usage, usage, usage),
+                    version?.let { stringResource(R.string.production_panel_version, it.number) },
+                ),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             version?.let { current ->
                 key(current.path) {
                     ProductionMediaReference(path = current.path, alt = asset.name, style = MediaCardStyle.TOOL, modifier = Modifier.fillMaxWidth())
@@ -173,6 +187,7 @@ internal fun ProductionAssetSheet(
             asset.description?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             asset.userNote?.takeIf(String::isNotBlank)?.let { NoteBlock(stringResource(R.string.production_panel_section_user_note), it) }
             version?.let { selected ->
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                 ProductionReviewBlock(
                     production = production,
                     target = ReviewTarget.assetVersion(asset.id, selected.number),
@@ -182,6 +197,7 @@ internal fun ProductionAssetSheet(
                     onSubmit = onSubmit,
                     // 审核记录之前已定稿的当前版本视为已批准。
                     settled = asset.status == AssetStatus.LOCKED && selected.number == asset.currentVersion,
+                    showStatus = false,
                 )
             }
         }

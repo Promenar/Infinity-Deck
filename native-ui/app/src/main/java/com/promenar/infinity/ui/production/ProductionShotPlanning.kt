@@ -152,10 +152,12 @@ internal fun ProductionShotDetail(
                             }
                             if (viewing != null) {
                                 val number = shot.takes.indexOf(viewing) + 1
-                                ProductionReviewBlock(
+                                val takeTitle = stringResource(R.string.production_panel_take_number, number)
+                                ProductionReviewCard(
+                                    title = stringResource(R.string.production_review_card_title, takeTitle),
                                     production = production,
                                     target = ReviewTarget.take(episodeId, shot.code, viewing.id),
-                                    label = listOf(shot.code, stringResource(R.string.production_panel_take_number, number)),
+                                    label = listOf(shot.code, takeTitle),
                                     busy = working,
                                     onRun = onRun,
                                     onSubmit = onSubmit,

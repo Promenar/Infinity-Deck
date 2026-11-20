@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -168,7 +169,7 @@ internal fun StageStatus.tone(): ProductionTone = when (this) {
 }
 
 @Composable
-internal fun ProductionStatusChip(text: String, tone: ProductionTone, modifier: Modifier = Modifier) {
+internal fun ProductionStatusChip(text: String, tone: ProductionTone, modifier: Modifier = Modifier, overlay: Boolean = false) {
     val scheme = MaterialTheme.colorScheme
     val domain = MaterialTheme.infinityDomainColors
     val (container, content) = when (tone) {
@@ -178,7 +179,13 @@ internal fun ProductionStatusChip(text: String, tone: ProductionTone, modifier: 
         ProductionTone.SUCCESS -> domain.successContainer to domain.onSuccessContainer
         ProductionTone.ERROR -> scheme.errorContainer to scheme.onErrorContainer
     }
-    Surface(shape = RoundedCornerShape(50), color = container, modifier = modifier) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = container,
+        border = if (overlay) BorderStroke(0.75.dp, scheme.outlineVariant.copy(alpha = 0.65f)) else null,
+        shadowElevation = if (overlay) 1.dp else 0.dp,
+        modifier = modifier,
+    ) {
         Text(
             text,
             style = MaterialTheme.typography.labelSmall,

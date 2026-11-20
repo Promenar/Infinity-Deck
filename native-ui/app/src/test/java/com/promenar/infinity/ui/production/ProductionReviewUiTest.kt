@@ -12,6 +12,8 @@ import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.Season
 import com.promenar.infinity.data.production.Shot
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
+import java.nio.file.Path
 
 class ProductionReviewUiTest {
     private val take = ReviewTarget.take("S1E01", "SC01-01", "t1")
@@ -91,5 +93,37 @@ class ProductionReviewUiTest {
     @Test fun `已排队的结论再点同种结论记为新结论不撤回`() {
         val queued = withReviews(ReviewEntry(take, ReviewKind.APPROVE, at = 1, queuedRound = 1))
         assertThat(queued.verdictAction(take, ReviewKind.APPROVE)).isEqualTo(ProductionUserAction.Review(take, ReviewKind.APPROVE, null))
+    }
+
+    @Test fun `审批状态徽章全界面遵循一物一标合并态与固定锚点约定`() {
+        fun productionSource(name: String): String = Files.readString(
+            Path.of("app/src/main/java/com/promenar/infinity/ui/production/$name"),
+        )
+        val reviewUi = productionSource("ProductionReviewUi.kt")
+        assertThat(reviewUi).contains("val spec = production.reviewChipSpec(target, settled) ?: return")
+        assertThat(reviewUi).contains("internal fun ProductionReviewCard(")
+        assertThat(reviewUi).contains("titleTrailing = chip?.let")
+        assertThat(reviewUi).contains("showStatus = false")
+
+        val character = productionSource("ProductionCharacter.kt")
+        assertThat(character).contains("showStatus = false")
+        assertThat(character).doesNotContain("ProductionStatusChip(asset.status.label(), asset.status.tone())")
+
+        val shotDetail = productionSource("ProductionShotDetail.kt")
+        assertThat(shotDetail).contains("titleTrailing = { ProductionStatusChip(versionChip.text, versionChip.tone) }")
+        assertThat(shotDetail).contains("showStatus = false")
+        assertThat(shotDetail).doesNotContain("ProductionStatusChip(asset.status.label(), asset.status.tone())")
+
+        val planning = productionSource("ProductionShotPlanning.kt")
+        assertThat(planning).contains("ProductionReviewCard(")
+        assertThat(planning).doesNotContain("ProductionReviewBlock(")
+
+        val cut = productionSource("ProductionCutPage.kt")
+        assertThat(cut).contains("ProductionReviewCard(")
+        assertThat(cut).doesNotContain("ProductionReviewBlock(")
+
+        val management = productionSource("ProductionManagement.kt")
+        assertThat(management).contains("production.reviewChipSpec(ReviewTarget.script(ep.id), settled = ep.scriptLocked)")
+        assertThat(management).contains("FlowRow(")
     }
 }

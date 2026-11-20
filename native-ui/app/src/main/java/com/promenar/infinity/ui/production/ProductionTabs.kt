@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.Asset
 import com.promenar.infinity.data.production.AssetKind
+import com.promenar.infinity.data.production.AssetStatus
 import com.promenar.infinity.data.production.DialogueAudioSource
 import com.promenar.infinity.data.production.Episode
 import com.promenar.infinity.data.production.Production
@@ -158,6 +159,30 @@ internal fun ProductionFileRow(
     chip: ProductionChipSpec? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    ProductionFileRowHost(path = path, title = title, subtitle = subtitle) { onOpen ->
+        ProductionRow(
+            title = title,
+            icon = icon,
+            subtitle = subtitle,
+            subtitleMaxLines = 1,
+            value = value,
+            chip = chip,
+            chevron = trailing == null && onOpen != null,
+            trailing = trailing,
+            enabled = true,
+            onClick = onOpen,
+        )
+    }
+}
+
+/** 复用工作区文件解析与应用内文本/Markdown 预览弹层，支持单行和两段式剧本卡共用。 */
+@Composable
+private fun ProductionFileRowHost(
+    path: String,
+    title: String,
+    subtitle: String? = null,
+    content: @Composable (onOpen: (() -> Unit)?) -> Unit,
+) {
     val environment = LocalWorkspaceMedia.current
     val mapped = environment?.let { rememberProductionPath(it, path) as? ProductionPathState.Ready }
     val resolution = if (environment != null && mapped != null) rememberWorkspaceMediaResolution(environment, mapped.path)?.resolution else null
@@ -173,18 +198,7 @@ internal fun ProductionFileRow(
         environment?.onLocate != null -> ({ environment.onLocate.invoke(locateDir) })
         else -> null
     }
-    ProductionRow(
-        title = title,
-        icon = icon,
-        subtitle = subtitle,
-        subtitleMaxLines = 1,
-        value = value,
-        chip = chip,
-        chevron = trailing == null && onOpen != null,
-        trailing = trailing,
-        enabled = true,
-        onClick = onOpen,
-    )
+    content(onOpen)
     if (previewOpen && available != null && environment != null) {
         val loaded by produceState<Result<String>?>(null, available, environment) {
             this.value = withContext(Dispatchers.IO) {
@@ -271,19 +285,26 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                 episodes.forEach { episode ->
                     val chip = production.reviewChipSpec(ReviewTarget.script(episode.id), settled = episode.scriptLocked)
                     val title = episodeDisplayName(production, episode).joinToString(" ")
-                    val reviewButton: @Composable () -> Unit = {
-                        InfinityPillButton(
-                            text = stringResource(R.string.p2_review_action),
-                            onClick = { reviewing = episode },
-                            tone = InfinityPillTone.NEUTRAL,
-                            icon = Icons.Rounded.RateReview,
-                            enabled = !busy,
-                            compact = true,
-                        )
-                    }
                     val path = episode.scriptPath
                     if (path == null) ProductionRow(title, icon = Icons.Rounded.Description, subtitle = stringResource(R.string.production_panel_no_script), chevron = false)
-                    else ProductionFileRow(path, title, Icons.Rounded.Description, subtitle = path, chip = chip, trailing = reviewButton)
+                    else ProductionFileRowHost(path = path, title = title, subtitle = path) { onOpen ->
+                        ScriptTwoTierRow(
+                            title = title,
+                            path = path,
+                            chip = chip,
+                            onOpen = onOpen,
+                            reviewAction = {
+                                InfinityPillButton(
+                                    text = stringResource(R.string.p2_review_action),
+                                    onClick = { reviewing = episode },
+                                    tone = InfinityPillTone.NEUTRAL,
+                                    icon = Icons.Rounded.RateReview,
+                                    enabled = !busy,
+                                    compact = true,
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -328,6 +349,57 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
             onDismiss = { reviewing = null },
             settled = episode.scriptLocked,
         )
+    }
+}
+
+/** 剧本两段式卡片行：首行左标题 + 右唯一状态徽章，次行缩进路径 + 右审核按钮，互不挤压。 */
+@Composable
+private fun ScriptTwoTierRow(
+    title: String,
+    path: String,
+    chip: ProductionChipSpec?,
+    onOpen: (() -> Unit)?,
+    reviewAction: @Composable () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .then(if (onOpen != null) Modifier.clickable(role = Role.Button, onClick = onOpen) else Modifier)
+            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Rounded.Description, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = scheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            chip?.let { ProductionStatusChip(it.text, it.tone) }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(start = 30.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                path,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            reviewAction()
+        }
     }
 }
 
@@ -683,7 +755,7 @@ internal fun ProductionAssetsTab(
             item("empty", span = { GridItemSpan(maxLineSpan) }) { ProductionSection(null) { ProductionMutedRow(stringResource(R.string.production_panel_no_assets)) } }
         }
         items(assets, key = { it.id }) { asset ->
-            AssetCard(asset, usageCount = production.shotsUsingAsset(asset.id), modifier = Modifier.animateItem(), onClick = {
+            AssetCard(asset, production, usageCount = production.shotsUsingAsset(asset.id), modifier = Modifier.animateItem(), onClick = {
                 if (asset.kind == AssetKind.CHARACTER) onOpenCharacter(asset.id) else openAssetId = asset.id
             })
         }
@@ -707,7 +779,14 @@ internal fun ProductionAssetsTab(
 }
 
 @Composable
-private fun AssetCard(asset: Asset, usageCount: Int = 0, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val versionNumber = asset.currentVersion ?: asset.versions.maxByOrNull { it.number }?.number
+    val chip = versionNumber?.let { number ->
+        production.reviewChipSpec(
+            ReviewTarget.assetVersion(asset.id, number),
+            settled = asset.status == AssetStatus.LOCKED && number == asset.currentVersion,
+        )
+    } ?: ProductionChipSpec(asset.status.label(), asset.status.tone())
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -724,6 +803,12 @@ private fun AssetCard(asset: Asset, usageCount: Int = 0, modifier: Modifier = Mo
                 } else {
                     ProductionThumbnail(path, Modifier.fillMaxSize(), contentDescription = asset.name)
                 }
+                ProductionStatusChip(
+                    chip.text,
+                    chip.tone,
+                    overlay = true,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+                )
                 if (asset.kind == AssetKind.CHARACTER) Row(Modifier.align(Alignment.BottomStart).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     if (asset.looks.isNotEmpty()) ClipBadge(stringResource(R.string.p2_look_count, asset.looks.size))
                     if (asset.referenceVoice?.path != null) ClipBadge(stringResource(R.string.p2_voice_badge))
@@ -737,25 +822,21 @@ private fun AssetCard(asset: Asset, usageCount: Int = 0, modifier: Modifier = Mo
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
-            Row(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                val versionNumber = asset.currentVersion ?: asset.versions.maxByOrNull { it.number }?.number
-                val metaParts = listOfNotNull(
-                    versionNumber?.let { stringResource(R.string.production_panel_version, it) },
-                    usageCount.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.production_panel_asset_usage, it, it) },
-                )
-                val subtitle = if (metaParts.isNotEmpty()) metaParts.joinToString(" · ") // wrap-check: allow 资产卡片底栏版本号与引用数固定单行省略
-                else if (asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty()) asset.looks.joinToString(" · ") { it.name } // wrap-check: allow 素材网格说明固定单行省略，右侧为状态
-                else asset.kind.label()
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                ProductionStatusChip(asset.status.label(), asset.status.tone())
-            }
+            val metaParts = listOfNotNull(
+                versionNumber?.let { stringResource(R.string.production_panel_version, it) },
+                usageCount.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.production_panel_asset_usage, it, it) },
+            )
+            val subtitle = if (metaParts.isNotEmpty()) metaParts.joinToString(" · ") // wrap-check: allow 资产卡片底栏版本号与引用数固定单行省略
+            else if (asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty()) asset.looks.joinToString(" · ") { it.name } // wrap-check: allow 素材网格说明固定单行省略，右侧为状态
+            else asset.kind.label()
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp),
+            )
         }
     }
 }

@@ -229,8 +229,11 @@ private fun WorkflowStageRow(
             }
             val chip = when {
                 episodes.isEmpty() -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                episodes.size == 1 -> episodes.single().let { ep ->
+                    production.reviewChipSpec(ReviewTarget.script(ep.id), settled = ep.scriptLocked)
+                        ?: ProductionChipSpec(stringResource(R.string.production_review_pending), ProductionTone.WARNING)
+                }
                 done == episodes.size -> ProductionChipSpec(stringResource(R.string.production_review_approved), ProductionTone.SUCCESS)
-                episodes.size == 1 -> ProductionChipSpec(stringResource(R.string.production_review_pending), ProductionTone.WARNING)
                 else -> ProductionChipSpec(stringResource(R.string.p2_stage_episodes, done, episodes.size), ProductionTone.WARNING)
             }
             ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
@@ -650,19 +653,26 @@ internal fun ProductionSceneHeader(
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Surface(shape = RoundedCornerShape(8.dp), color = scheme.primaryContainer) {
-                    Text(
-                        "${stringResource(R.string.production_panel_scene_number, scene.number)} · ${scene.code}", // wrap-check: allow 场号胶囊固定单行
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = scheme.onPrimaryContainer,
-                        maxLines = 1,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    )
+                FlowRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(shape = RoundedCornerShape(8.dp), color = scheme.primaryContainer) {
+                        Text(
+                            "${stringResource(R.string.production_panel_scene_number, scene.number)} · ${scene.code}", // wrap-check: allow 场号胶囊固定单行
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = scheme.onPrimaryContainer,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                    statusChip?.let { ProductionStatusChip(it.text, it.tone) }
                 }
-                Spacer(Modifier.weight(1f))
                 action?.invoke(this)
             }
             Text(
@@ -673,19 +683,8 @@ internal fun ProductionSceneHeader(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (meta.isNotEmpty() || statusChip != null) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (meta.isNotEmpty()) {
-                        InfinityMetaLine(segments = meta, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f))
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
-                    statusChip?.let { ProductionStatusChip(it.text, it.tone) }
-                }
+            if (meta.isNotEmpty()) {
+                InfinityMetaLine(segments = meta, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.fillMaxWidth())
             }
         }
     }

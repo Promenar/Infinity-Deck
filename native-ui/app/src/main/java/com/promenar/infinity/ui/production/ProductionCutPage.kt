@@ -206,7 +206,15 @@ internal fun ProductionCutTab(
         }
         // 保存的剪辑版本可以审核；预演与选定是即时视图，不审核。
         if (cut != null) item("review") {
-            ProductionReviewBlock(production, ReviewTarget.cut(cut.id), listOf(version.title), busy, onRun, onSubmit)
+            ProductionReviewCard(
+                title = stringResource(R.string.production_review_card_title, version.title),
+                production = production,
+                target = ReviewTarget.cut(cut.id),
+                label = listOf(version.title),
+                busy = busy,
+                onRun = onRun,
+                onSubmit = onSubmit,
+            )
         }
         item("packaging") {
             ProductionSection(stringResource(R.string.p2_packaging)) {

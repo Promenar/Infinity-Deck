@@ -20,6 +20,9 @@
         <item quantity="other">已排队 · 第 %1$d 轮 · %2$d 条</item>
     </plurals>
     <string name="production_review_reason">原因</string>
+    <string name="production_review_reject_reason">否决原因</string>
+    <string name="production_review_pending_suggestion">待发送建议</string>
+    <string name="production_review_card_title">%1$s · 审核</string>
     <string name="production_review_content">建议</string>
     <string name="production_review_actions">审核</string>
     <string name="production_review_busy">会话不可用 · 未发送</string>
