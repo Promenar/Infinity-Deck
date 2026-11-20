@@ -73,6 +73,15 @@ class SystemTurnDispatcherTest {
         assertThat(runtime.calls).isEmpty()
     }
 
+    @Test fun `忙碌会话的后台任务结束转交步骤边界投递桥`() = runTest {
+        val runtime = Runtime().apply { ready.complete(Unit); busy = true }
+        val dispatcher = DefaultSystemTurnDispatcher(backgroundScope, runtime, "未完成", "系统中断")
+        assertThat(dispatcher.request(request("job-a").copy(kind = SystemTurnKind.JOB_EXIT)))
+            .isEqualTo(SystemTurnOutcome.Completed)
+        assertThat(runtime.completionCalls).containsExactly("job-a")
+        assertThat(runtime.calls).isEmpty()
+    }
+
     @Test fun `同一子代理恢复后的新通知不会覆盖尚未送达的旧通知`() = runTest {
         val runtime = Runtime().apply { ready.complete(Unit); busy = true; completionFinish = CompletableDeferred() }
         val dispatcher = DefaultSystemTurnDispatcher(backgroundScope, runtime, "未完成", "系统中断")

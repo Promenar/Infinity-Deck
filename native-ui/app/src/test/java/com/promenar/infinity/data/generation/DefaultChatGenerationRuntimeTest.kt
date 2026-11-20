@@ -322,6 +322,62 @@ class DefaultChatGenerationRuntimeTest {
             .isEqualTo("assistant")
     }
 
+    @Test fun `工具续轮在占位前合并后台任务结束通知并保留原用户父链`() = runTest {
+        val bridge = com.promenar.infinity.data.trigger.SubagentCompletionSteering(backgroundScope)
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val stateBoard = mockk<com.promenar.infinity.data.repository.StateBoardRepository>(relaxed = true)
+        val fixture = skillsFixture(catalog, subagentCompletions = bridge, stateBoardRepository = stateBoard)
+        val request = fixture.request
+        val sessionId = request.sessionId
+        val marker = com.promenar.infinity.domain.trigger.SystemTriggerMessage.MESSAGE_NAME
+        fixture.store.updateSession(sessionId) { session -> session.copy(messages = session.messages.map {
+            if (it.id == request.assistantMessageId) it.copy(content = "已完成工具步骤") else it
+        }) }
+        val pending = listOf("job-a", "job-b").map { id ->
+            bridge.enqueue(com.promenar.infinity.domain.trigger.SystemTurnRequest(
+                sessionId, com.promenar.infinity.domain.trigger.SystemTurnKind.JOB_EXIT,
+                id, id, "完成结果 $id",
+            ), com.promenar.infinity.data.trigger.SystemTurnAdmissionTicket())
+        }
+
+        val nextId = fixture.runtime.prepareContinuation(request)
+        val messages = fixture.store.getSession(sessionId)!!.messages
+        val notice = messages.single { it.name == marker }
+        val next = messages.last()
+        assertThat(messages[messages.lastIndex - 1].id).isEqualTo(notice.id)
+        assertThat(next.id).isEqualTo(nextId)
+        assertThat(next.parentMessageId).isEqualTo(request.userMessageId)
+        assertThat(com.promenar.infinity.domain.trigger.SystemTriggerMessage.parse(notice.content)!!.consumerAssistantId)
+            .isEqualTo(request.assistantMessageId)
+        assertThat(notice.content).contains("完成结果 job-a")
+        assertThat(notice.content).contains("完成结果 job-b")
+        assertThat(pending.map { it.outcome.await() }).containsExactly(
+            com.promenar.infinity.domain.trigger.SystemTurnOutcome.Completed,
+            com.promenar.infinity.domain.trigger.SystemTurnOutcome.Completed,
+        )
+        assertThat(fixture.runtime.buildContext(request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        assertThat(fixture.store.getSession(sessionId)!!.messages.count { it.name == marker }).isEqualTo(1)
+
+        fixture.store.updateSession(sessionId) { session ->
+            val call = com.promenar.infinity.data.model.ToolCall("state-call", "state_get", "{}")
+            val result = Message("state-result", MessageRole.TOOL, """{"action":"state_get","revision":12}""",
+                parentMessageId = nextId, toolCallId = call.id, name = call.name)
+            session.copy(messages = session.messages.map {
+                if (it.id == nextId) it.copy(toolCalls = listOf(call)) else it
+            } + result)
+        }
+        val laterId = fixture.runtime.prepareContinuation(request)
+        verify(exactly = 1) { stateBoard.recordContextRead(sessionId, laterId, 12) }
+        val session = fixture.store.getSession(sessionId)!!
+        val strategy = DefaultChatGenerationContentStrategy(mockk(relaxed = true), null)
+        val history = strategy.buildProtocolMessages(session, "", request.userMessageId, emptySet(), null)
+        assertThat(history.map { it.role }).containsExactly("user", "assistant", "user", "assistant", "tool").inOrder()
+        assertThat(history[2].content).contains("完成结果 job-a")
+        assertThat(history.last().toolCallId).isEqualTo("state-call")
+    }
+
     @Test fun `提问事务返回时取消也关闭已创建的待回答状态`() = runTest {
         val ledger = mockk<com.promenar.infinity.data.repository.AskUserLedgerRepository>()
         coEvery { ledger.consumeResumption(any(), any()) } returns false

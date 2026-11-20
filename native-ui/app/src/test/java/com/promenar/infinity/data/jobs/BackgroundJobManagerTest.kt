@@ -7,6 +7,16 @@ import com.promenar.infinity.data.secret.SecretOutputRedactor
 import com.promenar.infinity.domain.secret.SecretSource
 import com.promenar.infinity.domain.jobs.*
 import com.promenar.infinity.domain.trigger.*
+import com.promenar.infinity.data.model.Message
+import com.promenar.infinity.data.model.Session
+import com.promenar.infinity.data.model.ToolResult
+import com.promenar.infinity.data.trigger.SubagentCompletionSteering
+import com.promenar.infinity.data.trigger.SystemTurnAdmissionTicket
+import com.promenar.infinity.domain.tool.ToolLiveOutputSink
+import com.promenar.infinity.ui.chat.ChatStore
+import com.promenar.infinity.ui.chat.manager.MessageManager
+import io.mockk.coEvery
+import io.mockk.mockk
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.*
@@ -321,6 +331,130 @@ class BackgroundJobManagerTest {
             withTimeout(5000){while(held.get()>0)delay(10)}
         } finally{release.complete(Unit);scope.cancel();root.deleteRecursively()}
     }
+    @Test fun `超时和终态查询保留后台任务结束通知`() = withPendingJobWake { manager, bridge, store, messages, entered, exit, withdrawn ->
+        val job = startWakeJob(manager, exit)
+        assertThat(manager.waitFor("s", job.id, 1).waitReason).isEqualTo("timeout")
+        assertThat(withdrawn).isEmpty()
+        exit.complete(Unit)
+        val request = entered.await()
+        assertThat(request.kind).isEqualTo(SystemTurnKind.JOB_EXIT)
+        assertThat(manager.status("s", job.id).record.state).isEqualTo("EXITED")
+
+        assertThat(bridge.deliver("s", store, messages)?.text).contains("任务结果")
+        assertThat(withdrawn).isEmpty()
+        assertThat(store.getSession("s")!!.messages).hasSize(1)
+    }
+
+    @Test fun `等待终态后即使唤醒已入队也不会写入消息或再次认领`() =
+        withPendingJobWake { manager, bridge, store, messages, entered, exit, withdrawn ->
+            val job = startWakeJob(manager, exit)
+            exit.complete(Unit)
+            val request = entered.await()
+            assertThat(manager.waitFor("s", job.id, 5).record.toolResult?.content).isEqualTo("任务结果")
+            assertThat(withdrawn).containsExactly(job.id)
+
+            // 模拟分发器已经取走请求，传输租约仍须阻止落盘。
+            assertThat(bridge.deliver("s", store, messages)).isNull()
+            assertThat(store.getSession("s")!!.messages).isEmpty()
+            assertThat(checkNotNull(request.delivery).claim()).isNull()
+        }
+
+    @Test fun `步骤边界先认领时终态等待照常返回且只写入一条消息`() =
+        withPendingJobWake { manager, bridge, store, messages, entered, exit, withdrawn ->
+            val job = startWakeJob(manager, exit)
+            exit.complete(Unit)
+            val request = entered.await()
+            val delivery = checkNotNull(request.delivery)
+            checkNotNull(delivery.claim()).release()
+            val writing = CompletableDeferred<Unit>()
+            val persist = CompletableDeferred<Unit>()
+            coEvery { messages.addMessage("s", any()) } coAnswers {
+                val message = secondArg<Message>()
+                writing.complete(Unit)
+                persist.await()
+                store.updateSession("s") { it.copy(messages = it.messages + message) }
+            }
+            val insertion = async { bridge.deliver("s", store, messages) }
+            writing.await()
+            val waiter = async(start = CoroutineStart.UNDISPATCHED) { manager.waitFor("s", job.id, 5) }
+            persist.complete(Unit)
+            assertThat(insertion.await()?.text).contains("任务结果")
+            assertThat(waiter.await().waitReason).isEqualTo("terminal")
+            assertThat(withdrawn).containsExactly(job.id)
+            assertThat(delivery.claim()).isNull()
+            assertThat(bridge.deliver("s", store, messages)).isNull()
+            assertThat(store.getSession("s")!!.messages).hasSize(1)
+        }
+
+    @Test fun `删除会话撤回等待中的唤醒并使旧租约失效`() =
+        withPendingJobWake(withdrawQueued = true) { manager, bridge, store, messages, entered, exit, withdrawn ->
+            val job = startWakeJob(manager, exit)
+            exit.complete(Unit)
+            val request = entered.await()
+            manager.deleteSession("s")
+
+            assertThat(withdrawn).containsExactly(job.id)
+            assertThat(manager.list("s")).isEmpty()
+            assertThat(checkNotNull(request.delivery).claim()).isNull()
+            assertThat(bridge.deliver("s", store, messages)).isNull()
+        }
+
+    private suspend fun startWakeJob(manager: BackgroundJobManager, exit: CompletableDeferred<Unit>) =
+        checkNotNull(manager.runInApp("s", "root", "测试任务", 1, true, 1, BackgroundJobExitAction.WAKE, ToolLiveOutputSink.None) {
+            exit.await()
+            ToolResult("result", "任务结果")
+        }.job)
+
+    private fun withPendingJobWake(
+        withdrawQueued: Boolean = false,
+        block: suspend CoroutineScope.(BackgroundJobManager, SubagentCompletionSteering, ChatStore, MessageManager,
+            CompletableDeferred<SystemTurnRequest>, CompletableDeferred<Unit>, List<String>) -> Unit,
+    ) = runBlocking<Unit> {
+        val root = Files.createTempDirectory("job-steering").toFile()
+        val worker = SupervisorJob()
+        val scope = CoroutineScope(worker + Dispatchers.IO)
+        val store = ChatStore().apply { upsertSession(Session("s", "a")) }
+        val messages = mockk<MessageManager>()
+        coEvery { messages.addMessage("s", any()) } coAnswers {
+            val message = secondArg<Message>()
+            store.updateSession("s") { it.copy(messages = it.messages + message) }
+        }
+        val bridge = SubagentCompletionSteering(scope)
+        val entered = CompletableDeferred<SystemTurnRequest>()
+        val exit = CompletableDeferred<Unit>()
+        val withdrawn = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val cancelQueue = CompletableDeferred<Unit>()
+        val ticket = SystemTurnAdmissionTicket()
+        val dispatcher = object : SystemTurnDispatcher {
+            override suspend fun request(request: SystemTurnRequest): SystemTurnOutcome {
+                val pending = bridge.enqueue(request, ticket)
+                entered.complete(request)
+                return try {
+                    kotlinx.coroutines.selects.select {
+                        pending.outcome.onAwait { it }
+                        cancelQueue.onAwait { SystemTurnOutcome.Skipped(SystemTurnSkipReason.SUPERSEDED) }
+                    }
+                } finally {
+                    bridge.remove(pending)
+                }
+            }
+        }
+        val manager = manager(root, scope, BackgroundJobStore(File(root, "store")),
+            completion = BackgroundJobCompletion({ dispatcher }), withdrawPendingWake = {
+                withdrawn.add(it)
+                if (withdrawQueued && ticket.tryWithdraw()) cancelQueue.complete(Unit)
+            })
+        try {
+            withTimeout(10_000) { block(manager, bridge, store, messages, entered, exit, withdrawn) }
+        } finally {
+            withContext(NonCancellable) {
+                cancelQueue.complete(Unit)
+                worker.cancelAndJoin()
+                deleteJobTree(root)
+            }
+        }
+    }
+
     @Test fun `查询状态日志和等待终态不调用慢对账`() = runBlocking<Unit> {
         val root = Files.createTempDirectory("job-read-only").toFile()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -556,12 +690,13 @@ class BackgroundJobManagerTest {
         termux:com.promenar.infinity.data.termux.TermuxBackgroundJobs?=null,
         vault:SessionSecretVault?=null, live:ToolLiveOutputStore=ToolLiveOutputStore(),
         isolated: Boolean = false, requestReconcile: (BackgroundJobRecord) -> Unit = {},
-        sessionLimit:Int=MAX_SESSION_RUNNING, globalLimit:Int=MAX_GLOBAL_RUNNING)=BackgroundJobManager(
+        sessionLimit:Int=MAX_SESSION_RUNNING, globalLimit:Int=MAX_GLOBAL_RUNNING,
+        withdrawPendingWake: (String) -> Unit = {})=BackgroundJobManager(
         scope,store,File(root,"runs"),
         BuiltinCommandRunner(listOf("/usr/bin/perl","-e","setpgrp(0, 0); exec @ARGV or exit 127"),"/bin/sh",ProcessGroupSignaller {pid,signal->ProcessBuilder("/bin/kill","-$signal","-$pid").start().waitFor()}, {File(root,"scratch")},killGraceMillis=100),
         prepareWorkspace={ BackgroundJobLocation(root,root,isolated,false) },
         reconcile=reconcile,requestReconcile=requestReconcile,completion=completion,keepAlive=keepAlive,termux=termux,vault=vault,redactor=vault?.let(::SecretOutputRedactor),liveOutput=live,
         prepareCommand={_,source,stdin,location,minutes -> PreparedBackgroundCommand(BuiltinCommandRequest(listOf("/bin/sh","-c",source),location.commandDirectory,mapOf("PATH" to "/usr/bin:/bin"),stdin,minutes*60)) },
-        sessionRunningLimit=sessionLimit,globalRunningLimit=globalLimit,
+        sessionRunningLimit=sessionLimit,globalRunningLimit=globalLimit,withdrawPendingWake=withdrawPendingWake,
     )
 }

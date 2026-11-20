@@ -37,7 +37,7 @@ class BackgroundJobCompletion(
     private val dispatcher: () -> SystemTurnDispatcher? = { null },
     private val notify: suspend (BackgroundJobRecord) -> Unit = {},
 ) {
-    suspend fun dispatch(record: BackgroundJobRecord, tail: JobLogTail) {
+    suspend fun dispatch(record: BackgroundJobRecord, tail: JobLogTail, delivery: SystemTurnDelivery? = null) {
         when (BackgroundJobExitAction.fromWire(record.onExit)) {
             BackgroundJobExitAction.NOTIFY -> notify(record)
             BackgroundJobExitAction.WAKE -> {
@@ -52,7 +52,7 @@ class BackgroundJobCompletion(
                             record.guidance?.let { appendLine(it) }
                             record.toolResult?.let { appendLine("结果：\n${it.content}") }
                             appendLine("日志末尾：\n${tail.text.takeLast(2_000)}")
-                        }))
+                        }, delivery = delivery))
                     } catch (cancelled: CancellationException) { throw cancelled
                     } catch (_: Exception) { notify(record) }
                 }
@@ -96,6 +96,7 @@ class BackgroundJobManager(
     private val reconcileWarning: (BackgroundJobRecord) -> String? = { null },
     private val sessionRunningLimit: Int = MAX_SESSION_RUNNING,
     private val globalRunningLimit: Int = MAX_GLOBAL_RUNNING,
+    private val withdrawPendingWake: (String) -> Unit = {},
 ) : BackgroundJobController {
     private val redactor = redactor ?: vault?.let(::SecretOutputRedactor)
     private class Active(val control: BuiltinCommandControl = BuiltinCommandControl()) {
@@ -113,12 +114,52 @@ class BackgroundJobManager(
         @Volatile var suppressCompletion: Boolean = false
         var sshControl: SshExecControl? = null
     }
+    private class WakeDelivery(private val sessionAllowed: () -> Boolean) : SystemTurnDelivery {
+        private val lane = Mutex()
+        @Volatile var delivered = false
+            private set
+        @Volatile var discarded = false
+
+        override suspend fun claim(): SystemTurnDelivery.Claim? {
+            // 等待正在落盘的通知确认；写入失败并释放后，等待工具仍能消费终态。
+            lane.lock()
+            if (delivered || discarded || !sessionAllowed()) {
+                lane.unlock()
+                return null
+            }
+            return object : SystemTurnDelivery.Claim {
+                override suspend fun confirm() { delivered = true }
+                override fun release() { lane.unlock() }
+            }
+        }
+    }
+
     private val gate = Mutex()
     private val refreshGate = Mutex()
     private val publishGate = Mutex()
     private val pendingCleanup = mutableSetOf<String>()
     private val active = ConcurrentHashMap<String, Active>()
     private val deletedSessions = ConcurrentHashMap.newKeySet<String>()
+    private val wakeDeliveries = mutableMapOf<String, WakeDelivery>()
+
+    private fun wakeDelivery(jobId: String, sessionId: String): WakeDelivery? = synchronized(wakeDeliveries) {
+        if (sessionId in deletedSessions) null
+        else wakeDeliveries.getOrPut(jobId) { WakeDelivery { sessionId !in deletedSessions } }
+    }
+
+    private fun discardWakeDelivery(jobId: String) = synchronized(wakeDeliveries) {
+        wakeDeliveries.remove(jobId)?.discarded = true
+    }
+
+    private suspend fun dispatchCompletion(record: BackgroundJobRecord, tail: JobLogTail) {
+        if (BackgroundJobExitAction.fromWire(record.onExit) != BackgroundJobExitAction.WAKE) {
+            completion.dispatch(record, tail)
+            return
+        }
+        val delivery = wakeDelivery(record.id, record.sessionId) ?: return
+        if (!delivery.delivered) completion.dispatch(record, tail, delivery)
+    }
+
     private val state = MutableStateFlow<List<BackgroundJob>>(emptyList())
     private val initializationMutex = Mutex()
     private var initialized = false
@@ -139,7 +180,10 @@ class BackgroundJobManager(
         // 只清理持久层明确淘汰的任务，不能用并发快照扫描“孤儿”。
         pendingCleanup += store.drainPruned().map{it.id}
         val eligible=pendingCleanup.filter{!active.containsKey(it)}
-        eligible.forEach { id -> if(runCatching { removeRunDirectory(id) }.isSuccess) pendingCleanup.remove(id) }
+        eligible.forEach { id ->
+            discardWakeDelivery(id)
+            if (runCatching { removeRunDirectory(id) }.isSuccess) pendingCleanup.remove(id)
+        }
     }
     private fun removeRunDirectory(id:String) {
         val directory=File(runRoot,id)
@@ -354,7 +398,7 @@ class BackgroundJobManager(
                             store.put(terminal); publish(); handle.terminal.complete(Unit)
                             result.complete(safeValue)
                             if (yielded.get() && sessionAllowed(record) && !handle.suppressCompletion) {
-                                try { completion.dispatch(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
+                                try { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
                             }
                             requestReconcile(terminal)
                         }
@@ -475,7 +519,7 @@ class BackgroundJobManager(
                                             toolResult = settled, lastOutputAtMillis = activeHandle.lastOutputAtMillis)
                                         store.put(terminal); publish(); activeHandle.terminal.complete(Unit); result.complete(settled)
                                         if (ownership.await() && sessionAllowed(reserved) && !activeHandle.suppressCompletion)
-                                            runCatching { completion.dispatch(terminal, readJobLogTail(logFile(terminal))) }
+                                            runCatching { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) }
                                     }
                                 }
                             } catch (failure: Throwable) {
@@ -492,7 +536,7 @@ class BackgroundJobManager(
                                         }
                                     }
                                     if (ownership.await() && sessionAllowed(reserved) && !activeHandle.suppressCompletion)
-                                        runCatching { completion.dispatch(terminal, readJobLogTail(logFile(terminal))) }
+                                        runCatching { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) }
                                 }
                             }
                         }
@@ -504,7 +548,7 @@ class BackgroundJobManager(
                                 store.put(terminal); publish(); activeHandle.terminal.complete(Unit)
                                 result.complete(com.promenar.infinity.data.model.ToolResult("job:${reserved.id}", message, "error"))
                                 if (ownership.await() && sessionAllowed(reserved) && !activeHandle.suppressCompletion)
-                                    runCatching { completion.dispatch(terminal, readJobLogTail(logFile(terminal))) }
+                                    runCatching { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) }
                             }
                         }
                     } finally {
@@ -658,7 +702,7 @@ class BackgroundJobManager(
                                 publish(); handle.terminal.complete(Unit); result.complete(safeSettled)
                             }
                             if (ownership.await() && sessionAllowed(record) && !handle.suppressCompletion) {
-                                try { completion.dispatch(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
+                                try { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
                             }
                         }
                     } catch (failure: Throwable) {
@@ -689,7 +733,7 @@ class BackgroundJobManager(
                             store.put(terminal); publish(); handle.terminal.complete(Unit)
                             if (stoppedResult != null) result.complete(stoppedResult) else result.completeExceptionally(failure)
                             if (ownership.await() && sessionAllowed(record) && !handle.suppressCompletion) {
-                                try { completion.dispatch(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
+                                try { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
                             }
                         }
                     } finally {
@@ -927,7 +971,7 @@ class BackgroundJobManager(
         }
         if(sessionAllowed(record) && !handle.suppressCompletion) {
             val (ended,tail)=handle.completion.await()
-            completion.dispatch(ended,tail)
+            dispatchCompletion(ended,tail)
         }
     }
     private fun sessionAllowed(record:BackgroundJobRecord)=record.sessionId !in deletedSessions
@@ -1011,7 +1055,7 @@ class BackgroundJobManager(
         store.put(settled);publish();handle.terminal.complete(Unit)
         try {
             if(sessionAllowed(record)) {
-                try { completion.dispatch(settled, readJobLogTail(logFile(settled)).let { it.copy(text = redactor?.redact(record.sessionId, it.text) ?: it.text) }) }
+                try { dispatchCompletion(settled, readJobLogTail(logFile(settled)).let { it.copy(text = redactor?.redact(record.sessionId, it.text) ?: it.text) }) }
                 catch(cancelled:CancellationException) { throw cancelled }
                 catch(_:Exception) { /* 完成通知失败不能改写真实进程终态。 */ }
             }
@@ -1118,7 +1162,14 @@ class BackgroundJobManager(
                 }
             }
             // 唤醒后直接回传已落盘快照，避免新的 Termux 广播查询延迟插队或手动释放。
-            return status(sessionId, id, refreshRemote = false).copy(timedOut = outcome.reason == JobWaitReason.TIMEOUT,
+            val snapshot = status(sessionId, id, refreshRemote = false)
+            if (outcome.reason == JobWaitReason.TERMINAL) {
+                wakeDelivery(id, sessionId)?.claim()?.let { claim ->
+                    try { claim.confirm() } finally { claim.release() }
+                }
+                withdrawPendingWake(id)
+            }
+            return snapshot.copy(timedOut = outcome.reason == JobWaitReason.TIMEOUT,
                 waitReason = outcome.reason.name.lowercase(), matchedLine = outcome.matchedLine?.let { redactor?.redact(sessionId, it) ?: it })
         } finally { unsubscribe?.invoke() }
     }
@@ -1170,6 +1221,8 @@ class BackgroundJobManager(
             val records=store.all().filter{it.sessionId==sessionId}
             records.forEach { active[it.id]?.suppressCompletion=true }
             for(record in records.filter{it.running}) stop(record.id)
+            // 任务 worker 可能正在等待唤醒回执，先撤回待发请求再等待它退出。
+            records.forEach { withdrawPendingWake(it.id) }
             records.forEach {active[it.id]?.worker?.cancelAndJoin()}
         } finally {
             store.all().filter{it.sessionId==sessionId}.forEach{active[it.id]?.suppressCompletion=false}
@@ -1184,9 +1237,12 @@ class BackgroundJobManager(
             val records=store.all().filter{it.sessionId==sessionId}
             records.forEach { active[it.id]?.suppressCompletion=true }
             for(record in records.filter{it.running}) stop(record.id)
+            // 任务 worker 可能正在等待唤醒回执，先撤回待发请求再等待它退出。
+            records.forEach { withdrawPendingWake(it.id) }
             records.forEach {active[it.id]?.worker?.cancelAndJoin()}
             records.forEach {removeRunDirectory(it.id)}
             store.deleteSession(sessionId)
+            records.forEach { discardWakeDelivery(it.id) }
             deleted=true
             publish()
         } finally {

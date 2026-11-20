@@ -14,6 +14,7 @@ import com.promenar.infinity.domain.usecase.inferenceDefaults
 import com.promenar.infinity.domain.usecase.withDefaults
 import com.promenar.infinity.domain.usecase.resolvedReasoningEffort
 import com.promenar.infinity.data.model.contentForModel
+import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.data.model.PhaseStatus
 import com.promenar.infinity.data.model.PostProcessStatus
@@ -77,6 +78,8 @@ import com.promenar.infinity.utils.InfinityLogger
 import com.promenar.infinity.data.knowledge.KnowledgeCitationScope
 import com.promenar.infinity.data.knowledge.knowledgeTurnId
 import com.promenar.infinity.data.trigger.isUnstartedCompletionPlaceholder
+import com.promenar.infinity.domain.trigger.SystemTriggerMessage
+import com.promenar.infinity.domain.trigger.usesSteeringDelivery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -622,7 +625,7 @@ internal class DefaultChatGenerationRuntime(
         persistCurrentUserAttachments(request)
         val storedUser = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == request.userMessageId && it.role == MessageRole.USER }
         val turnMessages = store.getSession(request.sessionId)?.messages.orEmpty()
-            .dropWhile { it.id != request.userMessageId }.drop(1).takeWhile { it.role != MessageRole.USER }
+            .dropWhile { it.id != request.userMessageId }.drop(1).takeWhile { !it.startsNewUserTurn() }
         val hasPreviousAssistant = turnMessages.any { it.role == MessageRole.ASSISTANT && it.id != assistantMessageId(request) && it.id !in request.messageIdsToReplace }
         val originalOwner = com.promenar.infinity.ui.chat.manager.turnContextMetadata(storedUser?.turnContext)?.assistantMessageId
         val regenerate = request.messageIdsToReplace.isNotEmpty() || hasStagedUserEdit(request) ||
@@ -1535,12 +1538,17 @@ internal class DefaultChatGenerationRuntime(
         }
     }
 
+    // 步骤边界通知属于正在运行的轮次；只有独立用户输入或独立系统唤醒才切断读取范围。
+    private fun Message.startsNewUserTurn(): Boolean =
+        role == MessageRole.USER && (name != SystemTriggerMessage.MESSAGE_NAME ||
+            SystemTriggerMessage.parse(content)?.let { it.kind.usesSteeringDelivery && it.consumerAssistantId != null } != true)
+
     /** 只继承本轮成功的内置状态工具读数，恢复生成时也不必改写初始快照。 */
     private fun observedStateRevision(session: com.promenar.infinity.data.model.Session, request: GenerationRequest): Long {
         val start = session.messages.indexOfFirst { it.id == request.userMessageId && it.role == MessageRole.USER }
         if (start < 0) return 0
         val stateTools = setOf("state_define", "state_update", "state_get", "state_remove")
-        val history = sanitizeProtocolHistory(session.messages.drop(start + 1).takeWhile { it.role != MessageRole.USER }
+        val history = sanitizeProtocolHistory(session.messages.drop(start + 1).takeWhile { !it.startsNewUserTurn() }
             .filterNot { it.id in request.messageIdsToReplace || it.parentMessageId in request.messageIdsToReplace })
         val calls = history.filter { it.role == MessageRole.ASSISTANT }.flatMap { it.toolCalls.orEmpty() }
             .filter { it.name in stateTools }.associate { it.id to it.name }
@@ -1558,14 +1566,20 @@ internal class DefaultChatGenerationRuntime(
         if (productionId == null) return 0
         val start = session.messages.indexOfFirst { it.id == request.userMessageId && it.role == MessageRole.USER }
         if (start < 0) return 0
-        val history = sanitizeProtocolHistory(session.messages.drop(start + 1).takeWhile { it.role != MessageRole.USER }.filterNot { it.id in request.messageIdsToReplace || it.parentMessageId in request.messageIdsToReplace })
+        val history = sanitizeProtocolHistory(session.messages.drop(start + 1).takeWhile { !it.startsNewUserTurn() }.filterNot { it.id in request.messageIdsToReplace || it.parentMessageId in request.messageIdsToReplace })
         val calls = history.filter { it.role == MessageRole.ASSISTANT }.flatMap { it.toolCalls.orEmpty() }.filter { it.name == "production_get" }.map { it.id }.toSet()
         return history.asSequence().filter { it.role == MessageRole.TOOL && !it.isError && it.name == "production_get" && it.toolCallId in calls }.mapNotNull { message -> runCatching { (com.promenar.infinity.data.model.json.parseToJsonElement(message.content) as? kotlinx.serialization.json.JsonObject)?.let { body -> if ((body["production_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content == productionId) (body["revision"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() else null } }.getOrNull() }.maxOrNull() ?: 0
     }
 
     override suspend fun prepareContinuation(request: GenerationRequest): String {
+        // 通知在新占位之前追加。续轮仍归属原用户消息，保持审批和轮次恢复使用的父链。
+        subagentCompletions?.deliver(request.sessionId, store, messageManager, assistantMessageId(request))
         val session = store.getSession(request.sessionId) ?: error("生成会话不存在")
         val nextAssistantMessageId = com.promenar.infinity.domain.usecase.IdGenerator.message("ai")
+        observedStateRevision = maxOf(observedStateRevision, observedStateRevision(session, request))
+        val productionId = productionRepository?.get(request.sessionId)?.production?.id
+        if (observedProductionId != productionId) { observedProductionId = productionId; observedProductionRevision = 0 }
+        observedProductionRevision = maxOf(observedProductionRevision, observedProductionRevision(session, request, productionId))
         ui.setStreamingTarget(nextAssistantMessageId)
         messageManager.addMessage(
             request.sessionId,
@@ -1580,9 +1594,6 @@ internal class DefaultChatGenerationRuntime(
         )
         currentAssistantMessageId = nextAssistantMessageId
         stateBoardRepository?.recordContextRead(request.sessionId, nextAssistantMessageId, observedStateRevision)
-        val productionId = productionRepository?.get(request.sessionId)?.production?.id
-        if (observedProductionId != productionId) { observedProductionId = productionId; observedProductionRevision = 0 }
-        observedProductionRevision = maxOf(observedProductionRevision, observedProductionRevision(session, request, productionId))
         if (productionId != null) productionRepository?.recordContextRead(request.sessionId, nextAssistantMessageId, observedProductionRevision, productionId)
         return nextAssistantMessageId
     }

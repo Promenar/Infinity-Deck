@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.65.0-beta`（versionCode `179`）。推出折叠屏内屏 `40dp` 纯黑/纯白极简电路分支侧栏（按父会话聚类连线与无损状态点阵珠，释放右侧阅读视野）；将默认浮岛升级为熏黑透视玻璃质感与点阵屏内光透射效果，并保留零模糊暗黑实底省电档；将全套 Ktor 依赖升级至 `3.6.1` 修复多图/流式引擎冲突，加固生图 `images` 引用与影视 `production_*` 契约和相对路径映射，并在本地 ADB 诊断桥引入保留有界结构化入参与真实报错的分级脱敏；延续 `v0.64.1-beta`、`v0.64.0-beta` 与 `v0.63.4-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.65.1-beta`（versionCode `180`）。为流式生成正文引入消息作用域绑定与切换清零，消除多轮工具续轮首包前的进度汇报短暂重复闪现；同时将后台任务 `JOB_EXIT` 唤醒纳入步边界 Steering 投递桥（长任务多轮期间及时合并注入、闲置会话照常唤醒），并对已被 `job_wait` 终态（`TERMINAL`）消费的任务实施传输层窄去重。延续 `v0.65.0-beta`（`40dp` 极简电路分支侧栏、熏黑透视玻璃默认浮岛、Ktor `3.6.1` 与分级 `ADB_LOCAL` 诊断桥）、`v0.64.1-beta`、`v0.64.0-beta` 与 `v0.63.4-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 

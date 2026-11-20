@@ -8,6 +8,12 @@ import org.junit.Test
 class SystemTriggerMessageTest {
     private val firedAt = OffsetDateTime.of(2026, 10, 23, 10, 30, 0, 0, ZoneOffset.ofHours(8))
 
+    @Test fun `后台任务结束与完成通信使用步骤边界投递`() {
+        assertThat(SystemTurnKind.entries.filter { it.usesSteeringDelivery }).containsExactly(
+            SystemTurnKind.JOB_EXIT, SystemTurnKind.SUBAGENT_DONE, SystemTurnKind.SESSION_MESSAGE,
+        )
+    }
+
     @Test fun `合并完成通知的全部送达标识可往返且旧消息兼容`() {
         val request = SystemTurnRequest("s", SystemTurnKind.SUBAGENT_DONE, "sa_a", "结论", "正文",
             sequence = 2, deliveryIds = listOf("sa_a:2", "sa_b:1"), consumerAssistantId = "assistant")

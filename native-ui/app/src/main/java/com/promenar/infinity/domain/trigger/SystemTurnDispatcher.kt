@@ -43,7 +43,7 @@ data class SystemTurnRequest(
     val deliveryIds: List<String> = emptyList(),
     /** 运行内送达租约；消息持久化前与工具等待互斥，失败后释放以便重试。 */
     val delivery: SystemTurnDelivery? = null,
-    /** 完成通知在生成首步插入时，记录将消费该通知的空助手占位。 */
+    /** 轮内完成通知关联当前助手；生成首步关联空占位，续步关联刚结束的助手步骤。 */
     val consumerAssistantId: String? = null,
 )
 
@@ -79,4 +79,4 @@ interface SystemTurnDispatcher {
 
 /** 完成与通信通知共享可靠送达桥，普通定时来源仍使用原有过期规则。 */
 val SystemTurnKind.usesSteeringDelivery: Boolean
-    get() = this == SystemTurnKind.SUBAGENT_DONE || this == SystemTurnKind.SESSION_MESSAGE
+    get() = this == SystemTurnKind.SUBAGENT_DONE || this == SystemTurnKind.SESSION_MESSAGE || this == SystemTurnKind.JOB_EXIT

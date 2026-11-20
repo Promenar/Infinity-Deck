@@ -77,24 +77,18 @@ class BackgroundJobSkillsTest {
     @Test fun `进程内媒体让出后查询结果与停止`() = runBlocking {
         val root = Files.createTempDirectory("job-media").toFile()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val woke = CompletableDeferred<String>()
-        val dispatcher = object : com.promenar.infinity.domain.trigger.SystemTurnDispatcher {
-            override suspend fun request(request: com.promenar.infinity.domain.trigger.SystemTurnRequest): com.promenar.infinity.domain.trigger.SystemTurnOutcome {
-                woke.complete(request.body); return com.promenar.infinity.domain.trigger.SystemTurnOutcome.Completed
-            }
-        }
         val manager = BackgroundJobManager(scope, BackgroundJobStore(File(root, "store")), File(root, "runs"),
             BuiltinCommandRunner(listOf("/usr/bin/perl", "-e", "setpgrp(0,0); exec @ARGV"), "/bin/sh", ProcessGroupSignaller { _, _ -> }, { File(root, "scratch") }),
             prepareWorkspace = { BackgroundJobLocation(root, root, false, false) },
-            prepareCommand = { _, _, _, _, _ -> error("不应调用命令执行器") }, completion = BackgroundJobCompletion({ dispatcher }))
+            prepareCommand = { _, _, _, _, _ -> error("不应调用命令执行器") })
         val ctx = context("own")
         val media = com.promenar.infinity.domain.media.MediaRef("/media/a.png", "image/png", com.promenar.infinity.domain.media.MediaKind.IMAGE, 4)
         val expected = com.promenar.infinity.data.model.ToolResult("fake", "图片 /media/a.png", data = "元数据", media = listOf(media))
         try {
-            val immediate = runMediaJob("generate_image", buildJsonObject {}, ctx, manager, 1, "wake", "run_in_background", "生成图片") { expected }
+            val immediate = runMediaJob("generate_image", buildJsonObject {}, ctx, manager, 1, "none", "run_in_background", "生成图片") { expected }
             assertThat(immediate).isEqualTo(expected)
             val release = CompletableDeferred<Unit>()
-            val started = runMediaJob("generate_image", buildJsonObject { put("yield_after_seconds", 1) }, ctx, manager, 1, "wake", "run_in_background", "生成图片") {
+            val started = runMediaJob("generate_image", buildJsonObject { put("yield_after_seconds", 1) }, ctx, manager, 1, "none", "run_in_background", "生成图片") {
                 release.await(); expected
             }
             val json = Json.parseToJsonElement(started.content).jsonObject
@@ -111,7 +105,6 @@ class BackgroundJobSkillsTest {
                 assertThat(result.media).isEqualTo(expected.media)
                 assertThat(result.data).isEqualTo(expected.data)
             }
-            assertThat(withTimeout(5_000) { woke.await() }).contains(expected.content)
             val continued = CompletableDeferred<Unit>()
             val handedOff = CompletableDeferred<String>()
             val turn = launch {

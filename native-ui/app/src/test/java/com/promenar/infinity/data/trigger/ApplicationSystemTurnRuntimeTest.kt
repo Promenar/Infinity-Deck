@@ -389,6 +389,30 @@ class ApplicationSystemTurnRuntimeTest {
         runCurrent()
     }
 
+    @Test fun `空闲后台任务结束通知落盘并唤醒会话`() = runTest {
+        val store = ChatStore()
+        val finish = CompletableDeferred<Unit>()
+        val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->
+            GenerationRunner { _, emit ->
+                finish.await()
+                emit(GenerationEvent.PhaseChanged(GenerationPhase.COMPLETED))
+            }
+        })
+        val bridge = SubagentCompletionSteering(backgroundScope)
+        val foreground = mockk<GenerationForegroundController>(relaxed = true)
+        val runtime = runtime(store, messageManager(store), coordinator, foreground, bridge) { _, _, _ -> }
+        // 真实 IO 调度由 runTest 的墙钟超时保护，虚拟超时可能先于 IO 返回触发。
+        val outcome = DefaultSystemTurnDispatcher(backgroundScope, runtime, "失败", "中断").request(
+            completionRequest().copy(kind = SystemTurnKind.JOB_EXIT),
+        )
+        assertThat(outcome).isEqualTo(SystemTurnOutcome.Completed)
+        assertThat(finish.isCompleted).isFalse()
+        assertThat(coordinator.isSessionBusy("s")).isTrue()
+        assertThat(store.getSession("s")!!.messages.first().name).isEqualTo(SystemTriggerMessage.MESSAGE_NAME)
+        finish.complete(Unit)
+        runCurrent()
+    }
+
     @Test fun `生成名额满载时空闲父会话完成通知随系统轮排队`() = runTest {
         val store = ChatStore()
         val coordinator = DefaultGenerationCoordinator(backgroundScope, GenerationRunnerFactory { _, _ ->

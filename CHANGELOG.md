@@ -14,9 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.65.1-beta] - 2026-11-20
+
 - **修复多轮工具生成续轮等待首包期间进度汇报短暂重复闪现**：
   - 在 [GenerationPresentationStore.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/GenerationPresentationStore.kt)、[DefaultChatGenerationRuntime.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/DefaultChatGenerationRuntime.kt) 与 [DefaultGenerationCoordinator.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/DefaultGenerationCoordinator.kt) 为流式正文绑定目标助手消息 ID（`streamingMessageId`），在工具续轮写入新空助手占位前原子切换目标并清空上一轮残留的 `streamingContent`，同时在收到 `TargetChanged` 事件时清空 `streamingContent` 并将 `generatedChars` 归零；
   - 在 [ChatViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatViewModel.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt) 与 [ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt) 叠加渲染作用域校验，当流式目标 ID 与当前末尾助手消息不匹配时自动屏蔽旧流文本，防止在等待第 N+1 轮首包前将上一轮进度汇报误渲染至新助手占位并波及生成指示与律动读数。
+- **修复后台任务结束后滞后重唤醒并支持 `job_wait` 终态消费去重**：
+  - 将 [SystemTurnDispatcher.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/trigger/SystemTurnDispatcher.kt) 的 `SystemTurnKind.JOB_EXIT` 纳入 `usesSteeringDelivery`，并在 [DefaultChatGenerationRuntime.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/DefaultChatGenerationRuntime.kt) 的 `prepareContinuation` 插入下一轮助手占位前调用 `subagentCompletions?.deliver(...)`（同步放行轮内步骤通知穿行状态版本扫描），使长任务期间结束的后台任务于步骤边界合并注入并在回合内及时消化；闲置会话仍保持正常唤醒；
+  - 在 [BackgroundJobManager.kt](native-ui/app/src/main/java/com/promenar/infinity/data/jobs/BackgroundJobManager.kt) 与 [InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt) 引入与 `SubagentLauncher` 对等的 `WakeDelivery` 传输层认领租约与 `withdrawPendingWake` 撤回接线：仅当 `waitFor` 命中 `JobWaitReason.TERMINAL` 消费终态时认领租约并撤回排队唤醒，而 `TIMEOUT`/`OUTPUT`/`FILE`/`RELEASED`/`STEERING` 与 `status()` 查询照常保留完成通知。
 
 ## [0.65.0-beta] - 2026-11-20
 
