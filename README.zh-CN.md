@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.66.1-beta`（versionCode `182`）。全站统一收口页签手势横滑与指示条实时跟手（`InfinityPanelTabs` + `rememberPanelTabPagerState`）及二/三级子页 `InfinityPageStack` 视差推入、系统手势跟手返回与 `SaveableStateHolder` 状态保留，覆盖视频创作面板（主 6 页签、镜头详情与镜头/角色多级页面栈）、远程、Git、运行/检索详情、头像选择、会话设置、录音工作台与库页、原型画板与命令输出分段。延续 `v0.66.0-beta`、`v0.65.1-beta`、`v0.65.0-beta`、`v0.64.1-beta`、`v0.64.0-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.66.2-beta`（versionCode `183`）。修复远程面板无参 `"ssh_keys"` 子页令牌解码缺陷，并全站统一收口页签手势横滑与指示条实时跟手（`InfinityPanelTabs` + `rememberPanelTabPagerState`）及二/三级子页 `InfinityPageStack` 视差推入、系统手势跟手返回与 `SaveableStateHolder` 状态保留，覆盖视频创作面板（主 6 页签、镜头详情与镜头/角色多级页面栈）、远程、Git、运行/检索详情、头像选择、会话设置、录音工作台与库页、原型画板与命令输出分段。延续 `v0.66.1-beta`、`v0.66.0-beta`、`v0.65.1-beta`、`v0.65.0-beta`、`v0.64.1-beta`、`v0.64.0-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 

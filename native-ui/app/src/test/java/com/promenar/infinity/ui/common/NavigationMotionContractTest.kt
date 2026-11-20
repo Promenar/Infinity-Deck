@@ -2,6 +2,10 @@ package com.promenar.infinity.ui.common
 
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import com.promenar.infinity.ui.remote.RemoteSubPage
+import com.promenar.infinity.ui.remote.decodeRemoteSubPage
+import com.promenar.infinity.ui.remote.encodeRemoteEntry
+import com.promenar.infinity.ui.remote.encodeRemoteTerminal
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.Test
@@ -235,5 +239,15 @@ class NavigationMotionContractTest {
         // 文档编辑器切换窗格时不得重建编辑面板：两个窗格仍各自只出现一次。
         val editor = source("rag/DocEditorScreen.kt")
         assertThat(editor.split("EditorPane(\n").size - editor.split("fun EditorPane(\n").size).isEqualTo(1)
+    }
+
+    @Test
+    fun `远程面板二三级子页令牌能完整编解码包含无参数 SSH 密钥页`() {
+        assertThat(decodeRemoteSubPage("ssh_keys")).isEqualTo(RemoteSubPage.SshKeys)
+        assertThat(decodeRemoteSubPage("ssh_keys:extra")).isNull()
+        assertThat(decodeRemoteSubPage(encodeRemoteEntry("git/github.com"))).isEqualTo(RemoteSubPage.KeychainEntry("git/github.com"))
+        assertThat(decodeRemoteSubPage(encodeRemoteTerminal("fnos", "exec:step-1"))).isEqualTo(RemoteSubPage.Terminal("fnos", "exec:step-1"))
+        assertThat(decodeRemoteSubPage(encodeRemoteTerminal("fnos", null))).isEqualTo(RemoteSubPage.Terminal("fnos", null))
+        assertThat(decodeRemoteSubPage("unknown")).isNull()
     }
 }

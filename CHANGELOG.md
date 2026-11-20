@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.66.2-beta] - 2026-11-20
+
+- **远程面板无参子页令牌解码修复（[RemotePage.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/remote/RemotePage.kt)、[ProductionPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPanel.kt)、[NavigationMotionContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/NavigationMotionContractTest.kt)）**：
+  - 修复 `decodeRemoteSubPage` 在解析无冒号参数的 `"ssh_keys"` 令牌时误传 `substringBefore(':', "")` 默认空值，导致真机在「远程 → SSH」点击「SSH 密钥」只压栈不渲染二级密钥列表页的回归缺陷；同步消除 `decodeProductionPage` 中的同类 `substringBefore(':', "")` 隐患，并将 `RemoteSubPage` 与编解码器开放为 `internal` 补齐 `ssh_keys` / `entry` / `term` 单测回归。
+
 ## [0.66.1-beta] - 2026-11-20
 
 - **全站页签手势横滑与指示条实时跟手（[InfinityPanelTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityPanelTabs.kt)）**：

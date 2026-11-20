@@ -87,23 +87,23 @@ enum class RemoteSettingsLink { LINUX, TERMUX, BACKGROUND }
  * 窄窗口整页显示（[onBack] 非空），宽窗口在检视器“远程”页签中显示，根层不画顶栏。
  * SSH 终端在面板内作为下一层打开，返回回到面板；连接由 [com.promenar.infinity.ui.ssh.SshUserTerminals] 持有，离开不断开。
  */
-private sealed interface RemoteSubPage {
+internal sealed interface RemoteSubPage {
     data class Terminal(val alias: String, val initialTab: String?) : RemoteSubPage
     data object SshKeys : RemoteSubPage
     data class KeychainEntry(val ref: String) : RemoteSubPage
 }
 
-private fun encodeRemoteTerminal(alias: String, tab: String?): String =
+internal fun encodeRemoteTerminal(alias: String, tab: String?): String =
     "term:${URLEncoder.encode(alias, "UTF-8")}:${tab?.let { URLEncoder.encode(it, "UTF-8") }.orEmpty()}"
 
-private fun encodeRemoteEntry(ref: String): String =
+internal fun encodeRemoteEntry(ref: String): String =
     "entry:${URLEncoder.encode(ref, "UTF-8")}"
 
-private fun decodeRemoteSubPage(token: String): RemoteSubPage? {
-    val kind = token.substringBefore(':', "")
+internal fun decodeRemoteSubPage(token: String): RemoteSubPage? {
+    val kind = token.substringBefore(':')
     val rest = token.substringAfter(':', "")
     return when (kind) {
-        "ssh_keys" -> RemoteSubPage.SshKeys
+        "ssh_keys" -> if (token == "ssh_keys") RemoteSubPage.SshKeys else null
         "entry" -> URLDecoder.decode(rest, "UTF-8").takeIf(String::isNotEmpty)?.let(RemoteSubPage::KeychainEntry)
         "term" -> {
             if (':' !in rest) return null

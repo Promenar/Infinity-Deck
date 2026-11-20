@@ -211,7 +211,7 @@ internal fun encodeProductionPage(page: ProductionPage): String = when (page) {
 }
 
 internal fun decodeProductionPage(token: String): ProductionPage? {
-    val kind = token.substringBefore(':', "")
+    val kind = token.substringBefore(':')
     val rest = token.substringAfter(':', "")
     return when (kind) {
         "shot" -> {
