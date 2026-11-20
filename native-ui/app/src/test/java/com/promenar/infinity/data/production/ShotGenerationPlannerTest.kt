@@ -197,4 +197,42 @@ class ShotGenerationPlannerTest {
         assertTrue(queue.tasks.value.isEmpty())
     }
 
+    @Test fun `仅文生通道时参考镜保留输入不报超限或整数时长并给出缺通道提示`() = runTest {
+        val textOnly = MediaChannel("h3-t2v", MediaGroup.VIDEO, MediaCapabilities(setOf(GenerationMode.TEXT)))
+        edit { it.copy(durationSeconds = 4.5, inputs = listOf(ShotInput(InputRole.REFERENCE, "ref/pier.png", label = "码头母图"))) }
+        val planner = planner(PlanningRegistry(textOnly))
+        val preview = planner.preview("s", "S1E01", "SC01-01")
+        assertNull(preview.channel)
+        assertEquals(listOf("ref/pier.png", "ref/front.png", "ref/back.png"), preview.inputs.map { it.path })
+        assertEquals(listOf(1, 2, 3), preview.inputs.map { it.number })
+        assertTrue(preview.overflow.isEmpty())
+        val blocked = preview.blockedReason.orEmpty()
+        assertTrue(blocked.contains("没有支持当前模式的通道"))
+        assertFalse(blocked.contains("超出通道上限"))
+        assertFalse(blocked.contains("durationSeconds"))
+        assertTrue(planner.generate("s", "S1E01", "SC01-01") is ShotGenerateResult.Rejected)
+        assertTrue(queue.tasks.value.isEmpty())
+    }
+
+    @Test fun `角色未拆造型时回退使用版本图且不与显式输入重复挂载`() = runTest {
+        files.bytes["ref/char-v2.png"] = byteArrayOf(9)
+        store.production = store.production.copy(assets = store.production.assets.map { asset ->
+            if (asset.id != "lin") asset else asset.copy(
+                looks = emptyList(),
+                versions = listOf(AssetVersion(2, "ref/char-v2.png", 2)),
+                currentVersion = 2,
+            )
+        })
+        edit { it.copy(appearances = listOf(ShotAppearance("lin", "default", emptyList()))) }
+        val result = planner().preview("s", "S1E01", "SC01-01")
+        assertNull(result.blockedReason)
+        assertEquals(listOf("ref/char-v2.png", "ref/pier.png"), result.inputs.map { it.path })
+
+        // 显式输入已包含版本图时不再重复添加。
+        edit { it.copy(inputs = listOf(ShotInput(InputRole.REFERENCE, "ref/char-v2.png", label = "显式角色图"))) }
+        val deduped = planner().preview("s", "S1E01", "SC01-01")
+        assertNull(deduped.blockedReason)
+        assertEquals(listOf("ref/char-v2.png", "ref/pier.png"), deduped.inputs.map { it.path })
+    }
+
 }

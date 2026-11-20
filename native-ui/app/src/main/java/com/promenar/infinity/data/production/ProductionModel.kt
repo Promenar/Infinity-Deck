@@ -241,6 +241,10 @@ data class Asset(
     val referenceVoice: ReferenceVoice? = null,
 )
 
+/** 返回当前选中版本或最新版本的路径；未生成任何版本时为 null。 */
+fun Asset.currentVersionPath(): String? =
+    (versions.firstOrNull { it.number == currentVersion } ?: versions.maxByOrNull { it.number })?.path
+
 @Serializable
 data class Production(
     val id: String,

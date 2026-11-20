@@ -6,6 +6,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Landscape
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,8 +45,29 @@ internal fun ProductionCommand(text: String, enabled: Boolean = true, primary: B
 }
 
 @Composable
-internal fun <T> ProductionOptionSheet(title: String, options: List<Pair<T, String>>, selected: T?, onDismiss: () -> Unit, onSelect: (T) -> Unit) =
-    ProductionChoiceSheet(title, options.map { (value, label) -> ProductionChoice(value, label) }, selected, onDismiss, emptyText = stringResource(R.string.p2_no_channels), onSelect = onSelect)
+internal fun <T> ProductionOptionSheet(
+    title: String,
+    options: List<Pair<T, String>>,
+    selected: T?,
+    onDismiss: () -> Unit,
+    emptyText: String? = null,
+    onSelect: (T) -> Unit,
+) = ProductionChoiceSheet(
+    title = title,
+    options = options.map { (value, label) -> ProductionChoice(value, label) },
+    selected = selected,
+    onDismiss = onDismiss,
+    emptyText = emptyText ?: stringResource(R.string.p2_no_options),
+    onSelect = onSelect,
+)
+
+internal fun AssetKind.icon(): ImageVector = when (this) {
+    AssetKind.CHARACTER -> Icons.Rounded.Person
+    AssetKind.LOCATION -> Icons.Rounded.Landscape
+    AssetKind.PROP -> Icons.Rounded.Inventory2
+    AssetKind.STYLE -> Icons.Rounded.Palette
+    AssetKind.SOUND -> Icons.Rounded.GraphicEq
+}
 
 @Composable
 internal fun ReferenceSlot.displayName(): String = when (id) {

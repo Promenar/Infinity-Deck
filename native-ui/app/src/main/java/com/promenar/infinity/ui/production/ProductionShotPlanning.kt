@@ -1,15 +1,20 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +34,7 @@ import com.promenar.infinity.data.production.*
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -95,7 +101,7 @@ internal fun ProductionShotDetail(
         ProductionTopBar(
             title = "${shot.code} ${shot.title}",
             meta = listOfNotNull(
-                stringResource(R.string.production_panel_episode_number, location.episode.number),
+                stringResource(R.string.production_panel_episode_number, location.episode.number).takeIf { production.showEpisodeNumbers() },
                 stringResource(R.string.production_panel_scene_number, location.scene.number),
                 shot.size?.takeIf(String::isNotBlank),
                 secondsLabel(shot.durationSeconds),
@@ -185,15 +191,28 @@ internal fun ProductionShotDetail(
                     }
                 }
                 item("channel-mode") {
+                    val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)
+                    val noChannel = resolvedChannel == null
+                    val channelName = preview?.channelLabel?.takeIf(String::isNotBlank)
+                        ?.split(" $InfinityMetaSeparator ") ?: shot.channelId?.let(services.channelLabelSegments)
+                        ?: listOf(
+                            if (noChannel) stringResource(R.string.p2_no_channel_for_mode, shot.mode.label())
+                            else stringResource(R.string.p2_default_channel),
+                        )
+                    val defaultLabel = stringResource(R.string.p2_default)
+                        .takeIf { !noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank() }
                     ProductionSection(stringResource(R.string.p2_channel_mode)) {
                         ProductionRow(stringResource(R.string.p2_mode), value = shot.mode.label(), enabled = !working, onClick = { sheet = PlanningSheet.MODE })
-                        val noChannel = preview != null && preview?.channel == null
-                        val channelName = preview?.channelLabel?.takeIf(String::isNotBlank)
-                            ?.split(" $InfinityMetaSeparator ") ?: shot.channelId?.let(services.channelLabelSegments)
-                            ?: listOf(stringResource(if (noChannel) R.string.p2_no_channels else R.string.p2_default_channel))
-                        val defaultLabel = stringResource(R.string.p2_default)
-                            .takeIf { !noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank() }
                         ProductionRow(stringResource(R.string.p2_channel), valueSegments = channelName + listOfNotNull(defaultLabel), enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
+                        if (noChannel && (!loading || preview != null || services.planner == null)) {
+                            ChannelMismatchGuideCard(
+                                shot = shot,
+                                channels = channels,
+                                services = services,
+                                enabled = !working,
+                                onSwitchMode = { targetMode -> onRun(modeSelectionAction(location, targetMode, channels, channelOrder)) },
+                            )
+                        }
                         ProductionRow(stringResource(R.string.p2_specs), valueSegments = planSpecsSegments(preview, production, shot))
                         ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))
                         shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp), asLink = shot.preview == PreviewKind.TEXT_CARD) }
@@ -201,6 +220,7 @@ internal fun ProductionShotDetail(
                 }
                 item("inputs") {
                     val inputs = preview?.inputs.orEmpty()
+                    val noChannel = (if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)) == null
                     val packing = preview?.channel?.takeIf { shot.mode == ShotMode.REFERENCE && shot.appearances.isNotEmpty() }?.let {
                         stringResource(if (it.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_composite else R.string.p2_separate)
                     }
@@ -209,7 +229,12 @@ internal fun ProductionShotDetail(
                         val sectionTitle = stringResource(R.string.production_panel_section_inputs)
                         ProductionSection(
                             sectionTitle,
-                            titleSegments = listOfNotNull(sectionTitle, packing, stringResource(R.string.p2_image_count, images).takeIf { images > 0 }),
+                            titleSegments = listOfNotNull(
+                                sectionTitle,
+                                packing,
+                                stringResource(R.string.p2_image_count, images).takeIf { images > 0 },
+                                stringResource(R.string.p2_waiting_channel).takeIf { noChannel && inputs.isNotEmpty() },
+                            ),
                             trailing = preview?.channel?.let { stringResource(R.string.p2_inputs_by_channel, preview?.channelLabel?.substringBefore(" $InfinityMetaSeparator ") ?: it.id) },
                         ) {
                             if (loading && preview == null) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
@@ -218,7 +243,18 @@ internal fun ProductionShotDetail(
                             if (services.planner == null) ProductionMutedRow(noPlanner)
                         }
                         preview?.overflow?.takeIf { it.isNotEmpty() }?.let { overflow -> InfinityStatusStrip(InfinityStatusKind.Warning, stringResource(R.string.p2_overflow, overflow.joinToString("、") { it.title })) }
-                        preview?.warnings?.forEach { warning -> InfinityStatusStrip(InfinityStatusKind.Warning, warning) }
+                        preview?.warnings?.forEach { warning ->
+                            val targetCharacter = shot.appearances.mapNotNull { app -> production.findAsset(app.characterAssetId) }
+                                .firstOrNull { char -> char.status != AssetStatus.LOCKED && char.name in warning }
+                            if (targetCharacter != null) {
+                                ReviewWarningBanner(warning) { onOpenCharacter(targetCharacter.id) }
+                            } else {
+                                InfinityStatusStrip(InfinityStatusKind.Warning, warning)
+                            }
+                        }
+                        remainingBlockedReasons(preview, location.scene.storyboardLocked, noChannel, shot.channelId).forEach { reason ->
+                            InfinityStatusStrip(InfinityStatusKind.Warning, reason)
+                        }
                     }
                 }
                 if (shot.dialogue.isNotEmpty()) item("dialogue-audio") {
@@ -273,7 +309,13 @@ internal fun ProductionShotDetail(
         }
         PlanningSheet.LOOK -> {
             val character = production.findAsset(lookCharacter.orEmpty())
-            ProductionOptionSheet(stringResource(R.string.p2_look), character?.looks.orEmpty().map { it.id to it.name }, shot.appearances.firstOrNull { it.characterAssetId == character?.id }?.lookId, { sheet = null }) { id -> character?.let { onRun(ProductionUserAction.SetCharacterLook(episodeId, shot.code, it.id, id)) } }
+            ProductionOptionSheet(
+                title = stringResource(R.string.p2_look),
+                options = character?.looks.orEmpty().map { it.id to it.name },
+                selected = shot.appearances.firstOrNull { it.characterAssetId == character?.id }?.lookId,
+                onDismiss = { sheet = null },
+                emptyText = stringResource(R.string.p2_no_looks),
+            ) { id -> character?.let { onRun(ProductionUserAction.SetCharacterLook(episodeId, shot.code, it.id, id)) } }
         }
         null -> Unit
     }
@@ -305,7 +347,7 @@ private fun ShotFieldGrid(shot: Shot, production: Production) {
         @Composable
         fun field(label: String, content: @Composable () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = muted, modifier = Modifier.width(44.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = muted, modifier = Modifier.widthIn(min = 44.dp, max = 96.dp))
                 Box(Modifier.weight(1f)) { content() }
             }
         }
@@ -341,31 +383,185 @@ private fun ShotFieldGrid(shot: Shot, production: Production) {
     }
 }
 
-/** 角色参考卡：角色名（进参考包）、造型选择与单行横向滚动的参考位开关。 */
+/** 角色参考卡：带头像缩略图；有造型时切造型与参考位，未拆造型有版本图时明确标为“使用版本图”。 */
 @Composable
 private fun CharacterReferenceCard(appearance: ShotAppearance, production: Production, enabled: Boolean, onOpen: () -> Unit, onLook: () -> Unit, onToggle: (CharacterLook, String) -> Unit) {
     val asset = production.findAsset(appearance.characterAssetId)
     val look = asset?.looks?.firstOrNull { it.id == appearance.lookId }
+    val thumbPath = asset?.currentPath() ?: look?.slots?.firstOrNull { !it.path.isNullOrBlank() }?.path
+    val usesVersionFallback = look == null && asset?.looks.isNullOrEmpty()
+    val hasVersion = asset?.currentPath() != null
+    val scheme = MaterialTheme.colorScheme
     BettboxListGroup {
-        Column(Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal, end = 10.dp, top = 6.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        if (usesVersionFallback) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onOpen)
+                    .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CharacterRefThumb(thumbPath, asset?.name ?: appearance.characterAssetId)
                 Text(
                     asset?.name ?: appearance.characterAssetId,
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onOpen).padding(vertical = 10.dp),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHighest, onClick = onLook, enabled = enabled) {
-                    Row(Modifier.heightIn(min = 36.dp).padding(start = 14.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(look?.name ?: stringResource(R.string.p2_missing_look), style = MaterialTheme.typography.labelLarge)
-                        Icon(Icons.Rounded.ExpandMore, contentDescription = stringResource(R.string.p2_look), modifier = Modifier.size(18.dp))
+                ProductionStatusChip(
+                    stringResource(if (hasVersion) R.string.p2_using_version_image_full else R.string.p2_missing_look),
+                    if (hasVersion) ProductionTone.NEUTRAL else ProductionTone.WARNING,
+                )
+                Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(20.dp), tint = scheme.onSurfaceVariant)
+            }
+        } else {
+            Column(Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal, end = 10.dp, top = 6.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        Modifier.weight(1f).clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = onOpen).padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        CharacterRefThumb(thumbPath, asset?.name ?: appearance.characterAssetId)
+                        Text(
+                            asset?.name ?: appearance.characterAssetId,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Surface(shape = CircleShape, color = scheme.surfaceContainerHighest, onClick = onLook, enabled = enabled) {
+                        Row(Modifier.heightIn(min = 36.dp).padding(start = 14.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(look?.name ?: stringResource(R.string.p2_missing_look), style = MaterialTheme.typography.labelLarge)
+                            Icon(Icons.Rounded.ExpandMore, contentDescription = stringResource(R.string.p2_look), modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
-            }
-            if (look != null) Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                look.slots.forEach { slot -> InfinityChip(slot.displayName(), selected = slot.id in appearance.referenceSlotIds, enabled = enabled, onClick = { onToggle(look, slot.id) }) }
+                if (look != null) Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    look.slots.forEach { slot -> InfinityChip(slot.displayName(), selected = slot.id in appearance.referenceSlotIds, enabled = enabled, onClick = { onToggle(look, slot.id) }) }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun CharacterRefThumb(path: String?, name: String) {
+    val scheme = MaterialTheme.colorScheme
+    if (path != null) {
+        ProductionThumbnail(path, Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)), contentDescription = name)
+    } else {
+        Box(
+            Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(scheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Person, contentDescription = name, modifier = Modifier.size(18.dp), tint = scheme.onPrimaryContainer)
+        }
+    }
+}
+
+@Composable
+private fun ChannelMismatchGuideCard(
+    shot: Shot,
+    channels: List<MediaChannel>,
+    services: ProductionPanelServices,
+    enabled: Boolean,
+    onSwitchMode: (ShotMode) -> Unit,
+) {
+    val domain = MaterialTheme.infinityDomainColors
+    val videoChannels = remember(channels) { channels.filter { it.group == MediaGroup.VIDEO }.distinctBy { it.id } }
+    val message = when (videoChannels.size) {
+        0 -> stringResource(R.string.p2_channel_guide_empty)
+        1 -> {
+            val only = videoChannels.single()
+            val modes = only.capabilities.modes.mapNotNull { it.toShotMode() }.distinct()
+            val modesLabel = modes.map { it.label() }.joinToString(" / ").ifBlank { "-" }
+            stringResource(R.string.p2_channel_guide_single, services.channelLabelSegments(only.id).formatChannelLabel(), modesLabel, shot.mode.label())
+        }
+        else -> stringResource(R.string.p2_channel_guide_multiple, videoChannels.size, shot.mode.label())
+    }
+    val alternativeMode = videoChannels.asSequence()
+        .flatMap { it.capabilities.modes.asSequence() }
+        .mapNotNull { it.toShotMode() }
+        .firstOrNull { it != shot.mode }
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = domain.infoContainer.copy(alpha = 0.6f),
+        border = BorderStroke(0.5.dp, domain.onInfoContainer.copy(alpha = 0.25f)),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 6.dp),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(18.dp).padding(top = 1.dp), tint = domain.onInfoContainer)
+                Text(message, style = MaterialTheme.typography.bodySmall, color = domain.onInfoContainer)
+            }
+            if (services.onOpenMediaModels != null || alternativeMode != null) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    services.onOpenMediaModels?.let { openModels ->
+                        InfinityPillButton(stringResource(R.string.p2_media_models), onClick = openModels, tone = InfinityPillTone.PRIMARY, enabled = enabled, compact = true)
+                    }
+                    alternativeMode?.let { mode ->
+                        InfinityPillButton(stringResource(R.string.p2_switch_mode_to, mode.label()), onClick = { onSwitchMode(mode) }, tone = InfinityPillTone.NEUTRAL, enabled = enabled, compact = true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReviewWarningBanner(warning: String, onReview: () -> Unit) {
+    val domain = MaterialTheme.infinityDomainColors
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = domain.warningContainer,
+        border = BorderStroke(0.8.dp, domain.onWarningContainer.copy(alpha = 0.25f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Rounded.WarningAmber, contentDescription = null, modifier = Modifier.size(18.dp), tint = domain.onWarningContainer)
+            Text(warning, style = MaterialTheme.typography.bodySmall, color = domain.onWarningContainer, modifier = Modifier.weight(1f))
+            InfinityPillButton(stringResource(R.string.p2_go_review), onClick = onReview, tone = InfinityPillTone.NEUTRAL, compact = true)
+        }
+    }
+}
+
+private fun GenerationMode.toShotMode(): ShotMode? = when (this) {
+    GenerationMode.TEXT -> ShotMode.TEXT
+    GenerationMode.FIRST_FRAME -> ShotMode.FIRST_FRAME
+    GenerationMode.FIRST_LAST_FRAME -> ShotMode.FIRST_LAST
+    GenerationMode.REFERENCE -> ShotMode.REFERENCE
+    GenerationMode.SPEECH, GenerationMode.MUSIC -> null
+}
+
+@Composable
+private fun remainingBlockedReasons(
+    preview: ShotPlanPreview?,
+    sceneLocked: Boolean,
+    noChannel: Boolean,
+    explicitChannelId: String?,
+): List<String> {
+    val raw = preview?.blockedReason ?: return emptyList()
+    val unlockedText = stringResource(R.string.shot_plan_unlocked, "")
+    val noChannelModeText = stringResource(R.string.shot_plan_no_channel_mode, "")
+    val explicitNoChannelPrefix = explicitChannelId?.let { stringResource(R.string.shot_plan_no_channel, it) }
+    val overflowPrefix = stringResource(R.string.shot_plan_overflow, "")
+    return raw.lineSequence().map(String::trim).filter(String::isNotBlank).filterNot { line ->
+        (!sceneLocked && unlockedText.isNotBlank() && line.startsWith(unlockedText.trim())) ||
+            (noChannel && line == noChannelModeText.trim()) ||
+            (noChannel && explicitNoChannelPrefix != null && line == explicitNoChannelPrefix.trim()) ||
+            (preview.overflow.isNotEmpty() && overflowPrefix.isNotBlank() && line.startsWith(overflowPrefix.trim()))
+    }.toList()
 }
 
 /** 输入素材行：图号、缩略图（合图并排、语音用波形块）、标题与说明。 */

@@ -73,6 +73,8 @@ import com.promenar.infinity.domain.mediagen.MediaTask
 import com.promenar.infinity.domain.mediagen.MediaChannel
 import com.promenar.infinity.domain.mediagen.MediaGroup
 import com.promenar.infinity.data.production.AssetKind
+import com.promenar.infinity.data.production.AssetStatus
+import com.promenar.infinity.ui.common.InfinitySwitch
 
 /** 面板加载状态。 */
 private sealed interface ProductionLoad {
@@ -214,6 +216,7 @@ fun ProductionPanelContent(
 ) {
     val production = snapshot.production
     var tab by rememberSaveable(production.id) { mutableStateOf(initialTab) }
+    var requestedAssetKind by rememberSaveable(production.id) { mutableStateOf<AssetKind?>(null) }
     var outputFilter by rememberSaveable(production.id) { mutableStateOf(OutputFilter.ALL) }
     var detailInitialTab by rememberSaveable(production.id) { mutableStateOf(initialShotTab) }
     var openAssetId by rememberSaveable(production.id) { mutableStateOf(initialAssetId) }
@@ -348,7 +351,12 @@ fun ProductionPanelContent(
                     tabs = listOf(
                         InfinityPanelTab(ProductionTab.OVERVIEW, stringResource(R.string.production_panel_tab_overview), testTag = ProductionUiTags.TAB_OVERVIEW),
                         InfinityPanelTab(ProductionTab.SCRIPT, stringResource(R.string.production_panel_tab_script), testTag = ProductionUiTags.TAB_SCRIPT),
-                        InfinityPanelTab(ProductionTab.ASSETS, stringResource(R.string.production_panel_tab_assets), testTag = ProductionUiTags.TAB_ASSETS),
+                        InfinityPanelTab(
+                            ProductionTab.ASSETS,
+                            stringResource(R.string.production_panel_tab_assets),
+                            count = production.assets.count { it.status == AssetStatus.REVIEW }.takeIf { it > 0 }?.toString(),
+                            testTag = ProductionUiTags.TAB_ASSETS,
+                        ),
                         InfinityPanelTab(ProductionTab.STORYBOARD, stringResource(R.string.p2_tab_storyboard), dot = MaterialTheme.colorScheme.primary.takeIf { signals.storyboardDot }, testTag = ProductionUiTags.TAB_STORYBOARD),
                         InfinityPanelTab(ProductionTab.OUTPUT, stringResource(R.string.p2_tab_output), count = signals.reviews.takeIf { it > 0 }?.toString()),
                         InfinityPanelTab(ProductionTab.CUT, stringResource(R.string.p2_tab_cut)),
@@ -362,14 +370,19 @@ fun ProductionPanelContent(
                     when (tab) {
                         ProductionTab.OVERVIEW -> ProductionManagementTab(
                             production, tasks, busy, services,
-                            onOutput = { outputFilter = it; tab = ProductionTab.OUTPUT },
                             onScene = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD },
                             onAsset = { openAssetId = it }, onRun = run, onSubmit = submit, onCancelTask = onCancelTask, channels = channels,
                             costStats = costStats, onShot = openShot,
-                            onCut = { focusCutId = it; tab = ProductionTab.CUT },
+                            onOpenTab = { tab = it },
+                            onOpenAssets = { kind -> requestedAssetKind = kind; tab = ProductionTab.ASSETS },
                         )
                         ProductionTab.SCRIPT -> ProductionScriptTab(production = production, busy = busy, onRun = run, onSubmit = submit, onOpenEpisode = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
-                        ProductionTab.ASSETS -> ProductionAssetsTab(production = production, busy = busy, onRun = run, onSubmit = submit, onOpenCharacter = { openAssetId = it })
+                        ProductionTab.ASSETS -> ProductionAssetsTab(
+                            production = production, busy = busy, onRun = run, onSubmit = submit,
+                            onOpenCharacter = { openAssetId = it },
+                            requestedKind = requestedAssetKind,
+                            onRequestedKindHandled = { requestedAssetKind = null },
+                        )
                         ProductionTab.STORYBOARD -> ProductionStoryboardTab(
                             production = production,
                             episodeId = storyboardEpisodeId ?: production.defaultEpisodeId(),
@@ -379,7 +392,11 @@ fun ProductionPanelContent(
                             onRun = run, services = connectedServices, channels = channels, channelOrder = channelOrder,
                             onSubmit = submit,
                         )
-                        ProductionTab.OUTPUT -> ProductionOutputTab(production, outputFilter, { outputFilter = it }, services, tasks, channels, channelOrder, openShot, { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
+                        ProductionTab.OUTPUT -> ProductionOutputTab(
+                            production, outputFilter, { outputFilter = it }, services, tasks, channels, channelOrder, openShot,
+                            onScene = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD },
+                            busy = busy, onRun = run, onSubmit = submit,
+                        )
                         ProductionTab.CUT -> ProductionCutTab(production, services, sessionId, openShot, onError = { error = it }, busy = busy, onRun = run, onSubmit = submit, focusCutId = focusCutId, onFocusHandled = { focusCutId = null })
                     }
                 }
@@ -437,16 +454,17 @@ private fun ProductionHeader(
                     stringResource(R.string.p2_experimental),
                     icon = Icons.Rounded.Science,
                     subtitle = stringResource(R.string.p2_experimental_detail),
-                    selected = production.experimental,
                     chevron = false,
                     enabled = !busy,
+                    trailing = { InfinitySwitch(checked = production.experimental, onCheckedChange = null, enabled = !busy) },
                     role = Role.Switch,
                     onClick = { onRun(ProductionUserAction.SetExperimental(!production.experimental)) },
                 )
                 if (locate != null) ProductionRow(
                     stringResource(R.string.p2_open_in_files),
                     icon = Icons.Rounded.FolderOpen,
-                    value = production.rootPath,
+                    subtitle = production.rootPath,
+                    subtitleMaxLines = 1,
                     onClick = { menu = false; locate(production.rootPath) },
                 )
                 if (snapshot.manifest is ManifestSync.ExternalChange) ProductionRow(

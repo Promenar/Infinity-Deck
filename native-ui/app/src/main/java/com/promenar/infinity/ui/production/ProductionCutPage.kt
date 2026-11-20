@@ -139,7 +139,7 @@ internal fun ProductionCutTab(
             ProductionSection(null) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row {
-                        androidx.compose.material3.Text(episode?.let { episodeName(it).joinToString(" ") } ?: stringResource(R.string.p2_timeline), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                        androidx.compose.material3.Text(episode?.let { episodeDisplayName(production, it).joinToString(" ") } ?: stringResource(R.string.p2_timeline), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                         androidx.compose.material3.Text(secondsLabel(totalSeconds), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     CutTimeline(production, version, isPreview, onShot)
@@ -149,7 +149,14 @@ internal fun ProductionCutTab(
         item("output") {
             ProductionSection(null) {
                 val gaps = version.clips.count { it.path == null }
-                ProductionRow(stringResource(R.string.p2_gaps), value = if (isPreview) stringResource(R.string.p2_gaps_placeholder) else stringResource(R.string.p2_gap_count, gaps))
+                ProductionRow(
+                    stringResource(R.string.p2_gaps),
+                    value = when {
+                        isPreview && gaps > 0 -> stringResource(R.string.p2_gaps_preview_count, gaps)
+                        isPreview -> stringResource(R.string.p2_gaps_placeholder)
+                        else -> stringResource(R.string.p2_gap_count, gaps)
+                    },
+                )
                 ProductionRow(stringResource(R.string.p2_specs), valueSegments = listOf(production.aspectRatio ?: "16:9", stringResource(R.string.p3_cut_codec)))
                 if (cut != null) {
                     val record = cut.export

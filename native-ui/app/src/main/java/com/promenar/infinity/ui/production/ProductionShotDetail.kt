@@ -115,7 +115,7 @@ internal fun TakeThumb(take: Take, index: Int, viewing: Boolean, selected: Boole
 }
 
 @Composable
-private fun NoteBlock(title: String, text: String) {
+internal fun NoteBlock(title: String, text: String) {
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(InfinitySpacing.Medium), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
             ProductionSectionTitle(title)

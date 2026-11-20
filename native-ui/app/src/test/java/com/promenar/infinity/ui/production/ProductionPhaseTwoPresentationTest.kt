@@ -211,8 +211,30 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(production.stageProgressCounts(ProductionStage.STORYBOARD)).isEqualTo(1 to 1)
         assertThat(production.stageProgressCounts(ProductionStage.SOUND)).isEqualTo(0 to 0)
         assertThat(production.stageProgressCounts(ProductionStage.EDIT)).isNull()
+        val withScene = production.copy(
+            assets = production.assets.map { it.copy(status = AssetStatus.LOCKED) } +
+                Asset("loc-1", AssetKind.LOCATION, "茶馆", status = AssetStatus.REVIEW) +
+                Asset("bgm", AssetKind.SOUND, "曲", status = AssetStatus.LOCKED),
+        )
+        assertThat(withScene.stageProgressCounts(ProductionStage.VISUAL_DEV)).isEqualTo(1 to 2)
         assertThat(resolvedShotChannel(shot, listOf(channel), listOf(channel.id))).isEqualTo(channel)
         assertThat(resolvedShotChannel(shot.copy(channelId = "missing"), listOf(channel), emptyList())).isNull()
+    }
+
+    @Test fun `未拆造型角色在有版本图时进入分镜参考缩略路径`() {
+        val noLookChar = asset.copy(looks = emptyList(), versions = listOf(AssetVersion(2, "ref/v2.png", 2)), currentVersion = 2)
+        val p = production.copy(assets = listOf(noLookChar))
+        assertThat(p.importedReferencePaths(shot)).containsExactly("ref/v2.png")
+        assertThat(ProductionRules.referenceWarnings(p, shot)).containsExactly("角色 林晚 的参考包尚未定稿。")
+    }
+
+    @Test fun `待审变更请求与剪辑轨简称提取`() {
+        val pending = ShotChangeRequest("req1", episode.id, scene.code, shot.code, emptyMap(), ChangeSource.AGENT)
+        val approved = pending.copy(id = "req2", approved = true)
+        val p = production.copy(changeRequests = listOf(pending, approved))
+        assertThat(p.pendingChangeRequests().map { it.id }).containsExactly("req1")
+        assertThat(shortTrackSpeaker("陆昭 · 新神州玄鳞飞鱼服 V3")).isEqualTo("陆昭")
+        assertThat(shortTrackSpeaker("老街糕点铺掌柜（03B 取用）")).isEqualTo("老街糕点铺掌柜")
     }
 
     @Test fun `项目任务严格解析字段隔离前缀碰撞和特殊字符`() {

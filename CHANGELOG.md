@@ -14,6 +14,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.66.0-beta] - 2026-11-20
+
+- **制作面板（`ProductionPanel`）全页交互重构、缺陷修复与排版升级**：
+  - **总览与制作流程导航**（[ProductionManagement.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionManagement.kt)、[ProductionPresentation.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPresentation.kt)、[ProductionPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPanel.kt)）：移除常驻顶部「待你处理」堆积列表（改为仅在存在待审 `ShotChangeRequest` 时于顶部条件呈现）；将「阶段」重构为「制作流程」并取消易混淆的「未开始/进行中/已完成」下拉菜单，全部进度改为由实际快照与审批状态自动汇总、点击流程项直跳对应页签（仅可选「动态预演」保留 `InfinitySwitch` 跳过开关）；修复 `VISUAL_DEV` 统计仅看角色资产的缺陷并纳入全品类视觉资产；电影单集项目（`ProductionKind.FILM`）跨总览/剧本/分镜详情/剪辑隐藏冗余「第 1 集」；
+  - **分镜一级列表、出片页与剧本应用内阅读**（[ProductionTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionTabs.kt)、[ProductionManagement.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionManagement.kt)）：将裸文字场头升级为独立圆角场头卡片 + 描边「审核」胶囊按钮；将分镜一级卡片改为镜号胶囊 + 结构化「机位/运镜/画面/对白/声音转场」布局并同步优化 `1.3x` 大字号换行与按钮防截断；出片页未锁定场支持直接弹出审核弹窗；剧本与故事圣经文本/Markdown 文件支持在 `InfinityBottomSheet` 内以 `MarkdownText` / `InfinityMonospace` 直接预览，并保留父目录文件定位与外部打开；
+  - **角色资产详情与资产页签优化**（[ProductionCharacter.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionCharacter.kt)、[ProductionTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionTabs.kt)）：资产分类滑块增加数量计数、页签展示待审计数角标，卡片标题改为 2 行显示并在底栏呈现版本号与镜头引用数；角色详情页首屏统一呈现版本切换、角色图、版本备注/角色说明与页内「否决/建议/批准」审批操作，无三视图造型时折叠为紧凑「多视角造型参考包（可选）」卡片，镜头引用行展示完整镜头与「版本图」；
+  - **分镜规划与编辑修复**（[DefaultShotGenerationPlanner.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/DefaultShotGenerationPlanner.kt)、[ProductionRules.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionRules.kt)、[ProductionShotPlanning.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionShotPlanning.kt)、[ProductionShotContentEditor.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionShotContentEditor.kt)、[ProductionPhaseTwoComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPhaseTwoComponents.kt)、[ProductionCutPage.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionCutPage.kt)）：修复 `channel == null` 时参考模式隐藏输入、`maxImages ?: 0` 引发假超限 `overflow` 及云端非整数时长误报的问题，并为无造型的角色自动回退当前版本图且去重；镜头详情内联展示通道引导卡（含「媒体模型」与一键切换支持模式），字符卡在无造型且已有版本图时显示「使用版本图」而非「造型缺失」；修复 `ProductionOptionSheet` 硬编码「无可用通道」空态、补齐 `ProductionShotContentEditor` 出场角色/场景/道具编辑能力、优化剪辑时间线角色简称与预演缺口语义及更多菜单「试验项目」开关与单行路径展示；新增隔离高保真原型 [ProductionPanelPolishPrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/production/ProductionPanelPolishPrototype.kt)。
+- **ADB 诊断轨迹导出器增强（[SessionTraceExporter.kt](native-ui/app/src/main/java/com/promenar/infinity/startup/diagnostics/SessionTraceExporter.kt)）**：
+  - 修复 `--trace <id|latest> --limit <N>` 分页导出时因跳过诊断分片导致 `trace.tool_call.durationMs` 恒为 `null` 的问题（分页内含工具调用时联结 `tool.approval` / `tool.end` 事件恢复耗时与状态，同时仍不展开尾部全量事件流）；
+  - 在 `trace.turn` 针对 `SystemTriggerMessage.MESSAGE_NAME` 轮次导出脱敏触发器元信息（`messageName`、`triggerKind`、`triggerDeliveryCount`、`triggerConsumerMessageId`），严格过滤标题与正文且补齐单元测试。
+
 ## [0.65.1-beta] - 2026-11-20
 
 - **修复多轮工具生成续轮等待首包期间进度汇报短暂重复闪现**：

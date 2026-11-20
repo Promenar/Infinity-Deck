@@ -91,15 +91,21 @@ class DefaultShotGenerationPlanner(
                 item.role == InputRole.LAST_FRAME -> MediaRole.LAST_FRAME
                 else -> MediaRole.REFERENCE
             }) }
-        if (shot.mode == ShotMode.REFERENCE && channel != null) {
+        if (shot.mode == ShotMode.REFERENCE) {
             shot.appearances.forEach { appearance ->
                 val character = p.assets.find { it.id == appearance.characterAssetId && it.kind == AssetKind.CHARACTER }
                 val look = character?.looks?.find { it.id == appearance.lookId }
+                // 尚未拆分三视图造型但已有版本图时，自动回退到版本图作为角色参考，并避免与显式输入重复。
+                val fallbackPath = if (character != null && look == null && character.looks.isEmpty()) character.currentVersionPath() else null
+                if (fallbackPath != null) {
+                    if (packed.none { it.path == fallbackPath }) input(fallbackPath, character!!.name, "版本图", expectedKind = InputKind.IMAGE)
+                    return@forEach
+                }
                 if (character == null || look == null) { issues += text("missing_input", "${appearance.characterAssetId}/${appearance.lookId}"); return@forEach }
                 val selectedIds = appearance.referenceSlotIds
                 val selected = selectedIds.mapNotNull { id -> look.slots.find { it.id == id }.also { if (it == null) issues += text("missing_input", "${character.name}/$id") } }
-                val composite = channel.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE
-                val order = if (composite) ProductionRules.defaultSlotOrder else channel.capabilities.referenceOrder.map(::canonicalSlot)
+                val composite = channel?.capabilities?.characterReferenceMode == CharacterReferenceMode.COMPOSITE
+                val order = if (channel == null || composite) ProductionRules.defaultSlotOrder else channel.capabilities.referenceOrder.map(::canonicalSlot)
                 val slots = selected.sortedWith(compareBy<ReferenceSlot> { slot -> order.indexOf(canonicalSlot(slot.id)).let { if (it < 0) Int.MAX_VALUE else it } }.thenBy { it.id })
                 if (composite) {
                     val paths = mutableListOf<String>()
@@ -113,8 +119,10 @@ class DefaultShotGenerationPlanner(
             }
             (listOfNotNull(shot.locationAssetId) + shot.propAssetIds).forEach { id ->
                 val asset = p.assets.find { it.id == id }
-                val version = asset?.versions?.firstOrNull { it.number == asset.currentVersion } ?: asset?.versions?.maxByOrNull { it.number }
-                input(version?.path, asset?.name ?: id, asset?.kind?.name?.lowercase().orEmpty())
+                val versionPath = asset?.currentVersionPath()
+                if (versionPath == null || packed.none { it.path == versionPath }) {
+                    input(versionPath, asset?.name ?: id, asset?.kind?.name?.lowercase().orEmpty())
+                }
             }
             shot.dialogue.filter { it.audioSource == DialogueAudioSource.NATIVE }.map { it.characterAssetId }.distinct().forEach { id ->
                 val character = p.assets.find { it.id == id }
@@ -125,22 +133,28 @@ class DefaultShotGenerationPlanner(
         val numbered = packed.map { it.copy(number = if (it.kind == InputKind.IMAGE) ++number else null) }
         val accepted = mutableListOf<PlannedInput>()
         val overflow = mutableListOf<PlannedInput>()
-        val counts = mutableMapOf<InputKind, Int>()
-        numbered.forEach { item ->
-            val maximum = when (item.kind) { InputKind.IMAGE -> channel?.capabilities?.maxImages; InputKind.AUDIO -> channel?.capabilities?.maxAudio; InputKind.VIDEO -> channel?.capabilities?.maxVideos } ?: 0
-            val bounded = item.role in setOf(MediaRole.REFERENCE, MediaRole.REFERENCE_VOICE)
-            val count = if (bounded) counts.getOrDefault(item.kind, 0) + 1 else 0
-            if (bounded) counts[item.kind] = count
-            if (bounded && count > maximum) overflow += item else accepted += item
+        if (channel == null) {
+            accepted += numbered
+        } else {
+            val counts = mutableMapOf<InputKind, Int>()
+            numbered.forEach { item ->
+                val maximum = when (item.kind) { InputKind.IMAGE -> channel.capabilities.maxImages; InputKind.AUDIO -> channel.capabilities.maxAudio; InputKind.VIDEO -> channel.capabilities.maxVideos }
+                val bounded = item.role in setOf(MediaRole.REFERENCE, MediaRole.REFERENCE_VOICE)
+                val count = if (bounded) counts.getOrDefault(item.kind, 0) + 1 else 0
+                if (bounded) counts[item.kind] = count
+                if (bounded && count > maximum) overflow += item else accepted += item
+            }
+            if (overflow.isNotEmpty()) issues += text("overflow", overflow.joinToString("；") { "${it.title} (${it.path ?: it.compositeOf.joinToString()})" })
         }
-        if (overflow.isNotEmpty()) issues += text("overflow", overflow.joinToString("；") { "${it.title} (${it.path ?: it.compositeOf.joinToString()})" })
         val format = channel?.capabilities?.promptFormat ?: PromptFormat.GENERIC
         val prompt = if (shot.promptUserEdited && !compile) shot.prompt else ShotPromptCompiler.compile(p, shot, accepted, format)
         val specs = if (channel == null) GenerationSpecs() else try { specsFor(channel, shot) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { issues += text("invalid_plan", "specs"); GenerationSpecs() }
-        if (channel?.id?.startsWith("comfy:") == true) warnings += specs.frames?.let { text("workflow_timing_frames", it.toString()) } ?: text("workflow_timing", labelOf(channel))
-        else if (shot.durationSeconds % 1.0 != 0.0) issues += text("invalid_plan", "durationSeconds")
+        if (channel != null) {
+            if (channel.id.startsWith("comfy:")) warnings += specs.frames?.let { text("workflow_timing_frames", it.toString()) } ?: text("workflow_timing", labelOf(channel))
+            else if (shot.durationSeconds % 1.0 != 0.0) issues += text("invalid_plan", "durationSeconds")
+        }
         val request = request(p, episodeId, shot, channel?.id.orEmpty(), prompt, accepted, sessionId, specs).let { planned ->
             val template = channel?.let { templateFor(it) }
             require(params.isEmpty() || template != null) { "该通道不接受模板参数。" }

@@ -1,7 +1,10 @@
 package com.promenar.infinity.ui.production
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.production.Asset
+import com.promenar.infinity.data.production.AssetKind
 import com.promenar.infinity.data.production.AssetStatus
+import com.promenar.infinity.data.production.ProductionKind
 import com.promenar.infinity.data.production.ProductionStage
 import com.promenar.infinity.data.production.ShotStatus
 import com.promenar.infinity.data.production.StageState
@@ -110,5 +113,31 @@ class ProductionPresentationTest {
         assertThat(formatShotSeconds(4.5)).isEqualTo("4.5")
         assertThat(formatShotSeconds(2.04)).isEqualTo("2")
         assertThat(formatShotSeconds(2.06)).isEqualTo("2.1")
+    }
+
+    @Test
+    fun `电影单集隐藏集数且多集或剧集保留`() {
+        val film = production.copy(
+            kind = ProductionKind.FILM,
+            seasons = listOf(production.seasons.first().copy(episodes = listOf(production.episodes().first()))),
+        )
+        assertThat(film.showEpisodeNumbers()).isFalse()
+        assertThat(production.showEpisodeNumbers()).isTrue()
+        assertThat(film.copy(kind = ProductionKind.SERIES).showEpisodeNumbers()).isTrue()
+    }
+
+    @Test
+    fun `视觉资产集合排除声音类且流程行直达对应页签`() {
+        val withSound = production.copy(
+            assets = production.assets + Asset("bgm", AssetKind.SOUND, "主题配乐", status = AssetStatus.LOCKED),
+        )
+        assertThat(withSound.visualAssets().map { it.kind }).doesNotContain(AssetKind.SOUND)
+        assertThat(withSound.visualAssets()).hasSize(production.assets.size)
+        assertThat(workflowStageTarget(ProductionStage.SCRIPT)).isEqualTo(ProductionTab.SCRIPT)
+        assertThat(workflowStageTarget(ProductionStage.VISUAL_DEV)).isEqualTo(ProductionTab.ASSETS)
+        assertThat(workflowStageTarget(ProductionStage.STORYBOARD)).isEqualTo(ProductionTab.STORYBOARD)
+        assertThat(workflowStageTarget(ProductionStage.GENERATION)).isEqualTo(ProductionTab.OUTPUT)
+        assertThat(workflowStageTarget(ProductionStage.SOUND)).isEqualTo(ProductionTab.ASSETS)
+        assertThat(workflowStageTarget(ProductionStage.EDIT)).isEqualTo(ProductionTab.CUT)
     }
 }

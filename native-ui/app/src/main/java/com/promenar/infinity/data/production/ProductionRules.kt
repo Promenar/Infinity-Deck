@@ -54,6 +54,7 @@ object ProductionRules {
         when {
             asset == null -> "角色 ${appearance.characterAssetId} 不存在。"
             asset.status != AssetStatus.LOCKED -> "角色 ${asset.name} 的参考包尚未定稿。"
+            look == null && asset.looks.isEmpty() && asset.currentVersionPath() != null -> null
             look == null -> "角色 ${asset.name} 的造型不存在。"
             defaultSlotOrder.any { id -> look.slots.none { it.id == id && it.path != null } } || appearance.referenceSlotIds.any { id -> look.slots.none { it.id == id && it.path != null } } -> "角色 ${asset.name} 的所选参考位尚未备齐。"
             else -> null

@@ -1,15 +1,18 @@
 package com.promenar.infinity.ui.production
 
 import com.promenar.infinity.data.production.Asset
+import com.promenar.infinity.data.production.AssetKind
 import com.promenar.infinity.data.production.AssetStatus
 import com.promenar.infinity.data.production.Episode
 import com.promenar.infinity.data.production.Production
+import com.promenar.infinity.data.production.ProductionKind
 import com.promenar.infinity.data.production.ProductionStage
 import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.Shot
 import com.promenar.infinity.data.production.ShotStatus
 import com.promenar.infinity.data.production.StageStatus
 import com.promenar.infinity.data.production.Take
+import com.promenar.infinity.data.production.currentVersionPath
 
 /* 制作面板的纯展示逻辑：统计、待处理清单与定位。界面只读这些结果，不直接遍历快照。 */
 
@@ -112,8 +115,24 @@ fun Shot.displayTake(): Take? = selectedTake() ?: takes.maxByOrNull { it.created
 /** 镜头列表与卡片用的缩略图路径：展示候选，否则预演素材，否则首个输入。 */
 fun Shot.thumbnailPath(): String? = displayTake()?.path ?: previewPath ?: inputs.firstOrNull()?.path
 
-fun Asset.currentPath(): String? =
-    (versions.firstOrNull { it.number == currentVersion } ?: versions.maxByOrNull { it.number })?.path
+/** 剧集或包含多集时显示“第 N 集”编号；电影单集项目省略。 */
+fun Production.showEpisodeNumbers(): Boolean = kind == ProductionKind.SERIES || episodes().size > 1
+
+/** 参与“视觉开发”汇总的非声音类视觉资产（角色、场景、道具、风格）。 */
+fun Production.visualAssets(): List<Asset> = assets.filter { it.kind != AssetKind.SOUND }
+
+/** 总览制作流程行对应的目标页签。 */
+fun workflowStageTarget(stage: ProductionStage): ProductionTab = when (stage) {
+    ProductionStage.SCRIPT -> ProductionTab.SCRIPT
+    ProductionStage.VISUAL_DEV -> ProductionTab.ASSETS
+    ProductionStage.STORYBOARD -> ProductionTab.STORYBOARD
+    ProductionStage.ANIMATIC -> ProductionTab.OUTPUT
+    ProductionStage.GENERATION -> ProductionTab.OUTPUT
+    ProductionStage.SOUND -> ProductionTab.ASSETS
+    ProductionStage.EDIT -> ProductionTab.CUT
+}
+
+fun Asset.currentPath(): String? = currentVersionPath()
 
 /** 分镜页默认选中的集：有待审镜头的第一集，否则第一集。 */
 fun Production.defaultEpisodeId(): String? {

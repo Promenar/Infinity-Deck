@@ -56,30 +56,50 @@ import com.promenar.infinity.ui.theme.infinityDomainColors
 @Composable
 internal fun ProductionManagementTab(
     production: Production, tasks: List<MediaTask>, busy: Boolean, services: ProductionPanelServices,
-    onOutput: (OutputFilter) -> Unit, onScene: (String) -> Unit, onAsset: (String) -> Unit,
+    onScene: (String) -> Unit, onAsset: (String) -> Unit,
     onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String?, onCancelTask: (String) -> Unit,
     channels: List<MediaChannel> = emptyList(),
     costStats: ProductionCostStats = productionCostStats(production, tasks),
     onShot: (String, String) -> Unit = { _, _ -> },
-    onCut: (String) -> Unit = {},
+    onOpenTab: (ProductionTab) -> Unit = {},
+    onOpenAssets: (AssetKind?) -> Unit = {},
 ) {
-    val pending = production.overviewItems()
+    val pendingChanges = production.pendingChangeRequests()
     val active = tasks.overviewQueueTasks(services.pendingRegistrations)
     val recent = tasks.recentQueueTasks(services.pendingRegistrations)
     val progress = production.progressItems()
     val now = rememberProductionNow(progress.any { it is ProgressItem.Run })
+    val stats = remember(production) { production.shotStats() }
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
         if (production.experimental) item("experiment") { ProductionTrialStrip() }
-        item("pending") {
-            ProductionSection(stringResource(R.string.production_panel_section_pending)) {
-                if (pending.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_nothing_pending))
-                pending.forEach { item -> PendingRow(item, production, busy, onOutput, onScene, onAsset, onCut, onRun, onSubmit) }
+        if (pendingChanges.isNotEmpty()) item("changes") {
+            ProductionSection(stringResource(R.string.p2_change_request)) {
+                pendingChanges.forEach { request ->
+                    ChangeRequestRow(request, production, busy, onRun, onSubmit)
+                }
             }
         }
         item("stages") {
-            ProductionSection(stringResource(R.string.production_panel_section_stages)) {
+            ProductionSection(stringResource(R.string.p2_workflow_section)) {
                 production.visibleStages().forEach { stage ->
-                    StageRow(stage, stage.stage == production.currentStage(), busy, chip = stageChip(production, stage, services)) { onRun(ProductionUserAction.SetStage(stage.stage, it)) }
+                    WorkflowStageRow(
+                        stage = stage,
+                        production = production,
+                        busy = busy,
+                        onNavigate = {
+                            if (stage.stage == ProductionStage.VISUAL_DEV) {
+                                val firstVisualKind = production.visualAssets().firstOrNull()?.kind ?: AssetKind.CHARACTER
+                                onOpenAssets(firstVisualKind)
+                            } else if (stage.stage == ProductionStage.SOUND) {
+                                onOpenAssets(AssetKind.SOUND)
+                            } else {
+                                onOpenTab(workflowStageTarget(stage.stage))
+                            }
+                        },
+                        onToggleSkipAnimatic = { skipped ->
+                            onRun(ProductionUserAction.SetStage(ProductionStage.ANIMATIC, if (skipped) StageStatus.SKIPPED else StageStatus.NOT_STARTED))
+                        },
+                    )
                 }
             }
         }
@@ -99,10 +119,29 @@ internal fun ProductionManagementTab(
         item("cost") { ProductionCostSection(production, costStats, onShot, onAsset) }
         if (production.unregisteredFiles.isNotEmpty()) item("unregistered") { ProductionUnregisteredSection(production) }
         if (production.reviewRounds.isNotEmpty()) item("rounds") { ProductionReviewRounds(production.reviewRounds) }
-        production.seasons.filter { it.episodes.isNotEmpty() }.forEach { season ->
-            item("season-${season.id}") {
-                ProductionSection(season.title ?: stringResource(R.string.p2_season, season.number)) {
-                    season.episodes.forEach { episode -> EpisodeProgressRow(episode) { onScene(episode.id) } }
+        if (production.showEpisodeNumbers()) {
+            production.seasons.filter { it.episodes.isNotEmpty() }.forEach { season ->
+                item("season-${season.id}") {
+                    ProductionSection(season.title ?: stringResource(R.string.p2_season, season.number)) {
+                        season.episodes.forEach { episode -> EpisodeProgressRow(episode) { onScene(episode.id) } }
+                    }
+                }
+            }
+        } else if (stats.total > 0) {
+            item("project-progress") {
+                ProductionSection(stringResource(R.string.p2_project_progress)) {
+                    Column(
+                        Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpenTab(ProductionTab.STORYBOARD) }
+                            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(production.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.p2_stage_shots_compact, stats.locked, stats.total), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        ProductionProgressBar(stats.progress)
+                    }
                 }
             }
         }
@@ -122,57 +161,156 @@ internal fun ProductionManagementTab(
 }
 
 @Composable
-private fun PendingRow(
-    item: OverviewItem, production: Production, busy: Boolean,
-    onOutput: (OutputFilter) -> Unit, onScene: (String) -> Unit, onAsset: (String) -> Unit, onCut: (String) -> Unit,
-    onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String?,
+private fun ChangeRequestRow(
+    request: ShotChangeRequest,
+    production: Production,
+    busy: Boolean,
+    onRun: (ProductionUserAction) -> Unit,
+    onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
-    when (item) {
-        is OverviewItem.Review -> ProductionRow(stringResource(R.string.p2_review_shots, item.count), icon = Icons.Rounded.RateReview, onClick = { onOutput(OutputFilter.REVIEW) })
-        is OverviewItem.Redo -> ProductionRow(stringResource(R.string.p2_redo_shots, item.count), icon = Icons.Rounded.Replay, onClick = { onOutput(OutputFilter.REDO) })
-        is OverviewItem.SceneLock -> ProductionRow(
-            stringResource(R.string.p2_scene_waiting, item.scene.number),
-            icon = Icons.Rounded.LockOpen,
-            subtitle = stringResource(R.string.p2_scene_pending_detail, item.scene.heading),
-            chip = production.reviewChipSpec(ReviewTarget.scene(item.episode.id, item.scene.code)),
-            onClick = { onScene(item.episode.id) },
-        )
-        is OverviewItem.ReferenceReview -> {
-            val used = item.asset.referenceLocations(production).size
-            ProductionRow(
-                item.asset.name,
-                titleSegments = listOfNotNull(item.asset.name, item.asset.looks.firstOrNull()?.name),
-                icon = Icons.Rounded.Person,
-                subtitle = stringResource(R.string.p2_reference_pending_detail, used),
-                onClick = { onAsset(item.asset.id) },
-            )
+    val target = ReviewTarget.change(request.id)
+    ProductionRow(
+        stringResource(R.string.p2_change_request),
+        icon = Icons.Rounded.EditNote,
+        subtitle = "${request.episodeId} · ${request.shotCode}", // wrap-check: allow 改动请求副标题固定单行横滑
+        chip = production.reviewChipSpec(target),
+        chevron = false,
+    )
+    Column(
+        Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal + InfinitySpacing.RowIconSize + InfinitySpacing.RowIconGap, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Small),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        request.changes.forEach { (field, change) ->
+            Text(stringResource(R.string.p2_change_diff, contentFieldLabel(field), change.oldValue.toString(), change.newValue.toString()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        is OverviewItem.ChangeReview -> {
-            val request = item.request
-            val target = ReviewTarget.change(request.id)
+        request.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        ProductionReviewNotes(production, target)
+        ProductionReviewActions(production, target, listOf(request.shotCode, stringResource(R.string.p2_change_request)), busy, onRun, onSubmit, Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+private fun WorkflowStageRow(
+    stage: StageState,
+    production: Production,
+    busy: Boolean,
+    onNavigate: () -> Unit,
+    onToggleSkipAnimatic: (Boolean) -> Unit,
+) {
+    val episodes = production.episodes()
+    val stats = production.shotStats()
+    when (stage.stage) {
+        ProductionStage.ANIMATIC -> {
+            val done = production.shotLocations().count { it.shot.previewPath != null }
+            val skipped = stage.status == StageStatus.SKIPPED
+            val subtitle = if (stats.total > 0) stringResource(R.string.p2_stage_animatic_optional, done, stats.total) else stringResource(R.string.p2_optional_stage)
             ProductionRow(
-                stringResource(R.string.p2_change_request),
-                icon = Icons.Rounded.EditNote,
-                subtitle = "${request.episodeId} · ${request.shotCode}", // wrap-check: allow 改动请求副标题固定单行横滑
-                chip = production.reviewChipSpec(target),
+                title = stage.stage.label(),
+                icon = stage.stage.icon(),
+                subtitle = subtitle,
                 chevron = false,
+                enabled = !busy,
+                role = Role.Switch,
+                trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.p2_skip), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+                        InfinitySwitch(checked = skipped, onCheckedChange = null, enabled = !busy)
+                    }
+                },
+                onClick = { onToggleSkipAnimatic(!skipped) },
             )
-            Column(Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal + InfinitySpacing.RowIconSize + InfinitySpacing.RowIconGap, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Small), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                request.changes.forEach { (field, change) ->
-                    Text(stringResource(R.string.p2_change_diff, contentFieldLabel(field), change.oldValue.toString(), change.newValue.toString()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                request.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                ProductionReviewNotes(production, target)
-                ProductionReviewActions(production, target, listOf(request.shotCode, stringResource(R.string.p2_change_request)), busy, onRun, onSubmit, Modifier.padding(top = 4.dp))
-            }
         }
-        is OverviewItem.CutReview -> ProductionRow(
-            stringResource(R.string.p3_cut_version, item.cut.number),
-            icon = Icons.Rounded.ContentCut,
-            subtitle = production.episodes().firstOrNull { it.id == item.cut.episodeId }?.let { episodeName(it).joinToString(" ") },
-            chip = production.reviewChipSpec(ReviewTarget.cut(item.cut.id)),
-            onClick = { onCut(item.cut.id) },
-        )
+        ProductionStage.SCRIPT -> {
+            val done = episodes.count { it.scriptLocked }
+            val subtitle = when {
+                episodes.isEmpty() -> stringResource(R.string.production_panel_no_script)
+                episodes.size == 1 -> episodes.single().scriptPath?.substringAfterLast('/') ?: stringResource(R.string.production_panel_no_script)
+                else -> pluralStringResource(R.plurals.production_panel_episode_count, episodes.size, episodes.size)
+            }
+            val chip = when {
+                episodes.isEmpty() -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                done == episodes.size -> ProductionChipSpec(stringResource(R.string.production_review_approved), ProductionTone.SUCCESS)
+                episodes.size == 1 -> ProductionChipSpec(stringResource(R.string.production_review_pending), ProductionTone.WARNING)
+                else -> ProductionChipSpec(stringResource(R.string.p2_stage_episodes, done, episodes.size), ProductionTone.WARNING)
+            }
+            ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
+        }
+        ProductionStage.VISUAL_DEV -> {
+            val visual = production.visualAssets()
+            val breakdown = listOf(AssetKind.CHARACTER, AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE).mapNotNull { kind ->
+                visual.count { it.kind == kind }.takeIf { it > 0 }?.let { "${kind.label()} $it" }
+            }.joinToString(" · ") // wrap-check: allow 资产各品类统计摘要，受单行省略限制
+            val done = visual.count { it.status == AssetStatus.LOCKED }
+            val review = visual.count { it.status == AssetStatus.REVIEW }
+            val redo = visual.count { it.status == AssetStatus.REDO }
+            val chip = when {
+                visual.isEmpty() -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                done == visual.size -> ProductionChipSpec(stringResource(R.string.p2_stage_assets, done, visual.size), ProductionTone.SUCCESS)
+                redo > 0 -> ProductionChipSpec(stringResource(R.string.p2_stage_count_redo, done, visual.size, redo), ProductionTone.ERROR)
+                review > 0 -> ProductionChipSpec(stringResource(R.string.p2_stage_count_pending, done, visual.size, review), ProductionTone.WARNING)
+                else -> ProductionChipSpec(stringResource(R.string.p2_stage_assets, done, visual.size), ProductionTone.INFO)
+            }
+            ProductionRow(
+                title = stage.stage.label(),
+                icon = stage.stage.icon(),
+                subtitle = breakdown.ifBlank { stringResource(R.string.p2_stage_no_visual_assets) },
+                chip = chip,
+                enabled = !busy,
+                onClick = onNavigate,
+            )
+        }
+        ProductionStage.STORYBOARD -> {
+            val scenes = episodes.flatMap { it.scenes }
+            val lockedScenes = scenes.count { it.storyboardLocked }
+            val totalSeconds = formatShotSeconds(production.shotLocations().sumOf { it.shot.durationSeconds })
+            val subtitle = if (scenes.isEmpty()) stringResource(R.string.production_panel_no_shots)
+            else stringResource(R.string.p2_workflow_storyboard_summary, scenes.size, stats.total, totalSeconds)
+            val pending = scenes.size - lockedScenes
+            val chip = when {
+                scenes.isEmpty() -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                pending == 0 -> ProductionChipSpec(stringResource(R.string.p2_stage_scenes, lockedScenes, scenes.size), ProductionTone.SUCCESS)
+                else -> ProductionChipSpec(stringResource(R.string.p2_stage_scenes_pending, pending), ProductionTone.WARNING)
+            }
+            ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
+        }
+        ProductionStage.GENERATION -> {
+            val scenes = episodes.flatMap { it.scenes }
+            val unlockedAll = !production.experimental && scenes.isNotEmpty() && scenes.none { it.storyboardLocked } && stats.review == 0 && stats.locked == 0 && stats.generating == 0
+            val subtitle = when {
+                unlockedAll -> stringResource(R.string.p2_stage_unlock_after_board)
+                stats.generating > 0 -> stringResource(R.string.p2_tasks_active, stats.generating)
+                stats.total > 0 -> stringResource(R.string.p2_stage_shots, stats.locked, stats.total)
+                else -> stringResource(R.string.production_panel_no_shots)
+            }
+            val chip = when {
+                stats.total == 0 -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                stats.locked == stats.total -> ProductionChipSpec(stringResource(R.string.production_review_approved), ProductionTone.SUCCESS)
+                stats.redo > 0 -> ProductionChipSpec(stringResource(R.string.p2_stage_count_redo, stats.locked, stats.total, stats.redo), ProductionTone.ERROR)
+                stats.review > 0 -> ProductionChipSpec(stringResource(R.string.p2_stage_count_pending, stats.locked, stats.total, stats.review), ProductionTone.WARNING)
+                stats.generating > 0 -> ProductionChipSpec(stringResource(R.string.production_panel_shot_generating), ProductionTone.INFO)
+                else -> ProductionChipSpec(stringResource(R.string.p2_stage_shots_compact, stats.locked, stats.total), ProductionTone.NEUTRAL)
+            }
+            ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
+        }
+        ProductionStage.SOUND -> {
+            val dialogueCount = production.shotLocations().sumOf { it.shot.dialogue.size }
+            val sounds = production.assets.filter { it.kind == AssetKind.SOUND }
+            val subtitle = stringResource(R.string.p2_stage_sound_summary, dialogueCount, sounds.size)
+            val chip = when {
+                sounds.any { it.status == AssetStatus.REVIEW } -> ProductionChipSpec(stringResource(R.string.production_review_pending), ProductionTone.WARNING)
+                sounds.isNotEmpty() && sounds.all { it.status == AssetStatus.LOCKED } -> ProductionChipSpec(stringResource(R.string.production_review_approved), ProductionTone.SUCCESS)
+                dialogueCount > 0 && sounds.isEmpty() -> ProductionChipSpec(stringResource(R.string.p2_stage_pending_fill), ProductionTone.NEUTRAL)
+                else -> ProductionChipSpec(stage.status.label(), stage.status.tone())
+            }
+            ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
+        }
+        ProductionStage.EDIT -> {
+            val cuts = production.cuts
+            val subtitle = if (cuts.isEmpty()) stringResource(R.string.p2_stage_no_cuts) else stringResource(R.string.p3_cut_version, cuts.maxOf { it.number })
+            val chip = if (cuts.isEmpty()) ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+            else ProductionChipSpec(stringResource(R.string.p2_stage_cuts, cuts.size), ProductionTone.INFO)
+            ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
+        }
     }
 }
 
@@ -264,9 +402,9 @@ internal fun ProductionStage.icon(): ImageVector = when (this) {
 @Composable
 internal fun stageChip(production: Production, state: StageState, services: ProductionPanelServices): ProductionChipSpec {
     if (state.status == StageStatus.LOCKED || state.status == StageStatus.SKIPPED) return ProductionChipSpec(state.status.label(), state.status.tone())
-    val characters = production.assets.filter { it.kind == AssetKind.CHARACTER }
+    val visual = production.visualAssets()
     val (done, total) = when (state.stage) {
-        ProductionStage.VISUAL_DEV -> if (characters.isNotEmpty()) characters.count { it.status == AssetStatus.LOCKED } to characters.size else production.stageProgressCounts(state.stage) ?: (0 to 0)
+        ProductionStage.VISUAL_DEV -> visual.count { it.status == AssetStatus.LOCKED } to visual.size
         ProductionStage.SOUND -> {
             val dialogue = production.shotLocations().sumOf { it.shot.dialogue.size }
             val sounds = production.assets.count { it.kind == AssetKind.SOUND }
@@ -283,7 +421,7 @@ internal fun stageChip(production: Production, state: StageState, services: Prod
     if (total == 0) return ProductionChipSpec(state.note ?: state.status.label(), state.status.tone())
     val text = when (state.stage) {
         ProductionStage.SCRIPT -> stringResource(R.string.p2_stage_episodes, done, total)
-        ProductionStage.VISUAL_DEV -> stringResource(if (characters.isNotEmpty()) R.string.p2_stage_characters else R.string.p2_stage_assets, done, total)
+        ProductionStage.VISUAL_DEV -> stringResource(R.string.p2_stage_assets, done, total)
         ProductionStage.STORYBOARD -> stringResource(R.string.p2_stage_scenes, done, total)
         ProductionStage.ANIMATIC -> stringResource(R.string.p2_stage_animatic, done, total)
         else -> stringResource(R.string.p2_stage_shots, done, total)
@@ -371,9 +509,23 @@ internal fun OutputFilter.label(): String = stringResource(when (this) {
 // ---------- 出片 ----------
 
 @Composable
-internal fun ProductionOutputTab(production: Production, filter: OutputFilter, onFilter: (OutputFilter) -> Unit, services: ProductionPanelServices, tasks: List<MediaTask>, channels: List<MediaChannel>, channelOrder: List<String>, onShot: (String, String) -> Unit, onScene: (String) -> Unit) {
+internal fun ProductionOutputTab(
+    production: Production,
+    filter: OutputFilter,
+    onFilter: (OutputFilter) -> Unit,
+    services: ProductionPanelServices,
+    tasks: List<MediaTask>,
+    channels: List<MediaChannel>,
+    channelOrder: List<String>,
+    onShot: (String, String) -> Unit,
+    onScene: (String) -> Unit,
+    busy: Boolean = false,
+    onRun: (ProductionUserAction) -> Unit = {},
+    onSubmit: suspend (ProductionUserAction) -> String? = { null },
+) {
     val rows = production.outputItems(filter)
-    val multiEpisode = production.episodes().size > 1
+    val multiEpisode = production.showEpisodeNumbers()
+    var reviewing by remember { mutableStateOf<Pair<Episode, Scene>?>(null) }
     // 按场分组：同一场的镜头放进一张卡片，未锁定的场只占一行。
     val groups = rows.fold(mutableListOf<Pair<Pair<Episode, Scene>, MutableList<OutputItem>>>()) { acc, row ->
         val key = when (row) {
@@ -391,14 +543,25 @@ internal fun ProductionOutputTab(production: Production, filter: OutputFilter, o
             val (episode, scene) = key
             item("${episode.id}/${scene.code}") {
                 val unlocked = items.any { it is OutputItem.UnlockedScene }
-                Column {
+                val chip = production.reviewChipSpec(ReviewTarget.scene(episode.id, scene.code), settled = scene.storyboardLocked)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ProductionSceneHeader(
-                        scene,
+                        scene = scene,
                         meta = listOfNotNull(
                             episode.takeIf { multiEpisode }?.let { episodeName(it).joinToString(" ") },
                             stringResource(R.string.p2_scene_shots_duration, scene.shots.size, formatShotSeconds(scene.shots.sumOf { it.durationSeconds })),
-                            if (unlocked) stringResource(R.string.p2_scene_pending) else stringResource(R.string.p2_scene_locked_count, scene.shots.count { it.status == ShotStatus.LOCKED }),
                         ),
+                        statusChip = chip,
+                        action = if (unlocked && scene.shots.isNotEmpty()) ({
+                            InfinityPillButton(
+                                text = stringResource(R.string.p2_review_action),
+                                onClick = { reviewing = episode to scene },
+                                tone = InfinityPillTone.NEUTRAL,
+                                icon = Icons.Rounded.RateReview,
+                                enabled = !busy,
+                                compact = true,
+                            )
+                        }) else null,
                     )
                     BettboxListGroup {
                         Column(Modifier.padding(vertical = InfinitySpacing.XSmall)) {
@@ -413,6 +576,19 @@ internal fun ProductionOutputTab(production: Production, filter: OutputFilter, o
                 }
             }
         }
+    }
+    reviewing?.let { (episode, scene) ->
+        ProductionReviewSheet(
+            title = stringResource(R.string.production_panel_scene_number, scene.number),
+            subtitle = scene.heading,
+            production = production,
+            target = ReviewTarget.scene(episode.id, scene.code),
+            busy = busy,
+            onRun = onRun,
+            onSubmit = onSubmit,
+            onDismiss = { reviewing = null },
+            settled = scene.storyboardLocked,
+        )
     }
 }
 
@@ -451,31 +627,75 @@ private fun OutputShotRow(production: Production, location: ShotLocation, servic
     }
 }
 
-/** 场标题：场次与场景名为主行，镜数、时长与锁定状态为副行，右侧可放锁定按钮。 */
+/** 结构化场头卡片：场号胶囊、状态、操作按钮与独立场景名行。 */
 @Composable
-internal fun ProductionSceneHeader(scene: Scene, meta: List<String>, modifier: Modifier = Modifier, action: (@Composable RowScope.() -> Unit)? = null) {
-    Row(
-        modifier.fillMaxWidth().heightIn(min = 44.dp).padding(start = InfinitySpacing.RowHorizontal, end = if (action != null) 0.dp else InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.XSmall),
-        verticalAlignment = Alignment.CenterVertically,
+internal fun ProductionSceneHeader(
+    scene: Scene,
+    meta: List<String>,
+    modifier: Modifier = Modifier,
+    statusChip: ProductionChipSpec? = null,
+    action: (@Composable RowScope.() -> Unit)? = null,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = scheme.surfaceContainerLow,
+        border = BorderStroke(0.5.dp, scheme.outlineVariant.copy(alpha = 0.65f)),
+        modifier = modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            InfinityMetaLine(
-                segments = listOf(stringResource(R.string.production_panel_scene_number, scene.number), scene.heading),
+        Column(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Surface(shape = RoundedCornerShape(8.dp), color = scheme.primaryContainer) {
+                    Text(
+                        "${stringResource(R.string.production_panel_scene_number, scene.number)} · ${scene.code}", // wrap-check: allow 场号胶囊固定单行
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = scheme.onPrimaryContainer,
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                action?.invoke(this)
+            }
+            Text(
+                scene.heading,
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                color = scheme.onSurface,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-            InfinityMetaLine(segments = meta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            if (meta.isNotEmpty() || statusChip != null) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (meta.isNotEmpty()) {
+                        InfinityMetaLine(segments = meta, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.weight(1f))
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                    statusChip?.let { ProductionStatusChip(it.text, it.tone) }
+                }
+            }
         }
-        action?.invoke(this)
     }
 }
 
 // ---------- 剪辑 ----------
 
-private val ClipDpPerSecond = 14.dp
-/** 片段宽度按时长比例；过短的片段保留能完整显示镜号角标的最小宽度。 */
-private fun cutClipWidth(clip: ProductionCutClip): Dp = (ClipDpPerSecond * clip.seconds.toFloat()).coerceAtLeast(48.dp)
+private val ClipDpPerSecond = 18.dp
+/** 片段宽度按时长比例；过短的片段保留能完整显示镜号与角色简称的最小宽度。 */
+private fun cutClipWidth(clip: ProductionCutClip): Dp = (ClipDpPerSecond * clip.seconds.toFloat()).coerceAtLeast(64.dp)
 
 @Composable
 internal fun CutTimeline(production: Production, version: ProductionCutVersion, isPreview: Boolean, onShot: (String, String) -> Unit) {
@@ -521,7 +741,7 @@ internal fun CutTimeline(production: Production, version: ProductionCutVersion, 
                     if (line == null) Spacer(Modifier.width(clipWidth).height(18.dp))
                     else TrackSpan(
                         listOf(
-                            production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId,
+                            shortTrackSpeaker(production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId),
                             stringResource(if (line.audioSource == DialogueAudioSource.NATIVE) R.string.p2_native else R.string.p2_dubbed),
                         ),
                         scheme.tertiaryContainer, scheme.onTertiaryContainer, clipWidth,

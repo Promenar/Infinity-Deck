@@ -9,6 +9,10 @@ import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.ToolExecutionLedgerEntity
 import com.promenar.infinity.data.local.db.entity.ToolLedgerStatus
 import com.promenar.infinity.data.model.ToolCall
+import com.promenar.infinity.domain.trigger.SystemTriggerMessage
+import com.promenar.infinity.domain.trigger.SystemTurnKind
+import com.promenar.infinity.domain.trigger.SystemTurnRequest
+import java.time.OffsetDateTime
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -307,6 +311,109 @@ class SessionTraceExporterTest {
         assertThat(rows.single { it["isError"] == JsonPrimitive(true) }["errorPreview"])
             .isEqualTo(JsonPrimitive("预".repeat(300)))
         assertThat(tools[0]["errorSummary"]).isEqualTo(JsonPrimitive("错".repeat(600)))
+    }
+
+    @Test
+    fun `分页含工具调用时联结tool_end恢复durationMs且不展开全量事件流`() = runTest {
+        val session = SessionEntity("paged-tools", "assistant", createdAt = 1, updatedAt = 1)
+        val assistant = MessageEntity(
+            "assistant-1",
+            session.id,
+            "assistant",
+            "完成",
+            toolCalls = diagnosticJson.encodeToString(listOf(ToolCall("call-1", "read_file", """{"path":"a.txt"}"""))),
+            createdAt = 2,
+        )
+        coEvery { sessions.getById(session.id) } returns session
+        coEvery { messages.historyBefore(session.id, null, 6, emptyList()) } returns listOf(assistant)
+        coEvery { ledger.getForAssistant(session.id, assistant.id) } returns listOf(
+            ToolExecutionLedgerEntity(
+                session.id, assistant.id, "call-1", "read_file", "", "", "",
+                false, ToolLedgerStatus.SUCCEEDED, createdAt = 2, updatedAt = 3,
+            ),
+        )
+        val toolEnd = UnifiedDiagnosticRecord(
+            1,
+            timestampMs = 3,
+            event = "tool.end",
+            fields = buildJsonObject {
+                put("sessionId", session.id)
+                put("messageId", assistant.id)
+                put("callId", "call-1")
+                put("status", "SUCCEEDED")
+                put("elapsedMs", 42)
+            },
+        )
+        val exporter = SessionTraceExporter(sessions, messages, ledger, diagnostics = { listOf(toolEnd) })
+        val rows = checkNotNull(exporter.export(session.id, TracePage(5))).map { it.toRow() }
+        assertThat(rows.first()["appDiagnosticsIncluded"]).isEqualTo(JsonPrimitive(false))
+        assertThat(rows.none { it["event"] == JsonPrimitive("tool.end") }).isTrue()
+        val tool = rows.single { it["event"] == JsonPrimitive("trace.tool_call") }
+        assertThat(tool["durationMs"]).isEqualTo(JsonPrimitive(42))
+    }
+
+    @Test
+    fun `系统触发轮次在trace_turn导出脱敏触发器元信息且零正文泄露`() = runTest {
+        val session = SessionEntity("sys-turns", "assistant", title = "触发测试", createdAt = 1, updatedAt = 4)
+        val firedAt = OffsetDateTime.parse("2026-11-20T12:00:00+08:00")
+        val jobMsg = MessageEntity(
+            "trig-job",
+            session.id,
+            "user",
+            SystemTriggerMessage.compose(
+                SystemTurnRequest(
+                    sessionId = session.id,
+                    kind = SystemTurnKind.JOB_EXIT,
+                    sourceId = "job-1",
+                    title = "私密任务标题 sk-secret",
+                    body = "敏感任务输出正文 token=abc",
+                    deliveryIds = listOf("d1", "d2"),
+                    consumerAssistantId = "assistant-target",
+                ),
+                firedAt,
+            ),
+            name = SystemTriggerMessage.MESSAGE_NAME,
+            createdAt = 2,
+        )
+        val subagentMsg = MessageEntity(
+            "trig-sub",
+            session.id,
+            "user",
+            SystemTriggerMessage.compose(
+                SystemTurnRequest(session.id, SystemTurnKind.SUBAGENT_DONE, "sub-1", "子代理标题", "子代理正文"),
+                firedAt,
+            ),
+            name = SystemTriggerMessage.MESSAGE_NAME,
+            createdAt = 3,
+        )
+        val schedMsg = MessageEntity(
+            "trig-sch",
+            session.id,
+            "user",
+            SystemTriggerMessage.compose(
+                SystemTurnRequest(session.id, SystemTurnKind.SCHEDULE, "sch-1", "定时标题", "定时正文"),
+                firedAt,
+            ),
+            name = SystemTriggerMessage.MESSAGE_NAME,
+            createdAt = 4,
+        )
+        coEvery { sessions.getById(session.id) } returns session
+        coEvery { messages.getBySession(session.id) } returns listOf(jobMsg, subagentMsg, schedMsg)
+
+        val rows = exporter(DiagnosticTraceMode.ADB_LOCAL).export(session.id)!!
+        val joined = rows.joinToString("\n")
+        assertThat(joined).doesNotContain("私密任务标题")
+        assertThat(joined).doesNotContain("敏感任务输出正文")
+        assertThat(joined).doesNotContain("sk-secret")
+        assertThat(joined).doesNotContain("子代理正文")
+        val turns = rows.map { it.toRow() }.filter { it["event"] == JsonPrimitive("trace.turn") }
+        assertThat(turns[0]["messageName"]).isEqualTo(JsonPrimitive(SystemTriggerMessage.MESSAGE_NAME))
+        assertThat(turns[0]["triggerKind"]).isEqualTo(JsonPrimitive("JOB_EXIT"))
+        assertThat(turns[0]["triggerDeliveryCount"]).isEqualTo(JsonPrimitive(2))
+        assertThat(turns[0]["triggerConsumerMessageId"]).isEqualTo(JsonPrimitive("assistant-target"))
+        assertThat(turns[1]["triggerKind"]).isEqualTo(JsonPrimitive("SUBAGENT_DONE"))
+        assertThat(turns[1].containsKey("triggerDeliveryCount")).isFalse()
+        assertThat(turns[2]["triggerKind"]).isEqualTo(JsonPrimitive("SCHEDULE"))
     }
 
     private fun traceTool(name: String, arguments: JsonObject) = ToolCall(name, name, arguments.toString())

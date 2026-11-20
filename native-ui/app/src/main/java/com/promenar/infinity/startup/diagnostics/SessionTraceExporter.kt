@@ -10,6 +10,7 @@ import com.promenar.infinity.data.local.db.entity.ToolExecutionLedgerEntity
 import com.promenar.infinity.data.local.db.entity.ToolLedgerStatus
 import com.promenar.infinity.data.model.ToolCall
 import com.promenar.infinity.domain.model.SessionRunMode
+import com.promenar.infinity.domain.trigger.SystemTriggerMessage
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonArray
@@ -64,7 +65,8 @@ internal class SessionTraceExporter(
         val snapshot = snapshotTransaction { loadSnapshot(sessionId, page) } ?: return null
         val session = snapshot.session
         val safeSessionId = DiagnosticRedactor.correlationId(session.id)
-        val events = (if (page == null) diagnostics(session.id) else emptyList()).filter {
+        val needsToolEvents = page == null || snapshot.turns.any { it.ledger.isNotEmpty() || !it.message.toolCalls.isNullOrBlank() }
+        val events = (if (needsToolEvents) diagnostics(session.id) else emptyList()).filter {
             it.fieldText("sessionId") == safeSessionId &&
                 (it.event.startsWith("llm.") || it.event.startsWith("tool.") || it.event.startsWith("linux."))
         }
@@ -92,9 +94,11 @@ internal class SessionTraceExporter(
                     add(toolLine(turn.message, callId, calls[callId], entries[callId], related))
                 }
             }
-            for (event in events) {
-                context.ensureActive()
-                add(event.toJsonLine())
+            if (page == null) {
+                for (event in events) {
+                    context.ensureActive()
+                    add(event.toJsonLine())
+                }
             }
             add(traceLine("trace.end") {
                 put("turnCount", snapshot.turns.size)
@@ -163,6 +167,14 @@ internal class SessionTraceExporter(
         }
         put("stepCount", (steps as? JsonArray)?.size ?: 0)
         put("isError", message.isError != 0)
+        if (message.name == SystemTriggerMessage.MESSAGE_NAME) {
+            put("messageName", SystemTriggerMessage.MESSAGE_NAME)
+            SystemTriggerMessage.parse(message.content)?.let { parsed ->
+                put("triggerKind", parsed.kind.name)
+                if (parsed.deliveryIds.isNotEmpty()) put("triggerDeliveryCount", parsed.deliveryIds.size)
+                parsed.consumerAssistantId?.let { put("triggerConsumerMessageId", DiagnosticRedactor.correlationId(it)) }
+            }
+        }
         if (mode == DiagnosticTraceMode.ADB_LOCAL && message.isError != 0) {
             put("errorPreview", AdbTraceRedactor.errorPreview(message.content))
         }

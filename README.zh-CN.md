@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.65.1-beta`（versionCode `180`）。为流式生成正文引入消息作用域绑定与切换清零，消除多轮工具续轮首包前的进度汇报短暂重复闪现；同时将后台任务 `JOB_EXIT` 唤醒纳入步边界 Steering 投递桥（长任务多轮期间及时合并注入、闲置会话照常唤醒），并对已被 `job_wait` 终态（`TERMINAL`）消费的任务实施传输层窄去重。延续 `v0.65.0-beta`（`40dp` 极简电路分支侧栏、熏黑透视玻璃默认浮岛、Ktor `3.6.1` 与分级 `ADB_LOCAL` 诊断桥）、`v0.64.1-beta`、`v0.64.0-beta` 与 `v0.63.4-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.66.0-beta`（versionCode `181`）。全面重构制作面板全页交互与排版（移除「待你处理」长列表并改「制作流程」自动算进度直跳各页签、条件呈现内容变更请求；分镜一级结构化场头与字段化镜头卡；剧本应用内 Markdown 预览；角色详情首屏整合版本画廊与页内审批及未拆造型折叠；修复 `channel == null` 假超限/小数时长误报并补齐无造型角色版本图兜底与通道引导；补全出场/场景/道具编辑；电影单集隐藏冗余「第 1 集」），并增强 `SessionTraceExporter` 支持 `--limit` 分页工具耗时关联与 `system_trigger` 脱敏元信息导出。延续 `v0.65.1-beta`、`v0.65.0-beta`、`v0.64.1-beta`、`v0.64.0-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
 
 ### 从源码构建
 

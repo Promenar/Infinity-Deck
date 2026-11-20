@@ -99,6 +99,9 @@ internal fun Scene.awaitsReview(production: Production, episode: Episode): Boole
     return if (verdict != null) verdict.round == null else !storyboardLocked
 }
 
+/** 待审批的镜头内容变更请求（总览顶部仅在非空时条件展示）。 */
+fun Production.pendingChangeRequests(): List<ShotChangeRequest> = changeRequests.filter { it.awaitsReview(this) }
+
 /** 改动请求待审：没有结论且未应用，或结论尚未发送。 */
 internal fun ShotChangeRequest.awaitsReview(production: Production): Boolean {
     val verdict = production.verdictOf(ReviewTarget.change(id))
@@ -156,7 +159,7 @@ fun Production.stageProgressCounts(stage: ProductionStage): Pair<Int, Int>? {
     val episodes = episodes()
     return when (stage) {
         ProductionStage.SCRIPT -> episodes.count { it.scriptLocked } to episodes.size
-        ProductionStage.VISUAL_DEV -> assets.count { it.status == AssetStatus.LOCKED } to assets.size
+        ProductionStage.VISUAL_DEV -> visualAssets().let { visual -> visual.count { it.status == AssetStatus.LOCKED } to visual.size }
         ProductionStage.STORYBOARD -> episodes.flatMap { it.scenes }.let { scenes -> scenes.count { it.storyboardLocked } to scenes.size }
         ProductionStage.ANIMATIC -> shotLocations().count { it.shot.previewPath != null } to shotStats().total
         ProductionStage.GENERATION -> shotStats().locked to shotStats().total
@@ -165,14 +168,22 @@ fun Production.stageProgressCounts(stage: ProductionStage): Pair<Int, Int>? {
     }
 }
 
+/** 剪辑时间线窄块内使用的角色简称：去掉版本号与括号备注，保证对话轨可读。 */
+internal fun shortTrackSpeaker(name: String): String =
+    name.substringBefore(" · ").substringBefore("（").substringBefore("(").trim().ifBlank { name } // wrap-check: allow 拆出主角色称呼，不拼接元数据
+
 fun resolvedShotChannel(shot: Shot, channels: List<MediaChannel>, order: List<String>): MediaChannel? {
     val choices = channelChoices(channels, order, shot.mode)
     return if (shot.channelId == null) choices.firstOrNull() else choices.firstOrNull { it.id == shot.channelId }
 }
 
 fun Production.importedReferencePaths(shot: Shot): List<String> = (
-    shot.appearances.flatMap { appearance -> findAsset(appearance.characterAssetId)?.looks?.firstOrNull { it.id == appearance.lookId }?.slots?.filter { it.id in appearance.referenceSlotIds }?.mapNotNull { it.path }.orEmpty() } +
-        shot.inputs.map { it.path } + listOfNotNull(shot.locationAssetId?.let { findAsset(it)?.currentPath() }) + shot.propAssetIds.mapNotNull { findAsset(it)?.currentPath() }
+    shot.appearances.flatMap { appearance ->
+        val asset = findAsset(appearance.characterAssetId)
+        val lookSlots = asset?.looks?.firstOrNull { it.id == appearance.lookId }?.slots
+            ?.filter { it.id in appearance.referenceSlotIds }?.mapNotNull { it.path }.orEmpty()
+        lookSlots.ifEmpty { if (asset?.looks.isNullOrEmpty()) listOfNotNull(asset?.currentPath()) else emptyList() }
+    } + shot.inputs.map { it.path } + listOfNotNull(shot.locationAssetId?.let { findAsset(it)?.currentPath() }) + shot.propAssetIds.mapNotNull { findAsset(it)?.currentPath() }
     ).distinct()
 
 fun modeSelectionAction(location: ShotLocation, mode: ShotMode, channels: List<MediaChannel>, order: List<String>): ProductionUserAction.SetShotPlan {
