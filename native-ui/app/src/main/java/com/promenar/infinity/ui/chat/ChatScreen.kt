@@ -1223,6 +1223,7 @@ fun ChatScreenContent(
                             interruptedByError = groupInterruptedByError(pipelineGroups, idx),
                             status = uiState.status,
                             streamingContent = uiState.streamingContent,
+                            streamingMessageId = uiState.streamingMessageId,
                             fontSize = uiState.session?.options?.fontSize ?: 15,
                             modelDisplayNames = state.modelDisplayNames,
                             providerDisplayNames = state.providerDisplayNames,

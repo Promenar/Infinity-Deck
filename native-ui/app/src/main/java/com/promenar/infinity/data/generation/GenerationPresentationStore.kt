@@ -62,10 +62,12 @@ data class GenerationPresentationState(
     val retry: GenerationRetry? = null,
     /** 发送前等待内置 Tailscale 接入的状态；接入后的确认在首个输出到达时清除。 */
     val tailnetWait: TailnetWaitState? = null,
+    val streamingMessageId: String? = null,
 ) {
     override fun toString(): String =
         "GenerationPresentationState(taskId=$taskId, sessionId=$sessionId, " +
             "ragPhaseCount=${ragPhases.size}, streamingContentLength=${streamingContent.length}, " +
+            "streamingMessageId=$streamingMessageId, " +
             "errorCode=${error?.code}, providerFailureReason=${providerFailure?.reason}, " +
             "generating=$generating, handledFailure=$handledFailure, phase=$phase, " +
             "promptAccepted=$promptAccepted, " +
@@ -115,10 +117,14 @@ class GenerationPresentationStore {
 
     fun observe(sessionId: String): StateFlow<GenerationPresentationState?> = entry(sessionId)
 
-    fun begin(sessionId: String, taskId: String) {
+    fun begin(sessionId: String, taskId: String, assistantMessageId: String? = null) {
         entries.compute(sessionId) { _, existing ->
             (existing ?: MutableStateFlow<GenerationPresentationState?>(null)).also { flow ->
-                flow.value = GenerationPresentationState(taskId = taskId, sessionId = sessionId)
+                flow.value = GenerationPresentationState(
+                    taskId = taskId,
+                    sessionId = sessionId,
+                    streamingMessageId = assistantMessageId,
+                )
             }
         }
     }
@@ -167,7 +173,10 @@ class GenerationPresentationStore {
                         GenerationFailureSurface.INLINE_MESSAGE
                     } else null,
                 )
-                is GenerationEvent.TargetChanged -> current
+                is GenerationEvent.TargetChanged -> current.copy(
+                    streamingContent = "",
+                    streamingMessageId = event.assistantMessageId,
+                )
                 is GenerationEvent.Rejected -> current.copy(
                     retry = null,
                     error = event.failure,
@@ -233,10 +242,18 @@ class GenerationPresentationStore {
             it.copy(generating = value, handledFailure = if (value) false else it.handledFailure)
         }
 
-        override fun setStreamingContent(value: String) {
+        override fun setStreamingTarget(messageId: String) = update(sessionId, taskId) {
+            it.copy(streamingContent = "", streamingMessageId = messageId)
+        }
+
+        override fun setStreamingContent(value: String) = setStreamingContent(value, null)
+
+        override fun setStreamingContent(value: String, messageId: String?) {
             val previous = entry(sessionId).value
             val firstText = previous?.taskId == taskId && previous.streamingContent.isEmpty() && value.isNotEmpty()
-            update(sessionId, taskId) { it.copy(streamingContent = value) }
+            update(sessionId, taskId) {
+                it.copy(streamingContent = value, streamingMessageId = messageId ?: it.streamingMessageId)
+            }
             if (firstText && entry(sessionId).value?.taskId == taskId) {
                 com.promenar.infinity.utils.InfinityLogger.diagnostic("generation.presentation_first_text", mapOf(
                     "sessionId" to sessionId, "taskId" to taskId,

@@ -202,6 +202,7 @@ fun PipelineBubble(
     isGenerating: Boolean,
     status: GenerationStatus = GenerationStatus.IDLE,
     streamingContent: String,
+    streamingMessageId: String? = null,
     fontSize: Int,
     modelDisplayNames: Map<String, String> = emptyMap(),
     /** 服务商 ID → 显示名，用于生成统计浮卡。 */
@@ -273,12 +274,19 @@ fun PipelineBubble(
         return
     }
 
-    val renderPlan = remember(group.messages, isGenerating, streamingContent.isNotEmpty(), hasPendingApproval) {
+    val renderPlan = remember(
+        group.messages,
+        isGenerating,
+        streamingContent.isNotEmpty(),
+        streamingMessageId,
+        hasPendingApproval,
+    ) {
         buildPipelineRenderPlan(
             messages = group.messages,
             isGenerating = isGenerating,
             hasStreamingContent = streamingContent.isNotEmpty(),
             hasPendingApproval = hasPendingApproval,
+            streamingMessageId = streamingMessageId,
         )
     }
     val allSteps = renderPlan.steps
@@ -372,8 +380,10 @@ fun PipelineBubble(
                         if (isGenerating) CanvasInvocationCards(step.steps, inline = true)
                     }
                     is PipelineStep.Content -> {
-                        // 流式正文属于本组最后一条助手消息；它之后可能还有本条消息发起的工具行，不能按“组内末步”判断。
-                        val streamingTarget = isGenerating && step.messageId == finalAssistantId
+                        // 流式正文属于本组最后一条助手消息，且若提供了流式目标 ID，必须与之匹配才套用流式内容。
+                        val streamingTarget = isGenerating &&
+                            step.messageId == finalAssistantId &&
+                            (streamingMessageId == null || streamingMessageId == step.messageId)
                         val displayContent = if (streamingTarget) {
                             streamingContent.ifEmpty { step.content }
                         } else step.content
@@ -727,10 +737,15 @@ internal fun buildPipelineRenderPlan(
     isGenerating: Boolean,
     hasStreamingContent: Boolean,
     hasPendingApproval: Boolean = false,
+    streamingMessageId: String? = null,
 ): PipelineRenderPlan {
     val finalAssistant = messages.lastOrNull { it.role == MessageRole.ASSISTANT }
-    // 正文已开始流式到达但尚未落盘时，为最后一条助手消息在正文位置补一个占位，排在它发起的工具之前。
-    val streamingPlaceholderId = finalAssistant?.takeIf { isGenerating && hasStreamingContent && it.content.isBlank() }?.id
+    // 正文已开始流式到达但尚未落盘且流式目标匹配本条助手消息时，才在正文位置补一个占位，排在它发起的工具之前。
+    val matchesStreamingTarget = finalAssistant != null &&
+        (streamingMessageId == null || streamingMessageId == finalAssistant.id)
+    val streamingPlaceholderId = finalAssistant
+        ?.takeIf { isGenerating && hasStreamingContent && matchesStreamingTarget && it.content.isBlank() }
+        ?.id
     val steps = buildPipelineSteps(messages, streamingPlaceholderId).map { step ->
         if (step is PipelineStep.ToolExec) step.copy(
             isExecuting = isGenerating && finalAssistant != null && toolInvocations(step.steps).any { invocation ->

@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **修复多轮工具生成续轮等待首包期间进度汇报短暂重复闪现**：
+  - 在 [GenerationPresentationStore.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/GenerationPresentationStore.kt)、[DefaultChatGenerationRuntime.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/DefaultChatGenerationRuntime.kt) 与 [DefaultGenerationCoordinator.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/DefaultGenerationCoordinator.kt) 为流式正文绑定目标助手消息 ID（`streamingMessageId`），在工具续轮写入新空助手占位前原子切换目标并清空上一轮残留的 `streamingContent`，同时在收到 `TargetChanged` 事件时清空 `streamingContent` 并将 `generatedChars` 归零；
+  - 在 [ChatViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatViewModel.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt) 与 [ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt) 叠加渲染作用域校验，当流式目标 ID 与当前末尾助手消息不匹配时自动屏蔽旧流文本，防止在等待第 N+1 轮首包前将上一轮进度汇报误渲染至新助手占位并波及生成指示与律动读数。
+
 ## [0.65.0-beta] - 2026-11-20
 
 - **折叠屏内屏 40dp 纯黑/纯白极简电路分支侧栏**：

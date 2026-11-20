@@ -214,6 +214,7 @@ data class ChatUiState(
     val isLoading: Boolean = false,
     val status: GenerationStatus = GenerationStatus.IDLE,
     val streamingContent: String = "",
+    val streamingMessageId: String? = null,
     val error: String? = null,
     val generationNotice: UiStatusNotice? = null,
     val generationFailureSurface: com.promenar.infinity.data.generation.GenerationFailureSurface? = null,
@@ -606,7 +607,12 @@ class ChatViewModel(
 
     private val _agentName = MutableStateFlow("")
 
-    private val _streamingContent = MutableStateFlow("")
+    private data class StreamingOverlay(
+        val content: String = "",
+        val messageId: String? = null,
+    )
+
+    private val _streamingOverlay = MutableStateFlow(StreamingOverlay())
     private val _error = MutableStateFlow<String?>(null)
     private val workspaceErrors = MutableStateFlow<Map<String, String>>(emptyMap())
     private val annotationStore by lazy {
@@ -836,7 +842,7 @@ class ChatViewModel(
         _isGenerating,
         _isLoading,
         _generationStatus,
-        _streamingContent,
+        _streamingOverlay,
         _error,
         _generationNotice,
         _generationFailureSurface,
@@ -852,7 +858,7 @@ class ChatViewModel(
         val isGenerating = args[3] as Boolean
         val isLoading = args[4] as Boolean
         val status = args[5] as GenerationStatus
-        val streamingContent = args[6] as String
+        val overlay = args[6] as StreamingOverlay
         val error = (args[7] as String?) ?: (args[14] as Map<String, String>)[sessionId]
         val generationNotice = args[8] as UiStatusNotice?
         val generationFailureSurface = args[9] as com.promenar.infinity.data.generation.GenerationFailureSurface?
@@ -867,16 +873,22 @@ class ChatViewModel(
         } else {
             tokenEstimateJob?.cancel()
         }
+        val visibleMessages = session?.messages.orEmpty().let { messages ->
+            if (replacingMessageIds.isEmpty()) messages else messages.filterNot { it.id in replacingMessageIds }
+        }
+        val latestAssistantId = visibleMessages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id
+        val matchesLatestAssistant = overlay.messageId == null || overlay.messageId == latestAssistantId
+        val effectiveStreamingContent = if (matchesLatestAssistant) overlay.content else ""
+        val effectiveStreamingMessageId = overlay.messageId?.takeIf { effectiveStreamingContent.isNotEmpty() }
         ChatUiState(
             session = session,
             agentName = agentName,
-            messages = session?.messages.orEmpty().let { messages ->
-                if (replacingMessageIds.isEmpty()) messages else messages.filterNot { it.id in replacingMessageIds }
-            },
+            messages = visibleMessages,
             isGenerating = isGenerating,
             isLoading = isLoading,
             status = status,
-            streamingContent = streamingContent,
+            streamingContent = effectiveStreamingContent,
+            streamingMessageId = effectiveStreamingMessageId,
             error = backgroundServiceStoppedError?.message ?: error,
             generationNotice = generationNotice,
             generationFailureSurface = generationFailureSurface,
@@ -1018,7 +1030,7 @@ class ChatViewModel(
                                 else consumeAcceptedDraft(sessionId)
                             }
                             if (pendingDraftClearTaskId != DRAFT_PENDING_START) pendingDraftClearTaskId = null
-                            _streamingContent.value = ""
+                            _streamingOverlay.value = StreamingOverlay()
                             _postProcessTasks.value = emptyList()
                             _generationRetry.value = null
                             _tailnetWait.value = null
@@ -1032,7 +1044,10 @@ class ChatViewModel(
                             return@collect
                         }
                         _ragPhases.value = presentation.ragPhases
-                        _streamingContent.value = presentation.streamingContent
+                        _streamingOverlay.value = StreamingOverlay(
+                            content = presentation.streamingContent,
+                            messageId = presentation.streamingMessageId,
+                        )
                         if (
                             pendingDraftClearTaskId != null &&
                             (
@@ -2707,7 +2722,7 @@ class ChatViewModel(
         submittedDraft = null
         _replacingMessageIds.value = emptySet()
         _deletionUndo.value = null
-        _streamingContent.value = ""
+        _streamingOverlay.value = StreamingOverlay()
         _postProcessTasks.value = emptyList()
         _generationRetry.value = null
         _ragPhases.value = emptyList()

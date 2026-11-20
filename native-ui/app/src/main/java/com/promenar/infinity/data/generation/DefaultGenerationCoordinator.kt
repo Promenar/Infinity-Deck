@@ -115,7 +115,7 @@ class DefaultGenerationCoordinator(
         }
         val taskId = taskIdFactory()
         val runner = try {
-            presentationStore.begin(request.sessionId, taskId)
+            presentationStore.begin(request.sessionId, taskId, request.assistantMessageId)
             runnerFactory.create(request, taskId)
         } catch (failure: Throwable) {
             presentationStore.finish(request.sessionId, taskId)
@@ -214,7 +214,10 @@ class DefaultGenerationCoordinator(
                 is GenerationEvent.SnapshotChanged -> previous.copy(
                     generatedChars = event.snapshot.content.length + event.snapshot.reasoning.length,
                 )
-                is GenerationEvent.TargetChanged -> previous.copy(assistantMessageId = event.assistantMessageId)
+                is GenerationEvent.TargetChanged -> previous.copy(
+                    assistantMessageId = event.assistantMessageId,
+                    generatedChars = 0,
+                )
                 is GenerationEvent.Rejected -> previous.copy(phase = GenerationPhase.FAILED, error = GenerationError(event.failure))
                 is GenerationEvent.PersistenceFailed -> previous.copy(phase = GenerationPhase.PERSISTENCE_FAILED, error = GenerationError(event.failure))
                 is GenerationEvent.Failed -> previous.copy(phase = GenerationPhase.FAILED, error = GenerationError(event.failure))

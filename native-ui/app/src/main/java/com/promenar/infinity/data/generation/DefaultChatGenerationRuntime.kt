@@ -96,6 +96,8 @@ interface GenerationUiPort {
     fun updateRagPhases(transform: (List<RagPhase>) -> List<RagPhase>)
     fun setGenerating(value: Boolean)
     fun setStreamingContent(value: String)
+    fun setStreamingContent(value: String, messageId: String?) { setStreamingContent(value) }
+    fun setStreamingTarget(messageId: String) { setStreamingContent("") }
     fun setError(failure: GenerationFailure?)
     fun setFailureSurface(surface: GenerationFailureSurface?)
     fun setProviderFailure(failure: ProviderResolution.Failure?)
@@ -574,6 +576,7 @@ internal class DefaultChatGenerationRuntime(
             it.id == assistantMessageId(request) && it.role == MessageRole.ASSISTANT
         }) { "生成目标消息不存在" }
         ui.setGenerating(true)
+        ui.setStreamingTarget(assistantMessageId(request))
         activeToolBudget = readToolBudget()
         baselineTokens = consumedToolUsageInTurn(session.messages, request).tokens
         ensureAutomaticConsent(request, session.executionMode)
@@ -1053,7 +1056,7 @@ internal class DefaultChatGenerationRuntime(
         ))
         ui.setFailureSurface(snapshot.failure?.let { GenerationFailureSurface.INLINE_MESSAGE })
         ui.setError(snapshot.failure)
-        ui.setStreamingContent(snapshot.content)
+        ui.setStreamingContent(snapshot.content, assistantMessageId(request))
     }
 
     override suspend fun persist(request: GenerationRequest, snapshot: GenerationSnapshot) {
@@ -1063,7 +1066,7 @@ internal class DefaultChatGenerationRuntime(
             snapshot.failure?.let { GenerationFailureSurface.INLINE_MESSAGE },
         )
         ui.setError(snapshot.failure)
-        ui.setStreamingContent(snapshot.content)
+        ui.setStreamingContent(snapshot.content, assistantMessageId(request))
         messageManager.updateMessageContent(
             request.sessionId,
             assistantMessageId(request),
@@ -1563,6 +1566,7 @@ internal class DefaultChatGenerationRuntime(
     override suspend fun prepareContinuation(request: GenerationRequest): String {
         val session = store.getSession(request.sessionId) ?: error("生成会话不存在")
         val nextAssistantMessageId = com.promenar.infinity.domain.usecase.IdGenerator.message("ai")
+        ui.setStreamingTarget(nextAssistantMessageId)
         messageManager.addMessage(
             request.sessionId,
             com.promenar.infinity.data.model.Message(
@@ -1584,7 +1588,7 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override suspend fun postProcess(request: GenerationRequest, snapshot: GenerationSnapshot) {
-        ui.setStreamingContent("")
+        ui.setStreamingContent("", assistantMessageId(request))
         // 审批通过后由审批流程执行的子代理，用量在本轮结束时汇入。
         recordSubagentUsage(request)
         val userMessageId = request.userMessageId ?: return

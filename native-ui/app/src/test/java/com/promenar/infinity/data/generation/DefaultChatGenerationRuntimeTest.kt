@@ -857,6 +857,28 @@ class DefaultChatGenerationRuntimeTest {
         coVerify(exactly = 1) { ledger.createBatch("skills-session", "assistant", match { it.map { call -> call.id } == listOf("before", "q", "after") }, any()) }
     }
 
+    @Test fun `工具续轮先绑定流式目标再写入新助手占位`() = runTest {
+        val fixture = postProcessFixture()
+        val sessionId = fixture.request.sessionId
+        val target = slot<String>()
+        every { fixture.ui.setStreamingTarget(capture(target)) } answers {
+            val messageIds = requireNotNull(fixture.store.getSession(sessionId)).messages.map { it.id }
+            assertThat(messageIds).doesNotContain(target.captured)
+        }
+        coEvery { fixture.messageManager.addMessage(sessionId, any()) } coAnswers {
+            val message = secondArg<Message>()
+            fixture.store.updateSession(sessionId) { it.copy(messages = it.messages + message) }
+        }
+
+        val nextOwner = fixture.runtime.prepareContinuation(fixture.request)
+
+        verify(exactly = 1) { fixture.ui.setStreamingTarget(nextOwner) }
+        assertThat(target.captured).isEqualTo(nextOwner)
+        val message = requireNotNull(fixture.store.getSession(sessionId)).messages.single { it.id == nextOwner }
+        assertThat(message.role).isEqualTo(MessageRole.ASSISTANT)
+        assertThat(message.content).isEmpty()
+    }
+
     @Test fun `工具续轮新助手继承请求所见状态版本而不是重新读取最新值`() = runTest {
         val boardRepository = mockk<com.promenar.infinity.data.repository.StateBoardRepository>(relaxed = true)
         val builder = mockk<ContextBuilder> {

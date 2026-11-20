@@ -5,10 +5,59 @@ import com.promenar.infinity.domain.generation.GenerationEvent
 import com.promenar.infinity.domain.generation.GenerationFailure
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.generation.GenerationSnapshot
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
 class GenerationPresentationStoreTest {
+    @Test fun `开始生成时绑定初始助手消息且诊断输出隐藏正文`() {
+        val store = GenerationPresentationStore()
+        store.begin("A", "task-A", "a1")
+        store.port("A", "task-A").setStreamingContent("仅供展示的正文")
+
+        val state = requireNotNull(store.observe("A").value)
+        assertThat(state.streamingMessageId).isEqualTo("a1")
+        assertThat(state.toString()).contains("streamingMessageId=a1")
+        assertThat(state.toString()).doesNotContain("仅供展示的正文")
+    }
+
+    @Test fun `目标切换事件清空上一轮正文并绑定新助手消息`() = runTest {
+        val store = GenerationPresentationStore()
+        store.begin("A", "task-A", "a1")
+        store.port("A", "task-A").setStreamingContent("上一轮")
+
+        store.accept("A", "task-A", GenerationEvent.TargetChanged("a2"))
+
+        val state = requireNotNull(store.observe("A").value)
+        assertThat(state.streamingContent).isEmpty()
+        assertThat(state.streamingMessageId).isEqualTo("a2")
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `展示端口在一次状态更新中发布正文和助手消息目标`() = runTest {
+        val store = GenerationPresentationStore()
+        store.begin("A", "task-A", "a1")
+        val port = store.port("A", "task-A")
+        port.setStreamingContent("上一轮")
+        val observed = mutableListOf<Pair<String?, String>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            store.observe("A").collect { state ->
+                if (state != null) observed += state.streamingMessageId to state.streamingContent
+            }
+        }
+
+        port.setStreamingTarget("a2")
+        port.setStreamingContent("续答正文", "a3")
+
+        assertThat(observed).containsExactly(
+            "a1" to "上一轮",
+            "a2" to "",
+            "a3" to "续答正文",
+        ).inOrder()
+    }
+
     @Test fun `交错的会话回写只改变各自展示状态`() {
         val store = GenerationPresentationStore()
         store.begin("first", "task-first")

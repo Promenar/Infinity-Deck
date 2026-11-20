@@ -20,6 +20,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
@@ -313,6 +314,35 @@ class DefaultGenerationCoordinatorTest {
         assertThat(streaming.generatedChars).isEqualTo(6)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `切换助手目标时清空上一轮正文和生成字数`() = runTest {
+        val nextRound = CompletableDeferred<Unit>()
+        val presentationStore = GenerationPresentationStore()
+        val coordinator = coordinator(presentationStore = presentationStore) { _, emit ->
+            emit(GenerationEvent.SnapshotChanged(GenerationSnapshot(content = "答复", reasoning = "思考")))
+            nextRound.await()
+            emit(GenerationEvent.TargetChanged("a2"))
+            awaitCancellation()
+        }
+        val task = coordinator.observe("s1")
+        val presentation = presentationStore.observe("s1")
+
+        coordinator.start(request("s1", "a1"))
+        runCurrent()
+        assertThat(task.value?.assistantMessageId).isEqualTo("a1")
+        assertThat(task.value?.generatedChars).isEqualTo(4)
+        assertThat(presentation.value?.streamingMessageId).isEqualTo("a1")
+        assertThat(presentation.value?.streamingContent).isEqualTo("答复")
+
+        nextRound.complete(Unit)
+        runCurrent()
+        assertThat(task.value?.assistantMessageId).isEqualTo("a2")
+        assertThat(task.value?.generatedChars).isEqualTo(0)
+        assertThat(presentation.value?.streamingMessageId).isEqualTo("a2")
+        assertThat(presentation.value?.streamingContent).isEmpty()
+    }
+
     @Test
     fun `VM观察者消失不取消应用级任务且新观察者恢复同一task`() = runTest {
         val coordinator = coordinator { _, emit ->
@@ -489,12 +519,14 @@ class DefaultGenerationCoordinatorTest {
 
     private fun TestScope.coordinator(
         terminalRetentionLimit: Int = 32,
+        presentationStore: GenerationPresentationStore = GenerationPresentationStore(),
         run: suspend (GenerationRequest, suspend (GenerationEvent) -> Unit) -> Unit,
     ) = DefaultGenerationCoordinator(
         applicationScope = backgroundScope,
         runnerFactory = GenerationRunnerFactory { _, _ -> GenerationRunner { request, emit -> run(request, emit) } },
         taskIdFactory = { "task-${nextTaskId.incrementAndGet()}" },
         terminalRetentionLimit = terminalRetentionLimit,
+        presentationStore = presentationStore,
     )
 
     private fun request(sessionId: String, assistantId: String) = GenerationRequest(

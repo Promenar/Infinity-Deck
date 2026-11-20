@@ -4241,6 +4241,97 @@ class ChatViewModelTest {
 
         assertThat(stubAgentRepo.lastGetByIdId).isEqualTo("a1")
     }
+
+    @Test
+    fun `工具续轮等待首包期间清空上一轮进度正文且不为新消息投影陈旧流内容`() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        seedSession(); advanceUntilIdle()
+
+        val round1Gate = CompletableDeferred<List<StreamChunk>>()
+        val round2Gate = CompletableDeferred<List<StreamChunk>>()
+        fakeStreamChunks = listOf(
+            StreamChunk.TextDelta("已完成素材盘点，正在调用工具。"),
+            StreamChunk.ToolCallDelta("c1", "missing_test_tool", "{}", 0),
+        )
+        streamGate = round1Gate
+        try {
+            viewModel.sendMessage("开始任务")
+            awaitReal {
+                protocolRequestCount == 1 &&
+                    viewModel.uiState.value.streamingContent == "已完成素材盘点，正在调用工具。"
+            }
+
+            fakeStreamChunks = emptyList()
+            streamGate = round2Gate
+            round1Gate.complete(
+                listOf(
+                    StreamChunk.Completed(
+                        com.promenar.infinity.domain.generation.CompletionReason.TOOL_CALLS,
+                        listOf("c1"),
+                    ),
+                ),
+            )
+
+            awaitReal {
+                protocolRequestCount == 2 &&
+                    viewModel.uiState.value.messages.count { it.role == MessageRole.ASSISTANT } == 2
+            }
+
+            val state = viewModel.uiState.value
+            val assistants = state.messages.filter { it.role == MessageRole.ASSISTANT }
+            assertThat(state.isGenerating).isTrue()
+            assertThat(assistants.first().content).isEqualTo("已完成素材盘点，正在调用工具。")
+            assertThat(assistants.last().content).isEmpty()
+            assertThat(state.streamingContent).isEmpty()
+            assertThat(state.streamingMessageId).isNull()
+        } finally {
+            if (!round1Gate.isCompleted) {
+                round1Gate.complete(listOf(StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN)))
+            }
+            if (!round2Gate.isCompleted) {
+                round2Gate.complete(listOf(StreamChunk.Completed(com.promenar.infinity.domain.generation.CompletionReason.END_TURN)))
+            }
+            streamGate = null
+            awaitReal { !viewModel.uiState.value.isGenerating }
+        }
+    }
+
+    @Test
+    fun `presentationStore仍持有旧消息流式正文且ChatStore已出现新助手时uiState屏蔽旧文本`() = runTest {
+        backgroundScope.launch { viewModel.uiState.collect {} }
+        val app = ApplicationProvider.getApplicationContext<InfinityApplication>()
+        val sessionId = "race-session"
+        val raceSession = Session(
+            id = sessionId,
+            agentId = "a1",
+            createdAt = 1L,
+            updatedAt = 2L,
+            messages = listOf(
+                Message(id = "u-1", role = MessageRole.USER, content = "开始", createdAt = 1L),
+                Message(id = "ai-1", role = MessageRole.ASSISTANT, content = "已完成盘点", createdAt = 2L),
+                Message(id = "ai-2", role = MessageRole.ASSISTANT, content = "", createdAt = 3L),
+            ),
+        )
+        savedSessions.add(raceSession)
+        app.chatStore.upsertSession(raceSession)
+        viewModel.loadSession(sessionId)
+        awaitReal {
+            viewModel.uiState.value.session?.id == sessionId &&
+                viewModel.uiState.value.messages.count { it.role == MessageRole.ASSISTANT } == 2
+        }
+
+        try {
+            presentationStore.begin(sessionId, "task-race", "ai-1")
+            presentationStore.port(sessionId, "task-race").setStreamingContent("已完成盘点", "ai-1")
+            awaitReal { presentationStore.observe(sessionId).value?.streamingContent == "已完成盘点" }
+            advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.streamingContent).isEmpty()
+            assertThat(viewModel.uiState.value.streamingMessageId).isNull()
+        } finally {
+            presentationStore.finish(sessionId, "task-race")
+        }
+    }
 }
 
 class TestInfinityApplication : InfinityApplication() {

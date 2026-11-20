@@ -281,4 +281,44 @@ class PipelineBubbleTest {
         assertThat(summary.count).isEqualTo(1)
         assertThat(summary.status).isEqualTo(ToolSummaryStatus.COMPLETED)
     }
+
+    @Test
+    fun `陈旧流式目标指向前一轮消息时不为新空助手占位生成重复正文`() {
+        val messages = listOf(
+            Message(
+                id = "ai-1",
+                role = MessageRole.ASSISTANT,
+                content = "已完成素材盘点",
+                executionSteps = listOf(
+                    ExecutionStep("c1", "tool_call", "read_file", "{}", "call-1", timestamp = 1_000),
+                    ExecutionStep("r1", "tool_result", "read_file", toolCallId = "call-1", content = "ok", timestamp = 1_200),
+                ),
+            ),
+            Message(
+                id = "ai-2",
+                role = MessageRole.ASSISTANT,
+                content = "",
+            ),
+        )
+
+        val staleTargetPlan = buildPipelineRenderPlan(
+            messages = messages,
+            isGenerating = true,
+            hasStreamingContent = true,
+            streamingMessageId = "ai-1",
+        )
+        val staleContents = staleTargetPlan.steps.filterIsInstance<PipelineStep.Content>()
+        assertThat(staleContents.map { it.messageId }).containsExactly("ai-1")
+        assertThat(staleContents.single().content).isEqualTo("已完成素材盘点")
+
+        val matchedTargetPlan = buildPipelineRenderPlan(
+            messages = messages,
+            isGenerating = true,
+            hasStreamingContent = true,
+            streamingMessageId = "ai-2",
+        )
+        val matchedContents = matchedTargetPlan.steps.filterIsInstance<PipelineStep.Content>()
+        assertThat(matchedContents.map { it.messageId }).containsExactly("ai-1", "ai-2").inOrder()
+        assertThat(matchedContents.last().content).isEmpty()
+    }
 }
