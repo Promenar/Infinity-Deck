@@ -131,7 +131,7 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
         else -> null
     }
     val subtitleMaxLines = if (LocalDensity.current.fontScale > 1f) 2 else 1
-    BackHandler(onBack = onFinish)
+    BackHandler(enabled = firstRun, onBack = onFinish)
     InfinityPageLayout(
         title = stringResource(if (firstRun) R.string.recording_setup_heading else R.string.recording_setup_title),
         onBack = onFinish,

@@ -41,6 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.R
+import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -65,15 +66,22 @@ internal fun RecordingVoiceLibrary(controller: RecordingController, onBack: () -
     var personId by rememberSaveable { mutableStateOf<String?>(null) }
     var enrolling by rememberSaveable { mutableStateOf(false) }
     val person = people.firstOrNull { it.id == personId }
-    if (enrolling) {
-        RecordingVoiceEnrollment(controller) { enrolling = false }
-        return
+    InfinityPageStack(
+        pages = listOfNotNull("enroll".takeIf { enrolling }),
+        popped = if (enrolling) emptyList() else null,
+        onPop = { enrolling = false },
+        modifier = Modifier.fillMaxSize(),
+    ) { stack ->
+        if (stack.lastOrNull() == "enroll") {
+            RecordingVoiceEnrollment(controller) { enrolling = false }
+        } else {
+            RecordingVoiceLibraryContent(
+                people, model, state.ready && state.activeId == null, onBack,
+                { personId = it.id }, { enrolling = true }, controller::downloadSpeakerModel, controller::cancelSpeakerModel,
+            )
+            if (person != null) RecordingVoicePersonSheet(person, controller) { personId = null }
+        }
     }
-    RecordingVoiceLibraryContent(
-        people, model, state.ready && state.activeId == null, onBack,
-        { personId = it.id }, { enrolling = true }, controller::downloadSpeakerModel, controller::cancelSpeakerModel,
-    )
-    if (person != null) RecordingVoicePersonSheet(person, controller) { personId = null }
 }
 
 @Composable
@@ -274,7 +282,7 @@ private fun RecordingVoiceEnrollment(controller: RecordingController, onClose: (
         else permission.launch(Manifest.permission.RECORD_AUDIO)
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { capture?.cancel() }
-    BackHandler { if (!saving) onClose() }
+    BackHandler(enabled = saving) {}
     val back: (() -> Unit)? = if (saving) null else onClose
     InfinitySettingsPageLayout(title = stringResource(R.string.recording_voice_enroll), onBack = back) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).imePadding(), contentAlignment = Alignment.TopCenter) {

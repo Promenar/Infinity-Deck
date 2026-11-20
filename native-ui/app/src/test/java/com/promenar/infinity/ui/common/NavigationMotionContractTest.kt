@@ -195,9 +195,19 @@ class NavigationMotionContractTest {
 
     @Test
     fun `低频页面的标签、状态与列表增删带过渡`() {
+        fun readPkg(relative: String) = Files.readAllBytes(Path.of("app/src/main/java/com/promenar/infinity/$relative")).toString(Charsets.UTF_8)
         mapOf(
-            "git/GitChangesPanel.kt" to listOf("label = \"git_panel_page\"", "label = \"git_panel_tab\"", "label = \"git_panel_title\"", "GitLoadContent("),
-            "chat/components/RagDetailsSheet.kt" to listOf("label = \"rag_details_tab\""),
+            "git/GitChangesPanel.kt" to listOf("label = \"git_panel_page\"", "rememberPanelTabPagerState(", "HorizontalPager(", "label = \"git_panel_title\"", "GitLoadContent("),
+            "chat/components/RagDetailsSheet.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager("),
+            "chat/components/RunDetailSheet.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager("),
+            "hub/AgentAvatarPickerSheet.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager(", "AnimatedVisibility("),
+            "chat/SessionSettingsSheet.kt" to listOf("HorizontalPager(", "pagerState = pagerState"),
+            "remote/RemotePage.kt" to listOf("InfinityPageStack(", "rememberPanelTabPagerState(", "HorizontalPager("),
+            "production/ProductionPanel.kt" to listOf("InfinityPageStack(", "rememberPanelTabPagerState(", "HorizontalPager("),
+            "production/ProductionShotPlanning.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager("),
+            "canvas/PrototypeBoard.kt" to listOf("label = \"prototype_board_stage\"", "AnimatedVisibility("),
+            "linux/output/CommandOutputScreen.kt" to listOf("label = \"command_output_segment\""),
+            "common/InfinityPanelTabs.kt" to listOf("fun panelTabIndicatorBounds(", "fun <T> rememberPanelTabPagerState("),
             // 智能体运行各节已拆为独立页面，没有标签切换；改为检查高级参数的展开过渡。
             "common/InfinitySettingsExpandableRow.kt" to listOf("AnimatedVisibility(", "label = \"settings_expandable_chevron\""),
             "welcome/OnboardingScreen.kt" to listOf("label = \"onboarding_intro\"", "label = \"onboarding_step\""),
@@ -210,6 +220,16 @@ class NavigationMotionContractTest {
             "settings/ProviderFormScreen.kt" to listOf("animatedFormItem(\"cloud-section\")"),
         ).forEach { (path, markers) ->
             val text = source(path)
+            markers.forEach { marker -> assertWithMessage(path).that(text).contains(marker) }
+        }
+        mapOf(
+            "recording/RecordingActivity.kt" to listOf("InfinityPageStack("),
+            "recording/RecordingSettings.kt" to listOf("InfinityPageStack("),
+            "recording/RecordingVoiceLibrary.kt" to listOf("InfinityPageStack("),
+            "recording/RecordingContent.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager("),
+            "navigation/PageTransitions.kt" to listOf("rememberSaveableStateHolder()", "SaveableStateProvider("),
+        ).forEach { (path, markers) ->
+            val text = readPkg(path)
             markers.forEach { marker -> assertWithMessage(path).that(text).contains(marker) }
         }
         // 文档编辑器切换窗格时不得重建编辑面板：两个窗格仍各自只出现一次。

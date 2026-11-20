@@ -42,6 +42,7 @@ import androidx.lifecycle.withResumed
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.domain.export.SessionExportEstimate
 import com.promenar.infinity.domain.export.SessionExportFile
 import com.promenar.infinity.domain.export.SessionExportFormat
@@ -236,22 +237,18 @@ private fun RecordingScreen(
             if (backToHistory) showHistory() else onBack()
         }
     }
-    BackHandler(enabled = backToHistory || editing, onBack = backAction)
-    if (showSetup) {
-        RecordingSetupPage(onFinish = { showSetup = false; dialog = "mode" }, firstRun = false)
-        return
+    val subpage = when {
+        showSetup -> "setup"
+        showHotwords -> "hotwords"
+        showVoice -> "voice"
+        else -> null
     }
-    val closeHotwords = { showHotwords = false; dialog = "mode" }
-    BackHandler(enabled = showHotwords, onBack = closeHotwords)
-    if (showHotwords) {
-        RecordingHotwordLibrary(controller, onBack = closeHotwords)
-        return
-    }
-    val closeVoice = { showVoice = false; dialog = "mode" }
-    BackHandler(enabled = showVoice, onBack = closeVoice)
-    if (showVoice) {
-        RecordingVoiceLibrary(controller, onBack = closeVoice)
-        return
+    BackHandler(enabled = subpage == null && (backToHistory || editing), onBack = backAction)
+    val closeSubpage = {
+        showSetup = false
+        showHotwords = false
+        showVoice = false
+        dialog = "mode"
     }
     val effectiveHotwords = remember(current?.hotwords, current?.useHotwordLibrary, hotwords) {
         current?.let { effectiveRecordingHotwords(it, hotwords) }.orEmpty()
@@ -373,81 +370,93 @@ private fun RecordingScreen(
         }
     }
 
-    RecordingPageContent(
-        state = state,
-        current = current,
-        organized = organized,
-        route = route,
-        waveform = controller.waveform,
-        playing = playback.playing,
-        positionMs = playback.position,
-        playbackEnvelope = playbackEnvelope,
-        onBack = backAction,
-        onHistory = showHistory,
-        onMode = { dialog = "mode" },
-        onSelect = {
-            selected = it.id
-            historyParent = true
-            organized = false
-        },
-        onOrganizedChange = { if (!editing) organized = it },
-        onEdit = { current?.let { editorText = it.organized; editing = true; organized = true } },
-        onRecordMenu = { dialog = "actions" },
-        onRename = { dialog = "rename" },
-        onLanguage = { pendingLanguage = null; dialog = "language" },
-        onExport = if (!active && current != null && (current.organized.isNotBlank() || current.segments.isNotEmpty())) openExport else null,
-        onDiscard = { dialog = "discard" },
-        onReturnActive = { selected = state.activeId; organized = false },
-        editor = if (!editing || current == null) null else RecordingInlineEditor(editorText, { editorText = it },
-            onSave = {
-                if (editorText != current.organized) {
-                    controller.updateDraft(current.id, current.title, current.hotwords, current.useHotwordLibrary, editorText)
-                }
-                editing = false
-            },
-            onCancel = {
-                if (editorText == current.organized) editing = false
-                else { leaveToHistory = false; dialog = "unsaved" }
-            }),
-        onConsent = { dialog = "consent" },
-        onTranscriptMenu = { dialog = "transcript-actions" },
-        onPlay = play,
-        onTogglePlayback = {
-            if (playback.playing) playback.pause() else play(playback.position.toLong())
-        },
-        onSeek = { playback.position = it },
-        onSeekFinished = { play(playback.position.toLong()) },
-        onBegin = { onBegin(null) },
-        onPauseResume = { current?.let { if (paused) onBegin(it.id) else controller.pause() } },
-        onFinish = { dialog = "finish" },
-        onContinue = { dialog = "continue" },
-        onOrganize = { dialog = "organize" },
-        onRetryOrganize = { current?.let { controller.retry(it.id) } },
-        onCancelOrganize = { current?.let { controller.cancelOrganize(it.id) } },
-        onSwitchToLocal = { current?.let { controller.switchToLocalAndRetry(it.id) } },
-        onDismissFailure = controller::dismissFailure,
-        asrModel = asr,
-        effectiveHotwords = effectiveHotwords,
-        onDownloadAsr = controller::downloadAsrModel,
-        onCancelDownload = controller::cancelAsrModelDownload,
-        onRecognize = {
-            if (canRecognize && current != null) {
-                dialog = "recognize"
-            }
-        },
-        onCancelRecognize = controller::cancelRecognize,
-        speakerModel = speakerModel,
-        onAnalyzeSpeakers = { current?.let { controller.analyzeSpeakers(it.id) } },
-        onSpeakerSettings = { dialog = "mode" },
-        onSpeakerSelect = { speakerId = it.id; speakerSegment = it.segmentStartMs; dialog = "speaker" },
-        batchOperation = viewModel(),
-        onDeleteRecordings = { controller.deleteBatch(it).await() },
-        onAddTile = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            { requestAddRecordingTile(activityContext) }
-        } else null,
-    )
+    InfinityPageStack(
+        pages = listOfNotNull(subpage),
+        popped = subpage?.let { emptyList() },
+        onPop = closeSubpage,
+        modifier = Modifier.fillMaxSize(),
+    ) { stack ->
+        when (stack.lastOrNull()) {
+            "setup" -> RecordingSetupPage(onFinish = closeSubpage, firstRun = false)
+            "hotwords" -> RecordingHotwordLibrary(controller, onBack = closeSubpage)
+            "voice" -> RecordingVoiceLibrary(controller, onBack = closeSubpage)
+            else -> RecordingPageContent(
+                state = state,
+                current = current,
+                organized = organized,
+                route = route,
+                waveform = controller.waveform,
+                playing = playback.playing,
+                positionMs = playback.position,
+                playbackEnvelope = playbackEnvelope,
+                onBack = backAction,
+                onHistory = showHistory,
+                onMode = { dialog = "mode" },
+                onSelect = {
+                    selected = it.id
+                    historyParent = true
+                    organized = false
+                },
+                onOrganizedChange = { if (!editing) organized = it },
+                onEdit = { current?.let { editorText = it.organized; editing = true; organized = true } },
+                onRecordMenu = { dialog = "actions" },
+                onRename = { dialog = "rename" },
+                onLanguage = { pendingLanguage = null; dialog = "language" },
+                onExport = if (!active && current != null && (current.organized.isNotBlank() || current.segments.isNotEmpty())) openExport else null,
+                onDiscard = { dialog = "discard" },
+                onReturnActive = { selected = state.activeId; organized = false },
+                editor = if (!editing || current == null) null else RecordingInlineEditor(editorText, { editorText = it },
+                    onSave = {
+                        if (editorText != current.organized) {
+                            controller.updateDraft(current.id, current.title, current.hotwords, current.useHotwordLibrary, editorText)
+                        }
+                        editing = false
+                    },
+                    onCancel = {
+                        if (editorText == current.organized) editing = false
+                        else { leaveToHistory = false; dialog = "unsaved" }
+                    }),
+                onConsent = { dialog = "consent" },
+                onTranscriptMenu = { dialog = "transcript-actions" },
+                onPlay = play,
+                onTogglePlayback = {
+                    if (playback.playing) playback.pause() else play(playback.position.toLong())
+                },
+                onSeek = { playback.position = it },
+                onSeekFinished = { play(playback.position.toLong()) },
+                onBegin = { onBegin(null) },
+                onPauseResume = { current?.let { if (paused) onBegin(it.id) else controller.pause() } },
+                onFinish = { dialog = "finish" },
+                onContinue = { dialog = "continue" },
+                onOrganize = { dialog = "organize" },
+                onRetryOrganize = { current?.let { controller.retry(it.id) } },
+                onCancelOrganize = { current?.let { controller.cancelOrganize(it.id) } },
+                onSwitchToLocal = { current?.let { controller.switchToLocalAndRetry(it.id) } },
+                onDismissFailure = controller::dismissFailure,
+                asrModel = asr,
+                effectiveHotwords = effectiveHotwords,
+                onDownloadAsr = controller::downloadAsrModel,
+                onCancelDownload = controller::cancelAsrModelDownload,
+                onRecognize = {
+                    if (canRecognize && current != null) {
+                        dialog = "recognize"
+                    }
+                },
+                onCancelRecognize = controller::cancelRecognize,
+                speakerModel = speakerModel,
+                onAnalyzeSpeakers = { current?.let { controller.analyzeSpeakers(it.id) } },
+                onSpeakerSettings = { dialog = "mode" },
+                onSpeakerSelect = { speakerId = it.id; speakerSegment = it.segmentStartMs; dialog = "speaker" },
+                batchOperation = viewModel(),
+                onDeleteRecordings = { controller.deleteBatch(it).await() },
+                onAddTile = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    { requestAddRecordingTile(activityContext) }
+                } else null,
+            )
+        }
+    }
 
-    when (dialog) {
+    if (subpage == null) when (dialog) {
         "mode" -> if (state.ready && (selected == null || current != null)) RecordingWorkspaceSettings(
             current?.mode ?: defaultMode,
             current?.outputLanguage ?: controller.store.outputLanguage,

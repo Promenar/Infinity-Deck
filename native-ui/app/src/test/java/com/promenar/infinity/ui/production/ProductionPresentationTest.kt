@@ -140,4 +140,43 @@ class ProductionPresentationTest {
         assertThat(workflowStageTarget(ProductionStage.SOUND)).isEqualTo(ProductionTab.ASSETS)
         assertThat(workflowStageTarget(ProductionStage.EDIT)).isEqualTo(ProductionTab.CUT)
     }
+
+    @Test
+    fun `制作面板子页栈支持编解码与防套娃压栈`() {
+        val shotToken = encodeProductionPage(ProductionPage.Shot("ep:1", "SC01-01"))
+        val charToken = encodeProductionPage(ProductionPage.Character("char:lin wan"))
+        assertThat(decodeProductionPage(shotToken)).isEqualTo(ProductionPage.Shot("ep:1", "SC01-01"))
+        assertThat(decodeProductionPage(charToken)).isEqualTo(ProductionPage.Character("char:lin wan"))
+        assertThat(decodeProductionPage("bad")).isNull()
+
+        val s1 = pushProductionPage(emptyList(), shotToken)
+        assertThat(s1).containsExactly(shotToken)
+        // 相同页面已经在栈顶时不重复压入。
+        assertThat(pushProductionPage(s1, shotToken)).isEqualTo(s1)
+        val s2 = pushProductionPage(s1, charToken)
+        assertThat(s2).containsExactly(shotToken, charToken).inOrder()
+        // 从角色详情跳回上一级镜头时自动退栈而非无限叠加。
+        assertThat(pushProductionPage(s2, shotToken)).containsExactly(shotToken)
+    }
+
+    @Test
+    fun `制作面板子页栈自动清理已被移除的镜头与角色并尊重待落盘新增镜头`() {
+        val initial = initialProductionPageStack(production, initialShot = "S1E01" to "SC01-01", initialAssetId = null)
+        assertThat(initial).containsExactly(encodeProductionPage(ProductionPage.Shot("S1E01", "SC01-01")))
+        assertThat(initialProductionPageStack(production, initialShot = null, initialAssetId = "char-linwan"))
+            .containsExactly(encodeProductionPage(ProductionPage.Character("char-linwan")))
+        // 非角色资产不入整页栈（保留弹窗打开）。
+        assertThat(initialProductionPageStack(production, initialShot = null, initialAssetId = "prop-letter")).isEmpty()
+
+        val newShot = encodeProductionPage(ProductionPage.Shot("S1E01", "SC99-01"))
+        val missingChar = encodeProductionPage(ProductionPage.Character("missing"))
+        val validChar = encodeProductionPage(ProductionPage.Character("char-linwan"))
+        val stack = listOf(validChar, missingChar, newShot)
+        // 新增事务尚未同步时保留栈顶新增镜头，同时剔除已删除角色。
+        assertThat(reconcileProductionPageStack(stack, production, awaitingNewShot = true))
+            .containsExactly(validChar, newShot).inOrder()
+        // 事务到达或无需等待时若镜头仍不存在则一并清理。
+        assertThat(reconcileProductionPageStack(stack, production, awaitingNewShot = false))
+            .containsExactly(validChar)
+    }
 }

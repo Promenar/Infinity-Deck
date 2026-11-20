@@ -2,11 +2,13 @@ package com.promenar.infinity.ui.remote
 
 import com.promenar.infinity.ui.common.InfinityPanelTab
 import com.promenar.infinity.ui.common.InfinityPanelTabs
-import androidx.activity.compose.BackHandler
+import com.promenar.infinity.ui.common.rememberPanelTabPagerState
+import com.promenar.infinity.navigation.InfinityPageStack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,7 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
+import java.net.URLDecoder
+import java.net.URLEncoder
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -82,6 +87,34 @@ enum class RemoteSettingsLink { LINUX, TERMUX, BACKGROUND }
  * 窄窗口整页显示（[onBack] 非空），宽窗口在检视器“远程”页签中显示，根层不画顶栏。
  * SSH 终端在面板内作为下一层打开，返回回到面板；连接由 [com.promenar.infinity.ui.ssh.SshUserTerminals] 持有，离开不断开。
  */
+private sealed interface RemoteSubPage {
+    data class Terminal(val alias: String, val initialTab: String?) : RemoteSubPage
+    data object SshKeys : RemoteSubPage
+    data class KeychainEntry(val ref: String) : RemoteSubPage
+}
+
+private fun encodeRemoteTerminal(alias: String, tab: String?): String =
+    "term:${URLEncoder.encode(alias, "UTF-8")}:${tab?.let { URLEncoder.encode(it, "UTF-8") }.orEmpty()}"
+
+private fun encodeRemoteEntry(ref: String): String =
+    "entry:${URLEncoder.encode(ref, "UTF-8")}"
+
+private fun decodeRemoteSubPage(token: String): RemoteSubPage? {
+    val kind = token.substringBefore(':', "")
+    val rest = token.substringAfter(':', "")
+    return when (kind) {
+        "ssh_keys" -> RemoteSubPage.SshKeys
+        "entry" -> URLDecoder.decode(rest, "UTF-8").takeIf(String::isNotEmpty)?.let(RemoteSubPage::KeychainEntry)
+        "term" -> {
+            if (':' !in rest) return null
+            val alias = URLDecoder.decode(rest.substringBefore(':'), "UTF-8")
+            val tab = URLDecoder.decode(rest.substringAfter(':'), "UTF-8").takeIf(String::isNotEmpty)
+            if (alias.isNotEmpty()) RemoteSubPage.Terminal(alias, tab) else null
+        }
+        else -> null
+    }
+}
+
 @Composable
 internal fun RemotePage(
     sessionId: String,
@@ -94,93 +127,82 @@ internal fun RemotePage(
     val app = LocalContext.current.applicationContext as InfinityApplication
     val tailscale by app.tailnetManager.state.collectAsState()
     var segment by rememberSaveable(sessionId) { mutableStateOf(RemoteSegment.SSH.token) }
-    var terminalAlias by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
-    var terminalTab by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
-    // Git 分段里打开的钥匙串条目：整页显示详情，返回回到分段。
-    var gitEntry by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
-    // SSH 分段顶部进入的 SSH 密钥列表：整页显示，条目沿用上面的整页详情。
-    var sshKeys by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var pageStack by rememberSaveable(sessionId) { mutableStateOf<List<String>>(emptyList()) }
     // Tailscale 分段里点“SSH”的设备：切到 SSH 分段后由主机设置打开预填的新建面板。
     var importPeer by remember(sessionId) { mutableStateOf<TailnetPeer?>(null) }
     // 打开面板时智能体正在用 SSH，直接落在 SSH 分段。
     LaunchedEffect(Unit) { if (usage.active) segment = RemoteSegment.SSH.token }
 
     val openTerminal: (String, String?) -> Unit = { alias, tab ->
-        terminalAlias = alias
-        terminalTab = tab
+        pageStack = pageStack + encodeRemoteTerminal(alias, tab)
     }
-
-    terminalAlias?.let { alias ->
-        val closeTerminal = { terminalAlias = null; terminalTab = null }
-        BackHandler(onBack = closeTerminal)
-        SshTerminalScreen(
-            alias = alias,
-            onBack = closeTerminal,
-            readOnlyTabs = usage.readOnlyTabs(alias),
-            initialTab = terminalTab,
-        )
-        return
-    }
-
-    gitEntry?.let { ref ->
-        val closeEntry = { gitEntry = null }
-        BackHandler(onBack = closeEntry)
-        KeychainEntryScreen(ref = ref, onBack = closeEntry, onEdit = {}, onOpenSettings = {})
-        return
-    }
-
-    if (sshKeys) {
-        val closeKeys = { sshKeys = false }
-        BackHandler(onBack = closeKeys)
-        KeychainScreen(
-            initialFilter = KeychainCategory.SSH_KEY,
-            lockedFilter = KeychainCategory.SSH_KEY,
-            onBack = closeKeys,
-            onOpenEntry = { gitEntry = it },
-            onNewEntry = {},
-        )
-        return
-    }
-
     val agentItems: LazyListScope.() -> Unit = { remoteAgentUsageItems(usage, onOpenTerminal = openTerminal, onOpenBackgroundJobs = onOpenBackgroundJobs) }
     // 窄窗口整页在会话内容之外组合，实时输出存储需在此重新提供。
     CompositionLocalProvider(LocalToolLiveOutput provides app.toolLiveOutputStore) {
-    RemotePageContent(
-        segment = RemoteSegment.entries.firstOrNull { it.token == segment } ?: RemoteSegment.SSH,
-        onSelectSegment = { segment = it.token },
-        agentActive = usage.active,
-        tailscaleAttention = tailscaleNeedsAttention(tailscale.phase),
-        linuxMode = linuxMode,
-        onBack = onBack,
-        onOpenSettings = onOpenSettings,
-    ) { selected ->
-        when (selected) {
-            RemoteSegment.SSH -> SshSettingsScreen(
-                onBack = {},
-                onOpenTerminal = { alias -> openTerminal(alias, null) },
-                leadingContent = agentItems.takeIf { usage.active },
-                importPeer = importPeer,
-                onImportConsumed = { importPeer = null },
-                onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token },
-                onOpenSshKeys = { sshKeys = true },
-            )
-            RemoteSegment.GIT -> KeychainScreen(
-                initialFilter = KeychainCategory.GIT,
-                lockedFilter = KeychainCategory.GIT,
-                onBack = {},
-                onOpenEntry = { gitEntry = it },
-                onNewEntry = {},
-            )
-            RemoteSegment.TAILSCALE -> TailscaleSettingsScreen(
-                onBack = {},
-                onAddSshHost = { peer ->
-                    importPeer = peer
-                    segment = RemoteSegment.SSH.token
-                },
-            )
-            RemoteSegment.NETWORK -> NetworkAccessSettingsScreen(onBack = {}, onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token })
+        InfinityPageStack(
+            pages = pageStack,
+            popped = pageStack.takeIf { it.isNotEmpty() }?.dropLast(1),
+            onPop = { pageStack = pageStack.dropLast(1) },
+            modifier = Modifier.fillMaxSize(),
+        ) { stack ->
+            when (val subPage = stack.lastOrNull()?.let(::decodeRemoteSubPage)) {
+                is RemoteSubPage.Terminal -> SshTerminalScreen(
+                    alias = subPage.alias,
+                    onBack = { pageStack = pageStack.dropLast(1) },
+                    readOnlyTabs = usage.readOnlyTabs(subPage.alias),
+                    initialTab = subPage.initialTab,
+                )
+                is RemoteSubPage.KeychainEntry -> KeychainEntryScreen(
+                    ref = subPage.ref,
+                    onBack = { pageStack = pageStack.dropLast(1) },
+                    onEdit = {},
+                    onOpenSettings = {},
+                )
+                RemoteSubPage.SshKeys -> KeychainScreen(
+                    initialFilter = KeychainCategory.SSH_KEY,
+                    lockedFilter = KeychainCategory.SSH_KEY,
+                    onBack = { pageStack = pageStack.dropLast(1) },
+                    onOpenEntry = { ref -> pageStack = pageStack + encodeRemoteEntry(ref) },
+                    onNewEntry = {},
+                )
+                null -> RemotePageContent(
+                    segment = RemoteSegment.entries.firstOrNull { it.token == segment } ?: RemoteSegment.SSH,
+                    onSelectSegment = { segment = it.token },
+                    agentActive = usage.active,
+                    tailscaleAttention = tailscaleNeedsAttention(tailscale.phase),
+                    linuxMode = linuxMode,
+                    onBack = onBack,
+                    onOpenSettings = onOpenSettings,
+                ) { selected ->
+                    when (selected) {
+                        RemoteSegment.SSH -> SshSettingsScreen(
+                            onBack = {},
+                            onOpenTerminal = { alias -> openTerminal(alias, null) },
+                            leadingContent = agentItems.takeIf { usage.active },
+                            importPeer = importPeer,
+                            onImportConsumed = { importPeer = null },
+                            onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token },
+                            onOpenSshKeys = { pageStack = pageStack + "ssh_keys" },
+                        )
+                        RemoteSegment.GIT -> KeychainScreen(
+                            initialFilter = KeychainCategory.GIT,
+                            lockedFilter = KeychainCategory.GIT,
+                            onBack = {},
+                            onOpenEntry = { ref -> pageStack = pageStack + encodeRemoteEntry(ref) },
+                            onNewEntry = {},
+                        )
+                        RemoteSegment.TAILSCALE -> TailscaleSettingsScreen(
+                            onBack = {},
+                            onAddSshHost = { peer ->
+                                importPeer = peer
+                                segment = RemoteSegment.SSH.token
+                            },
+                        )
+                        RemoteSegment.NETWORK -> NetworkAccessSettingsScreen(onBack = {}, onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token })
+                    }
+                }
+            }
         }
-    }
     }
 }
 
@@ -196,6 +218,8 @@ internal fun RemotePageContent(
     onOpenSettings: ((RemoteSettingsLink) -> Unit)?,
     content: @Composable (RemoteSegment) -> Unit,
 ) {
+    val segments = RemoteSegment.entries
+    val pagerState = rememberPanelTabPagerState(tabs = segments, selected = segment, onSelect = onSelectSegment)
     InfinityPageLayout(
         title = stringResource(R.string.remote_panel_title),
         onBack = onBack,
@@ -206,7 +230,7 @@ internal fun RemotePageContent(
         modifier = Modifier.testTag(RemoteTags.PAGE),
     ) {
         InfinityPanelTabs(
-            tabs = RemoteSegment.entries.map { value ->
+            tabs = segments.map { value ->
                 InfinityPanelTab(
                     value = value,
                     label = stringResource(value.label),
@@ -226,17 +250,28 @@ internal fun RemotePageContent(
                 top = if (onBack == null) inspectorTopGap(InfinitySpacing.XSmall, visualInset = InfinitySpacing.Medium) else InfinitySpacing.XSmall,
                 bottom = InfinitySpacing.XSmall,
             ),
+            pagerState = pagerState,
         )
-        val hint = when {
-            !linuxMode -> null
-            segment == RemoteSegment.GIT -> R.string.remote_linux_git_hint
-            segment == RemoteSegment.NETWORK -> R.string.remote_linux_network_hint
-            else -> null
-        }
-        hint?.let { RemoteHint(stringResource(it)) }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            CompositionLocalProvider(LocalInfinitySettingsEmbedded provides PaddingValues(top = InfinitySpacing.XSmall)) {
-                content(segment)
+        HorizontalPager(
+            state = pagerState,
+            key = { segments[it] },
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { pageIndex ->
+            val pageSegment = segments[pageIndex]
+            val hint = when {
+                !linuxMode -> null
+                pageSegment == RemoteSegment.GIT -> R.string.remote_linux_git_hint
+                pageSegment == RemoteSegment.NETWORK -> R.string.remote_linux_network_hint
+                else -> null
+            }
+            Column(Modifier.fillMaxSize()) {
+                hint?.let { RemoteHint(stringResource(it)) }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    CompositionLocalProvider(LocalInfinitySettingsEmbedded provides PaddingValues(top = InfinitySpacing.XSmall)) {
+                        content(pageSegment)
+                    }
+                }
             }
         }
         onOpenSettings?.let { open ->

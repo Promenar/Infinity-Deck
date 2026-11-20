@@ -1,6 +1,13 @@
 package com.promenar.infinity.ui.canvas
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -76,6 +83,7 @@ import com.promenar.infinity.data.canvas.CanvasMetadata
 import com.promenar.infinity.data.canvas.CanvasScreenSource
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import kotlin.math.roundToInt
@@ -132,7 +140,11 @@ internal fun PrototypeBoardContent(
                     .padding(horizontal = InfinitySpacing.XSmall, vertical = InfinitySpacing.XSmall),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (focusIndex != null) {
+                    AnimatedVisibility(
+                        visible = focusIndex != null,
+                        enter = expandHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) + fadeIn(),
+                        exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+                    ) {
                         IconButton(
                             onClick = { focused = null },
                             modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).testTag(UiTags.PROTOTYPE_BACK_TO_BOARD),
@@ -166,7 +178,11 @@ internal fun PrototypeBoardContent(
                         modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).testTag(UiTags.CANVAS_CLOSE),
                     ) { Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.canvas_close)) }
                 }
-                if (focusIndex == null) {
+                AnimatedVisibility(
+                    visible = focusIndex == null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
                     CanvasVersionSelector(
                         metadata = currentMetadata,
                         selectedVersion = selectedVersion,
@@ -184,26 +200,59 @@ internal fun PrototypeBoardContent(
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                when {
-                    error != null -> Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.error,
-                        style = InfinityTypography.bodyMedium,
-                        modifier = Modifier.padding(InfinitySpacing.XLarge),
-                    )
-                    document == null -> CanvasLoading()
-                    focusIndex != null -> PrototypeDemo(
-                        screens = screens,
-                        index = focusIndex,
-                        readOnly = isHistory,
-                        onNavigate = { id -> haptics.select(false); focused = id },
-                        onInsertText = if (isHistory) ({ _: String -> }) else onInsertText,
-                    )
-                    else -> PrototypeCanvas(
-                        screens = screens,
-                        onOpenScreen = { id -> haptics.select(false); focused = id },
-                    )
+            val stage: PrototypeBoardStage = when {
+                error != null -> PrototypeBoardStage.Error(error)
+                document == null -> PrototypeBoardStage.Loading
+                focusIndex != null -> PrototypeBoardStage.Demo(focusIndex, screens[focusIndex].id)
+                else -> PrototypeBoardStage.Board
+            }
+            AnimatedContent(
+                targetState = stage,
+                contentKey = { current ->
+                    when (current) {
+                        is PrototypeBoardStage.Error -> "error"
+                        PrototypeBoardStage.Loading -> "loading"
+                        PrototypeBoardStage.Board -> "board"
+                        is PrototypeBoardStage.Demo -> "demo:${current.screenId}"
+                    }
+                },
+                transitionSpec = {
+                    val from = initialState
+                    val to = targetState
+                    when {
+                        from is PrototypeBoardStage.Demo && to is PrototypeBoardStage.Demo ->
+                            if (from.index == to.index) InfinityMotion.fadeThrough() else InfinityMotion.sharedAxisX(forward = to.index > from.index)
+                        from is PrototypeBoardStage.Board && to is PrototypeBoardStage.Demo ->
+                            InfinityMotion.sharedAxisX(forward = true)
+                        from is PrototypeBoardStage.Demo && to is PrototypeBoardStage.Board ->
+                            InfinityMotion.sharedAxisX(forward = false)
+                        else -> InfinityMotion.fadeThrough()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                label = "prototype_board_stage",
+            ) { current ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    when (current) {
+                        is PrototypeBoardStage.Error -> Text(
+                            text = current.message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = InfinityTypography.bodyMedium,
+                            modifier = Modifier.padding(InfinitySpacing.XLarge),
+                        )
+                        PrototypeBoardStage.Loading -> CanvasLoading()
+                        is PrototypeBoardStage.Demo -> PrototypeDemo(
+                            screens = screens,
+                            index = current.index.coerceIn(0, (screens.size - 1).coerceAtLeast(0)),
+                            readOnly = isHistory,
+                            onNavigate = { id -> haptics.select(false); focused = id },
+                            onInsertText = if (isHistory) ({ _: String -> }) else onInsertText,
+                        )
+                        PrototypeBoardStage.Board -> PrototypeCanvas(
+                            screens = screens,
+                            onOpenScreen = { id -> haptics.select(false); focused = id },
+                        )
+                    }
                 }
             }
         }
@@ -400,4 +449,11 @@ private fun PrototypeDemo(
             ) { Icon(Icons.Rounded.ChevronRight, contentDescription = stringResource(R.string.prototype_next_screen)) }
         }
     }
+}
+
+private sealed interface PrototypeBoardStage {
+    data object Loading : PrototypeBoardStage
+    data class Error(val message: String) : PrototypeBoardStage
+    data object Board : PrototypeBoardStage
+    data class Demo(val index: Int, val screenId: String) : PrototypeBoardStage
 }

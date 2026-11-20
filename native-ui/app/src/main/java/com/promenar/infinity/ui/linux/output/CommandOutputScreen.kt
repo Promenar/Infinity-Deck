@@ -2,7 +2,9 @@ package com.promenar.infinity.ui.linux.output
 
 import com.promenar.infinity.ui.common.InfinityPanelTabs
 import com.promenar.infinity.ui.common.InfinityPanelTab
+import androidx.compose.animation.AnimatedContent
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -208,7 +210,15 @@ fun CommandOutputContent(
             }
             SearchRow(state.search, onQueryChange, onPreviousMatch, onNextMatch)
             TruncationNotice(state, output)
-            OutputText(state, Modifier.weight(1f))
+            AnimatedContent(
+                targetState = state,
+                contentKey = { it.segment },
+                transitionSpec = { InfinityMotion.fadeThrough() },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                label = "command_output_segment",
+            ) { shownState ->
+                OutputText(shownState, Modifier.fillMaxSize())
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
                 OutputAction(R.string.linux_output_copy, Icons.Rounded.ContentCopy, UiTags.LINUX_OUTPUT_COPY, enabled = true, onClick = onCopy)
                 OutputAction(R.string.linux_output_save, Icons.Rounded.Save, UiTags.LINUX_OUTPUT_SAVE, enabled = !state.saving, onClick = onSave)

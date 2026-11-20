@@ -2,6 +2,9 @@ package com.promenar.infinity.ui.chat.components
 
 import com.promenar.infinity.ui.common.InfinityPanelTab
 import com.promenar.infinity.ui.common.InfinityPanelTabs
+import com.promenar.infinity.ui.common.rememberPanelTabPagerState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Dp
@@ -188,42 +191,64 @@ internal fun RunDetailContent(
             onHidePlan = onHidePlan.takeIf { plan != null && !plan.isCompleted },
             onClearPlan = onClearPlan.takeIf { plan?.isCompleted == true && !isGenerating },
         )
-        if (tabs.size > 1) {
+        val activeTab = tab ?: tabs.firstOrNull()
+        if (tabs.size > 1 && activeTab != null) {
+            val pagerState = rememberPanelTabPagerState(tabs = tabs, selected = activeTab, onSelect = { selected = it })
             RunDetailTabs(
                 tabs = tabs,
-                selected = tab,
+                selected = activeTab,
                 plan = plan,
                 activity = activity,
                 onSelect = { selected = it },
+                pagerState = pagerState,
             )
-        }
-        // 计划、后台与状态之间按页签顺序横向过渡，与检视器页签一致。
-        AnimatedContent(
-            targetState = tab,
-            transitionSpec = { InfinityMotion.sharedAxisX(forward = (targetState?.ordinal ?: 0) > (initialState?.ordinal ?: 0)) },
-            label = "run_detail_tab",
-            modifier = Modifier.fillMaxWidth().weight(1f),
-        ) { shownTab ->
-        Box(Modifier.fillMaxSize()) {
-            when (shownTab) {
-                RunDetailTab.PLAN -> plan?.let {
-                    RunPlanTab(it, isGenerating, onContinue = { onDismiss(); onContinue() }, onComplete = onComplete)
+            HorizontalPager(
+                state = pagerState,
+                key = { tabs[it] },
+                verticalAlignment = Alignment.Top,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            ) { pageIndex ->
+                Box(Modifier.fillMaxSize()) {
+                    when (tabs[pageIndex]) {
+                        RunDetailTab.PLAN -> plan?.let {
+                            RunPlanTab(it, isGenerating, onContinue = { onDismiss(); onContinue() }, onComplete = onComplete)
+                        }
+                        RunDetailTab.BACKGROUND -> activity?.let { state ->
+                            AgentActivityTabContent(state, onOpenLog = { path -> onDismiss(); state.access.onOpenLog(path) }, modifier = Modifier.fillMaxSize())
+                        }
+                        RunDetailTab.STATE -> stateBoard?.let { snapshot ->
+                            StateBoardContent(
+                                snapshot = snapshot,
+                                isGenerating = isGenerating,
+                                onEdit = onEditState,
+                                onRemove = onRemoveState,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
                 }
-                RunDetailTab.BACKGROUND -> activity?.let { state ->
-                    AgentActivityTabContent(state, onOpenLog = { path -> onDismiss(); state.access.onOpenLog(path) }, modifier = Modifier.fillMaxSize())
-                }
-                RunDetailTab.STATE -> stateBoard?.let { snapshot ->
-                    StateBoardContent(
-                        snapshot = snapshot,
-                        isGenerating = isGenerating,
-                        onEdit = onEditState,
-                        onRemove = onRemoveState,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                null -> Unit
             }
-        }
+        } else {
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                when (activeTab) {
+                    RunDetailTab.PLAN -> plan?.let {
+                        RunPlanTab(it, isGenerating, onContinue = { onDismiss(); onContinue() }, onComplete = onComplete)
+                    }
+                    RunDetailTab.BACKGROUND -> activity?.let { state ->
+                        AgentActivityTabContent(state, onOpenLog = { path -> onDismiss(); state.access.onOpenLog(path) }, modifier = Modifier.fillMaxSize())
+                    }
+                    RunDetailTab.STATE -> stateBoard?.let { snapshot ->
+                        StateBoardContent(
+                            snapshot = snapshot,
+                            isGenerating = isGenerating,
+                            onEdit = onEditState,
+                            onRemove = onRemoveState,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    null -> Unit
+                }
+            }
         }
     }
 }
@@ -449,6 +474,7 @@ private fun RunDetailTabs(
     plan: TaskPanelUiState?,
     activity: AgentActivityState?,
     onSelect: (RunDetailTab) -> Unit,
+    pagerState: PagerState? = null,
 ) {
     InfinityPanelTabs(
         tabs = tabs.map { tab ->
@@ -472,6 +498,7 @@ private fun RunDetailTabs(
         onSelect = onSelect,
         contentInset = 20.dp,
         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+        pagerState = pagerState,
     )
 }
 

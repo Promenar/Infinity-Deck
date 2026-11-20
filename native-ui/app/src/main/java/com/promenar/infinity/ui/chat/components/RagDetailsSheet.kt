@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.chat.components
 
 import com.promenar.infinity.ui.common.InfinityPanelTabs
 import com.promenar.infinity.ui.common.InfinityPanelTab
+import com.promenar.infinity.ui.common.rememberPanelTabPagerState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.ui.draw.clip
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.common.InfinitySheetHeight
@@ -274,6 +276,13 @@ fun RagDetailsSheetContent(
                     modifier = Modifier.padding(bottom = 8.dp).testTag(KNOWLEDGE_SEARCH_QUERY_TAG),
                 )
             }
+            val tabIndices = tabs.indices.toList()
+            val pagerState = rememberPanelTabPagerState(
+                tabs = tabIndices,
+                selected = selectedTabIndex,
+                onSelect = { selectedTabIndex = it },
+                key = initialTab,
+            )
             InfinityPanelTabs(
                 tabs = tabs.mapIndexed { index, tab ->
                     InfinityPanelTab(index, stringResource(tab.labelRes), testTag = tab.testTag())
@@ -281,16 +290,16 @@ fun RagDetailsSheetContent(
                 selected = selectedTabIndex,
                 onSelect = { selectedTabIndex = it },
                 bleed = 16.dp,
+                pagerState = pagerState,
             )
             Spacer(Modifier.height(8.dp))
-            // 同级标签按左右顺序做共享 X 轴切换。
-            androidx.compose.animation.AnimatedContent(
-                targetState = selectedTabIndex,
-                transitionSpec = { InfinityMotion.sharedAxisX(forward = targetState > initialState) },
-                modifier = Modifier.fillMaxWidth(),
-                label = "rag_details_tab",
+            HorizontalPager(
+                state = pagerState,
+                key = { tabs[it] },
+                verticalAlignment = Alignment.Top,
+                modifier = Modifier.fillMaxWidth().weight(1f),
             ) { index ->
-                when (tabs[index.coerceIn(0, tabs.lastIndex)]) {
+                when (tabs[index]) {
                     RagDetailsTab.Retrieved -> RetrievedReferencesList(references, trace, knowledgeSearch)
                     RagDetailsTab.WebSearch -> WebCitationsList(citations, ::requestOpen)
                     RagDetailsTab.KnowledgeGraph -> KnowledgeGraphList(kgPaths, references)

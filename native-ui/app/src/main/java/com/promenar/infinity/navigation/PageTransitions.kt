@@ -8,10 +8,12 @@ import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.animation.core.rememberTransition
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -272,6 +274,8 @@ internal fun <T> InfinityPageStack(
 ) {
     val layers = remember { PageLayers() }
     val seek = remember { SeekableTransitionState(pages) }
+    val stateHolder = rememberSaveableStateHolder()
+    val visitedKeys = remember { mutableSetOf<String>() }
     val scope = rememberCoroutineScope()
     var gesture by remember { mutableStateOf(false) }
     val currentOnPop by rememberUpdatedState(onPop)
@@ -300,6 +304,20 @@ internal fun <T> InfinityPageStack(
         currentOnPop()
     }
     val transition = rememberTransition(seek, label = "page-stack")
+    LaunchedEffect(transition.currentState, transition.isRunning, pages) {
+        if (!transition.isRunning && transition.currentState == pages) {
+            val activeKeys = buildSet {
+                for (depth in 0..pages.size) {
+                    add(pageStackId(pages.take(depth)))
+                }
+            }
+            val stale = visitedKeys - activeKeys
+            stale.forEach { key ->
+                stateHolder.removeState(key)
+                visitedKeys.remove(key)
+            }
+        }
+    }
     CompositionLocalProvider(LocalPageLayers provides layers) {
         transition.AnimatedContent(
             modifier = modifier.clipToBounds(),
@@ -311,7 +329,13 @@ internal fun <T> InfinityPageStack(
                 ContentTransform(pageEnterFor(change), pageExitFor(change), targetContentZIndex = targetState.size.toFloat(), sizeTransform = null)
             },
         ) { state ->
-            PageFrame(this, pageStackId(state)) { content(state) }
+            val id = pageStackId(state)
+            SideEffect { visitedKeys.add(id) }
+            PageFrame(this, id) {
+                stateHolder.SaveableStateProvider(id) {
+                    content(state)
+                }
+            }
         }
     }
 }

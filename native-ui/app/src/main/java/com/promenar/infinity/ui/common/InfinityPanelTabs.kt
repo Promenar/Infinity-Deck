@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -28,10 +30,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -52,6 +58,8 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -83,6 +91,7 @@ private val PanelTabPressShape = RoundedCornerShape(10.dp)
  * - 只放名称、计数与状态圆点，不放图标；触控高度 48dp，读屏角色为页签。
  * - [contentInset] 是首个页签文字到组件左缘的距离，默认与页面内容边距一致。
  *   父容器已有水平内边距时传入 [bleed]：页签行与底线向两侧伸出这段距离，贴到父容器边缘。
+ * - 配合 [HorizontalPager] 使用时传入 [pagerState]：指示条在绘制阶段按拖动进度实时跟手插值，不引发重组。
  */
 @Composable
 fun <T> InfinityPanelTabs(
@@ -93,6 +102,7 @@ fun <T> InfinityPanelTabs(
     contentInset: Dp = InfinitySpacing.ScreenHorizontal,
     bleed: Dp = 0.dp,
     scrollState: ScrollState = rememberScrollState(),
+    pagerState: PagerState? = null,
 ) {
     if (tabs.isEmpty()) return
     val haptics = LocalInfinityHaptics.current
@@ -103,12 +113,14 @@ fun <T> InfinityPanelTabs(
     val bounds = remember { mutableStateMapOf<Int, Pair<Int, Int>>() }
     var viewport by remember { mutableIntStateOf(0) }
     val selectedIndex = tabs.indexOfFirst { it.value == selected }
-    val target = bounds[selectedIndex]
+    val activeIndex = pagerState?.currentPage?.takeIf { it in tabs.indices } ?: selectedIndex
+    val target = bounds[activeIndex]
     val padPx = with(density) { PanelTabPadding.roundToPx() }
 
     val indicatorX = remember { Animatable(0f) }
     val indicatorWidth = remember { Animatable(0f) }
-    LaunchedEffect(target) {
+    LaunchedEffect(pagerState, target) {
+        if (pagerState != null) return@LaunchedEffect
         val (x, width) = target ?: return@LaunchedEffect
         val labelX = (x + padPx).toFloat()
         val labelWidth = (width - padPx * 2).coerceAtLeast(0).toFloat()
@@ -122,7 +134,7 @@ fun <T> InfinityPanelTabs(
             launch { indicatorWidth.animateTo(labelWidth, motion) }
         }
     }
-    LaunchedEffect(target, viewport) {
+    LaunchedEffect(activeIndex, target, viewport) {
         val (x, width) = target ?: return@LaunchedEffect
         panelTabScrollTarget(x, x + width, scrollState.value, viewport, edgePx)?.let { scrollState.animateScrollTo(it) }
     }
@@ -151,17 +163,24 @@ fun <T> InfinityPanelTabs(
                     .selectableGroup()
                     .drawWithContent {
                         drawContent()
-                        // 动画值尚未初始化（首帧）时直接按选中页签的位置绘制，避免指示条晚一帧出现。
-                        val placed = bounds[selectedIndex]
-                        val animated = indicatorWidth.value > 0f
-                        val x = if (animated) indicatorX.value else placed?.let { (it.first + padPx).toFloat() }
-                        val width = if (animated) indicatorWidth.value else placed?.let { (it.second - padPx * 2).coerceAtLeast(0).toFloat() }
-                        if (x != null && width != null && width > 0f) {
+                        // 配合 HorizontalPager 时直接在绘制阶段读取连续页位；否则沿用点选动画坐标，首帧未初始化时落到选中页签。
+                        val indicator = if (pagerState != null) {
+                            val maxPage = (minOf(tabs.size, pagerState.pageCount) - 1).coerceAtLeast(0)
+                            val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, maxPage.toFloat())
+                            panelTabIndicatorBounds(bounds, position, padPx)
+                        } else {
+                            val placed = bounds[activeIndex]
+                            val animated = indicatorWidth.value > 0f
+                            val x = if (animated) indicatorX.value else placed?.let { (it.first + padPx).toFloat() }
+                            val width = if (animated) indicatorWidth.value else placed?.let { (it.second - padPx * 2).coerceAtLeast(0).toFloat() }
+                            if (x != null && width != null) x to width else null
+                        }
+                        if (indicator != null && indicator.second > 0f) {
                             val height = PanelTabIndicatorHeight.toPx()
                             drawRoundRect(
                                 color = indicatorColor,
-                                topLeft = Offset(x, size.height - height),
-                                size = Size(width, height * 2),
+                                topLeft = Offset(indicator.first, size.height - height),
+                                size = Size(indicator.second, height * 2),
                                 cornerRadius = CornerRadius(height, height),
                             )
                         }
@@ -172,10 +191,10 @@ fun <T> InfinityPanelTabs(
                 tabs.forEachIndexed { index, tab ->
                     PanelTab(
                         tab = tab,
-                        selected = index == selectedIndex,
+                        selected = index == activeIndex,
                         onClick = {
-                            haptics.select(index == selectedIndex)
-                            if (index != selectedIndex) onSelect(tab.value)
+                            haptics.select(index == activeIndex)
+                            if (index != activeIndex) onSelect(tab.value)
                         },
                         modifier = Modifier.onGloballyPositioned { coordinates ->
                             bounds[index] = coordinates.positionInParent().x.roundToInt() to coordinates.size.width
@@ -186,6 +205,65 @@ fun <T> InfinityPanelTabs(
             }
         }
     }
+}
+
+/**
+ * 为 [InfinityPanelTabs] + [HorizontalPager] 提供双向同步的状态器：
+ * - 点击页签或外部代码改动 [selected] 时平滑滚动到目标页（[tabs] 列表结构变化时直接定位，无跳闪）；
+ * - 用户左右滑动切换并在滚动静止后回调 [onSelect] 同步宿主状态（中途抓回取消时同样以落定页为准）。
+ */
+@Composable
+fun <T> rememberPanelTabPagerState(
+    tabs: List<T>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    key: Any? = Unit,
+): PagerState {
+    val selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
+    val latestTabs by rememberUpdatedState(tabs)
+    val latestSelected by rememberUpdatedState(selected)
+    val latestOnSelect by rememberUpdatedState(onSelect)
+    val pagerState = key(key) {
+        rememberPagerState(
+            initialPage = selectedIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)),
+            pageCount = { latestTabs.size },
+        )
+    }
+    LaunchedEffect(pagerState) {
+        var wasScrolling = false
+        snapshotFlow { pagerState.isScrollInProgress }.collect { scrolling ->
+            if (scrolling) {
+                wasScrolling = true
+            } else if (wasScrolling) {
+                wasScrolling = false
+                val settled = latestTabs.getOrNull(pagerState.settledPage)
+                if (settled != null && settled != latestSelected) {
+                    latestOnSelect(settled)
+                }
+            }
+        }
+    }
+    var lastTabs by remember(key) { mutableStateOf(tabs) }
+    LaunchedEffect(pagerState, selectedIndex, tabs) {
+        if (tabs.isEmpty()) {
+            lastTabs = tabs
+            return@LaunchedEffect
+        }
+        val clamped = selectedIndex.coerceIn(0, tabs.lastIndex)
+        val tabsChanged = lastTabs != tabs
+        lastTabs = tabs
+        if (tabsChanged) {
+            if (pagerState.currentPage != clamped || pagerState.currentPageOffsetFraction != 0f) {
+                pagerState.scrollToPage(clamped)
+            }
+        } else if (pagerState.currentPage != clamped && pagerState.targetPage != clamped) {
+            pagerState.animateScrollToPage(
+                page = clamped,
+                animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.PageSlideEasing),
+            )
+        }
+    }
+    return pagerState
 }
 
 @Composable
@@ -257,5 +335,33 @@ internal fun panelTabScrollTarget(left: Int, right: Int, scroll: Int, viewport: 
         left - edge < scroll -> (left - edge).coerceAtLeast(0)
         right + edge > scroll + viewport -> right + edge - viewport
         else -> null
+    }
+}
+
+/**
+ * 根据连续页位 [position]（如 `currentPage + currentPageOffsetFraction`）在相邻两个已测量页签之间插值计算
+ * 指示条的水平起点与宽度；邻侧尚未测量时回退到已测量的一侧。
+ */
+internal fun panelTabIndicatorBounds(
+    bounds: Map<Int, Pair<Int, Int>>,
+    position: Float,
+    padPx: Int,
+): Pair<Float, Float>? {
+    if (bounds.isEmpty()) return null
+    val maxIndex = bounds.keys.maxOrNull() ?: return null
+    val clamped = position.coerceIn(0f, maxIndex.toFloat())
+    val lower = floor(clamped).toInt()
+    val upper = ceil(clamped).toInt()
+    val lowerRect = bounds[lower]?.let { (x, w) -> (x + padPx).toFloat() to (w - padPx * 2).coerceAtLeast(0).toFloat() }
+    val upperRect = bounds[upper]?.let { (x, w) -> (x + padPx).toFloat() to (w - padPx * 2).coerceAtLeast(0).toFloat() }
+    return when {
+        lowerRect == null -> upperRect
+        upperRect == null || lower == upper -> lowerRect
+        else -> {
+            val fraction = (clamped - lower).coerceIn(0f, 1f)
+            val x = lowerRect.first + (upperRect.first - lowerRect.first) * fraction
+            val width = lowerRect.second + (upperRect.second - lowerRect.second) * fraction
+            x to width
+        }
     }
 }

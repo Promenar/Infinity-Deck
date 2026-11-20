@@ -14,6 +14,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.66.1-beta] - 2026-11-20
+
+- **全站页签手势横滑与指示条实时跟手（[InfinityPanelTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityPanelTabs.kt)）**：
+  - 为 `InfinityPanelTabs` 接入可选 `pagerState: PagerState?` 与绘制期连续线性插值函数 `panelTabIndicatorBounds`，并新增 `rememberPanelTabPagerState` 双向同步辅助，实现左右滑动切换页签时底部指示条按手指偏移实时平滑跟随、释放落定后再通知宿主切换状态且点击页签与 `HorizontalPager` 无跳转闪烁（全部统一显式 `verticalAlignment = Alignment.Top`）；
+  - 为视频创作面板主 6 页签（[ProductionPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPanel.kt)）与镜头详情 2 页签（[ProductionShotPlanning.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionShotPlanning.kt)）、[RemotePage.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/remote/RemotePage.kt)、[GitChangesPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/git/GitChangesPanel.kt)、[RunDetailSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/components/RunDetailSheet.kt)、[RagDetailsSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/components/RagDetailsSheet.kt)、[AgentAvatarPickerSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/hub/AgentAvatarPickerSheet.kt)（含 `ColorPane` `AnimatedVisibility`）、[RecordingContent.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingContent.kt) 窄屏工作台接入 `HorizontalPager` 左右滑切，并为已使用 `HorizontalPager` 的 [SessionSettingsSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/SessionSettingsSheet.kt) 接入 `pagerState` 跟手联动（保持有横向画布/滚动冲突的知识图谱、Linux 代码/Hex、命令输出与片段筛选维持点击）；为资产网格卡片（[ProductionTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionTabs.kt)）补充 `animateItem()` 柔和过滤。
+- **全站二/三级子页 `InfinityPageStack` 视差推入与状态保留（[PageTransitions.kt](native-ui/app/src/main/java/com/promenar/infinity/navigation/PageTransitions.kt)）**：
+  - 在 `InfinityPageStack` 内引入 `rememberSaveableStateHolder` 并于转场结束后清理已弹出层级状态，进出子页返回时完整保留下层列表滚动位置与页签状态；
+  - 将视频创作面板（`ProductionPage` 镜头/角色二三级页面栈及防往复套娃退栈）、[RemotePage.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/remote/RemotePage.kt)（`SSH 终端` / `SSH 密钥列表` → `钥匙串条目详情`）、录音模块（[RecordingActivity.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingActivity.kt)、[RecordingSettings.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingSettings.kt)、[RecordingVoiceLibrary.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingVoiceLibrary.kt)、[RecordingSetupPage.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingSetupPage.kt)）统一迁移至 `InfinityPageStack` 视差推入与系统返回跟手，并分别在 [PrototypeBoard.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/canvas/PrototypeBoard.kt) 与 [CommandOutputScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/linux/output/CommandOutputScreen.kt) 补齐画板/演示阶段切换动画与输出分段交叉淡入。
+
 ## [0.66.0-beta] - 2026-11-20
 
 - **制作面板（`ProductionPanel`）全页交互重构、缺陷修复与排版升级**：

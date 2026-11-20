@@ -683,7 +683,7 @@ internal fun ProductionAssetsTab(
             item("empty", span = { GridItemSpan(maxLineSpan) }) { ProductionSection(null) { ProductionMutedRow(stringResource(R.string.production_panel_no_assets)) } }
         }
         items(assets, key = { it.id }) { asset ->
-            AssetCard(asset, usageCount = production.shotsUsingAsset(asset.id), onClick = {
+            AssetCard(asset, usageCount = production.shotsUsingAsset(asset.id), modifier = Modifier.animateItem(), onClick = {
                 if (asset.kind == AssetKind.CHARACTER) onOpenCharacter(asset.id) else openAssetId = asset.id
             })
         }
@@ -707,11 +707,11 @@ internal fun ProductionAssetsTab(
 }
 
 @Composable
-private fun AssetCard(asset: Asset, usageCount: Int = 0, onClick: () -> Unit) {
+private fun AssetCard(asset: Asset, usageCount: Int = 0, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth().testTag(ProductionUiTags.ASSET_CARD),
+        modifier = modifier.fillMaxWidth().testTag(ProductionUiTags.ASSET_CARD),
         onClick = onClick,
     ) {
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -35,6 +35,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import com.promenar.infinity.ui.common.rememberPanelTabPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -211,6 +213,8 @@ fun GitChangesPanel(
         ) { shown ->
             when (val detail = shown.detail) {
                 null -> Column(Modifier.fillMaxSize()) {
+                    val tabs = GitPanelTab.entries
+                    val pagerState = rememberPanelTabPagerState(tabs = tabs, selected = shown.tab, onSelect = actions.onSelectTab)
                     InfinityPanelTabs(
                         tabs = listOf(
                             InfinityPanelTab(
@@ -228,19 +232,19 @@ fun GitChangesPanel(
                         selected = shown.tab,
                         onSelect = actions.onSelectTab,
                         bleed = InfinitySpacing.ScreenHorizontal,
+                        pagerState = pagerState,
                     )
                     Spacer(modifier = Modifier.height(InfinitySpacing.Small))
-                    AnimatedContent(
-                        targetState = shown,
-                        contentKey = { it.tab },
-                        transitionSpec = { InfinityMotion.sharedAxisX(forward = targetState.tab.ordinal > initialState.tab.ordinal) },
+                    HorizontalPager(
+                        state = pagerState,
+                        key = { tabs[it] },
+                        verticalAlignment = Alignment.Top,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                        label = "git_panel_tab",
-                    ) { tabState ->
-                        when (tabState.tab) {
-                            GitPanelTab.CHANGES -> ChangesContent(tabState.status, actions)
-                            GitPanelTab.COMMITS -> CommitsContent(tabState.log ?: GitLoad.Loading, actions)
-                            GitPanelTab.BRANCHES -> BranchesContent(tabState.branches ?: GitLoad.Loading, actions, tabState.worktrees, tabState.currentWorktreePath)
+                    ) { pageIndex ->
+                        when (tabs[pageIndex]) {
+                            GitPanelTab.CHANGES -> ChangesContent(shown.status, actions)
+                            GitPanelTab.COMMITS -> CommitsContent(shown.log ?: GitLoad.Loading, actions)
+                            GitPanelTab.BRANCHES -> BranchesContent(shown.branches ?: GitLoad.Loading, actions, shown.worktrees, shown.currentWorktreePath)
                         }
                     }
                 }

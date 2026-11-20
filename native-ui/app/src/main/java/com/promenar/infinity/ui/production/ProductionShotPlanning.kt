@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Edit
@@ -110,185 +111,208 @@ internal fun ProductionShotDetail(
             onBack = onBack,
             metaAccent = generatedTimes(generations.total).takeIf { costAlert(generations) },
         )
-        InfinityPanelTabs(listOf(
-            InfinityPanelTab(ShotDetailTab.STORYBOARD, stringResource(R.string.p2_tab_storyboard), dot = MaterialTheme.colorScheme.primary.takeIf { !location.scene.storyboardLocked }),
-            InfinityPanelTab(ShotDetailTab.CANDIDATES, stringResource(R.string.p2_tab_candidates), count = shot.takes.size.takeIf { it > 0 }?.toString()),
-        ), selected = tab, onSelect = { tab = it }, contentInset = InfinitySpacing.Large)
+        val detailTabs = ShotDetailTab.entries
+        val pagerState = rememberPanelTabPagerState(
+            tabs = detailTabs,
+            selected = tab,
+            onSelect = { tab = it },
+            key = Triple(episodeId, shot.code, initialTab),
+        )
+        InfinityPanelTabs(
+            tabs = listOf(
+                InfinityPanelTab(ShotDetailTab.STORYBOARD, stringResource(R.string.p2_tab_storyboard), dot = MaterialTheme.colorScheme.primary.takeIf { !location.scene.storyboardLocked }),
+                InfinityPanelTab(ShotDetailTab.CANDIDATES, stringResource(R.string.p2_tab_candidates), count = shot.takes.size.takeIf { it > 0 }?.toString()),
+            ),
+            selected = tab,
+            onSelect = { tab = it },
+            contentInset = InfinitySpacing.Large,
+            pagerState = pagerState,
+        )
         (error ?: localError)?.let { message -> InfinityStatusStrip(InfinityStatusKind.Error, message, onDismiss = { onDismissError(); localError = null }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
         notice?.let { InfinityStatusStrip(InfinityStatusKind.Info, it, onDismiss = { notice = null }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-        LazyColumn(Modifier.weight(1f), contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
-            if (production.experimental) item("experimental") { ProductionTrialStrip() }
-            if (tab == ShotDetailTab.CANDIDATES) {
-                item("player") {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (viewingPlaceholder != null) ProductionPlaceholderCard(viewingPlaceholder, now, working, onRun, episodeId, shot.code)
-                        else if (viewing != null) key(viewing.id) { ProductionMediaReference(viewing.path, Modifier.fillMaxWidth(), alt = shot.title) }
-                        else ProductionSection(null) {
-                            ProductionMutedRow(stringResource(R.string.production_panel_no_takes))
-                        }
-                        if (shot.takes.isNotEmpty() || placeholders.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId, services.channelLabelSegments(take.source.service).formatChannelLabel()) { viewingId = take.id } }
-                            items(placeholders, key = { it.key }) { item -> PlaceholderThumb(item, item.key == viewingPlaceholder?.key, now) { viewingId = item.key } }
-                        }
-                        if (viewing != null) {
-                            val number = shot.takes.indexOf(viewing) + 1
-                            ProductionReviewBlock(
-                                production = production,
-                                target = ReviewTarget.take(episodeId, shot.code, viewing.id),
-                                label = listOf(shot.code, stringResource(R.string.production_panel_take_number, number)),
-                                busy = working,
-                                onRun = onRun,
-                                onSubmit = onSubmit,
-                                // 审核记录之前已选定的候选视为已批准。
-                                settled = viewing.id == shot.selectedTakeId && shot.status == ShotStatus.LOCKED,
-                            )
-                            TakeSourceSection(viewing, shot, production) { viewingId = it }
-                            TakeSegmentsSection(viewing)
+        HorizontalPager(
+            state = pagerState,
+            key = { detailTabs[it] },
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { pageIndex ->
+            if (detailTabs[pageIndex] == ShotDetailTab.CANDIDATES) {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
+                    if (production.experimental) item("experimental") { ProductionTrialStrip() }
+                    item("player") {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (viewingPlaceholder != null) ProductionPlaceholderCard(viewingPlaceholder, now, working, onRun, episodeId, shot.code)
+                            else if (viewing != null) key(viewing.id) { ProductionMediaReference(viewing.path, Modifier.fillMaxWidth(), alt = shot.title) }
+                            else ProductionSection(null) {
+                                ProductionMutedRow(stringResource(R.string.production_panel_no_takes))
+                            }
+                            if (shot.takes.isNotEmpty() || placeholders.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(shot.takes, key = { it.id }) { take -> TakeThumb(take, shot.takes.indexOf(take) + 1, take.id == viewing?.id, take.id == shot.selectedTakeId, services.channelLabelSegments(take.source.service).formatChannelLabel()) { viewingId = take.id } }
+                                items(placeholders, key = { it.key }) { item -> PlaceholderThumb(item, item.key == viewingPlaceholder?.key, now) { viewingId = item.key } }
+                            }
+                            if (viewing != null) {
+                                val number = shot.takes.indexOf(viewing) + 1
+                                ProductionReviewBlock(
+                                    production = production,
+                                    target = ReviewTarget.take(episodeId, shot.code, viewing.id),
+                                    label = listOf(shot.code, stringResource(R.string.production_panel_take_number, number)),
+                                    busy = working,
+                                    onRun = onRun,
+                                    onSubmit = onSubmit,
+                                    // 审核记录之前已选定的候选视为已批准。
+                                    settled = viewing.id == shot.selectedTakeId && shot.status == ShotStatus.LOCKED,
+                                )
+                                TakeSourceSection(viewing, shot, production) { viewingId = it }
+                                TakeSegmentsSection(viewing)
+                            }
                         }
                     }
                 }
             } else {
-                if (!location.scene.storyboardLocked && !production.experimental) item("unlocked") {
-                    ProductionSection(null) {
-                        ProductionRow(
-                            stringResource(R.string.p2_unlocked_scene),
-                            icon = Icons.Rounded.LockOpen,
-                            chip = production.reviewChipSpec(ReviewTarget.scene(episodeId, location.scene.code)),
-                            enabled = !working,
-                            onClick = { dialog = PlanningDialog.SCENE_REVIEW },
-                        )
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
+                    if (production.experimental) item("experimental") { ProductionTrialStrip() }
+                    if (!location.scene.storyboardLocked && !production.experimental) item("unlocked") {
+                        ProductionSection(null) {
+                            ProductionRow(
+                                stringResource(R.string.p2_unlocked_scene),
+                                icon = Icons.Rounded.LockOpen,
+                                chip = production.reviewChipSpec(ReviewTarget.scene(episodeId, location.scene.code)),
+                                enabled = !working,
+                                onClick = { dialog = PlanningDialog.SCENE_REVIEW },
+                            )
+                        }
                     }
-                }
-                item("content") {
-                    Column {
-                        ProductionSectionHeader(
-                            stringResource(R.string.p2_shot_section),
-                            trailing = stringResource(if (location.scene.storyboardLocked) R.string.p2_content_locked else R.string.p2_content_editable),
-                            action = {
-                                IconButton(onClick = { dialog = PlanningDialog.CONTENT }, enabled = !working, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Edit, stringResource(R.string.p2_edit_content), Modifier.size(20.dp)) }
-                            },
-                        )
-                        BettboxListGroup { ShotFieldGrid(shot, production) }
+                    item("content") {
+                        Column {
+                            ProductionSectionHeader(
+                                stringResource(R.string.p2_shot_section),
+                                trailing = stringResource(if (location.scene.storyboardLocked) R.string.p2_content_locked else R.string.p2_content_editable),
+                                action = {
+                                    IconButton(onClick = { dialog = PlanningDialog.CONTENT }, enabled = !working, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Edit, stringResource(R.string.p2_edit_content), Modifier.size(20.dp)) }
+                                },
+                            )
+                            BettboxListGroup { ShotFieldGrid(shot, production) }
+                        }
                     }
-                }
-                item("planning") {
-                    Row(Modifier.padding(start = InfinitySpacing.RowHorizontal, top = 4.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.p2_generation_plan), style = MaterialTheme.typography.titleSmall)
-                        if (shot.promptUserEdited) Text(stringResource(R.string.p2_prompt_edited), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    item("planning") {
+                        Row(Modifier.padding(start = InfinitySpacing.RowHorizontal, top = 4.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.p2_generation_plan), style = MaterialTheme.typography.titleSmall)
+                            if (shot.promptUserEdited) Text(stringResource(R.string.p2_prompt_edited), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                }
-                if (shot.appearances.isNotEmpty()) item("characters") {
-                    Column {
-                        ProductionSectionHeader(stringResource(R.string.p2_character_refs))
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            shot.appearances.forEach { appearance ->
-                                CharacterReferenceCard(appearance, production, !working, onOpen = { onOpenCharacter(appearance.characterAssetId) }, onLook = { lookCharacter = appearance.characterAssetId; sheet = PlanningSheet.LOOK }) { look, slotId ->
-                                    val updated = appearance.toggleSlot(look, slotId)
-                                    onRun(ProductionUserAction.ToggleReferenceSlot(episodeId, shot.code, appearance.characterAssetId, slotId, slotId in updated.referenceSlotIds))
+                    if (shot.appearances.isNotEmpty()) item("characters") {
+                        Column {
+                            ProductionSectionHeader(stringResource(R.string.p2_character_refs))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                shot.appearances.forEach { appearance ->
+                                    CharacterReferenceCard(appearance, production, !working, onOpen = { onOpenCharacter(appearance.characterAssetId) }, onLook = { lookCharacter = appearance.characterAssetId; sheet = PlanningSheet.LOOK }) { look, slotId ->
+                                        val updated = appearance.toggleSlot(look, slotId)
+                                        onRun(ProductionUserAction.ToggleReferenceSlot(episodeId, shot.code, appearance.characterAssetId, slotId, slotId in updated.referenceSlotIds))
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                item("channel-mode") {
-                    val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)
-                    val noChannel = resolvedChannel == null
-                    val channelName = preview?.channelLabel?.takeIf(String::isNotBlank)
-                        ?.split(" $InfinityMetaSeparator ") ?: shot.channelId?.let(services.channelLabelSegments)
-                        ?: listOf(
-                            if (noChannel) stringResource(R.string.p2_no_channel_for_mode, shot.mode.label())
-                            else stringResource(R.string.p2_default_channel),
-                        )
-                    val defaultLabel = stringResource(R.string.p2_default)
-                        .takeIf { !noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank() }
-                    ProductionSection(stringResource(R.string.p2_channel_mode)) {
-                        ProductionRow(stringResource(R.string.p2_mode), value = shot.mode.label(), enabled = !working, onClick = { sheet = PlanningSheet.MODE })
-                        ProductionRow(stringResource(R.string.p2_channel), valueSegments = channelName + listOfNotNull(defaultLabel), enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
-                        if (noChannel && (!loading || preview != null || services.planner == null)) {
-                            ChannelMismatchGuideCard(
-                                shot = shot,
-                                channels = channels,
-                                services = services,
-                                enabled = !working,
-                                onSwitchMode = { targetMode -> onRun(modeSelectionAction(location, targetMode, channels, channelOrder)) },
+                    item("channel-mode") {
+                        val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)
+                        val noChannel = resolvedChannel == null
+                        val channelName = preview?.channelLabel?.takeIf(String::isNotBlank)
+                            ?.split(" $InfinityMetaSeparator ") ?: shot.channelId?.let(services.channelLabelSegments)
+                            ?: listOf(
+                                if (noChannel) stringResource(R.string.p2_no_channel_for_mode, shot.mode.label())
+                                else stringResource(R.string.p2_default_channel),
                             )
-                        }
-                        ProductionRow(stringResource(R.string.p2_specs), valueSegments = planSpecsSegments(preview, production, shot))
-                        ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))
-                        shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp), asLink = shot.preview == PreviewKind.TEXT_CARD) }
-                    }
-                }
-                item("inputs") {
-                    val inputs = preview?.inputs.orEmpty()
-                    val noChannel = (if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)) == null
-                    val packing = preview?.channel?.takeIf { shot.mode == ShotMode.REFERENCE && shot.appearances.isNotEmpty() }?.let {
-                        stringResource(if (it.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_composite else R.string.p2_separate)
-                    }
-                    val images = inputs.count { it.kind == InputKind.IMAGE }
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val sectionTitle = stringResource(R.string.production_panel_section_inputs)
-                        ProductionSection(
-                            sectionTitle,
-                            titleSegments = listOfNotNull(
-                                sectionTitle,
-                                packing,
-                                stringResource(R.string.p2_image_count, images).takeIf { images > 0 },
-                                stringResource(R.string.p2_waiting_channel).takeIf { noChannel && inputs.isNotEmpty() },
-                            ),
-                            trailing = preview?.channel?.let { stringResource(R.string.p2_inputs_by_channel, preview?.channelLabel?.substringBefore(" $InfinityMetaSeparator ") ?: it.id) },
-                        ) {
-                            if (loading && preview == null) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
-                            inputs.forEach { PlannedInputRow(it) }
-                            if (preview != null && inputs.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_no_inputs))
-                            if (services.planner == null) ProductionMutedRow(noPlanner)
-                        }
-                        preview?.overflow?.takeIf { it.isNotEmpty() }?.let { overflow -> InfinityStatusStrip(InfinityStatusKind.Warning, stringResource(R.string.p2_overflow, overflow.joinToString("、") { it.title })) }
-                        preview?.warnings?.forEach { warning ->
-                            val targetCharacter = shot.appearances.mapNotNull { app -> production.findAsset(app.characterAssetId) }
-                                .firstOrNull { char -> char.status != AssetStatus.LOCKED && char.name in warning }
-                            if (targetCharacter != null) {
-                                ReviewWarningBanner(warning) { onOpenCharacter(targetCharacter.id) }
-                            } else {
-                                InfinityStatusStrip(InfinityStatusKind.Warning, warning)
-                            }
-                        }
-                        remainingBlockedReasons(preview, location.scene.storyboardLocked, noChannel, shot.channelId).forEach { reason ->
-                            InfinityStatusStrip(InfinityStatusKind.Warning, reason)
-                        }
-                    }
-                }
-                if (shot.dialogue.isNotEmpty()) item("dialogue-audio") {
-                    ProductionSection(stringResource(R.string.p2_dialogue_audio)) {
-                        shot.dialogue.forEachIndexed { index, line ->
-                            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                DialogueLine(production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId, line.text, null, Modifier.weight(1f))
-                                InfinitySegmentedControl(
-                                    DialogueAudioSource.entries.map { InfinitySegment(it, stringResource(if (it == DialogueAudioSource.NATIVE) R.string.p2_native else R.string.p2_dubbed)) },
-                                    selected = line.audioSource, enabled = !working,
-                                    onSelect = { onRun(ProductionUserAction.SetDialogueSource(episodeId, shot.code, index, it)) },
-                                    modifier = Modifier.width(136.dp),
+                        val defaultLabel = stringResource(R.string.p2_default)
+                            .takeIf { !noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank() }
+                        ProductionSection(stringResource(R.string.p2_channel_mode)) {
+                            ProductionRow(stringResource(R.string.p2_mode), value = shot.mode.label(), enabled = !working, onClick = { sheet = PlanningSheet.MODE })
+                            ProductionRow(stringResource(R.string.p2_channel), valueSegments = channelName + listOfNotNull(defaultLabel), enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
+                            if (noChannel && (!loading || preview != null || services.planner == null)) {
+                                ChannelMismatchGuideCard(
+                                    shot = shot,
+                                    channels = channels,
+                                    services = services,
+                                    enabled = !working,
+                                    onSwitchMode = { targetMode -> onRun(modeSelectionAction(location, targetMode, channels, channelOrder)) },
                                 )
                             }
+                            ProductionRow(stringResource(R.string.p2_specs), valueSegments = planSpecsSegments(preview, production, shot))
+                            ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))
+                            shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp), asLink = shot.preview == PreviewKind.TEXT_CARD) }
                         }
                     }
-                }
-                item("prompt") {
-                    Column {
-                        val sectionTitle = stringResource(R.string.p2_submission_prompt)
-                        ProductionSectionHeader(
-                            sectionTitle,
-                            titleSegments = listOf(sectionTitle, preview?.promptFormat?.label() ?: stringResource(R.string.p2_format_generic)),
-                            action = {
-                                IconButton(onClick = { dialog = PlanningDialog.RECOMPILE }, enabled = !working && services.planner != null, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Refresh, stringResource(R.string.p2_recompile), Modifier.size(20.dp)) }
-                                IconButton(onClick = { dialog = PlanningDialog.PROMPT }, enabled = !working, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Edit, stringResource(R.string.production_panel_edit), Modifier.size(20.dp)) }
-                            },
-                        )
-                        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-                            Text(
-                                preview?.prompt ?: shot.prompt.ifBlank { stringResource(R.string.production_panel_no_prompt) },
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
+                    item("inputs") {
+                        val inputs = preview?.inputs.orEmpty()
+                        val noChannel = (if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder)) == null
+                        val packing = preview?.channel?.takeIf { shot.mode == ShotMode.REFERENCE && shot.appearances.isNotEmpty() }?.let {
+                            stringResource(if (it.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_composite else R.string.p2_separate)
+                        }
+                        val images = inputs.count { it.kind == InputKind.IMAGE }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val sectionTitle = stringResource(R.string.production_panel_section_inputs)
+                            ProductionSection(
+                                sectionTitle,
+                                titleSegments = listOfNotNull(
+                                    sectionTitle,
+                                    packing,
+                                    stringResource(R.string.p2_image_count, images).takeIf { images > 0 },
+                                    stringResource(R.string.p2_waiting_channel).takeIf { noChannel && inputs.isNotEmpty() },
+                                ),
+                                trailing = preview?.channel?.let { stringResource(R.string.p2_inputs_by_channel, preview?.channelLabel?.substringBefore(" $InfinityMetaSeparator ") ?: it.id) },
+                            ) {
+                                if (loading && preview == null) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
+                                inputs.forEach { PlannedInputRow(it) }
+                                if (preview != null && inputs.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_no_inputs))
+                                if (services.planner == null) ProductionMutedRow(noPlanner)
+                            }
+                            preview?.overflow?.takeIf { it.isNotEmpty() }?.let { overflow -> InfinityStatusStrip(InfinityStatusKind.Warning, stringResource(R.string.p2_overflow, overflow.joinToString("、") { it.title })) }
+                            preview?.warnings?.forEach { warning ->
+                                val targetCharacter = shot.appearances.mapNotNull { app -> production.findAsset(app.characterAssetId) }
+                                    .firstOrNull { char -> char.status != AssetStatus.LOCKED && char.name in warning }
+                                if (targetCharacter != null) {
+                                    ReviewWarningBanner(warning) { onOpenCharacter(targetCharacter.id) }
+                                } else {
+                                    InfinityStatusStrip(InfinityStatusKind.Warning, warning)
+                                }
+                            }
+                            remainingBlockedReasons(preview, location.scene.storyboardLocked, noChannel, shot.channelId).forEach { reason ->
+                                InfinityStatusStrip(InfinityStatusKind.Warning, reason)
+                            }
+                        }
+                    }
+                    if (shot.dialogue.isNotEmpty()) item("dialogue-audio") {
+                        ProductionSection(stringResource(R.string.p2_dialogue_audio)) {
+                            shot.dialogue.forEachIndexed { index, line ->
+                                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    DialogueLine(production.findAsset(line.characterAssetId)?.name ?: line.characterAssetId, line.text, null, Modifier.weight(1f))
+                                    InfinitySegmentedControl(
+                                        DialogueAudioSource.entries.map { InfinitySegment(it, stringResource(if (it == DialogueAudioSource.NATIVE) R.string.p2_native else R.string.p2_dubbed)) },
+                                        selected = line.audioSource, enabled = !working,
+                                        onSelect = { onRun(ProductionUserAction.SetDialogueSource(episodeId, shot.code, index, it)) },
+                                        modifier = Modifier.width(136.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    item("prompt") {
+                        Column {
+                            val sectionTitle = stringResource(R.string.p2_submission_prompt)
+                            ProductionSectionHeader(
+                                sectionTitle,
+                                titleSegments = listOf(sectionTitle, preview?.promptFormat?.label() ?: stringResource(R.string.p2_format_generic)),
+                                action = {
+                                    IconButton(onClick = { dialog = PlanningDialog.RECOMPILE }, enabled = !working && services.planner != null, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Refresh, stringResource(R.string.p2_recompile), Modifier.size(20.dp)) }
+                                    IconButton(onClick = { dialog = PlanningDialog.PROMPT }, enabled = !working, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Edit, stringResource(R.string.production_panel_edit), Modifier.size(20.dp)) }
+                                },
                             )
+                            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    preview?.prompt ?: shot.prompt.ifBlank { stringResource(R.string.production_panel_no_prompt) },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
+                                )
+                            }
                         }
                     }
                 }

@@ -171,12 +171,14 @@ fun SessionSettingsSheet(
                     scope.launch { pagerState.animateScrollToPage(index) }
                 },
                 contentInset = InfinitySpacing.XLarge,
+                pagerState = pagerState,
             )
 
             Spacer(modifier = Modifier.height(InfinitySpacing.Small))
 
             HorizontalPager(
                 state = pagerState,
+                verticalAlignment = Alignment.Top,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)

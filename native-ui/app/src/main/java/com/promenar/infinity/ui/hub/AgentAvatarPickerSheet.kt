@@ -2,6 +2,10 @@ package com.promenar.infinity.ui.hub
 
 import com.promenar.infinity.ui.common.InfinityPanelTabs
 import com.promenar.infinity.ui.common.InfinityPanelTab
+import com.promenar.infinity.ui.common.rememberPanelTabPagerState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.pager.HorizontalPager
+import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -290,8 +294,10 @@ internal fun AgentAvatarPickerContent(
             ) { Text(stringResource(R.string.agent_avatar_done)) }
         }
 
+        val tabs = AvatarPickerTab.entries
+        val pagerState = rememberPanelTabPagerState(tabs = tabs, selected = tab, onSelect = { tab = it })
         InfinityPanelTabs(
-            tabs = AvatarPickerTab.entries.map {
+            tabs = tabs.map {
                 InfinityPanelTab(
                     value = it,
                     label = stringResource(
@@ -307,10 +313,16 @@ internal fun AgentAvatarPickerContent(
             selected = tab,
             onSelect = { tab = it },
             modifier = Modifier.padding(bottom = InfinitySpacing.Small),
+            pagerState = pagerState,
         )
 
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (tab) {
+        HorizontalPager(
+            state = pagerState,
+            key = { tabs[it] },
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { pageIndex ->
+            when (tabs[pageIndex]) {
                 AvatarPickerTab.SYMBOLS -> SymbolPane(
                     query = query,
                     onQueryChange = { query = it },
@@ -332,7 +344,11 @@ internal fun AgentAvatarPickerContent(
             }
         }
 
-        if (tab != AvatarPickerTab.PHOTO) {
+        AnimatedVisibility(
+            visible = tabs.getOrNull(pagerState.currentPage) != AvatarPickerTab.PHOTO,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
             ColorPane(
                 selectedHex = draftColor,
                 initialHex = initialColor,

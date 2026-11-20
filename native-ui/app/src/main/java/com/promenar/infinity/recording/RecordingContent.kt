@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.InlineTextContent
@@ -467,42 +468,84 @@ private fun RecordingNarrowBody(
 ) {
     val current = requireNotNull(view.current)
     val edge = 16.dp
+    val narrowTabs = listOf(false, true)
+    val pagerState = rememberPanelTabPagerState(
+        tabs = narrowTabs,
+        selected = organized,
+        onSelect = onOrganizedChange,
+        key = current.id,
+    )
     val organizeDot = when {
         view.organizing -> MaterialTheme.colorScheme.primary
         current.lastOrganizeFailure != null && view.route != RecordingRoute.Raw -> MaterialTheme.colorScheme.error
         else -> null
     }
-    val header: @Composable () -> Unit = {
-        Column {
-            WorkspaceRecorder(view, onTogglePlayback, onSeek, onSeekFinished)
-            InfinityPanelTabs(
-                tabs = listOf(InfinityPanelTab(false, stringResource(R.string.recording_raw)),
-                    InfinityPanelTab(true, stringResource(R.string.recording_organized), dot = organizeDot)),
-                selected = organized, onSelect = onOrganizedChange, bleed = edge,
-            )
-            if (organized) {
-                OrganizedPaneHeader(view, false, onLanguage, onEdit, onExport, editor != null)
-            } else {
-                transcriptTools(false)
-                speakerTools()
-                if (current.distinguishSpeakers && !view.active && view.state.speakerAnalysisId != current.id) {
-                    RecordingSpeakerStrip(current, onSpeakerSelect)
-                }
+    val pinHeader = pinned || editor != null
+    val padding = PaddingValues(start = edge, end = edge, top = 8.dp, bottom = edge)
+    val paneTabs: @Composable () -> Unit = {
+        InfinityPanelTabs(
+            tabs = listOf(
+                InfinityPanelTab(false, stringResource(R.string.recording_raw)),
+                InfinityPanelTab(true, stringResource(R.string.recording_organized), dot = organizeDot),
+            ),
+            selected = organized,
+            onSelect = onOrganizedChange,
+            bleed = edge,
+            pagerState = pagerState,
+        )
+    }
+    val paneSubHeader: @Composable (Boolean) -> Unit = { pageOrganized ->
+        if (pageOrganized) {
+            OrganizedPaneHeader(view, false, onLanguage, onEdit, onExport, editor != null)
+        } else {
+            transcriptTools(false)
+            speakerTools()
+            if (current.distinguishSpeakers && !view.active && view.state.speakerAnalysisId != current.id) {
+                RecordingSpeakerStrip(current, onSpeakerSelect)
             }
         }
     }
-    val pinHeader = pinned || editor != null
-    val leading: (@Composable () -> Unit)? = if (pinHeader) null else header
-    val padding = PaddingValues(start = edge, end = edge, top = 8.dp, bottom = edge)
     Column(Modifier.fillMaxSize()) {
-        if (pinHeader) Box(Modifier.padding(horizontal = edge)) { header() }
-        val pane = Modifier.weight(1f).fillMaxWidth()
-        if (organized) {
-            RecordingOrganizedList(
-                view, leading, pinHeader, padding, onMode, pane, onOrganize,
-                onRetryOrganize, onCancelOrganize, onConsent, onSwitchToLocal, onPlay, editor,
-            )
-        } else RecordingTranscriptList(view, leading, pinHeader, padding, onPlay, pane, onSpeakerSelect)
+        if (pinHeader) {
+            Column(Modifier.padding(horizontal = edge)) {
+                WorkspaceRecorder(view, onTogglePlayback, onSeek, onSeekFinished)
+                paneTabs()
+            }
+        }
+        HorizontalPager(
+            state = pagerState,
+            key = { narrowTabs[it] },
+            userScrollEnabled = editor == null,
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { pageIndex ->
+            val pageOrganized = narrowTabs[pageIndex]
+            val leading: (@Composable () -> Unit)? = if (pinHeader) null else {
+                {
+                    Column {
+                        WorkspaceRecorder(view, onTogglePlayback, onSeek, onSeekFinished)
+                        paneTabs()
+                        paneSubHeader(pageOrganized)
+                    }
+                }
+            }
+            Column(Modifier.fillMaxSize()) {
+                if (pinHeader) {
+                    Column(Modifier.padding(horizontal = edge)) {
+                        paneSubHeader(pageOrganized)
+                    }
+                }
+                val pane = Modifier.weight(1f).fillMaxWidth()
+                if (pageOrganized) {
+                    RecordingOrganizedList(
+                        view, leading, pinHeader, padding, onMode, pane, onOrganize,
+                        onRetryOrganize, onCancelOrganize, onConsent, onSwitchToLocal, onPlay, editor,
+                    )
+                } else {
+                    RecordingTranscriptList(view, leading, pinHeader, padding, onPlay, pane, onSpeakerSelect)
+                }
+            }
+        }
     }
 }
 

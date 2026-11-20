@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.BuildConfig
 import com.promenar.infinity.R
+import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
@@ -139,70 +141,74 @@ internal fun RecordingSettingsScreen(
     var showHotwords by rememberSaveable { mutableStateOf(false) }
     var showVoice by rememberSaveable { mutableStateOf(false) }
     var showSetup by rememberSaveable { mutableStateOf(false) }
-    if (showSetup) {
-        RecordingSetupPage(onFinish = { showSetup = false }, firstRun = false)
-        return
+    val subpage = when {
+        showSetup -> "setup"
+        showVoice -> "voice"
+        showHotwords -> "hotwords"
+        else -> null
     }
-    BackHandler(enabled = showHotwords || showVoice) { showHotwords = false; showVoice = false }
-    if (showVoice) {
-        CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
-            RecordingVoiceLibrary(controller, onBack = { showVoice = false })
-        }
-        return
-    }
-    if (showHotwords) {
-        CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
-            RecordingHotwordLibrary(controller, onBack = { showHotwords = false })
-        }
-        return
-    }
-
-    InfinitySettingsPageLayout(title = stringResource(R.string.recording_settings), onBack = onBack) { padding ->
-        LazyColumn(contentPadding = padding) {
-            item {
-                InfinitySettingsSection(
-                    title = stringResource(R.string.recording_asr_section),
-                    footer = stringResource(R.string.recording_refine_section_footer),
-                ) {
-                    InfinitySettingsItem(
-                        title = stringResource(R.string.recording_setup_title),
-                        subtitle = stringResource(R.string.recording_setup_entry_subtitle),
-                        showChevron = true,
-                        onClick = { showSetup = true },
-                    )
-                    InfinityGroupDivider()
-                    RecordingModelDownloads(controller, state)
-                }
+    InfinityPageStack(
+        pages = listOfNotNull(subpage),
+        popped = subpage?.let { emptyList() },
+        onPop = { showSetup = false; showVoice = false; showHotwords = false },
+        modifier = Modifier.fillMaxSize(),
+    ) { stack ->
+        when (stack.lastOrNull()) {
+            "setup" -> RecordingSetupPage(onFinish = { showSetup = false }, firstRun = false)
+            "voice" -> CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
+                RecordingVoiceLibrary(controller, onBack = { showVoice = false })
             }
-            item {
-                InfinitySettingsSection(title = stringResource(R.string.recording_speaker_recognition_settings)) {
-                    RecordingModelSettings(controller, onHotwords = { showHotwords = true }, onVoice = { showVoice = true })
-                }
+            "hotwords" -> CompositionLocalProvider(LocalInfinitySettingsPaneRoot provides false) {
+                RecordingHotwordLibrary(controller, onBack = { showHotwords = false })
             }
-            item {
-                InfinitySettingsSection(title = stringResource(R.string.recording_models)) {
-                    InfinitySettingsItem(title = stringResource(R.string.settings_model_summary),
-                        subtitle = state.cloudLabel ?: stringResource(R.string.recording_not_configured), onClick = onQuickModels)
-                    InfinitySettingsItem(title = stringResource(R.string.settings_local_models),
-                        subtitle = if (!BuildConfig.LOCAL_INFERENCE_AVAILABLE) stringResource(R.string.recording_local_unavailable)
-                            else state.localLabel ?: stringResource(R.string.recording_not_configured),
-                        onClick = onLocalModels, enabled = BuildConfig.LOCAL_INFERENCE_AVAILABLE)
-                }
-            }
-            item {
-                InfinitySettingsSection(title = stringResource(R.string.recording_shortcuts)) {
-                    if (Build.VERSION.SDK_INT >= 33) {
-                        InfinitySettingsItem(title = stringResource(R.string.recording_add_tile), onClick = {
-                            requestAddRecordingTile(context)
-                        })
-                    } else {
-                        InfinitySettingsItem(title = stringResource(R.string.recording_add_tile),
-                            subtitle = stringResource(R.string.recording_tile_manual), onClick = {}, enabled = false)
+            else -> InfinitySettingsPageLayout(title = stringResource(R.string.recording_settings), onBack = onBack) { padding ->
+                LazyColumn(contentPadding = padding) {
+                    item {
+                        InfinitySettingsSection(
+                            title = stringResource(R.string.recording_asr_section),
+                            footer = stringResource(R.string.recording_refine_section_footer),
+                        ) {
+                            InfinitySettingsItem(
+                                title = stringResource(R.string.recording_setup_title),
+                                subtitle = stringResource(R.string.recording_setup_entry_subtitle),
+                                showChevron = true,
+                                onClick = { showSetup = true },
+                            )
+                            InfinityGroupDivider()
+                            RecordingModelDownloads(controller, state)
+                        }
                     }
-                    if (shortcuts?.isRequestPinShortcutSupported == true) {
-                        InfinitySettingsItem(title = stringResource(R.string.recording_pin_shortcut), onClick = {
-                            runCatching { shortcuts.requestPinShortcut(context.recordingShortcut(), null) }
-                        })
+                    item {
+                        InfinitySettingsSection(title = stringResource(R.string.recording_speaker_recognition_settings)) {
+                            RecordingModelSettings(controller, onHotwords = { showHotwords = true }, onVoice = { showVoice = true })
+                        }
+                    }
+                    item {
+                        InfinitySettingsSection(title = stringResource(R.string.recording_models)) {
+                            InfinitySettingsItem(title = stringResource(R.string.settings_model_summary),
+                                subtitle = state.cloudLabel ?: stringResource(R.string.recording_not_configured), onClick = onQuickModels)
+                            InfinitySettingsItem(title = stringResource(R.string.settings_local_models),
+                                subtitle = if (!BuildConfig.LOCAL_INFERENCE_AVAILABLE) stringResource(R.string.recording_local_unavailable)
+                                    else state.localLabel ?: stringResource(R.string.recording_not_configured),
+                                onClick = onLocalModels, enabled = BuildConfig.LOCAL_INFERENCE_AVAILABLE)
+                        }
+                    }
+                    item {
+                        InfinitySettingsSection(title = stringResource(R.string.recording_shortcuts)) {
+                            if (Build.VERSION.SDK_INT >= 33) {
+                                InfinitySettingsItem(title = stringResource(R.string.recording_add_tile), onClick = {
+                                    requestAddRecordingTile(context)
+                                })
+                            } else {
+                                InfinitySettingsItem(title = stringResource(R.string.recording_add_tile),
+                                    subtitle = stringResource(R.string.recording_tile_manual), onClick = {}, enabled = false)
+                            }
+                            if (shortcuts?.isRequestPinShortcutSupported == true) {
+                                InfinitySettingsItem(title = stringResource(R.string.recording_pin_shortcut), onClick = {
+                                    runCatching { shortcuts.requestPinShortcut(context.recordingShortcut(), null) }
+                                })
+                            }
+                        }
                     }
                 }
             }
