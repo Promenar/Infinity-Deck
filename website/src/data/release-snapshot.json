@@ -1,13 +1,13 @@
 {
-  "tag": "v0.61.2-beta",
-  "version": "0.61.2-beta",
-  "publishedAt": "2026-11-17T15:06:16Z",
-  "pageUrl": "https://github.com/Promenar/Infinity-Deck/releases/tag/v0.61.2-beta",
+  "tag": "v0.70.4-beta",
+  "version": "0.70.4-beta",
+  "publishedAt": "2026-11-21T21:56:29Z",
+  "pageUrl": "https://github.com/Promenar/Infinity-Deck/releases/tag/v0.70.4-beta",
   "apk": {
-    "name": "infinity-v0.61.2-beta.apk",
-    "size": 114285493,
-    "url": "https://github.com/Promenar/Infinity-Deck/releases/download/v0.61.2-beta/infinity-v0.61.2-beta.apk"
+    "name": "infinity-v0.70.4-beta.apk",
+    "size": 115672638,
+    "url": "https://github.com/Promenar/Infinity-Deck/releases/download/v0.70.4-beta/infinity-v0.70.4-beta.apk"
   },
-  "shaUrl": "https://github.com/Promenar/Infinity-Deck/releases/download/v0.61.2-beta/infinity-v0.61.2-beta.apk.sha256",
-  "sha256": "7c60b0cbeaf41f95be7178e7a4e0276418c91c1834104f730eb9466e4968abf3"
+  "shaUrl": "https://github.com/Promenar/Infinity-Deck/releases/download/v0.70.4-beta/infinity-v0.70.4-beta.apk.sha256",
+  "sha256": "b7acd01891009caba1e80dda273b8d6cca4a8502fa0a7d313edfbf7b73a03bff"
 }
