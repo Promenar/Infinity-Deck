@@ -147,7 +147,7 @@ internal fun episodeDisplayName(production: Production, episode: Episode): List<
 
 // ---------- 总览辅助 ----------
 
-/** 阶段可选状态：只有动态预演可跳过。 */
+/** 阶段可选状态：只有分镜预演可跳过。 */
 internal fun stageChoices(stage: ProductionStage): List<StageStatus> =
     if (stage == ProductionStage.ANIMATIC) StageStatus.entries else StageStatus.entries - StageStatus.SKIPPED
 

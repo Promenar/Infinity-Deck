@@ -791,9 +791,9 @@ object ProductionLockApprovalPlanner {
 
     private fun stageText(stage: ProductionStage): String = when (stage) {
         ProductionStage.SCRIPT -> "剧本"
-        ProductionStage.VISUAL_DEV -> "视觉开发"
+        ProductionStage.VISUAL_DEV -> "视觉资产"
         ProductionStage.STORYBOARD -> "分镜"
-        ProductionStage.ANIMATIC -> "动态预演"
+        ProductionStage.ANIMATIC -> "分镜预演"
         ProductionStage.GENERATION -> "出片"
         ProductionStage.SOUND -> "声音"
         ProductionStage.EDIT -> "剪辑"

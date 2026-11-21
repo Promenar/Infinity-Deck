@@ -84,7 +84,7 @@ import com.promenar.infinity.ui.theme.infinityDomainColors
 
 /*
  * 制作面板打磨与缺陷修复高保真原型（v1，隔离 debug 源码）：
- * 1. 总览取消常驻长列表“待你处理”，阶段行改为自动推导进度并点击直达对应页签（仅可选动态预演保留跳过开关）；
+ * 1. 总览取消常驻长列表“待你处理”，阶段行改为自动推导进度并点击直达对应页签（仅可选分镜预演保留跳过开关）；
  *    仅在存在锁定场内容变更请求时于总览顶部条件浮现；
  * 2. 分镜一级页面采用结构化场次头卡片与字段化镜头卡片，消除裸字落底与十行纯文本堆砌；
  * 3. 角色资产详情置顶版本图、描述与页内审批操作，三视图造型参考包按需紧凑折叠；
@@ -180,7 +180,7 @@ private fun ProdProtoOverviewScreen() {
                 onClick = {},
             )
             ProductionRow(
-                title = "动态预演",
+                title = "分镜预演",
                 icon = Icons.Rounded.Slideshow,
                 subtitle = "0/4 镜 · 可选环节",
                 chevron = false,

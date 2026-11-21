@@ -46,7 +46,7 @@ class ProductionPresentationTest {
     }
 
     @Test
-    fun `关闭动态预演时不展示该阶段`() {
+    fun `关闭分镜预演时不展示该阶段`() {
         assertThat(production.visibleStages().map { it.stage }).contains(ProductionStage.ANIMATIC)
         assertThat(production.copy(previewEnabled = false).visibleStages().map { it.stage }).doesNotContain(ProductionStage.ANIMATIC)
     }
@@ -93,7 +93,7 @@ class ProductionPresentationTest {
     }
 
     @Test
-    fun `阶段菜单只有动态预演可跳过`() {
+    fun `阶段菜单只有分镜预演可跳过`() {
         assertThat(stageChoices(ProductionStage.ANIMATIC)).contains(StageStatus.SKIPPED)
         assertThat(stageChoices(ProductionStage.GENERATION)).doesNotContain(StageStatus.SKIPPED)
     }

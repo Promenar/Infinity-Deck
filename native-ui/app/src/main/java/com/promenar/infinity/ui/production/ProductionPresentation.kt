@@ -95,7 +95,7 @@ fun Production.redoShots(): List<ShotLocation> = shotLocations().filter { it.sho
 fun Production.currentStage(): ProductionStage? =
     stages.firstOrNull { it.status != StageStatus.LOCKED && it.status != StageStatus.SKIPPED }?.stage
 
-/** 界面展示的阶段：关闭动态预演时不显示该阶段。 */
+/** 界面展示的阶段：关闭分镜预演时不显示该阶段。 */
 fun Production.visibleStages() = stages.filter { previewEnabled || it.stage != ProductionStage.ANIMATIC }
 
 fun Production.findShot(episodeId: String, shotCode: String): ShotLocation? =
@@ -118,7 +118,7 @@ fun Shot.thumbnailPath(): String? = displayTake()?.path ?: previewPath ?: inputs
 /** 剧集或包含多集时显示“第 N 集”编号；电影单集项目省略。 */
 fun Production.showEpisodeNumbers(): Boolean = kind == ProductionKind.SERIES || episodes().size > 1
 
-/** 参与“视觉开发”汇总的非声音类视觉资产（角色、场景、道具、风格）。 */
+/** 参与“视觉资产”汇总的非声音类视觉资产（角色、场景、道具、风格）。 */
 fun Production.visualAssets(): List<Asset> = assets.filter { it.kind != AssetKind.SOUND }
 
 /** 总览制作流程行对应的目标页签。 */

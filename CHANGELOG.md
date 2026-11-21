@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **统一制作锁审批卡与源码阶段术语残留（[ProductionLockApproval.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionLockApproval.kt)、[ProductionPresentation.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPresentation.kt)、[ProductionTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionTabs.kt)、[ProductionPanelPolishPrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/production/ProductionPanelPolishPrototype.kt)、[ProductionLockApprovalTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/production/ProductionLockApprovalTest.kt)）**：
+  - 将 `ProductionLockApproval.stageText` 及相关注释、原型与测试中残余的「视觉开发」「动态预演」统一为「视觉资产」「分镜预演」，并补充锁定阶段修改审批卡标题单测回归。
+
 ## [0.69.4-beta] - 2026-11-21
 
 - **折叠屏内屏右侧检视器底栏改为横滑轨道并收口中英文短标题（[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)、[ChatPanelHubUi.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatPanelHubUi.kt)、[InfinityFadingEdge.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityFadingEdge.kt)、`chat_inspector_strings.xml`、`panel_polish_strings.xml`、[ChatInspectorScrollableTabsPrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/chat/ChatInspectorScrollableTabsPrototype.kt)、[InspectorScrollableTabsTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/chat/InspectorScrollableTabsTest.kt)）**：

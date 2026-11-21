@@ -268,4 +268,28 @@ class ProductionLockApprovalTest {
         val otherOp = """[{"op":"remove","target":"asset","ids":["loc-gate"]}]"""
         assertThat(preflight(snap, otherOp)!!.authorizationTarget).isNotEqualTo(p1.authorizationTarget)
     }
+
+    @Test
+    fun `修改已锁定视觉资产或分镜预演阶段时审批卡标题使用统一术语`() {
+        val base = sampleSnapshot(revision = 9L)
+        val snap = base.copy(
+            production = base.production.copy(
+                stages = base.production.stages.map { state ->
+                    if (state.stage == ProductionStage.VISUAL_DEV || state.stage == ProductionStage.ANIMATIC) {
+                        state.copy(status = StageStatus.LOCKED)
+                    } else state
+                },
+            ),
+        )
+        val p = preflight(
+            snap,
+            """[{"op":"set_stage","stage":"visual_dev","status":"in_progress"},{"op":"set_stage","stage":"animatic","status":"skipped"}]""",
+        )!!
+        assertThat(p.lockedItems.map { it.title }).containsExactly("视觉资产", "分镜预演").inOrder()
+        assertThat(p.lockedItems.map { it.kindAndId }).containsExactly("制作阶段 · 视觉资产", "制作阶段 · 分镜预演").inOrder()
+        p.lockedItems.forEach { item ->
+            assertThat(item.title).doesNotContain("视觉开发")
+            assertThat(item.title).doesNotContain("动态预演")
+        }
+    }
 }
