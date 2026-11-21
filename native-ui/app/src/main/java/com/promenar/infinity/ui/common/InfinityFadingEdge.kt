@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -8,6 +9,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -56,20 +58,38 @@ fun Modifier.horizontalFadingEdges(
 ): Modifier = graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
-        val edge = length.toPx().coerceAtMost(size.width / 4f)
-        if (start && edge > 0f) {
-            drawRect(
-                brush = Brush.horizontalGradient(listOf(Color.Transparent, OpaqueMask), startX = 0f, endX = edge),
-                size = Size(edge, size.height),
-                blendMode = BlendMode.DstIn,
-            )
-        }
-        if (end && edge > 0f) {
-            drawRect(
-                brush = Brush.horizontalGradient(listOf(OpaqueMask, Color.Transparent), startX = size.width - edge, endX = size.width),
-                topLeft = Offset(size.width - edge, 0f),
-                size = Size(edge, size.height),
-                blendMode = BlendMode.DstIn,
-            )
-        }
+        drawHorizontalFadeMasks(start = start, end = end, length = length)
     }
+
+/** 在绘制阶段读取 [ScrollState] 可滚动余量，确保首帧即可渲染渐隐边且横滑不触发额外重组。 */
+fun Modifier.horizontalFadingEdges(
+    state: ScrollState,
+    length: Dp = 12.dp,
+): Modifier = graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        drawHorizontalFadeMasks(start = state.canScrollBackward, end = state.canScrollForward, length = length)
+    }
+
+private fun DrawScope.drawHorizontalFadeMasks(
+    start: Boolean,
+    end: Boolean,
+    length: Dp,
+) {
+    val edge = length.toPx().coerceAtMost(size.width / 4f)
+    if (start && edge > 0f) {
+        drawRect(
+            brush = Brush.horizontalGradient(listOf(Color.Transparent, OpaqueMask), startX = 0f, endX = edge),
+            size = Size(edge, size.height),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+    if (end && edge > 0f) {
+        drawRect(
+            brush = Brush.horizontalGradient(listOf(OpaqueMask, Color.Transparent), startX = size.width - edge, endX = size.width),
+            topLeft = Offset(size.width - edge, 0f),
+            size = Size(edge, size.height),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+}

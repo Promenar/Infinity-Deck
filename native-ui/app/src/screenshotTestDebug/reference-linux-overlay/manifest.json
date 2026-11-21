@@ -61,8 +61,8 @@
       "linux_sha256": "a1e0845aa3b758a0e2e48f3913fdd179dfac3afb10bf50da21b1c30f19ee37b8"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/agentHubExpandedLongTitlesReleasePreview_Agent hub expanded long titles English_730613ae_0.png": {
-      "base_sha256": "d681b9b9e5634815cfaef1ad0ec5e892fb9a4a659e3b975ce5572b3844ae21dc",
-      "linux_sha256": "d681b9b9e5634815cfaef1ad0ec5e892fb9a4a659e3b975ce5572b3844ae21dc"
+      "base_sha256": "01f490646b27fcab7343e3e64ee92925a093f5555c0ee67285a87d49c8776968",
+      "linux_sha256": "01f490646b27fcab7343e3e64ee92925a093f5555c0ee67285a87d49c8776968"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/agentHubReleasePreview_Agent hub English_83d3189d_0.png": {
       "base_sha256": "e8b2d23293ad8805039bf81d9790e148f1f70b477d59b9f1922897f2ac863d4d",
@@ -225,12 +225,12 @@
       "linux_sha256": "010d6609d09571b7c8cb9811f7ebc0c697046eda6ba064955098ae730e6c28ec"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/chatInspectorCardLightLargeFontPreview_检视器卡片 浅英 大字_7a6e3f69_0.png": {
-      "base_sha256": "0bd0be58f54920fb3dd55fb54436dd048da34e18e94ac271c4dfc407d48c3bfe",
-      "linux_sha256": "0bd0be58f54920fb3dd55fb54436dd048da34e18e94ac271c4dfc407d48c3bfe"
+      "base_sha256": "e0cd0f0a49d94cdf4dc66f2ac6bf8dc5735adfdd4dfa65f871ba86207237c649",
+      "linux_sha256": "e0cd0f0a49d94cdf4dc66f2ac6bf8dc5735adfdd4dfa65f871ba86207237c649"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/chatInspectorInnerShiftDarkPreview_内屏检视器让位 深中814_68c06936_0.png": {
-      "base_sha256": "6017c9f35deb964b99d42300b45e260f4ecabad12f5bda0415822f327f411873",
-      "linux_sha256": "6017c9f35deb964b99d42300b45e260f4ecabad12f5bda0415822f327f411873"
+      "base_sha256": "90330cbf3b53d81a1947d2221de603bc17609f7d3018c2a225fdfeef9cbefdf8",
+      "linux_sha256": "90330cbf3b53d81a1947d2221de603bc17609f7d3018c2a225fdfeef9cbefdf8"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/emptyChatWordmarkDarkPreview_空会话字标 深中411_2736a12a_0.png": {
       "base_sha256": "e159febf468f2e466c47650e5388879de1dfbdbe7ee549fec4330002be364099",

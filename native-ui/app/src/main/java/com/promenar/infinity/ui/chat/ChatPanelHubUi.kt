@@ -69,7 +69,7 @@ internal val ChatPage.hubIcon: ImageVector
         ChatPage.Production -> com.promenar.infinity.ui.production.ProductionPanelEntry.icon
     }
 
-/** 功能面板条目的名称，同时是检视器页签名；新增条目时在这里补上。 */
+/** 功能面板条目的名称；窄屏下拉菜单与无障碍朗读保留完整描述。 */
 @Composable
 internal fun ChatPage.hubLabel(): String = stringResource(
     when (this) {
@@ -83,6 +83,21 @@ internal fun ChatPage.hubLabel(): String = stringResource(
         ChatPage.Production -> com.promenar.infinity.ui.production.ProductionPanelEntry.titleRes
     },
 )
+
+/** 宽窗口检视器底栏页签使用的短标题资源（中文上限 3 字，避免长标题挤占横滑视口）。 */
+internal fun ChatPage.inspectorTabLabelRes(): Int = when (this) {
+    ChatPage.Run -> R.string.chat_inspector_tab_run
+    ChatPage.Explorer -> R.string.chat_inspector_tab_files
+    ChatPage.Git -> R.string.chat_inspector_tab_git
+    ChatPage.Browser -> R.string.chat_inspector_tab_browser
+    ChatPage.Remote -> R.string.remote_panel_title
+    ChatPage.Canvas -> R.string.chat_inspector_tab_canvas
+    ChatPage.State -> R.string.chat_inspector_tab_state
+    ChatPage.Production -> R.string.chat_inspector_tab_production
+}
+
+@Composable
+internal fun ChatPage.inspectorTabLabel(): String = stringResource(inspectorTabLabelRes())
 
 /** 条目的朗读文字：名称、摘要（不可用时为“未使用”）、待处理数与运行中。 */
 @Composable

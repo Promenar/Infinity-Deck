@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.69.4-beta] - 2026-11-21
+
+- **折叠屏内屏右侧检视器底栏改为横滑轨道并收口中英文短标题（[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)、[ChatPanelHubUi.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatPanelHubUi.kt)、[InfinityFadingEdge.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityFadingEdge.kt)、`chat_inspector_strings.xml`、`panel_polish_strings.xml`、[ChatInspectorScrollableTabsPrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/chat/ChatInspectorScrollableTabsPrototype.kt)、[InspectorScrollableTabsTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/chat/InspectorScrollableTabsTest.kt)）**：
+  - 移除固定槽位裁切与 `InspectorOverflowTabs` / `...` 溢出收纳逻辑及废弃资源 `chat_inspector_more_tabs`，改为方案 A 横向滚动轨道（`48dp` 安全视口纵高 + `46dp` 紧凑槽位 + 仅当前选中项展开带名圆角胶囊，其余保留图标与完整角标/运行圆点），并在轨道与右侧固定操作按钮（触摸锁、加宽、收起）间添加 `1dp × 20dp` 竖分隔线隔开系统边缘手势缓冲区；
+  - 为 `InfinityFadingEdge` 新增绘制期读取 `ScrollState.canScrollBackward` / `canScrollForward` 的 `horizontalFadingEdges(state, length)` 重载，首帧即按真实滚动余量渲染 `22dp` 柔和渐隐提示且滑行不引发额外重组；切换页签时通过 `inspectorTabScrollSafeEdge` 与 `panelTabScrollTarget` 自动滚入安全可见区（不监听 `scrollState.value`，手动滑动预览不被拉回），并遵循 `rememberAnimationsEnabled()` 减弱动效设置；
+  - 为检视器底栏新增独立短标题入口 `ChatPage.inspectorTabLabelRes()` / `inspectorTabLabel()`，将全 8 项标题收口为中文 `任务 / 文件 / Git / 浏览器 / 远程 / 产物 / 状态 / 视频`（严格 `≤3` 字符、杜绝四字长名）与英文 `Tasks / Files / Git / Browser / Remote / Artifacts / State / Video`，同时保留 `hubLabel()` 与无障碍朗读完整语义；
+  - 同步更新 `GenerationProgressScreenshotTestKt` 4 张检视器截图基准，并顺带刷新与对齐 `v0.69.3-beta` 改动所遗留的 5 张截图参考（`ReleasePreviewScreenshotTestKt.agentHubExpandedLongTitlesReleasePreview` 与 `MediaSettingsScreenshotTestKt.{comfyTemplateSettingsPreview,mediaModelDetailSettingsPreview}`）及 Linux 覆盖清单哈希，使全部 986 项截图对比与 L2 全量门禁闭合通过。
+
 ## [0.69.3-beta] - 2026-11-21
 
 - **对话首页智能体展开列表树线与选中态重叠修复（[AgentHubScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/hub/AgentHubScreen.kt)、[HubAgentSessionsGuideFixPrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/hub/HubAgentSessionsGuideFixPrototype.kt)、[AgentHubScreenContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/hub/AgentHubScreenContractTest.kt)）**：

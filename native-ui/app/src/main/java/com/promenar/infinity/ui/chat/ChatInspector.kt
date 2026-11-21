@@ -1,71 +1,69 @@
 package com.promenar.infinity.ui.chat
 
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.shape.CircleShape
-import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import android.content.Context
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.rememberTextMeasurer
-import com.promenar.infinity.ui.common.InfinityDropdownMenu
-import com.promenar.infinity.ui.common.InfinityMenuItem
-import androidx.compose.ui.unit.IntOffset
-import com.promenar.infinity.ui.common.InfinityHapticEvent
-import com.promenar.infinity.ui.common.pressFeedback
-import kotlin.math.roundToInt
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.CloseFullscreen
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowLeft
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowRight
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.VerifiedUser
-import androidx.compose.material3.Badge
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -78,19 +76,27 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.BackdropSource
 import com.promenar.infinity.ui.common.FrostedChromeBackdropLayer
 import com.promenar.infinity.ui.common.FrostedChromeRole
-import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
-import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
+import com.promenar.infinity.ui.common.InfinityHapticEvent
 import com.promenar.infinity.ui.common.InfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityPaneTags
+import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
+import com.promenar.infinity.ui.common.LocalInfinityHaptics
+import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
+import com.promenar.infinity.ui.common.horizontalFadingEdges
+import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
+import com.promenar.infinity.ui.common.panelTabScrollTarget
+import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.common.rememberFrostedChromeMaterial
 import com.promenar.infinity.ui.startup.StartupNotice
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import kotlin.math.roundToInt
 
 /** 远程条目的状态：智能体正在使用 SSH，或 Tailscale 需要登录、连接失败；两种情况同时出现时需要用户处理的优先。 */
 enum class RemoteDot { AGENT, ATTENTION }
@@ -165,17 +171,22 @@ internal fun ChatInspectorCard(
                     )
                     // 页签与操作都在底栏：展开的内屏双手持握时拇指在下方，不必伸到屏幕顶部；收起留在最右，与边缘条底部的展开按钮同处。
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        // 页签区只用操作按钮之外的宽度：放得下就全部显示（当前页签带名称），放不下时队尾的页签收进“更多”菜单。
-                        // 不横向滚动：固定模式下底栏紧贴屏幕底边，横滑会与系统手势冲突，滚动视口也会把最后一个页签切成半截。
+                        // 左侧横向滚动页签区，仅当前项展开短标题，其余保留图标与角标；右侧以竖线隔开固定操作区。
                         InspectorTabRow(
                             entries = entries,
                             root = root,
                             onSelect = { entry -> haptics.select(entry.page == root); entry.onOpen() },
                             modifier = Modifier.weight(1f),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 2.dp)
+                                .width(1.dp)
+                                .height(20.dp)
+                                .background((chrome?.edgeDivider ?: MaterialTheme.colorScheme.outlineVariant).copy(alpha = 0.55f)),
                         )
                         // 宽窗口没有运行坞，生成中的触摸锁放在检视器底栏。
                         onLockTouch?.let { TouchLockButton(onLock = it) }
@@ -201,54 +212,21 @@ internal fun ChatInspectorCard(
     }
 }
 
-/** 底栏页签的触控宽度：只显示图标时正好是最小触控目标，角标落在这个宽度内。 */
-private val InspectorTabWidth = 48.dp
-/** 页签之间不留间距：48dp 触控目标相邻即可，360dp 检视器的底栏才能完整放下五个页签。 */
+/** 未选中页签的槽位宽度：20dp 图标居中后两侧各留 13dp，可容纳向右探出 12dp 的角标并让 360dp 起始位露头渐隐。 */
+private val InspectorTabWidth = 46.dp
 private val InspectorTabGap = 0.dp
-/** 带名称的页签：图标左侧留白与只显示图标时一致，名称后再留右侧内边距。 */
-private val InspectorTabLabelStart = 14.dp
+/** 保持 48dp 横滑视口纵高，避免 -6dp 上探角标或大字号徽章被 Offscreen 渐隐层裁切。 */
+private val InspectorTabTrackHeight = 48.dp
+private val InspectorTabTrackInset = 4.dp
+private val InspectorTabFadeWidth = 22.dp
+private val InspectorTabLabelStart = 12.dp
 private val InspectorTabLabelGap = 6.dp
 private val InspectorTabLabelEnd = 12.dp
+private val InspectorTabLabelVerticalPadding = 8.dp
 
-/** 底栏页签的排布：[visible] 留在底栏，[overflow] 收进“更多”菜单；[showSelectedLabel] 为 true 时当前页签带名称。 */
-internal data class InspectorTabFit(
-    val visible: List<ChatPage>,
-    val overflow: List<ChatPage>,
-    val showSelectedLabel: Boolean,
-)
-
-/**
- * 按可用宽度（dp）决定底栏页签怎么放（[pages] 已按功能面板入口排好序，不可用的在队尾）：
- * 1. 全部图标加当前页签名称放得下时照常显示；
- * 2. 名称放不下时只显示图标；
- * 3. 图标也放不下时，末尾留一个“更多”按钮，放不下的页签按原顺序收进菜单，当前页签始终留在底栏。
- * 每个页签与“更多”按钮都占 [tabWidth]，保证触控目标不小于 48dp。
- */
-internal fun inspectorTabFit(
-    pages: List<ChatPage>,
-    selected: ChatPage?,
-    availableWidth: Float,
-    selectedLabelExtra: Float,
-    tabWidth: Float = InspectorTabWidth.value,
-    gap: Float = InspectorTabGap.value,
-): InspectorTabFit {
-    fun rowWidth(count: Int) = if (count <= 0) 0f else count * tabWidth + (count - 1) * gap
-    val hasSelected = selected != null && selected in pages
-    val icons = rowWidth(pages.size)
-    if (hasSelected && icons + selectedLabelExtra <= availableWidth) return InspectorTabFit(pages, emptyList(), showSelectedLabel = true)
-    if (icons <= availableWidth || pages.size <= 1) return InspectorTabFit(pages, emptyList(), showSelectedLabel = false)
-    // 留在底栏的页签数 n 满足 n 个页签加“更多”按钮放得下：(n + 1) * tab + n * gap <= available。
-    val slots = ((availableWidth - tabWidth) / (tabWidth + gap)).toInt().coerceIn(1, pages.size - 1)
-    val head = pages.take(slots)
-    val visible = if (!hasSelected || selected in head) head else {
-        val keep = pages.take(slots - 1).toSet() + selected!!
-        pages.filter { it in keep }
-    }
-    return InspectorTabFit(visible, pages.filter { it !in visible }, showSelectedLabel = false)
-}
-
-/** 条目带角标或圆点：用于给“更多”按钮挂提示圆点，以及估算当前页签名称占用的宽度。 */
-private fun PanelHubEntry.hasMark(): Boolean = available && (pending > 0 || running)
+/** 计算自动滚动后选中页签两侧的安全留白：优先完整避开渐隐边缘，极窄视口下收敛以防震荡。 */
+internal fun inspectorTabScrollSafeEdge(viewport: Int, tabWidth: Int, fadePx: Int): Int =
+    minOf(fadePx, ((viewport - tabWidth) / 2).coerceAtLeast(0))
 
 @Composable
 private fun InspectorTabRow(
@@ -257,40 +235,60 @@ private fun InspectorTabRow(
     onSelect: (PanelHubEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val measurer = rememberTextMeasurer()
+    val scrollState = rememberScrollState()
+    val bounds = remember { mutableStateMapOf<ChatPage, Pair<Int, Int>>() }
+    var viewport by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
-    val label = root.hubLabel()
-    val labelStyle = InfinityTypography.labelLarge
-    val rootMarked = entries.firstOrNull { it.page == root }?.hasMark() == true
-    // 带名称时比只显示图标多出的宽度：名称、图标与名称的间距、两侧内边距差，以及角标伸出图标右缘的部分。
-    val labelExtra = remember(label, labelStyle, density, rootMarked) {
-        val text = with(density) { measurer.measure(label, labelStyle, maxLines = 1).size.width.toDp() }
-        text + InspectorTabLabelStart + 20.dp + InspectorTabLabelGap + InspectorTabLabelEnd - InspectorTabWidth +
-            (if (rootMarked) PanelHubBadgeReach else 0.dp)
+    val fadePx = with(density) { InspectorTabFadeWidth.roundToPx() }
+    val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val target = bounds[root]
+
+    // 仅在切换页签、其布局尺寸变化或视口宽度改变时定位；不监听 scrollState.value，避免手动横滑浏览时抢回位置。
+    LaunchedEffect(root, target, viewport) {
+        val (x, width) = target ?: return@LaunchedEffect
+        val safeEdge = inspectorTabScrollSafeEdge(viewport, width, fadePx)
+        val next = panelTabScrollTarget(x, x + width, scrollState.value, viewport, safeEdge) ?: return@LaunchedEffect
+        if (animate) scrollState.animateScrollTo(next) else scrollState.scrollTo(next)
     }
-    val byPage = entries.associateBy { it.page }
-    BoxWithConstraints(modifier) {
-        val fit = inspectorTabFit(entries.map { it.page }, root, maxWidth.value, labelExtra.value)
+
+    Box(
+        modifier = modifier
+            .height(InspectorTabTrackHeight)
+            .onSizeChanged { viewport = it.width }
+            .horizontalFadingEdges(scrollState, length = InspectorTabFadeWidth)
+            .horizontalScroll(scrollState),
+        contentAlignment = Alignment.CenterStart,
+    ) {
         Row(
+            modifier = Modifier
+                .height(InspectorTabTrackHeight)
+                .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(InspectorTabGap),
         ) {
-            fit.visible.forEach { page ->
-                val entry = byPage.getValue(page)
+            Spacer(Modifier.width(InspectorTabTrackInset))
+            entries.forEach { entry ->
                 InspectorTab(
                     entry = entry,
-                    selected = page == root,
-                    showLabel = page == root && fit.showSelectedLabel,
+                    selected = entry.page == root,
                     onClick = { onSelect(entry) },
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        bounds[entry.page] = coords.positionInParent().x.roundToInt() to coords.size.width
+                    },
                 )
             }
-            if (fit.overflow.isNotEmpty()) InspectorOverflowTabs(fit.overflow.map(byPage::getValue), onSelect)
+            Spacer(Modifier.width(InspectorTabTrackInset))
         }
     }
 }
 
 @Composable
-private fun InspectorTab(entry: PanelHubEntry, selected: Boolean, showLabel: Boolean, onClick: () -> Unit) {
+private fun InspectorTab(
+    entry: PanelHubEntry,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val scheme = MaterialTheme.colorScheme
     val tint = when {
         !entry.available -> scheme.onSurface.copy(alpha = 0.38f)
@@ -299,16 +297,15 @@ private fun InspectorTab(entry: PanelHubEntry, selected: Boolean, showLabel: Boo
     }
     val description = entry.description()
     val chrome = LocalFrostedChromeMaterial.current
-    // 可点的 Surface 自带最小触控尺寸：可见底色 40dp 高，触控高度补足 48dp；宽度至少 48dp。
-    // 未被 Agent 调用过的条目灰调显示、不可点按。
+    // 未被 Agent 调用过的条目灰调显示、不可点按；选中态展开短标题胶囊，未选中态保留紧凑图标与角标。
     Surface(
         onClick = onClick,
         enabled = entry.available,
         shape = RoundedCornerShape(12.dp),
         color = if (selected) (chrome?.innerCard ?: scheme.surfaceContainerHigh) else Color.Transparent,
         border = if (selected) chrome?.innerCardBorder else null,
-        modifier = Modifier
-            .height(40.dp)
+        modifier = modifier
+            .heightIn(min = 40.dp)
             .widthIn(min = InspectorTabWidth)
             .semantics {
                 role = Role.Tab
@@ -317,75 +314,31 @@ private fun InspectorTab(entry: PanelHubEntry, selected: Boolean, showLabel: Boo
             }
             .testTag(ChatInspectorTags.tab(entry.page)),
     ) {
-        if (showLabel) {
+        if (selected) {
             Row(
-                modifier = Modifier.padding(start = InspectorTabLabelStart, end = InspectorTabLabelEnd),
+                modifier = Modifier.padding(
+                    PaddingValues(
+                        start = InspectorTabLabelStart,
+                        end = InspectorTabLabelEnd,
+                        top = InspectorTabLabelVerticalPadding,
+                        bottom = InspectorTabLabelVerticalPadding,
+                    ),
+                ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(InspectorTabLabelGap),
             ) {
                 PanelHubIcon(entry, tint, reserveBadge = true)
-                Text(entry.page.hubLabel(), style = InfinityTypography.labelLarge, color = tint, maxLines = 1)
+                Text(
+                    text = entry.page.inspectorTabLabel(),
+                    style = InfinityTypography.labelLarge,
+                    color = tint,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         } else {
-            // 只显示图标时图标居中，角标伸出图标右缘的部分仍落在 48dp 宽度内。
-            Box(Modifier.width(InspectorTabWidth), contentAlignment = Alignment.Center) {
+            Box(Modifier.width(InspectorTabWidth).height(40.dp), contentAlignment = Alignment.Center) {
                 PanelHubIcon(entry, tint)
-            }
-        }
-    }
-}
-
-/**
- * 放不下的页签收进的“更多”按钮与菜单；收进去的可用条目有角标或运行圆点时按钮挂一个圆点。
- * 菜单里通常是队尾未使用的条目，与底栏一样灰调不可点。
- */
-@Composable
-private fun InspectorOverflowTabs(entries: List<PanelHubEntry>, onSelect: (PanelHubEntry) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val description = listOf(stringResource(R.string.chat_inspector_more_tabs)) + entries.map { it.page.hubLabel() }
-    val marked = entries.any { it.hasMark() }
-    val interaction = remember { MutableInteractionSource() }
-    Box {
-        Box(
-            modifier = Modifier
-                .size(InspectorTabWidth)
-                .clickable(
-                    interactionSource = interaction,
-                    indication = null,
-                    role = Role.Button,
-                    onClick = { expanded = true },
-                )
-                .semantics { contentDescription = description.joinToString(", ") }
-                .testTag(ChatInspectorTags.MORE),
-            contentAlignment = Alignment.Center,
-        ) {
-            // 按压反馈与页签同为 40dp 高的 12dp 圆角块，单独一层画，角标不被裁切。
-            Box(Modifier.size(40.dp).pressFeedback(interaction, RoundedCornerShape(12.dp)))
-            Box {
-                Icon(Icons.Rounded.MoreHoriz, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                if (marked) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 2.dp, y = (-2).dp),
-                    )
-                }
-            }
-        }
-        InfinityDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            entries.forEach { entry ->
-                val itemDescription = entry.description()
-                InfinityMenuItem(
-                    text = { Text(entry.page.hubLabel()) },
-                    onClick = { expanded = false; onSelect(entry) },
-                    enabled = entry.available,
-                    // 选择页签的触感由 onSelect 统一给出，菜单项不再重复。
-                    haptic = null,
-                    leadingIcon = { PanelHubIcon(entry, LocalContentColor.current) },
-                    modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .semantics(mergeDescendants = true) { contentDescription = itemDescription }
-                        .testTag(ChatInspectorTags.tab(entry.page)),
-                )
             }
         }
     }
@@ -599,7 +552,6 @@ internal object ChatInspectorTags {
     const val EXPAND = "chat_inspector_expand"
     const val APPROVAL = "chat_inspector_approval"
     const val PIN = "chat_inspector_pin"
-    const val MORE = "chat_inspector_more"
     fun tab(page: ChatPage) = "chat_inspector_tab_${page.token}"
     fun stripItem(page: ChatPage) = "chat_inspector_strip_${page.token}"
 }
