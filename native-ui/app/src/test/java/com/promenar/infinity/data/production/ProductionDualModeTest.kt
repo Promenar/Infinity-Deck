@@ -230,7 +230,8 @@ class ProductionDualModeTest {
         assertThat(lin2.looks.first { it.id == "coat" }.locked).isTrue()
         assertThat(lin2.looks.first { it.id == "suit" }.contentChangedAt).isEqualTo(revised.revision)
         assertThat(lin2.status).isEqualTo(AssetStatus.REVIEW)
-        val sentSuitReject = revised.production.verdictOf(suitTarget)!!
+        val sentSuitReject = revised.production.reviewRounds.first().entries.first { it.target == suitTarget }
+        assertThat(revised.production.verdictOf(suitTarget)).isNull()
         assertThat(isSentRejectionUnresolved(revised.production, sentSuitReject)).isFalse()
 
         // 再批准常服后整角色状态转为 LOCKED

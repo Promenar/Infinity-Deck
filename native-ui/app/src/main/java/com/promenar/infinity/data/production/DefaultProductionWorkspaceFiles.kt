@@ -68,6 +68,12 @@ class DefaultProductionWorkspaceFiles(
             if (target.backend.stat(virtualPath) == null) null else target.backend.read(virtualPath, 16L * 1024 * 1024)
         }
     }
+    override suspend fun lastModified(sessionId: String, path: String): Long? = withContext(Dispatchers.IO) {
+        val target = target(sessionId, path)
+        withContext(ExternalMountOperationBindings(target.bindings)) {
+            target.backend.stat(backendPath(path))?.lastModified?.takeIf { it > 0L }
+        }
+    }
     override suspend fun write(sessionId: String, path: String, bytes: ByteArray, expectedSha256: String?): Unit = withContext(Dispatchers.IO) {
         val target = target(sessionId, path)
         withContext(ExternalMountOperationBindings(target.bindings)) {

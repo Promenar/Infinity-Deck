@@ -4,7 +4,7 @@
 
 1. 已有清单时调用 `production_attach(manifest_path="productions/demo/production.json")`。清单路径须与根目录对应。同 id 项目保留数据库内容，外部差异会报告同步冲突。
 2. 从零开始时调用 `production_define(title="雾港", kind="film", root_path="productions/demo")`，按依赖顺序用 `production_update` 成批建季、集、场、镜头与资产。kind 为 `film` 或 `series`，root_path 默认 `productions/标题 slug`。可选 logline（≤1000 字）、aspect_ratio（≤120 字）。
-3. 已有小说或原剧本时先用文件工具读原文，拆成季、集、场、镜头、对白与资产。用 `production_define` 建项并分批录入。先写入集剧本文档，再用 `upsert_episode.script_path` 登记。同路径正文更新后也须重新登记路径。
+3. 已有小说或原剧本时先用文件工具读原文，拆成季、集、场、镜头、对白与资产。用 `production_define` 建项并分批录入。先写入集剧本文档，再用 `upsert_episode.script_path` 登记；同路径改写剧本文档后仍建议重新登记路径，且已发送否决的剧本、场、角色造型、资产参考视角与剪辑在内容更新（或磁盘剧本文档发生变更）后会自动退回待审，同时保留既有审核轮次历史。
 
 `production_get(scope="overview")` 读取修订号、清单同步状态、阶段与成本提醒。`episode` 需要 `episode_id`，`shot` 还需 `shot_code`，`assets` 列资产与生成次数，`changes` 查审核与未结事项。只有 `changes` 的 `runs`、`chains`、`unregistered_files`、`open_items` 使用 `limit`（1～50，默认 10）与 `offset`（默认 0，非负）分页。
 

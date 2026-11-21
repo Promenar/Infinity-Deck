@@ -2,6 +2,10 @@ package com.promenar.infinity.data.production
 
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.domain.mediagen.*
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 
 internal fun reviewTask(id: String, state: MediaTaskState, source: String = ProductionSourceRef("p", "S1E01", "SC01-01").encode(), createdAt: Long = 30, error: String? = null) =
@@ -112,9 +116,178 @@ class ProductionCostAndOpenItemsTest {
         var s = reviewApply(reviewFixture(), ProductionUserAction.Review(target, ReviewKind.REJECT, null))
         s = reviewSend(s, 1, 30)
         val old = s.production.verdictOf(target)!!
-        val op = kotlinx.serialization.json.Json.parseToJsonElement("""{"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"雾港","script_path":"p/script.md"}""") as kotlinx.serialization.json.JsonObject
+        val op = Json.parseToJsonElement("""{"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"雾港","script_path":"p/script.md"}""") as JsonObject
         val changed = ProductionEngine.update(s, listOf(op), s.revision, 60) { true }
         assertThat(changed.production.reviewEpisode("S1E01")!!.changedAt).isEqualTo(changed.revision)
+        assertThat(changed.production.verdictOf(target)).isNull()
         assertThat(isSentRejectionUnresolved(changed.production, old)).isFalse()
+        assertThat(changed.production.reviewRounds.single().entries.single().target).isEqualTo(target)
+    }
+
+    @Test fun `五类就地可改目标在发送否决并更新内容后自动恢复待审并保留历史轮次`() {
+        val baseFixture = reviewFixture()
+        val lookCoat = CharacterLook("coat", "风衣", locked = true, slots = listOf(ReferenceSlot("front", "正面", "p/coat.png"), ReferenceSlot("side", "侧面"), ReferenceSlot("back", "背面")))
+        val lookSuit = CharacterLook("suit", "常服", slots = listOf(ReferenceSlot("front", "正面", "p/suit.png"), ReferenceSlot("side", "侧面"), ReferenceSlot("back", "背面")))
+        val charWithLooks = Asset("char", AssetKind.CHARACTER, "林晚", status = AssetStatus.REDO, looks = listOf(lookCoat, lookSuit))
+        val locAsset = Asset("loc", AssetKind.LOCATION, "码头", status = AssetStatus.REDO, referenceViews = listOf(ReferenceSlot("wide", "全景", "p/loc.png")))
+        val richBase = ProductionSnapshot(
+            baseFixture.production.copy(assets = listOf(charWithLooks, locAsset)),
+            baseFixture.revision,
+            baseFixture.manifest,
+        )
+
+        val targets = listOf(
+            ReviewTarget.script("S1E01"),
+            ReviewTarget.scene("S1E01", "SC01"),
+            ReviewTarget.assetLook("char", "suit"),
+            ReviewTarget.assetViews("loc"),
+            ReviewTarget.cut("c"),
+        )
+        var s = richBase
+        targets.forEach { target ->
+            s = reviewApply(s, ProductionUserAction.Review(target, ReviewKind.REJECT, "需修订"))
+        }
+        s = reviewSend(s, 1, 40)
+        targets.forEach { target ->
+            assertThat(s.production.verdictOf(target)?.kind).isEqualTo(ReviewKind.REJECT)
+            assertThat(isSentRejectionUnresolved(s.production, s.production.verdictOf(target)!!)).isTrue()
+        }
+
+        val engineUpdated = ProductionEngine.update(
+            s,
+            Json.parseToJsonElement("""[
+                {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"雾港","script_path":"p/script-v2.md"},
+                {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"码头 黎明"},
+                {"op":"set_look_slot","asset_id":"char","look_id":"suit","slot_id":"front","path":"p/suit-v2.png"},
+                {"op":"set_asset_view","asset_id":"loc","view_id":"wide","path":"p/loc-v2.png"}
+            ]""").jsonArray,
+            s.revision,
+            60,
+        ) { true }
+        val finalUpdated = ProductionUserEngine.apply(engineUpdated, engineUpdated.revision, ProductionUserAction.SetCutSubtitles("c", true), 65)
+
+        targets.forEach { target ->
+            assertThat(finalUpdated.production.verdictOf(target)).isNull()
+            val historyEntry = finalUpdated.production.reviewRounds.single().entries.first { it.target == target }
+            assertThat(historyEntry.kind).isEqualTo(ReviewKind.REJECT)
+            assertThat(isSentRejectionUnresolved(finalUpdated.production, historyEntry)).isFalse()
+        }
+        // 已锁定风衣不被连带解锁，且唯一其余否决已结清后角色回到 REVIEW（不越权直接 LOCKED）。
+        val updatedChar = finalUpdated.production.assets.first { it.id == "char" }
+        assertThat(updatedChar.status).isEqualTo(AssetStatus.REVIEW)
+        assertThat(updatedChar.looks.first { it.id == "coat" }.locked).isTrue()
+        assertThat(finalUpdated.production.assets.first { it.id == "loc" }.status).isEqualTo(AssetStatus.REVIEW)
+
+        // 若同一角色仍有另一套已发送否决造型，仅修订其中一套时另一套与 REDO 状态保持。
+        val multiRejectBase = ProductionSnapshot(
+            richBase.production.copy(
+                assets = listOf(charWithLooks.copy(looks = listOf(lookCoat.copy(locked = false), lookSuit), status = AssetStatus.REDO)),
+            ),
+            richBase.revision,
+            richBase.manifest,
+        )
+        var multi = reviewApply(multiRejectBase, ProductionUserAction.Review(ReviewTarget.assetLook("char", "coat"), ReviewKind.REJECT, "重画风衣"))
+        multi = reviewApply(multi, ProductionUserAction.Review(ReviewTarget.assetLook("char", "suit"), ReviewKind.REJECT, "重画常服"))
+        multi = reviewSend(multi, 1, 40)
+        val oneLookFixed = ProductionEngine.update(
+            multi,
+            listOf(Json.parseToJsonElement("""{"op":"set_look_slot","asset_id":"char","look_id":"suit","slot_id":"side","note":"补充侧面要点"}""") as JsonObject),
+            multi.revision,
+            60,
+        ) { true }
+        assertThat(oneLookFixed.production.verdictOf(ReviewTarget.assetLook("char", "suit"))).isNull()
+        assertThat(oneLookFixed.production.verdictOf(ReviewTarget.assetLook("char", "coat"))?.kind).isEqualTo(ReviewKind.REJECT)
+        assertThat(oneLookFixed.production.assets.first { it.id == "char" }.status).isEqualTo(AssetStatus.REDO)
+
+        val bothLooksFixed = ProductionEngine.update(
+            oneLookFixed,
+            listOf(Json.parseToJsonElement("""{"op":"set_look_slot","asset_id":"char","look_id":"coat","slot_id":"side","note":"补充风衣侧面"}""") as JsonObject),
+            oneLookFixed.revision,
+            65,
+        ) { true }
+        assertThat(bothLooksFixed.production.verdictOf(ReviewTarget.assetLook("char", "coat"))).isNull()
+        assertThat(bothLooksFixed.production.assets.first { it.id == "char" }.status).isEqualTo(AssetStatus.REVIEW)
+    }
+
+    @Test fun `旧快照残留已解决的已发送就地否决时读侧同样按待审计算`() {
+        val target = ReviewTarget.script("S1E01")
+        val sent = reviewSend(reviewApply(reviewFixture(), ProductionUserAction.Review(target, ReviewKind.REJECT, "改剧本")), 1, 30)
+        val staleResolved = sent.production.copy(
+            seasons = sent.production.seasons.map { s ->
+                s.copy(episodes = s.episodes.map { ep -> ep.copy(contentChangedAt = sent.revision + 1) })
+            },
+        )
+        assertThat(staleResolved.reviews.any { it.target == target && it.kind == ReviewKind.REJECT }).isTrue()
+        assertThat(staleResolved.currentReviewVerdicts().none { it.target == target }).isTrue()
+        assertThat(staleResolved.verdictOf(target)).isNull()
+    }
+
+    @Test fun `未发送草稿与已排队裁决和不可变对象及已批准结论不会被内容更新清除`() {
+        val sceneTarget = ReviewTarget.scene("S1E01", "SC01")
+        val updateSceneOp = listOf(Json.parseToJsonElement("""{"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"码头 雨夜"}""") as JsonObject)
+
+        // 未发送否决草稿不因更新清除。
+        val unsentReject = reviewApply(reviewFixture(), ProductionUserAction.Review(sceneTarget, ReviewKind.REJECT, "待发否决"))
+        val afterUnsent = ProductionEngine.update(unsentReject, updateSceneOp, unsentReject.revision, 50) { true }
+        assertThat(afterUnsent.production.verdictOf(sceneTarget)?.kind).isEqualTo(ReviewKind.REJECT)
+        assertThat(afterUnsent.production.verdictOf(sceneTarget)?.round).isNull()
+
+        // 已排队否决不因更新清除。
+        val queuedReject = reviewApply(unsentReject, ProductionUserAction.MarkReviewQueued(1, 45))
+        val afterQueued = ProductionEngine.update(queuedReject, updateSceneOp, queuedReject.revision, 50) { true }
+        assertThat(afterQueued.production.verdictOf(sceneTarget)?.queuedRound).isEqualTo(1)
+
+        // 上轮已发送否决 + 本轮新本地未发送批准草稿：内容更新不得删除新草稿。
+        val sentReject = reviewSend(unsentReject, 1, 40)
+        val replacedDraft = reviewApply(sentReject, ProductionUserAction.Review(sceneTarget, ReviewKind.APPROVE, "暂存批准"))
+        val afterReplaced = ProductionEngine.update(replacedDraft, updateSceneOp, replacedDraft.revision, 55) { true }
+        assertThat(afterReplaced.production.verdictOf(sceneTarget)?.kind).isEqualTo(ReviewKind.APPROVE)
+        assertThat(afterReplaced.production.verdictOf(sceneTarget)?.round).isNull()
+
+        // 已发送批准结论不因非解锁性文案修订被清除。
+        val sentApprove = reviewSend(reviewApply(reviewFixture(), ProductionUserAction.Review(sceneTarget, ReviewKind.APPROVE, "通过")), 1, 40)
+        val afterApprove = ProductionEngine.update(sentApprove, updateSceneOp, sentApprove.revision, 55) { true }
+        assertThat(afterApprove.production.verdictOf(sceneTarget)?.kind).isEqualTo(ReviewKind.APPROVE)
+
+        // 不可变对象：TAKE 与 ASSET_VERSION 的旧结论始终保留在目标自身上。
+        val takeTarget = ReviewTarget.take("S1E01", "SC01-01", "t1")
+        val assetVerTarget = ReviewTarget.assetVersion("char", 1)
+        var immutable = reviewApply(reviewFixture(), ProductionUserAction.Review(takeTarget, ReviewKind.REJECT, "糊了"))
+        immutable = reviewApply(immutable, ProductionUserAction.Review(assetVerTarget, ReviewKind.REJECT, "脸崩"))
+        immutable = reviewSend(immutable, 1, 40)
+        val afterNewAssetVer = ProductionEngine.update(
+            immutable,
+            listOf(Json.parseToJsonElement("""{"op":"add_asset_version","asset_id":"char","path":"p/3.png"}""") as JsonObject),
+            immutable.revision,
+            60,
+        ) { true }
+        val nextRev = afterNewAssetVer.revision + 1
+        val withNewTake = stampProductionContent(
+            afterNewAssetVer.production,
+            afterNewAssetVer.production.mapShot("S1E01", "SC01-01") {
+                it.copy(takes = it.takes + Take("t3", "p/3.mp4", TakeSource("服务"), 61))
+            },
+            nextRev,
+        ).reopenResolvedSentRejections()
+        assertThat(withNewTake.verdictOf(takeTarget)?.kind).isEqualTo(ReviewKind.REJECT)
+        assertThat(withNewTake.verdictOf(assetVerTarget)?.kind).isEqualTo(ReviewKind.REJECT)
+    }
+
+    @Test fun `剧本摘要往返校验通过且非法摘要被清单拒绝`() {
+        val validHash = "a1b2c3d4".repeat(8)
+        val base = reviewFixture().production
+        val withHash = base.copy(
+            seasons = base.seasons.map { s -> s.copy(episodes = s.episodes.map { it.copy(scriptSha256 = validHash) }) },
+        )
+        val bytes = ProductionManifestCodec.encode(withHash, 3)
+        val decoded = ProductionManifestCodec.decode(bytes)
+        assertThat(decoded.production.reviewEpisode("S1E01")?.scriptSha256).isEqualTo(validHash)
+
+        listOf("abc", "A".repeat(64), "g".repeat(64)).forEach { badHash ->
+            val bad = base.copy(
+                seasons = base.seasons.map { s -> s.copy(episodes = s.episodes.map { it.copy(scriptSha256 = badHash) }) },
+            )
+            assertThrows(IllegalArgumentException::class.java) { ProductionManifestCodec.validate(bad) }
+        }
     }
 }

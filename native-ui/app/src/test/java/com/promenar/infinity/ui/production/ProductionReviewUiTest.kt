@@ -7,6 +7,7 @@ import com.promenar.infinity.data.production.ProductionKind
 import com.promenar.infinity.data.production.ProductionUserAction
 import com.promenar.infinity.data.production.ReviewEntry
 import com.promenar.infinity.data.production.ReviewKind
+import com.promenar.infinity.data.production.ReviewRound
 import com.promenar.infinity.data.production.ReviewTarget
 import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.Season
@@ -173,5 +174,35 @@ class ProductionReviewUiTest {
         assertThat(tabs).contains("if (!expanded) bodyScrollState.scrollTo(0)")
         assertThat(tabs).contains("compositeOver")
         assertThat(tabs).contains("R.string.production_script_scrollable_hint")
+    }
+
+    @Test fun `内容修订超越已发送否决时界面标签自动退回待审且场重新入队待审`() {
+        val scriptTarget = ReviewTarget.script("S1E01")
+        val scriptReject = ReviewEntry(scriptTarget, ReviewKind.REJECT, "台词需要更紧凑", at = 1, round = 1, sentAt = 2, sentRevision = 5)
+        val staleScript = withReviews(scriptReject).copy(
+            reviewRounds = listOf(ReviewRound(1, 2, listOf(scriptReject), revision = 5)),
+            seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "集", scenes = production.seasons.single().episodes.single().scenes, contentChangedAt = 5)))),
+        )
+        assertThat(staleScript.reviewChips(scriptTarget)).containsExactly(ReviewChip.REJECTED)
+
+        val revisedScript = staleScript.copy(
+            seasons = listOf(Season("S1", 1, episodes = listOf(staleScript.seasons.single().episodes.single().copy(contentChangedAt = 6)))),
+        )
+        assertThat(revisedScript.reviewChips(scriptTarget)).containsExactly(ReviewChip.PENDING)
+
+        val sceneReject = ReviewEntry(scene, ReviewKind.REJECT, "重排节奏", at = 1, round = 1, sentAt = 2, sentRevision = 5)
+        val staleSceneProd = withReviews(sceneReject).copy(
+            reviewRounds = listOf(ReviewRound(1, 2, listOf(sceneReject), revision = 5)),
+            seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "集", scenes = listOf(Scene("SC01", 1, "场", contentChangedAt = 5)))))),
+        )
+        val staleEp = staleSceneProd.seasons.single().episodes.single()
+        assertThat(staleEp.scenes.single().awaitsReview(staleSceneProd, staleEp)).isFalse()
+
+        val revisedSceneProd = staleSceneProd.copy(
+            seasons = listOf(Season("S1", 1, episodes = listOf(staleEp.copy(scenes = listOf(staleEp.scenes.single().copy(contentChangedAt = 6)))))),
+        )
+        val revisedEp = revisedSceneProd.seasons.single().episodes.single()
+        assertThat(revisedSceneProd.reviewChips(scene)).containsExactly(ReviewChip.PENDING)
+        assertThat(revisedEp.scenes.single().awaitsReview(revisedSceneProd, revisedEp)).isTrue()
     }
 }

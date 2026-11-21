@@ -433,8 +433,149 @@ class ProductionRepositoryTest {
         assertThat(awaitInSync().manifest).isEqualTo(ManifestSync.InSync)
         try { repo.resolveManifest("s", ManifestResolution.ADOPT_FILE); org.junit.Assert.fail("应拒绝采纳") } catch (e: IllegalArgumentException) { assertThat(e.message).isEqualTo("清单已变化，请重新查看。") }
     }
+    @Test fun `发送剧本否决后仅改写工作区剧本文档会在读取或其他更新时自动恢复待审`() = runBlocking {
+        repo.define("s", "影片", ProductionKind.FILM)
+        val scriptPath = "productions/project/script.md"
+        val v1Bytes = "第一版剧本".toByteArray()
+        files.bytes["s" to scriptPath] = v1Bytes
+        val defined = repo.update(
+            "s",
+            "m",
+            Json.parseToJsonElement("""[
+                {"op":"upsert_season","id":"S1","number":1},
+                {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集","script_path":"$scriptPath"}
+            ]""").jsonArray,
+        )
+        assertThat(defined.production.seasons.single().episodes.single().scriptSha256)
+            .isEqualTo(ProductionManifestCodec.sha256(v1Bytes))
+
+        val scriptTarget = ReviewTarget.script("S1E01")
+        val rejected = repo.apply("s", defined.revision, ProductionUserAction.Review(scriptTarget, ReviewKind.REJECT, "改对白"))
+        val queued = repo.apply("s", rejected.revision, ProductionUserAction.MarkReviewQueued(1, 20))
+        val sent = repo.apply("s", queued.revision, ProductionUserAction.MarkReviewSent(1, 20))
+        assertThat(sent.production.verdictOf(scriptTarget)?.kind).isEqualTo(ReviewKind.REJECT)
+        awaitInSync()
+
+        // 路径一：智能体原地覆写剧本文档，未再调用 upsert_episode，读取即自动恢复待审。
+        val v2Bytes = "第二版剧本".toByteArray()
+        files.bytes["s" to scriptPath] = v2Bytes
+        val afterGet = repo.get("s")!!
+        assertThat(afterGet.revision).isGreaterThan(sent.revision)
+        assertThat(afterGet.production.verdictOf(scriptTarget)).isNull()
+        assertThat(afterGet.production.seasons.single().episodes.single().contentChangedAt).isEqualTo(afterGet.revision)
+        assertThat(afterGet.production.seasons.single().episodes.single().scriptSha256)
+            .isEqualTo(ProductionManifestCodec.sha256(v2Bytes))
+        assertThat(afterGet.production.reviewRounds.single().entries.single().kind).isEqualTo(ReviewKind.REJECT)
+        awaitInSync()
+
+        // 路径二：再次发送否决 -> 改写剧本文档 -> 调用无关 production_update 操作，同样自动恢复待审。
+        val r2Reject = repo.apply("s", afterGet.revision, ProductionUserAction.Review(scriptTarget, ReviewKind.REJECT, "继续改"))
+        val r2Queued = repo.apply("s", r2Reject.revision, ProductionUserAction.MarkReviewQueued(2, 30))
+        val r2Sent = repo.apply("s", r2Queued.revision, ProductionUserAction.MarkReviewSent(2, 30))
+        awaitInSync()
+
+        val v3Bytes = "第三版剧本".toByteArray()
+        files.bytes["s" to scriptPath] = v3Bytes
+        val afterOtherOp = repo.update(
+            "s",
+            "m",
+            Json.parseToJsonElement("""[{"op":"set_preview_enabled","enabled":true}]""").jsonArray,
+        )
+        assertThat(afterOtherOp.production.previewEnabled).isTrue()
+        assertThat(afterOtherOp.production.verdictOf(scriptTarget)).isNull()
+        assertThat(afterOtherOp.production.seasons.single().episodes.single().contentChangedAt).isEqualTo(afterOtherOp.revision)
+        assertThat(afterOtherOp.production.seasons.single().episodes.single().scriptSha256)
+            .isEqualTo(ProductionManifestCodec.sha256(v3Bytes))
+    }
+    @Test fun `未改动工作区剧本文档时重复读取不推进修订号并保留原裁决`() = runBlocking {
+        repo.define("s", "影片", ProductionKind.FILM)
+        val scriptPath = "productions/project/script.md"
+        files.bytes["s" to scriptPath] = "剧本正文".toByteArray()
+        val defined = repo.update(
+            "s",
+            "m",
+            Json.parseToJsonElement("""[
+                {"op":"upsert_season","id":"S1","number":1},
+                {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集","script_path":"$scriptPath"}
+            ]""").jsonArray,
+        )
+        val scriptTarget = ReviewTarget.script("S1E01")
+        val rejected = repo.apply("s", defined.revision, ProductionUserAction.Review(scriptTarget, ReviewKind.REJECT, "重改"))
+        val queued = repo.apply("s", rejected.revision, ProductionUserAction.MarkReviewQueued(1, 20))
+        val sent = repo.apply("s", queued.revision, ProductionUserAction.MarkReviewSent(1, 20))
+        awaitInSync()
+
+        val read1 = repo.get("s")!!
+        val read2 = repo.get("s")!!
+        assertThat(read1.revision).isEqualTo(sent.revision)
+        assertThat(read2.revision).isEqualTo(sent.revision)
+        assertThat(read2.production.verdictOf(scriptTarget)?.kind).isEqualTo(ReviewKind.REJECT)
+    }
+    @Test fun `历史缺失摘要的已发送否决剧本依据文件修改时间决定是否恢复待审`() = runBlocking {
+        repo.define("s", "影片", ProductionKind.FILM)
+        val scriptPath = "productions/project/legacy-script.md"
+        // 注册并发送否决时磁盘暂无剧本文件，从而复现历史快照 scriptSha256 == null。
+        val defined = repo.update(
+            "s",
+            "m",
+            Json.parseToJsonElement("""[
+                {"op":"upsert_season","id":"S1","number":1},
+                {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集","script_path":"$scriptPath"}
+            ]""").jsonArray,
+        )
+        assertThat(defined.production.seasons.single().episodes.single().scriptSha256).isNull()
+        val scriptTarget = ReviewTarget.script("S1E01")
+        val rejected = repo.apply("s", defined.revision, ProductionUserAction.Review(scriptTarget, ReviewKind.REJECT, "缺细节"))
+        val queued = repo.apply("s", rejected.revision, ProductionUserAction.MarkReviewQueued(1, 20))
+        val sent = repo.apply("s", queued.revision, ProductionUserAction.MarkReviewSent(1, 20))
+        assertThat(sent.production.seasons.single().episodes.single().scriptSha256).isNull()
+        awaitInSync()
+
+        // 文件修改时间不晚于 sentAt（15 <= 20）：不触发自动退回且不推进修订。
+        files.bytes["s" to scriptPath] = "旧版文件".toByteArray()
+        files.mtimes["s" to scriptPath] = 15L
+        val unchanged = repo.get("s")!!
+        assertThat(unchanged.revision).isEqualTo(sent.revision)
+        assertThat(unchanged.production.verdictOf(scriptTarget)?.kind).isEqualTo(ReviewKind.REJECT)
+
+        // 文件修改时间晚于 sentAt（25 > 20）：自动退回待审并锚定摘要。
+        val newBytes = "新版文件".toByteArray()
+        files.bytes["s" to scriptPath] = newBytes
+        files.mtimes["s" to scriptPath] = 25L
+        val reopened = repo.get("s")!!
+        assertThat(reopened.revision).isGreaterThan(sent.revision)
+        assertThat(reopened.production.verdictOf(scriptTarget)).isNull()
+        assertThat(reopened.production.seasons.single().episodes.single().scriptSha256)
+            .isEqualTo(ProductionManifestCodec.sha256(newBytes))
+    }
+    @Test fun `剧本已锁定时外部改写剧本文档不会自动解锁或绕过锁定`() = runBlocking {
+        repo.define("s", "影片", ProductionKind.FILM)
+        val scriptPath = "productions/project/locked.md"
+        files.bytes["s" to scriptPath] = "定稿剧本".toByteArray()
+        val defined = repo.update(
+            "s",
+            "m",
+            Json.parseToJsonElement("""[
+                {"op":"upsert_season","id":"S1","number":1},
+                {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集","script_path":"$scriptPath"}
+            ]""").jsonArray,
+        )
+        val scriptTarget = ReviewTarget.script("S1E01")
+        val approved = repo.apply("s", defined.revision, ProductionUserAction.Review(scriptTarget, ReviewKind.APPROVE, "定稿"))
+        val queued = repo.apply("s", approved.revision, ProductionUserAction.MarkReviewQueued(1, 20))
+        val sent = repo.apply("s", queued.revision, ProductionUserAction.MarkReviewSent(1, 20))
+        assertThat(sent.production.seasons.single().episodes.single().scriptLocked).isTrue()
+        awaitInSync()
+
+        files.bytes["s" to scriptPath] = "私下改写".toByteArray()
+        val afterGet = repo.get("s")!!
+        assertThat(afterGet.revision).isEqualTo(sent.revision)
+        assertThat(afterGet.production.seasons.single().episodes.single().scriptLocked).isTrue()
+        assertThat(afterGet.production.verdictOf(scriptTarget)?.kind).isEqualTo(ReviewKind.APPROVE)
+    }
     private class FakeFiles : ProductionWorkspaceFiles {
         val bytes = ConcurrentHashMap<Pair<String, String>, ByteArray>()
+        val mtimes = ConcurrentHashMap<Pair<String, String>, Long>()
         val writes = AtomicInteger()
         val mediaPaths = ConcurrentHashMap.newKeySet<Pair<String, String>>()
         class FileGate {
@@ -465,6 +606,7 @@ class ProductionRepositoryTest {
             this.bytes[sessionId to path] = bytes
             writes.incrementAndGet()
         }
+        override suspend fun lastModified(sessionId: String, path: String): Long? = mtimes[sessionId to path]
         override suspend fun isImageOrVideo(sessionId: String, path: String) = bytes.containsKey(sessionId to path) && (sessionId to path) in mediaPaths
     }
 }

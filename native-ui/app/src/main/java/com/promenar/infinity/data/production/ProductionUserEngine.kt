@@ -2,7 +2,16 @@ package com.promenar.infinity.data.production
 
 /** 纯函数用户操作；调用方负责在事务中核对并保存返回值。 */
 object ProductionUserEngine {
-    fun apply(snapshot: ProductionSnapshot, expectedRevision: Long, action: ProductionUserAction, now: Long): ProductionSnapshot {
+    fun apply(snapshot: ProductionSnapshot, expectedRevision: Long, action: ProductionUserAction, now: Long): ProductionSnapshot =
+        apply(snapshot, expectedRevision, action, now, emptyMap())
+
+    internal fun apply(
+        snapshot: ProductionSnapshot,
+        expectedRevision: Long,
+        action: ProductionUserAction,
+        now: Long,
+        scriptHashes: Map<String, String>,
+    ): ProductionSnapshot {
         if (snapshot.revision != expectedRevision) throw ProductionRevisionConflictException()
         if (action is ProductionUserAction.MarkReviewSent && snapshot.production.queuedReviews().none { it.queuedRound == action.round } ||
             action is ProductionUserAction.RevertReviewQueued && snapshot.production.queuedReviews().none { it.queuedRound == action.round }) return snapshot
@@ -61,7 +70,25 @@ object ProductionUserEngine {
             is ProductionUserAction.RetractReview -> p = ProductionReviews.retract(p, action, revision)
             is ProductionUserAction.MarkReviewQueued -> p = ProductionReviews.queued(p, action)
             is ProductionUserAction.RevertReviewQueued -> p = ProductionReviews.revertQueued(p, action, revision)
-            is ProductionUserAction.MarkReviewSent -> p = ProductionReviews.sent(p, action, revision)
+            is ProductionUserAction.MarkReviewSent -> {
+                p = ProductionReviews.sent(p, action, revision)
+                if (scriptHashes.isNotEmpty()) {
+                    val sentScriptEpisodes = p.reviewRounds.firstOrNull { it.number == action.round }
+                        ?.entries
+                        ?.filter { it.target.kind == ReviewTargetKind.SCRIPT }
+                        ?.mapNotNull { it.target.episodeId }
+                        ?.toSet()
+                        .orEmpty()
+                    if (sentScriptEpisodes.isNotEmpty()) {
+                        p = p.copy(seasons = p.seasons.map { season ->
+                            season.copy(episodes = season.episodes.map { episode ->
+                                if (episode.id !in sentScriptEpisodes || episode.scriptSha256 != null) episode
+                                else episode.scriptPath?.let(scriptHashes::get)?.let { hash -> episode.copy(scriptSha256 = hash) } ?: episode
+                            })
+                        })
+                    }
+                }
+            }
             is ProductionUserAction.CreateCut -> p = ProductionCuts.create(p, action.episodeId, action.mediaDurations, now)
             is ProductionUserAction.DeleteCut -> p = ProductionCuts.delete(p, action.cutId)
             is ProductionUserAction.SetCutSubtitles -> p = ProductionCuts.setSubtitles(p, action.cutId, action.burnSubtitles)
@@ -156,7 +183,10 @@ object ProductionUserEngine {
                 if (cut != snapshot.production.cuts.firstOrNull { it.id == cut.id }) cut.copy(changedAt = revision, changedBy = ChangeSource.USER) else cut
             })
         }
-        p = stampProductionContent(snapshot.production, p, revision).pruneDeletedReviewTargets().copy(updatedAt = now)
+        p = stampProductionContent(snapshot.production, p, revision)
+            .reopenResolvedSentRejections()
+            .pruneDeletedReviewTargets()
+            .copy(updatedAt = now)
         ProductionManifestCodec.encode(p, revision)
         return ProductionSnapshot(p, revision, ManifestSync.Pending)
     }

@@ -222,6 +222,8 @@ data class Episode(
     val number: Int,
     val title: String,
     val scriptPath: String? = null,
+    /** 最近一次登记或发送剧本审核时记录的剧本文档 SHA-256，用于自动感知同路径原地改写。 */
+    val scriptSha256: String? = null,
     val scriptLocked: Boolean = false,
     val scenes: List<Scene> = emptyList(),
     val changedBy: ChangeSource = ChangeSource.AGENT,

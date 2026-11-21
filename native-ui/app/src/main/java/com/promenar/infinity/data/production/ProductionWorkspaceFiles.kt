@@ -6,6 +6,8 @@ interface ProductionWorkspaceFiles {
         productionRelativePathSyntax(rawPath)
 
     suspend fun read(sessionId: String, path: String): ByteArray?
+    /** 查询工作区文件最近修改时间（毫秒时间戳）；缺失或后端不支持时返回 null。 */
+    suspend fun lastModified(sessionId: String, path: String): Long? = null
     /** 实现须使用条件写入，避免覆盖读取之后被外部修改的内容。expectedSha256 为 null 时仅新建。 */
     suspend fun write(sessionId: String, path: String, bytes: ByteArray, expectedSha256: String?)
     suspend fun isImageOrVideo(sessionId: String, path: String): Boolean

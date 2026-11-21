@@ -87,12 +87,82 @@ internal val Production.queuedReviewDrafts: List<ReviewDraft> get() = reviewDraf
 internal val Production.pendingReviewDrafts: List<ReviewDraft> get() = reviewDrafts.filterNot { it.queued }
 val Production.queuedReviewRound: Int? get() = queuedReviews().firstOrNull()?.queuedRound
 
-/** 排队原文独立保留，当前效果按未发送草稿的替换关系计算。 */
+/** 排队原文独立保留，当前效果按未发送草稿的替换关系计算；无未发送草稿时，已被新内容解决的已发送就地否决不再视为当前否决。 */
 internal fun Production.currentReviewVerdicts(): List<ReviewEntry> {
     val drafts = reviewDrafts.filterNot { it.queued }.associateBy { it.group }
     return reviews.filter { it.kind != ReviewKind.SUGGEST }.groupBy { it.target.reviewGroup() }.flatMap { (group, entries) ->
-        drafts[group]?.let(::reviewDraftVerdicts) ?: entries
+        drafts[group]?.let(::reviewDraftVerdicts)
+            ?: entries.filterNot { it.queuedRound == null && isSentInPlaceRejectionResolved(this, it) }
     }
+}
+
+/** 仅已发送的就地修订型否决（剧本/分镜场/角色造型/资产视角/粗剪），当对应实体内容修订号超过发送修订号即视为已响应解决。 */
+internal fun isSentInPlaceRejectionResolved(production: Production, entry: ReviewEntry): Boolean {
+    if (entry.kind != ReviewKind.REJECT || entry.round == null) return false
+    val target = entry.target
+    val inPlace = target.kind in setOf(
+        ReviewTargetKind.SCRIPT,
+        ReviewTargetKind.SCENE,
+        ReviewTargetKind.ASSET_LOOK,
+        ReviewTargetKind.ASSET_VIEWS,
+        ReviewTargetKind.CUT,
+    )
+    if (!inPlace) return false
+    val sentRevision = entry.sentRevision ?: production.reviewRounds.firstOrNull { it.number == entry.round }?.revision ?: return false
+    val changedAt = when (target.kind) {
+        ReviewTargetKind.SCRIPT -> production.reviewEpisode(target.episodeId)?.let { it.contentChangedAt ?: it.changedAt }
+        ReviewTargetKind.SCENE -> production.reviewEpisode(target.episodeId)?.scenes?.firstOrNull { it.code == target.sceneCode }?.let { it.contentChangedAt ?: it.changedAt }
+        ReviewTargetKind.ASSET_LOOK -> production.assets.firstOrNull { it.id == target.assetId }?.let { asset ->
+            asset.looks.firstOrNull { it.id == target.lookId }?.let { look -> look.contentChangedAt ?: asset.changedAt }
+        }
+        ReviewTargetKind.ASSET_VIEWS -> production.assets.firstOrNull { it.id == target.assetId }?.let { asset ->
+            asset.viewsContentChangedAt ?: asset.changedAt
+        }
+        ReviewTargetKind.CUT -> production.cuts.firstOrNull { it.id == target.cutId }?.let { it.contentChangedAt ?: it.changedAt }
+        else -> null
+    }
+    return changedAt != null && changedAt > sentRevision
+}
+
+/**
+ * 清理已被新内容解决且无未发送草稿/排队结论的已发送就地否决，保留 [Production.reviewRounds] 历史轮次；
+ * 角色造型与资产视角在不再存在任何残留否决时，自动把 [AssetStatus.REDO] 恢复为待审或草稿。
+ */
+internal fun Production.reopenResolvedSentRejections(): Production {
+    val pendingGroups = pendingReviewDrafts.map { it.group }.toSet()
+    val queuedGroups = queuedReviews().map { it.target.reviewGroup() }.toSet()
+    val resolved = reviews.filter { entry ->
+        entry.queuedRound == null &&
+            isSentInPlaceRejectionResolved(this, entry) &&
+            entry.target.reviewGroup() !in pendingGroups &&
+            entry.target.reviewGroup() !in queuedGroups
+    }
+    if (resolved.isEmpty()) return this
+    val resolvedSet = resolved.toSet()
+    val reopenedAssetIds = resolved.mapNotNull { entry ->
+        entry.target.assetId?.takeIf {
+            entry.target.kind in setOf(ReviewTargetKind.ASSET_LOOK, ReviewTargetKind.ASSET_VIEWS)
+        }
+    }.toSet()
+    val next = copy(reviews = reviews.filterNot { it in resolvedSet })
+    if (reopenedAssetIds.isEmpty()) return next
+    return next.copy(
+        assets = next.assets.map { asset ->
+            if (asset.id !in reopenedAssetIds || asset.status != AssetStatus.REDO) asset
+            else {
+                val remainingRejects = next.currentReviewVerdicts().any {
+                    it.target.assetId == asset.id && it.kind == ReviewKind.REJECT
+                }
+                if (remainingRejects) asset
+                else {
+                    val hasVisualOrVersions = asset.versions.isNotEmpty() ||
+                        asset.looks.any { it.sheetPath != null || it.populatedSlots().isNotEmpty() } ||
+                        asset.populatedReferenceViews().isNotEmpty()
+                    asset.copy(status = if (hasVisualOrVersions) AssetStatus.REVIEW else AssetStatus.DRAFT)
+                }
+            }
+        },
+    )
 }
 
 internal fun reviewDraftVerdicts(draft: ReviewDraft): List<ReviewEntry> {
@@ -162,7 +232,8 @@ internal fun Production.requireReviewTarget(target: ReviewTarget) {
 internal fun stampProductionContent(before: Production, after: Production, revision: Long): Production = after.copy(
     seasons = after.seasons.map { season -> season.copy(episodes = season.episodes.map { episode ->
         val oldEpisode = before.reviewEpisode(episode.id)
-        val changedScript = oldEpisode == null || oldEpisode.scriptPath != episode.scriptPath || oldEpisode.title != episode.title || oldEpisode.number != episode.number
+        val changedScript = oldEpisode == null || oldEpisode.scriptPath != episode.scriptPath || oldEpisode.title != episode.title || oldEpisode.number != episode.number ||
+            (oldEpisode.scriptSha256 != null && episode.scriptSha256 != null && oldEpisode.scriptSha256 != episode.scriptSha256)
         episode.copy(
             changedAt = if (changedScript) revision else episode.changedAt,
             contentChangedAt = if (changedScript) revision else episode.contentChangedAt,

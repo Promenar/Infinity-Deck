@@ -98,6 +98,7 @@ object ProductionManifestCodec {
                 episodeIds += episode.id
                 require(Regex("S[0-9]+E[0-9][0-9]+").matches(episode.id) && episode.id.startsWith(season.id + "E") && episode.number > 0) { "集标识须属于对应季并使用 S数字E两位以上数字，序号须大于零。" }
                 title(episode.title, "集标题"); path(episode.scriptPath)
+                episode.scriptSha256?.let { require(Regex("^[0-9a-f]{64}$").matches(it)) { "剧本摘要格式无效。" } }
                 require(episode.changedAt >= 0) { "集修订号不能为负数。" }
                 require(episode.scenes.size <= 200) { "每集最多 200 场。" }
                 unique(episode.scenes.map { it.code }, "场")

@@ -15,6 +15,8 @@ object ProductionEngine {
         now: Long,
         isMedia: (String) -> Boolean,
         lockAuthorization: ProductionLockPreflight? = null,
+        scriptHashes: Map<String, String> = emptyMap(),
+        scriptMtimes: Map<String, Long> = emptyMap(),
     ): ProductionSnapshot {
         require(snapshot.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
         val authorized = lockAuthorization != null
@@ -79,10 +81,12 @@ object ProductionEngine {
                             if (!authorized) require(!it.scriptLocked || !scriptChanged) { "剧本已锁定，请先由用户解锁。" }
                         }
                         val unlockScript = existing != null && existing.scriptLocked && scriptChanged
+                        val nextScriptSha256 = scriptPath?.let(scriptHashes::get) ?: if (scriptChanged) null else existing?.scriptSha256
                         val e = (existing ?: Episode(id, int(op, "number"), text(op, "title"))).copy(
                             number = int(op, "number"),
                             title = text(op, "title"),
                             scriptPath = scriptPath,
+                            scriptSha256 = nextScriptSha256,
                             scriptLocked = if (unlockScript) false else existing?.scriptLocked ?: false,
                             changedBy = existing?.changedBy ?: ChangeSource.AGENT,
                             changedAt = if ("script_path" in op) rev else if (existing?.changedBy == ChangeSource.USER) existing?.changedAt ?: rev else rev,
@@ -424,8 +428,43 @@ object ProductionEngine {
                 }
             } catch (e: IllegalArgumentException) { throw IllegalArgumentException("第 ${index + 1} 项（${text(op, "op")}）：${e.message}", e) }
         }
-        p = stampProductionContent(snapshot.production, p, rev).pruneDeletedReviewTargets().copy(updatedAt = now)
+        if (scriptHashes.isNotEmpty()) {
+            p = p.copy(seasons = p.seasons.map { season ->
+                season.copy(episodes = season.episodes.map { episode ->
+                    val path = episode.scriptPath ?: return@map episode
+                    val diskHash = scriptHashes[path] ?: return@map episode
+                    if (episode.scriptLocked) return@map episode
+                    val oldHash = snapshot.production.reviewEpisode(episode.id)?.scriptSha256
+                    val alreadyMarked = episode.contentChangedAt == rev
+                    val hashChanged = oldHash != null && oldHash != diskHash
+                    val mtimeUpdated = if (oldHash == null && !alreadyMarked) {
+                        val sentRejectAt = latestSentScriptRejectTimestamp(snapshot.production, episode.id)
+                        val diskMtime = scriptMtimes[path]
+                        sentRejectAt != null && diskMtime != null && diskMtime > sentRejectAt
+                    } else false
+                    when {
+                        !alreadyMarked && (hashChanged || mtimeUpdated) ->
+                            episode.copy(scriptSha256 = diskHash, changedAt = rev, contentChangedAt = rev)
+                        episode.scriptSha256 == null -> episode.copy(scriptSha256 = diskHash)
+                        else -> episode
+                    }
+                })
+            })
+        }
+        p = stampProductionContent(snapshot.production, p, rev)
+            .reopenResolvedSentRejections()
+            .pruneDeletedReviewTargets()
+            .copy(updatedAt = now)
         ProductionManifestCodec.encode(p, rev)
         return ProductionSnapshot(p, rev, ManifestSync.Pending)
     }
+}
+
+private fun latestSentScriptRejectTimestamp(production: Production, episodeId: String): Long? {
+    val target = ReviewTarget.script(episodeId)
+    val entry = production.reviews.lastOrNull {
+        it.target == target && it.kind == ReviewKind.REJECT && it.round != null && it.queuedRound == null
+    } ?: return null
+    val round = production.reviewRounds.firstOrNull { it.number == entry.round }
+    return entry.sentAt ?: round?.sentAt ?: entry.at
 }

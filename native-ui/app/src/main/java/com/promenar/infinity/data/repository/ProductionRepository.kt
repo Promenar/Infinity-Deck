@@ -30,6 +30,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 
 /** 项目快照独立于消息生命周期；数据库事务与文件写入在 IO 调度器执行。 */
 class ProductionRepository(
@@ -85,6 +86,9 @@ class ProductionRepository(
             try {
                 val result = inspectFile(work)
                 mutex.withLock { record(work, result) }
+                if (result.sync !is ManifestSync.ExternalChange && result.sync !is ManifestSync.Invalid) {
+                    reopenExternallyModifiedRejectedScripts(sessionId, work.row.id)
+                }
                 mutex.withLock { dao.getForSession(sessionId)?.let { snapshot(it) } }
             } finally { pathMutex.unlock() }
         } finally { fileMutex.unlock() }
@@ -181,10 +185,30 @@ class ProductionRepository(
         authorizedLockTarget: String?,
     ): ProductionSnapshot = withContext(Dispatchers.IO) {
         val row = mutex.withLock { required(sessionId) }
-        val prepared = prepareProductionOperations(operations, snapshot(row).production) { path ->
+        val initialProduction = snapshot(row).production
+        val prepared = prepareProductionOperations(operations, initialProduction) { path ->
             files.normalizeRelativePath(sessionId, path, row.rootPath)
         }
         val validMedia = prepared.media.filterTo(mutableSetOf()) { files.isImageOrVideo(sessionId, it) }
+        val upsertScriptPaths = prepared.operations.mapNotNull { op ->
+            val opName = (op["op"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if (opName != "upsert_episode") null
+            else (op["script_path"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        }
+        val initialEpisodes = initialProduction.seasons.flatMap { it.episodes }
+        val scriptHashes = readScriptHashes(
+            sessionId,
+            initialEpisodes.mapNotNull { it.scriptPath } + upsertScriptPaths,
+        )
+        val legacyRejectedPaths = initialEpisodes
+            .filter { ep ->
+                !ep.scriptLocked && ep.scriptPath != null && ep.scriptSha256 == null &&
+                    initialProduction.reviews.any {
+                        it.target == ReviewTarget.script(ep.id) && it.kind == ReviewKind.REJECT && it.round != null && it.queuedRound == null
+                    }
+            }
+            .mapNotNull { it.scriptPath }
+        val scriptMtimes = if (legacyRejectedPaths.isEmpty()) emptyMap() else readScriptMtimes(sessionId, legacyRejectedPaths)
         mutex.withLock {
             val seen = reads["$sessionId:$owner:${row.id}"]
             database.withTransaction {
@@ -213,6 +237,8 @@ class ProductionRepository(
                     now = now(),
                     isMedia = { it in validMedia },
                     lockAuthorization = lockAuth,
+                    scriptHashes = scriptHashes,
+                    scriptMtimes = scriptMtimes,
                 )
                 dao.update(entity(result, current))
             }
@@ -261,11 +287,20 @@ class ProductionRepository(
         applyChecked(sessionId, productionId, expectedRevision, action)
 
     private suspend fun applyChecked(sessionId: String, productionId: String?, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot = withContext(Dispatchers.IO) {
+        val scriptHashes = if (action is ProductionUserAction.MarkReviewSent) {
+            val current = mutex.withLock { dao.getForSession(sessionId)?.let(::snapshot) }
+            if (current != null) {
+                val paths = current.production.queuedReviews()
+                    .filter { it.queuedRound == action.round && it.target.kind == ReviewTargetKind.SCRIPT }
+                    .mapNotNull { entry -> current.production.seasons.flatMap { it.episodes }.firstOrNull { it.id == entry.target.episodeId }?.scriptPath }
+                readScriptHashes(sessionId, paths)
+            } else emptyMap()
+        } else emptyMap()
         mutex.withLock {
             val id = database.withTransaction {
                 val row = required(sessionId)
                 require(productionId == null || row.id == productionId) { "制作项目绑定已变化。" }
-                val result = ProductionUserEngine.apply(snapshot(row), expectedRevision, action, now())
+                val result = ProductionUserEngine.apply(snapshot(row), expectedRevision, action, now(), scriptHashes)
                 dao.update(entity(result, row))
                 row.id
             }
@@ -429,6 +464,104 @@ class ProductionRepository(
             } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false } else false
             ManifestResult(ManifestSync.WriteFailed(message(e)), retry = changed)
         }
+    }
+
+    private data class RejectedScriptCandidate(
+        val episodeId: String,
+        val scriptPath: String,
+        val recordedSha256: String?,
+        val sentAt: Long,
+    )
+
+    private suspend fun readScriptHashes(sessionId: String, paths: Iterable<String>): Map<String, String> =
+        paths.distinct().mapNotNull { path ->
+            runCatching { files.read(sessionId, path)?.let(ProductionManifestCodec::sha256) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull()?.let { path to it }
+        }.toMap()
+
+    private suspend fun readScriptMtimes(sessionId: String, paths: Iterable<String>): Map<String, Long> =
+        paths.distinct().mapNotNull { path ->
+            runCatching { files.lastModified(sessionId, path) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull()?.let { path to it }
+        }.toMap()
+
+    /**
+     * 在 `get()` 路径上对“未锁定、存在已发送剧本否决、且无未发送/排队草稿”的集检查磁盘剧本文档：
+     * 若 SHA-256 与记录不同（或无历史摘要但文件修改时间晚于发送否决时间），在锁外完成 IO 并在事务内二次校验后自动退回待审。
+     */
+    private suspend fun reopenExternallyModifiedRejectedScripts(sessionId: String, productionId: String) {
+        val currentSnapshot = mutex.withLock {
+            val current = dao.getForSession(sessionId)
+            if (current == null || current.id != productionId || current.revision >= Long.MAX_VALUE) null
+            else snapshot(current)
+        } ?: return
+        val p = currentSnapshot.production
+        val pendingGroups = p.pendingReviewDrafts.map { it.group }.toSet()
+        val queuedGroups = p.queuedReviews().map { it.target.reviewGroup() }.toSet()
+        val candidates = p.seasons.flatMap { it.episodes }.mapNotNull { ep ->
+            val path = ep.scriptPath ?: return@mapNotNull null
+            if (ep.scriptLocked) return@mapNotNull null
+            val group = ReviewTarget.script(ep.id)
+            if (group in pendingGroups || group in queuedGroups) return@mapNotNull null
+            val rejectEntry = p.reviews.lastOrNull {
+                it.target == group && it.kind == ReviewKind.REJECT && it.round != null && it.queuedRound == null
+            } ?: return@mapNotNull null
+            if (isSentInPlaceRejectionResolved(p, rejectEntry)) return@mapNotNull null
+            val round = p.reviewRounds.firstOrNull { it.number == rejectEntry.round }
+            val sentAt = rejectEntry.sentAt ?: round?.sentAt ?: rejectEntry.at
+            RejectedScriptCandidate(ep.id, path, ep.scriptSha256, sentAt)
+        }
+        if (candidates.isEmpty()) return
+
+        val observed = candidates.mapNotNull { c ->
+            val diskHash = runCatching { files.read(sessionId, c.scriptPath)?.let(ProductionManifestCodec::sha256) }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull() ?: return@mapNotNull null
+            val updatedByHash = c.recordedSha256 != null && diskHash != c.recordedSha256
+            val updatedByMtime = if (c.recordedSha256 == null) {
+                val diskMtime = runCatching { files.lastModified(sessionId, c.scriptPath) }
+                    .onFailure { if (it is CancellationException) throw it }
+                    .getOrNull()
+                diskMtime != null && diskMtime > c.sentAt
+            } else false
+            if (updatedByHash || updatedByMtime) c.episodeId to diskHash else null
+        }.toMap()
+        if (observed.isEmpty()) return
+
+        val updatedId = mutex.withLock {
+            database.withTransaction {
+                val row = dao.getForSession(sessionId) ?: return@withTransaction null
+                if (row.id != productionId || row.revision >= Long.MAX_VALUE) return@withTransaction null
+                val latest = snapshot(row).production
+                val latestPending = latest.pendingReviewDrafts.map { it.group }.toSet()
+                val latestQueued = latest.queuedReviews().map { it.target.reviewGroup() }.toSet()
+                val nextRev = row.revision + 1
+                var anyUpdated = false
+                val updatedProduction = latest.copy(
+                    seasons = latest.seasons.map { season ->
+                        season.copy(episodes = season.episodes.map { ep ->
+                            val newHash = observed[ep.id] ?: return@map ep
+                            val group = ReviewTarget.script(ep.id)
+                            if (ep.scriptLocked || group in latestPending || group in latestQueued) return@map ep
+                            val hasReject = latest.reviews.any {
+                                it.target == group && it.kind == ReviewKind.REJECT && it.round != null && it.queuedRound == null
+                            }
+                            if (!hasReject) return@map ep
+                            anyUpdated = true
+                            ep.copy(scriptSha256 = newHash, changedAt = nextRev, contentChangedAt = nextRev)
+                        })
+                    },
+                )
+                if (!anyUpdated) return@withTransaction null
+                val reopened = updatedProduction.reopenResolvedSentRejections().copy(updatedAt = now())
+                ProductionManifestCodec.encode(reopened, nextRev)
+                dao.update(entity(ProductionSnapshot(reopened, nextRev, ManifestSync.Pending), row))
+                row.id
+            }
+        }
+        if (updatedId != null) enqueue(updatedId)
     }
 
     /** 持 sharedMutex，以事务中的当前行合并清单字段，保留并发提交的业务快照。 */
