@@ -86,4 +86,14 @@ class LayoutStabilityContractTest {
         assertThat(agentEdit).contains("SnackbarHost(")
         assertThat(agentEdit).doesNotContain("key = \"agent_edit_notice\"")
     }
+
+    @Test
+    fun `本地模型列表等待首轮加载后再渲染下载与空态且不混用项位移动画`() {
+        val screen = source("ui/settings/LocalModelsScreen.kt")
+        assertThat(screen).contains("modelsLoaded: Boolean = true")
+        assertThat(screen).doesNotContain("animateItem()")
+
+        val vm = source("ui/settings/LocalModelsViewModel.kt")
+        assertThat(vm).contains("_modelsLoaded.value = true")
+    }
 }

@@ -49,6 +49,9 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
     private val _availableModels = MutableStateFlow<List<StoredModel>>(emptyList())
     val availableModels: StateFlow<List<StoredModel>> = _availableModels.asStateFlow()
 
+    private val _modelsLoaded = MutableStateFlow(false)
+    val modelsLoaded: StateFlow<Boolean> = _modelsLoaded.asStateFlow()
+
     private val _isImporting = MutableStateFlow(false)
     val isImporting: StateFlow<Boolean> = _isImporting.asStateFlow()
 
@@ -70,6 +73,7 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
     fun refreshModelList() {
         viewModelScope.launch {
             _availableModels.value = storageManager.listModels()
+            _modelsLoaded.value = true
         }
     }
 

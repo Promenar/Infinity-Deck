@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.70.3-beta] - 2026-11-22
+
+- **修复真机「本地模型」设置页首帧闪现与空态文字重叠（[LocalModelsViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/LocalModelsViewModel.kt)、[LocalModelsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/LocalModelsScreen.kt)、[LayoutStabilityContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/LayoutStabilityContractTest.kt)）**：
+  - 在 `LocalModelsViewModel` 新增 `modelsLoaded` 状态，首轮模型扫描未完成前延后渲染 `RecordingModelDownloadRow` 与空态提示，消除进入页面瞬间的「录音整理模型 [下载]」与「暂无本地模型。」闪现。
+  - 用单一 `Column` 包裹 `item(key = "library_footer")` 内错误条、空态行与节间距，并移除与 `AnimatedVisibility` 混用的 `Modifier.animateItem()`，彻底解决已下载模型行 `Qwen3-0.6B` 与退场中「暂无本地模型。」在 OPPO Find N5 上叠加重合的问题，新增 `LayoutStabilityContractTest` 契约守护。
+
 ## [0.70.2-beta] - 2026-11-22
 
 - **全站常驻控件与布局稳定性改造（共 5 批 46 项，[Motion.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/Motion.kt)、[InfinityDisclosureRow.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityDisclosureRow.kt)、[LayoutStabilityContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/LayoutStabilityContractTest.kt)）**：

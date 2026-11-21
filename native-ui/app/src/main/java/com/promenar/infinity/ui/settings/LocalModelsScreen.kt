@@ -111,6 +111,7 @@ fun LocalModelsScreen(
     )
 ) {
     val availableModels by viewModel.availableModels.collectAsState()
+    val modelsLoaded by viewModel.modelsLoaded.collectAsState()
     val engineEnabled by viewModel.isEngineEnabled.collectAsState()
     val mainSlot by viewModel.mainSlot.collectAsState()
     val embeddingSlot by viewModel.embeddingSlot.collectAsState()
@@ -150,6 +151,7 @@ fun LocalModelsScreen(
         onDeleteModel = viewModel::deleteModel,
         formatFileSize = viewModel::formatFileSize,
         savedSlotPaths = savedSlotPaths,
+        modelsLoaded = modelsLoaded,
     )
 }
 
@@ -176,6 +178,7 @@ internal fun LocalModelsScreenContent(
     modelError: Int? = null,
     downloadProgress: Int? = null,
     savedSlotPaths: Map<SlotType, String> = emptyMap(),
+    modelsLoaded: Boolean = true,
 ) {
     var openRole by rememberSaveable { mutableStateOf<SlotType?>(null) }
     var openModelPath by rememberSaveable { mutableStateOf<String?>(null) }
@@ -191,7 +194,7 @@ internal fun LocalModelsScreenContent(
     val scope = rememberCoroutineScope()
     val slots = mapOf(SlotType.MAIN to mainSlot, SlotType.EMBEDDING to embeddingSlot, SlotType.RERANK to rerankSlot)
     val modelByPath = availableModels.associateBy(StoredModel::filePath)
-    val showDownload = onInstall != null && availableModels.none { it.fileName == RecordingModelPackage.filename }
+    val showDownload = modelsLoaded && onInstall != null && availableModels.none { it.fileName == RecordingModelPackage.filename }
     val downloadRows = if (showDownload) 1 else 0
     val libraryRows = availableModels.size + downloadRows
 
@@ -255,7 +258,6 @@ internal fun LocalModelsScreenContent(
                     visible = showDownload,
                     enter = InfinityMotion.expandIn,
                     exit = InfinityMotion.shrinkOut,
-                    modifier = Modifier.animateItem(),
                 ) {
                     Column(Modifier.bettboxListGroupItem(0, libraryRows.coerceAtLeast(1))) {
                         RecordingModelDownloadRow(downloadProgress, !isImporting, formatFileSize, onInstall ?: {}, onCancelInstall)
@@ -263,7 +265,7 @@ internal fun LocalModelsScreenContent(
                 }
             }
             itemsIndexed(availableModels, key = { _, model -> model.id }) { index, model ->
-                Column(Modifier.animateItem().bettboxListGroupItem(index + downloadRows, libraryRows)) {
+                Column(Modifier.bettboxListGroupItem(index + downloadRows, libraryRows)) {
                     if (showDownload || index > 0) HorizontalDivider()
                     val label = model.displayName()
                     val fixed = pinned?.path == model.filePath
@@ -300,36 +302,36 @@ internal fun LocalModelsScreenContent(
             }
             item(key = "library_footer") {
                 val lastError = rememberLastNonNull(modelError)
-                AnimatedVisibility(
-                    visible = modelError != null,
-                    enter = InfinityMotion.expandIn,
-                    exit = InfinityMotion.shrinkOut,
-                    modifier = Modifier.animateItem(),
-                ) {
-                    lastError?.let { err ->
-                        Text(
-                            stringResource(err),
-                            Modifier.padding(horizontal = InfinitySpacing.RowHorizontal).padding(top = InfinitySpacing.FooterTop),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                Column(Modifier.fillMaxWidth()) {
+                    AnimatedVisibility(
+                        visible = modelError != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        lastError?.let { err ->
+                            Text(
+                                stringResource(err),
+                                Modifier.padding(horizontal = InfinitySpacing.RowHorizontal).padding(top = InfinitySpacing.FooterTop),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
-                }
-                AnimatedVisibility(
-                    visible = modelError == null && availableModels.isEmpty() && downloadProgress == null,
-                    enter = InfinityMotion.expandIn,
-                    exit = InfinityMotion.shrinkOut,
-                    modifier = Modifier.animateItem(),
-                ) {
-                    BettboxListGroup(modifier = Modifier.padding(top = 4.dp)) {
-                        InfinitySettingsRowLayout(
-                            title = stringResource(R.string.local_models_empty_library),
-                            icon = Icons.Rounded.FolderOpen,
-                            titleMaxLines = 3,
-                        )
+                    AnimatedVisibility(
+                        visible = modelsLoaded && modelError == null && availableModels.isEmpty() && downloadProgress == null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        BettboxListGroup(modifier = Modifier.padding(top = 4.dp)) {
+                            InfinitySettingsRowLayout(
+                                title = stringResource(R.string.local_models_empty_library),
+                                icon = Icons.Rounded.FolderOpen,
+                                titleMaxLines = 3,
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(InfinitySpacing.SectionGap))
                 }
-                Spacer(Modifier.height(InfinitySpacing.SectionGap))
             }
             item {
                 SettingsSectionHeader(
