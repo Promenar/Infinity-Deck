@@ -20,6 +20,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
@@ -198,4 +200,22 @@ fun <S> AnimatedContentTransitionScope<S>.hierarchicalTransition(depth: (S) -> I
     val from = depth(initialState)
     val to = depth(targetState)
     return if (from == to) InfinityMotion.fadeThrough() else InfinityMotion.sharedAxisX(forward = to > from)
+}
+
+private class LastNonNullHolder<T>(var value: T)
+
+/** 缓存最近一次非空状态值，供 [androidx.compose.animation.AnimatedVisibility] 退场动画期间保持内容不闪白；不触发重组。 */
+@Composable
+fun <T : Any> rememberLastNonNull(value: T?, key: Any? = Unit): T? {
+    val holder = remember(key) { LastNonNullHolder<T?>(value) }
+    if (value != null) holder.value = value
+    return holder.value
+}
+
+/** 缓存最近一次正数计数，供提醒横幅退场期间保留原数值不闪烁为 0；不触发重组。 */
+@Composable
+fun rememberLastPositive(count: Int, key: Any? = Unit): Int {
+    val holder = remember(key) { LastNonNullHolder(count) }
+    if (count > 0) holder.value = count
+    return holder.value
 }

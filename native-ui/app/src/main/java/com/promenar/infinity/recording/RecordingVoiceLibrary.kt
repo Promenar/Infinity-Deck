@@ -43,7 +43,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.R
 import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.ui.common.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import kotlinx.coroutines.CancellationException
@@ -291,7 +294,12 @@ private fun RecordingVoiceEnrollment(controller: RecordingController, onClose: (
                 verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
             ) {
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = InfinitySpacing.XLarge),
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .animateContentSize(InfinityMotion.contentSizeSpec())
+                        .padding(top = InfinitySpacing.XLarge),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
                 ) {
@@ -319,17 +327,27 @@ private fun RecordingVoiceEnrollment(controller: RecordingController, onClose: (
                         Text(stringResource(R.string.recording_voice_reading),
                             Modifier.padding(InfinitySpacing.Large), style = InfinityTypography.bodyLarge)
                     }
-                    if (sample != null) {
-                        val focus = remember { FocusRequester() }
-                        val keyboard = LocalSoftwareKeyboardController.current
-                        SettingsInput(name, { name = it.take(50) }, stringResource(R.string.recording_speaker_name),
-                            modifier = Modifier.focusRequester(focus))
-                        LaunchedEffect(Unit) {
+                    val focus = remember { FocusRequester() }
+                    val keyboard = LocalSoftwareKeyboardController.current
+                    SettingsInput(
+                        name,
+                        { name = it.take(50) },
+                        stringResource(R.string.recording_speaker_name),
+                        modifier = Modifier.focusRequester(focus),
+                    )
+                    LaunchedEffect(sample != null) {
+                        if (sample != null) {
                             focus.requestFocus()
                             keyboard?.show()
                         }
                     }
-                    if (failed) VoiceFailure()
+                    AnimatedVisibility(
+                        visible = failed,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        VoiceFailure()
+                    }
                 }
                 InfinityPillRow {
                     InfinityPillButton(
@@ -343,7 +361,7 @@ private fun RecordingVoiceEnrollment(controller: RecordingController, onClose: (
                         }, enabled = !saving, icon = Icons.Rounded.Mic,
                         tone = if (sample == null && capture == null) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
                     )
-                    if (sample != null) InfinityPillButton(stringResource(R.string.recording_save), {
+                    InfinityPillButton(stringResource(R.string.recording_save), {
                         val input = sample ?: return@InfinityPillButton
                         scope.launch {
                             saving = true
@@ -360,7 +378,7 @@ private fun RecordingVoiceEnrollment(controller: RecordingController, onClose: (
                                 saving = false
                             }
                         }
-                    }, enabled = name.isNotBlank() && !saving, tone = InfinityPillTone.PRIMARY)
+                    }, enabled = sample != null && name.isNotBlank() && !saving, tone = InfinityPillTone.PRIMARY)
                 }
             }
         }

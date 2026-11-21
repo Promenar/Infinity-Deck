@@ -38,6 +38,8 @@ import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.SettingsToggle
+import androidx.compose.animation.animateContentSize
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.skills.SkillRestoreNoticeContent
 
@@ -101,6 +103,7 @@ internal fun ColumnScope.BackupLayerToggles(
         BackupLayer.SESSIONS to R.string.backup_layer_sessions_desc,
         BackupLayer.WORKSPACE_FILES to R.string.backup_layer_files_desc,
     )
+    Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec())) {
     rows.forEach { (layer, description) ->
         val tag = Modifier.testTag("backup_layer_${layer.name.lowercase()}")
         if (layer == BackupLayer.CORE) {
@@ -124,6 +127,7 @@ internal fun ColumnScope.BackupLayerToggles(
                 modifier = tag,
             )
         }
+    }
     }
     SettingsToggle(
         title = stringResource(R.string.backup_content_keys),

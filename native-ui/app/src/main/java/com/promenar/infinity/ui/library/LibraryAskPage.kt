@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.library
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -30,7 +32,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,6 +72,8 @@ import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityMenuItem
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forReading
@@ -141,62 +145,76 @@ internal fun LibraryAskResults(
     bottomPadding: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
-    if (state.query.isBlank() && state.phase == AskPhase.TYPING) {
-        Box(modifier.fillMaxSize()) {
-            Text(
-                stringResource(R.string.library_ask_hint),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal + InfinitySpacing.Large, vertical = InfinitySpacing.Medium),
-            )
-        }
-        return
-    }
-    val listed = state.listedHits
-    val shown = listed.withIndex().filter { state.filter == null || it.value.kind == state.filter }
-    val listState = rememberLazyListState()
-    // 头部条目数：提示或答案卡 1 条，筛选行 1 条。
-    val headerCount = 2
-    LaunchedEffect(state.selectedHit) {
-        val selected = state.selectedHit ?: return@LaunchedEffect
-        val position = shown.indexOfFirst { it.index == selected }
-        if (position >= 0) listState.animateScrollToItem(headerCount + position, scrollOffset = -48)
-    }
-    LazyColumn(
-        modifier = modifier.fillMaxSize().testTag(LibraryTags.page("ask_results")),
-        state = listState,
-        contentPadding = PaddingValues(top = InfinitySpacing.XSmall, bottom = bottomPadding),
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-    ) {
-        item(key = "head") {
-            Box(Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal)) {
-                if (state.phase == AskPhase.TYPING) {
-                    AskTypingHint(mode)
-                } else {
-                    AskAnswerCard(state, actions)
-                }
-            }
-        }
-        item(key = "filters") { AskFilterRow(state, listed, actions) }
-        if (shown.isEmpty() && state.phase != AskPhase.RETRIEVING && (state.phase != AskPhase.TYPING || state.query.isNotBlank())) {
-            item(key = "empty") {
+    val showBlankHint = state.query.isBlank() && state.phase == AskPhase.TYPING
+    AnimatedContent(
+        targetState = showBlankHint,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        modifier = modifier.fillMaxSize(),
+        label = "library_ask_stage",
+    ) { blankHint ->
+        if (blankHint) {
+            Box(Modifier.fillMaxSize()) {
                 Text(
-                    stringResource(R.string.library_ask_no_results),
+                    stringResource(R.string.library_ask_hint),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal + InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+                    modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal + InfinitySpacing.Large, vertical = InfinitySpacing.Medium),
                 )
             }
-        }
-        shown.forEach { (index, hit) ->
-            item(key = "hit:${hit.key}") {
-                AskHitCard(
-                    number = index + 1,
-                    hit = hit,
-                    selected = state.selectedHit == index,
-                    onOpen = { actions.onOpenHit(hit) },
-                    modifier = Modifier.animateItem().padding(horizontal = InfinitySpacing.ScreenHorizontal),
-                )
+        } else {
+            val listed = state.listedHits
+            val shown = listed.withIndex().filter { state.filter == null || it.value.kind == state.filter }
+            val listState = rememberLazyListState()
+            // 头部条目数：提示或答案卡 1 条，筛选行 1 条。
+            val headerCount = 2
+            LaunchedEffect(state.selectedHit) {
+                val selected = state.selectedHit ?: return@LaunchedEffect
+                val position = shown.indexOfFirst { it.index == selected }
+                if (position >= 0) listState.animateScrollToItem(headerCount + position, scrollOffset = -48)
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().testTag(LibraryTags.page("ask_results")),
+                state = listState,
+                contentPadding = PaddingValues(top = InfinitySpacing.XSmall, bottom = bottomPadding),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+            ) {
+                item(key = "head") {
+                    Box(Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal).animateItem()) {
+                        AnimatedContent(
+                            targetState = state.phase == AskPhase.TYPING,
+                            transitionSpec = { InfinityMotion.fadeThrough() },
+                            label = "library_ask_head",
+                        ) { typing ->
+                            if (typing) {
+                                AskTypingHint(mode)
+                            } else {
+                                AskAnswerCard(state, actions)
+                            }
+                        }
+                    }
+                }
+                item(key = "filters") { Box(Modifier.animateItem()) { AskFilterRow(state, listed, actions) } }
+                if (shown.isEmpty() && state.phase != AskPhase.RETRIEVING && (state.phase != AskPhase.TYPING || state.query.isNotBlank())) {
+                    item(key = "empty") {
+                        Text(
+                            stringResource(R.string.library_ask_no_results),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.animateItem().padding(horizontal = InfinitySpacing.ScreenHorizontal + InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+                        )
+                    }
+                }
+                shown.forEach { (index, hit) ->
+                    item(key = "hit:${hit.key}") {
+                        AskHitCard(
+                            number = index + 1,
+                            hit = hit,
+                            selected = state.selectedHit == index,
+                            onOpen = { actions.onOpenHit(hit) },
+                            modifier = Modifier.animateItem().padding(horizontal = InfinitySpacing.ScreenHorizontal),
+                        )
+                    }
+                }
             }
         }
     }
@@ -255,9 +273,17 @@ private fun AskAnswerCard(state: AskUiState, actions: LibraryAskActions) {
 private fun DegradedBody(title: String, body: String, action: String, onAction: () -> Unit) {
     Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Text(body, style = MaterialTheme.typography.bodyMedium)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        TextButton(onClick = onAction) { Text(action, maxLines = 1) }
+    Row(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.XSmall), horizontalArrangement = Arrangement.End) {
+        InfinityPillButton(text = action, onClick = onAction, tone = InfinityPillTone.PRIMARY, compact = true)
     }
+}
+
+private enum class AskBodyStage {
+    RETRIEVING,
+    STARTING,
+    STREAMING,
+    FAILED,
+    DONE,
 }
 
 @Composable
@@ -269,31 +295,51 @@ private fun AnswerBody(state: AskUiState, actions: LibraryAskActions) {
         val model = state.modelLabel?.let { stringResource(R.string.library_ask_answer_model, it) } ?: stringResource(R.string.library_ask_answer_model_plain)
         Text(model, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
-    when (state.phase) {
-        AskPhase.RETRIEVING -> {
-            Text(stringResource(R.string.library_ask_retrieving), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
-            LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Medium))
-        }
-        AskPhase.ANSWERING -> if (state.answer.isEmpty()) {
-            Text(stringResource(R.string.library_ask_answering), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
-            LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Medium))
-        } else {
-            AnswerText(state.answer + " ▍", state.hits.size, actions.onSelect)
-            Spacer(Modifier.size(InfinitySpacing.Small))
-        }
-        AskPhase.FAILED -> {
-            if (state.answer.isNotEmpty()) AnswerText(state.answer, state.hits.size, actions.onSelect)
-            Text(askErrorText(state.error), style = MaterialTheme.typography.bodyMedium, color = scheme.error)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = actions.onRegenerate) { Text(stringResource(R.string.library_ask_retry), maxLines = 1) }
+    val stage = when (state.phase) {
+        AskPhase.RETRIEVING -> AskBodyStage.RETRIEVING
+        AskPhase.ANSWERING -> if (state.answer.isEmpty()) AskBodyStage.STARTING else AskBodyStage.STREAMING
+        AskPhase.FAILED -> AskBodyStage.FAILED
+        AskPhase.DONE, AskPhase.TYPING -> AskBodyStage.DONE
+    }
+    AnimatedContent(
+        targetState = stage,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        label = "library_ask_answer_body",
+    ) { currentStage ->
+        Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+            when (currentStage) {
+                AskBodyStage.RETRIEVING -> {
+                    Text(stringResource(R.string.library_ask_retrieving), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Medium))
+                }
+                AskBodyStage.STARTING -> {
+                    Text(stringResource(R.string.library_ask_answering), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                    LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Medium))
+                }
+                AskBodyStage.STREAMING -> {
+                    AnswerText(state.answer + " ▍", state.hits.size, actions.onSelect)
+                    Spacer(Modifier.size(InfinitySpacing.Small))
+                }
+                AskBodyStage.FAILED -> {
+                    if (state.answer.isNotEmpty()) AnswerText(state.answer, state.hits.size, actions.onSelect)
+                    Text(askErrorText(state.error), style = MaterialTheme.typography.bodyMedium, color = scheme.error)
+                    Row(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.XSmall), horizontalArrangement = Arrangement.End) {
+                        InfinityPillButton(
+                            text = stringResource(R.string.library_ask_retry),
+                            onClick = actions.onRegenerate,
+                            tone = InfinityPillTone.NEUTRAL,
+                            compact = true,
+                        )
+                    }
+                }
+                AskBodyStage.DONE -> {
+                    if (state.answer.isNotBlank()) AnswerText(state.answer, state.hits.size, actions.onSelect)
+                    if (state.noAnswer || state.hits.isEmpty()) {
+                        Text(stringResource(R.string.library_ask_no_answer_tip), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                    }
+                    AnswerFooter(state, actions)
+                }
             }
-        }
-        AskPhase.DONE, AskPhase.TYPING -> {
-            if (state.answer.isNotBlank()) AnswerText(state.answer, state.hits.size, actions.onSelect)
-            if (state.noAnswer || state.hits.isEmpty()) {
-                Text(stringResource(R.string.library_ask_no_answer_tip), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-            }
-            AnswerFooter(state, actions)
         }
     }
 }
@@ -305,7 +351,11 @@ private fun AnswerFooter(state: AskUiState, actions: LibraryAskActions) {
     if (cited > 0) {
         Text(pluralStringResource(R.plurals.library_ask_answer_basis, cited, cited), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.XSmall),
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         if (state.answer.isNotBlank()) {
             AnswerAction(Icons.Rounded.ContentCopy, stringResource(R.string.library_ask_copy)) { actions.onCopy(stripCitations(state.answer)) }
         }
@@ -315,11 +365,13 @@ private fun AnswerFooter(state: AskUiState, actions: LibraryAskActions) {
 
 @Composable
 private fun AnswerAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = InfinitySpacing.Small)) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(InfinitySpacing.XSmall))
-        Text(label, maxLines = 1)
-    }
+    InfinityPillButton(
+        text = label,
+        onClick = onClick,
+        tone = InfinityPillTone.NEUTRAL,
+        icon = icon,
+        compact = true,
+    )
 }
 
 /** 答案正文：`[n]` 换成可点的编号；越界编号不显示。 */
@@ -381,7 +433,11 @@ private fun AskFilterRow(state: AskUiState, listed: List<AskHit>, actions: Libra
         counts[AskHitKind.ENTITY]?.let { add(InfinitySegment(AskHitKind.ENTITY, stringResource(R.string.library_ask_filter_graph, it))) }
     }
     Column {
-        if (listed.isNotEmpty() && segments.size > 2) {
+        AnimatedVisibility(
+            visible = listed.isNotEmpty() && segments.size > 2,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
             InfinitySegmentedControl(
                 segments = segments,
                 selected = state.filter,
@@ -398,10 +454,29 @@ private fun AskFilterRow(state: AskUiState, listed: List<AskHit>, actions: Libra
 private fun AskScopeButton(scope: AskScope, onScope: (AskScope) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val label = scopeLabel(scope)
-    Box(Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal - InfinitySpacing.Small)) {
-        TextButton(onClick = { open = true }) {
-            Text(stringResource(R.string.library_ask_scope, label), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Icon(Icons.Rounded.ArrowDropDown, contentDescription = null)
+    Box(Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal)) {
+        Surface(
+            onClick = { open = true },
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .heightIn(min = 36.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    stringResource(R.string.library_ask_scope, label),
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
         }
         InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listOf(AskScope.AllIndexed, AskScope.Library).forEach { option ->

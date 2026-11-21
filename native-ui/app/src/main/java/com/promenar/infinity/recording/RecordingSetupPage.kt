@@ -1,6 +1,11 @@
 package com.promenar.infinity.recording
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -28,8 +33,11 @@ import com.promenar.infinity.ui.common.InfinityPageLayout
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySectionFooterCard
+import androidx.compose.ui.draw.alpha
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 
 private data class SetupModel(
     val title: Int,
@@ -222,40 +230,84 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
                         modifier = Modifier.padding(vertical = 12.dp),
                         maxLines = 3,
                     )
-                    if (status != null) {
-                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(stringResource(status), style = InfinityTypography.titleSmall)
-                                if (!complete) {
-                                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                                    Text(stringResource(R.string.recording_setup_percent, (progress * 100).toInt()), style = InfinityTypography.bodySmall)
+                    val lastStatus = rememberLastNonNull(status)
+                    AnimatedVisibility(
+                        visible = status != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        lastStatus?.let { shownStatus ->
+                            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .animateContentSize(InfinityMotion.contentSizeSpec())
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(stringResource(shownStatus), style = InfinityTypography.titleSmall)
+                                    AnimatedVisibility(
+                                        visible = !complete,
+                                        enter = InfinityMotion.expandIn,
+                                        exit = InfinityMotion.shrinkOut,
+                                    ) {
+                                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                                            Text(stringResource(R.string.recording_setup_percent, (progress * 100).toInt()), style = InfinityTypography.bodySmall)
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                val skipAlpha by animateFloatAsState(
+                    targetValue = if (complete) 0.35f else 1f,
+                    animationSpec = tween(InfinityMotion.DurationShort),
+                    label = "recording_setup_skip_alpha",
+                )
+                val primarySlot = when {
+                    complete -> RecordingSetupPrimarySlot.ENTER
+                    running -> RecordingSetupPrimarySlot.PAUSE
+                    else -> RecordingSetupPrimarySlot.DOWNLOAD
+                }
                 Row(
                     Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
                 ) {
                     InfinityPillButton(
-                        text = stringResource(if (!firstRun || running || complete) R.string.recording_setup_enter else R.string.recording_setup_skip),
+                        text = stringResource(if (!firstRun || running) R.string.recording_setup_enter else R.string.recording_setup_skip),
                         onClick = onFinish,
                         tone = InfinityPillTone.NEUTRAL,
-                        modifier = Modifier.testTag("recording-setup-skip"),
+                        enabled = !complete,
+                        modifier = Modifier.weight(1f).alpha(skipAlpha).testTag("recording-setup-skip"),
                     )
-                    if (!complete) {
-                        if (running) {
-                            InfinityPillButton(stringResource(R.string.recording_setup_pause), {
-                                paused = true
-                                if (asr.busy()) { useAsr = true; controller.cancelAsrModelDownload() }
-                                if (refine.busy()) { useRefineOverride = true; controller.cancelRefineModelDownload() }
-                                if (speaker.busy()) { useSpeaker = true; controller.cancelSpeakerModel() }
-                                if (gguf?.isDownloading == true) { useLocal = true; controller.recommendedModel.pause() }
-                            })
-                        } else {
-                            InfinityPillButton(
+                    AnimatedContent(
+                        targetState = primarySlot,
+                        transitionSpec = { InfinityMotion.fadeThrough() },
+                        modifier = Modifier.weight(1f),
+                        label = "recording_setup_primary_slot",
+                    ) { slot ->
+                        when (slot) {
+                            RecordingSetupPrimarySlot.ENTER -> InfinityPillButton(
+                                text = stringResource(R.string.recording_setup_enter),
+                                onClick = onFinish,
+                                tone = InfinityPillTone.PRIMARY,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            RecordingSetupPrimarySlot.PAUSE -> InfinityPillButton(
+                                text = stringResource(R.string.recording_setup_pause),
+                                onClick = {
+                                    paused = true
+                                    if (asr.busy()) { useAsr = true; controller.cancelAsrModelDownload() }
+                                    if (refine.busy()) { useRefineOverride = true; controller.cancelRefineModelDownload() }
+                                    if (speaker.busy()) { useSpeaker = true; controller.cancelSpeakerModel() }
+                                    if (gguf?.isDownloading == true) { useLocal = true; controller.recommendedModel.pause() }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            RecordingSetupPrimarySlot.DOWNLOAD -> InfinityPillButton(
                                 text = when {
                                     paused || failed -> stringResource(R.string.recording_setup_continue)
                                     pendingBytes == 0L -> stringResource(R.string.recording_setup_download_action)
@@ -271,6 +323,7 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
                                 enabled = pendingBytes > 0,
                                 tone = InfinityPillTone.PRIMARY,
                                 icon = Icons.Rounded.Download,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
@@ -278,6 +331,12 @@ internal fun RecordingSetupPage(onFinish: () -> Unit, firstRun: Boolean = true) 
             }
         }
     }
+}
+
+private enum class RecordingSetupPrimarySlot {
+    ENTER,
+    PAUSE,
+    DOWNLOAD,
 }
 
 private fun RecordingAsrModelState.busy() = this is RecordingAsrModelState.Downloading || this == RecordingAsrModelState.Installing

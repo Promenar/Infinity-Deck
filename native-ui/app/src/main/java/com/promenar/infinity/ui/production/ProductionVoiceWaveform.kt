@@ -5,13 +5,16 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -21,6 +24,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.media.MediaResolution
 import com.promenar.infinity.domain.media.MediaSource
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
+import com.promenar.infinity.ui.theme.InfinityMotion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -29,7 +33,11 @@ import kotlinx.coroutines.withContext
 import java.nio.ByteOrder
 import kotlin.math.abs
 
-/** 波形按真实解码振幅绘制；最长采样两分钟，失败时只显示不可用状态。 */
+private enum class WaveformDisplayState { LOADING, READY, UNAVAILABLE }
+
+private const val SkeletonBarCount = 30
+
+/** 波形按真实解码振幅绘制；首帧即保留 48dp 定高槽位防列表跳动，最长采样两分钟。 */
 @Composable
 internal fun ProductionVoiceWaveform(path: String) {
     val environment = LocalWorkspaceMedia.current
@@ -51,15 +59,57 @@ internal fun ProductionVoiceWaveform(path: String) {
     }
     val label = stringResource(R.string.p2_voice_waveform)
     val color = MaterialTheme.colorScheme.primary
+    val skeletonColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.24f)
     val values = peaks
-    if (!values.isNullOrEmpty()) Canvas(Modifier.fillMaxWidth().height(48.dp).semantics { contentDescription = label }) {
-        val step = size.width / values.size
-        values.forEachIndexed { index, peak ->
-            val height = (peak.coerceIn(0f, 1f) * size.height).coerceAtLeast(2f)
-            val x = (index + 0.5f) * step
-            drawLine(color, Offset(x, (size.height - height) / 2), Offset(x, (size.height + height) / 2), strokeWidth = (step * 0.55f).coerceAtLeast(1f))
+    val displayState = when {
+        !values.isNullOrEmpty() -> WaveformDisplayState.READY
+        loaded -> WaveformDisplayState.UNAVAILABLE
+        else -> WaveformDisplayState.LOADING
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        AnimatedContent(
+            targetState = displayState,
+            transitionSpec = { InfinityMotion.fadeThrough() },
+            label = "voice_waveform_state",
+        ) { state ->
+            when (state) {
+                WaveformDisplayState.LOADING -> Canvas(Modifier.fillMaxWidth().height(32.dp)) {
+                    val step = size.width / SkeletonBarCount
+                    for (i in 0 until SkeletonBarCount) {
+                        val height = size.height * (0.25f + (i % 3) * 0.16f)
+                        val x = (i + 0.5f) * step
+                        drawLine(
+                            skeletonColor,
+                            Offset(x, (size.height - height) / 2),
+                            Offset(x, (size.height + height) / 2),
+                            strokeWidth = (step * 0.45f).coerceAtLeast(1.5f),
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
+                WaveformDisplayState.READY -> {
+                    val readyValues = values.orEmpty()
+                    Canvas(Modifier.fillMaxWidth().height(48.dp).semantics { contentDescription = label }) {
+                        if (readyValues.isEmpty()) return@Canvas
+                        val step = size.width / readyValues.size
+                        readyValues.forEachIndexed { index, peak ->
+                            val height = (peak.coerceIn(0f, 1f) * size.height).coerceAtLeast(2f)
+                            val x = (index + 0.5f) * step
+                            drawLine(color, Offset(x, (size.height - height) / 2), Offset(x, (size.height + height) / 2), strokeWidth = (step * 0.55f).coerceAtLeast(1f))
+                        }
+                    }
+                }
+                WaveformDisplayState.UNAVAILABLE -> Text(
+                    stringResource(R.string.p2_waveform_unavailable),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-    } else if (loaded) Text(stringResource(R.string.p2_waveform_unavailable), style = MaterialTheme.typography.labelSmall)
+    }
 }
 
 private suspend fun decodeVoiceWaveform(context: android.content.Context, source: MediaSource): List<Float>? {

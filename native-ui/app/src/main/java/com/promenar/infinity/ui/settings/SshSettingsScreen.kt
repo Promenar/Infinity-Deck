@@ -1,7 +1,17 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.text.style.TextOverflow
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
@@ -24,6 +34,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +43,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
@@ -63,12 +75,14 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -212,6 +226,14 @@ fun SshSettingsScreen(
     }.collectAsState(initial = null)
     val verifiedMessage = stringResource(R.string.ssh_fingerprint_matches)
 
+    fun showToast(message: String, isError: Boolean) {
+        statusIsError = isError
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
     fun perform(action: suspend () -> Unit) {
         if (busy) return
         busy = true
@@ -221,8 +243,7 @@ fun SshSettingsScreen(
             try {
                 action()
             } catch (error: Exception) {
-                status = SshErrorMessages.message(context, safeSshError(error))
-                statusIsError = true
+                showToast(SshErrorMessages.message(context, safeSshError(error)), isError = true)
             } finally {
                 busy = false
             }
@@ -231,10 +252,7 @@ fun SshSettingsScreen(
 
     suspend fun finishAction(host: SshHost, action: SshPendingAction) {
         when (action) {
-            SshPendingAction.VERIFY -> {
-                status = verifiedMessage
-                statusIsError = false
-            }
+            SshPendingAction.VERIFY -> showToast(verifiedMessage, isError = false)
             SshPendingAction.TERMINAL -> {
                 // 用户明确打开终端：已断开的终端在此重新连接，其余情况沿用正在运行的终端。
                 com.promenar.infinity.ui.ssh.SshUserTerminals.open(app, host.alias)
@@ -260,8 +278,8 @@ fun SshSettingsScreen(
                 forwards = forwards,
                 busy = busy,
                 cleanupWarning = cleanupWarnings.isNotEmpty(),
-                status = status,
-                statusIsError = statusIsError,
+                status = null,
+                statusIsError = false,
                 agentManagementEnabled = agentManagement,
                 activeConnections = activity.connections,
                 terminalIdlePolicy = idlePolicy,
@@ -294,9 +312,7 @@ fun SshSettingsScreen(
                             } ?: throw SshInputException("SSH_CREDENTIAL_MISSING")
                         }
                         copySshPublicKey(context, publicKey)
-                        scope.launch { snackbarHostState.showSnackbar(copiedMessage) }
-                        status = copiedMessage
-                        statusIsError = false
+                        showToast(copiedMessage, isError = false)
                     }
                 },
                 onToggleForward = { host ->
@@ -310,7 +326,12 @@ fun SshSettingsScreen(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
         ) { data ->
-            InfinitySnackbar(InfinitySnackbarData(data.visuals.message, SnackbarType.SUCCESS))
+            InfinitySnackbar(
+                InfinitySnackbarData(
+                    message = data.visuals.message,
+                    type = if (statusIsError) SnackbarType.ERROR else SnackbarType.SUCCESS,
+                ),
+            )
         }
     }
 
@@ -451,14 +472,22 @@ internal fun SshSettingsContent(
             contentPadding = contentPadding,
         ) {
             leadingContent?.invoke(this)
-            if (sortedActiveConnections(state.activeConnections).isNotEmpty()) {
-                item("active") {
-                    SshActiveConnectionsSection(
-                        connections = state.activeConnections,
-                        enabled = !state.busy,
-                        onOpenTerminal = actions.onOpenConnectedTerminal,
-                        onDisconnect = actions.onDisconnect,
-                    )
+            val activeList = sortedActiveConnections(state.activeConnections)
+            item("active") {
+                val shownActive = rememberLastNonNull(activeList.takeIf { it.isNotEmpty() })
+                AnimatedVisibility(
+                    visible = activeList.isNotEmpty(),
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    shownActive?.let { connections ->
+                        SshActiveConnectionsSection(
+                            connections = connections,
+                            enabled = !state.busy,
+                            onOpenTerminal = actions.onOpenConnectedTerminal,
+                            onDisconnect = actions.onDisconnect,
+                        )
+                    }
                 }
             }
             item("manage") {
@@ -474,13 +503,15 @@ internal fun SshSettingsContent(
                         )
                     }
                     state.hosts.forEach { host ->
-                        SshHostRow(
-                            host = host,
-                            forwardPort = state.forwards[host.alias],
-                            enabled = !state.busy,
-                            onOpen = { actionHostId = host.id },
-                            onTerminal = { actions.onTerminal(host) },
-                        )
+                        key(host.id) {
+                            SshHostRow(
+                                host = host,
+                                forwardPort = state.forwards[host.alias],
+                                enabled = !state.busy,
+                                onOpen = { actionHostId = host.id },
+                                onTerminal = { actions.onTerminal(host) },
+                            )
+                        }
                     }
                     InfinitySettingsItem(
                         icon = Icons.Rounded.Add,
@@ -514,10 +545,20 @@ internal fun SshSettingsContent(
                     )
                 }
             }
-            if (state.busy || state.cleanupWarning || state.status != null) {
-                item("status") {
+            item("status") {
+                val showStatus = state.busy || state.cleanupWarning || state.status != null
+                val shownStatusText = rememberLastNonNull(state.status)
+                AnimatedVisibility(
+                    visible = showStatus,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
                     InfinitySettingsSection(title = stringResource(R.string.ssh_visual_status_section)) {
-                        if (state.busy) {
+                        AnimatedVisibility(
+                            visible = state.busy,
+                            enter = InfinityMotion.expandIn,
+                            exit = InfinityMotion.shrinkOut,
+                        ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.Large),
                                 horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
@@ -527,19 +568,29 @@ internal fun SshSettingsContent(
                                 Text(stringResource(R.string.ssh_visual_working), style = MaterialTheme.typography.bodyMedium)
                             }
                         }
-                        if (state.cleanupWarning) {
+                        AnimatedVisibility(
+                            visible = state.cleanupWarning,
+                            enter = InfinityMotion.expandIn,
+                            exit = InfinityMotion.shrinkOut,
+                        ) {
                             SshInformationRow(
                                 icon = Icons.Rounded.WarningAmber,
                                 text = stringResource(R.string.ssh_cleanup_warning),
                                 color = MaterialTheme.infinityDomainColors.warning,
                             )
                         }
-                        state.status?.let { message ->
-                            SshInformationRow(
-                                icon = if (state.statusIsError) Icons.Rounded.ErrorOutline else Icons.Rounded.CheckCircle,
-                                text = message,
-                                color = if (state.statusIsError) MaterialTheme.colorScheme.error else MaterialTheme.infinityDomainColors.success,
-                            )
+                        AnimatedVisibility(
+                            visible = state.status != null,
+                            enter = InfinityMotion.expandIn,
+                            exit = InfinityMotion.shrinkOut,
+                        ) {
+                            shownStatusText?.let { message ->
+                                SshInformationRow(
+                                    icon = if (state.statusIsError) Icons.Rounded.ErrorOutline else Icons.Rounded.CheckCircle,
+                                    text = message,
+                                    color = if (state.statusIsError) MaterialTheme.colorScheme.error else MaterialTheme.infinityDomainColors.success,
+                                )
+                            }
                         }
                     }
                 }
@@ -1055,7 +1106,11 @@ internal fun SshHostEditorForm(
                     onCheckedChange = { fields.forwarding = it },
                     enabled = !busy,
                 )
-                if (fields.forwarding) {
+                AnimatedVisibility(
+                    visible = fields.forwarding,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.Large),
                         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
@@ -1068,29 +1123,72 @@ internal fun SshHostEditorForm(
             }
         }
         // 错误区不随表单滚动：无论点哪个按钮触发，错误都出现在可见位置。
-        errorCode?.let { code ->
-            Box(Modifier.fillMaxWidth().testTag("ssh_editor_error").semantics { liveRegion = LiveRegionMode.Polite }) {
-                SshInformationRow(icon = Icons.Rounded.ErrorOutline, text = sshErrorText(code), color = MaterialTheme.colorScheme.error)
+        val lastErrorCode = rememberLastNonNull(errorCode)
+        AnimatedVisibility(
+            visible = errorCode != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            lastErrorCode?.let { code ->
+                Box(Modifier.fillMaxWidth().testTag("ssh_editor_error").semantics { liveRegion = LiveRegionMode.Polite }) {
+                    SshInformationRow(icon = Icons.Rounded.ErrorOutline, text = sshErrorText(code), color = MaterialTheme.colorScheme.error)
+                }
             }
         }
-        if (busy) {
-            CircularProgressIndicator(modifier = Modifier.padding(top = InfinitySpacing.Small).size(InfinitySpacing.XLarge))
-        }
-        InfinityPillRow(
-            modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Large, top = InfinitySpacing.Medium, end = InfinitySpacing.Large),
-            spacing = InfinitySpacing.Small,
+        val scheme = MaterialTheme.colorScheme
+        val saveContainer = if (busy) scheme.primary.copy(alpha = 0.85f) else scheme.primary
+        val saveContent = scheme.onPrimary
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(InfinityMotion.contentSizeSpec())
+                .padding(start = InfinitySpacing.Large, top = InfinitySpacing.Medium, end = InfinitySpacing.Large),
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             InfinityPillButton(
                 text = stringResource(R.string.ssh_cancel),
                 onClick = onCancel,
                 enabled = !busy,
+                modifier = Modifier.weight(1f),
             )
-            InfinityPillButton(
-                text = stringResource(R.string.ssh_save),
+            Surface(
                 onClick = onSave,
-                tone = InfinityPillTone.PRIMARY,
                 enabled = !busy,
-            )
+                shape = CircleShape,
+                color = saveContainer,
+                contentColor = saveContent,
+                modifier = Modifier
+                    .weight(1f)
+                    .minimumInteractiveComponentSize()
+                    .heightIn(min = 48.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    AnimatedVisibility(
+                        visible = busy,
+                        enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                        exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = saveContent,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.ssh_save),
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }

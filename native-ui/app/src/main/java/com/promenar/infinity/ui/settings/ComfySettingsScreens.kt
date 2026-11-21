@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,7 +37,9 @@ import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import java.text.DateFormat
 import java.util.Date
 
@@ -276,30 +280,49 @@ internal fun ComfyHostFormScreenContent(
     val error = validateComfyHost(draft, credential, hasCredential, host?.authKind)
     MediaSettingsPage(stringResource(if (host == null) R.string.media_settings_add_host else R.string.media_settings_edit_host), onBack) {
         MediaOperationState(state, onRetry)
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             MediaFormField(stringResource(R.string.media_settings_host_name), draft.name, { draft = draft.copy(name = it) }, !state.busy)
             MediaFormField(stringResource(R.string.media_settings_host_address), draft.address, { draft = draft.copy(address = it) }, !state.busy, KeyboardType.Uri)
             Text(stringResource(R.string.media_settings_auth), style = MaterialTheme.typography.labelMedium)
             InfinitySegmentedControl(segments = ComfyAuthKind.entries.map { InfinitySegment(it, authKindLabel(it)) }, selected = draft.authKind,
                 onSelect = { draft = draft.copy(authKind = it); token = ""; username = ""; password = "" }, enabled = !state.busy)
-            if (draft.authKind != ComfyAuthKind.NONE) {
-                MediaNotice(stringResource(if (hasCredential && host?.authKind == draft.authKind) R.string.media_settings_credential_saved else R.string.media_settings_credential_missing))
-                if (draft.authKind == ComfyAuthKind.BASIC) {
-                    MediaFormField(stringResource(R.string.media_settings_username), username, { username = it }, !state.busy)
+            AnimatedVisibility(
+                visible = draft.authKind != ComfyAuthKind.NONE,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MediaNotice(stringResource(if (hasCredential && host?.authKind == draft.authKind) R.string.media_settings_credential_saved else R.string.media_settings_credential_missing))
+                    AnimatedVisibility(
+                        visible = draft.authKind == ComfyAuthKind.BASIC,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        MediaFormField(stringResource(R.string.media_settings_username), username, { username = it }, !state.busy)
+                    }
+                    OutlinedTextField(value = if (draft.authKind == ComfyAuthKind.BEARER) token else password,
+                        onValueChange = { if (draft.authKind == ComfyAuthKind.BEARER) token = it else password = it },
+                        label = { Text(stringResource(if (draft.authKind == ComfyAuthKind.BEARER) R.string.media_settings_token else R.string.media_settings_password)) },
+                        textStyle = LocalTextStyle.current.forInput(),
+                        visualTransformation = PasswordVisualTransformation(), keyboardOptions = com.promenar.infinity.ui.common.SecretKeyboardOptions,
+                        singleLine = true, enabled = !state.busy,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).excludeFromAutofill())
                 }
-                OutlinedTextField(value = if (draft.authKind == ComfyAuthKind.BEARER) token else password,
-                    onValueChange = { if (draft.authKind == ComfyAuthKind.BEARER) token = it else password = it },
-                    label = { Text(stringResource(if (draft.authKind == ComfyAuthKind.BEARER) R.string.media_settings_token else R.string.media_settings_password)) },
-                    textStyle = LocalTextStyle.current.forInput(),
-                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = com.promenar.infinity.ui.common.SecretKeyboardOptions,
-                    singleLine = true, enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).excludeFromAutofill())
             }
-            if (submitted && error != null) MediaNotice(formErrorLabel(error), error = true)
+            val lastFormError = rememberLastNonNull(error?.takeIf { submitted })
+            AnimatedVisibility(
+                visible = submitted && error != null,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                lastFormError?.let { activeError ->
+                    MediaNotice(formErrorLabel(activeError), error = true)
+                }
+            }
             MediaAction(stringResource(R.string.media_settings_save), {
                 submitted = true
                 if (error == null) onSave(draft, credential)
-            }, !state.busy)
+            }, !state.busy, primary = true)
         }
     }
 }

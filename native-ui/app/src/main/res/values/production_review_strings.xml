@@ -78,6 +78,7 @@
     <string name="production_review_retract_approve">Retract approval</string>
     <string name="production_review_retract_reject">Retract rejection</string>
     <string name="production_review_retract_suggest">Retract pending suggestions</string>
+    <string name="production_review_has_unsent_suggestion">Pending feedback saved (switch to Suggest)</string>
     <string name="production_review_footer_staged">Staged for this round, editable anytime</string>
     <string name="production_review_footer_pending">No review decision yet</string>
     <string name="production_review_footer_suggest">Share improvement or revision feedback</string>

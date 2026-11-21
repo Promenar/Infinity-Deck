@@ -76,6 +76,8 @@ import com.promenar.infinity.ui.media.LocalWorkspaceMedia
 import com.promenar.infinity.ui.media.rememberMediaActionRunner
 import com.promenar.infinity.ui.media.rememberWorkspaceMediaResolution
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -539,12 +541,20 @@ internal fun ProductionCutTab(
                             ProductionProgressBar(previsExportProgress, Modifier.testTag(ProductionCutTags.PROGRESS))
                         }
                     }
-                    previsVideoFailed?.takeIf { !exportingPrevisVideo }?.let { reason ->
-                        ProductionRow(
-                            title = stringResource(R.string.p3_cut_status),
-                            value = reason,
-                            chip = ProductionChipSpec(stringResource(R.string.production_cut_failed), ProductionTone.ERROR),
-                        )
+                    val showPrevisFailed = previsVideoFailed != null && !exportingPrevisVideo
+                    val heldPrevisFailed = rememberLastNonNull(previsVideoFailed?.takeIf { !exportingPrevisVideo }, key = "previs-failed")
+                    AnimatedVisibility(
+                        visible = showPrevisFailed && heldPrevisFailed != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        heldPrevisFailed?.let { reason ->
+                            ProductionRow(
+                                title = stringResource(R.string.p3_cut_status),
+                                value = reason,
+                                chip = ProductionChipSpec(stringResource(R.string.production_cut_failed), ProductionTone.ERROR),
+                            )
+                        }
                     }
                 } else {
                     val gaps = version.clips.count { it.path == null }
@@ -582,8 +592,15 @@ internal fun ProductionCutTab(
                                 ProductionProgressBar((state as? CutExportState.Running)?.progress, Modifier.testTag(ProductionCutTags.PROGRESS))
                             }
                         }
-                        if (state is CutExportState.Failed) {
-                            ProductionRow(stringResource(R.string.p3_cut_status), value = state.reason, chip = ProductionChipSpec(stringResource(R.string.production_cut_failed), ProductionTone.ERROR))
+                        val heldCutFailure = rememberLastNonNull((state as? CutExportState.Failed)?.reason, key = "cut-failed")
+                        AnimatedVisibility(
+                            visible = state is CutExportState.Failed && heldCutFailure != null,
+                            enter = InfinityMotion.expandIn,
+                            exit = InfinityMotion.shrinkOut,
+                        ) {
+                            heldCutFailure?.let { reason ->
+                                ProductionRow(stringResource(R.string.p3_cut_status), value = reason, chip = ProductionChipSpec(stringResource(R.string.production_cut_failed), ProductionTone.ERROR))
+                            }
                         }
                     }
                 }

@@ -1,6 +1,8 @@
 package com.promenar.infinity.ui.chat
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -359,7 +361,7 @@ private fun ToolFieldRowView(row: ToolFieldRow) {
             val valueStyle = InfinityTypography.bodySmall.copy(lineHeight = 18.sp)
             if (row.isLong) {
                 // 长值下方用折叠行切换展开，点按区域不小于 48dp。
-                Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.weight(1f).animateContentSize(InfinityMotion.contentSizeSpec())) {
                     Text(
                         text = row.value,
                         style = valueStyle,

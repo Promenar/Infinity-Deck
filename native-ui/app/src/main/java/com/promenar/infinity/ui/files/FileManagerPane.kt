@@ -6,6 +6,12 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -43,6 +50,7 @@ import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -91,6 +99,7 @@ import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.hierarchicalTransition
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -288,9 +297,16 @@ fun FileManagerPane(
 @Composable
 private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
     val controller = actions.controller
+    val showGitStrip = state.search == null && state.path == "/" &&
+        state.location?.gitLabel() != null && state.gitHeaderBranch(actions.host) == null
+    val lastGitState = rememberLastNonNull(state.takeIf { showGitStrip })
     Box(modifier) {
         Column(Modifier.fillMaxSize()) {
-            if (state.search == null) {
+            AnimatedVisibility(
+                visible = state.search == null,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Small, end = InfinitySpacing.XSmall),
                     verticalAlignment = Alignment.Top,
@@ -307,7 +323,13 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
                         onToggleFoldersFirst = controller::toggleFoldersFirst,
                     )
                 }
-                GitStrip(state, actions)
+            }
+            AnimatedVisibility(
+                visible = showGitStrip,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                lastGitState?.let { GitStrip(it, actions) }
             }
             AnimatedContent(
                 targetState = rememberSettledListing(state),
@@ -328,8 +350,15 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
                 FileListBody(page, actions, Modifier.fillMaxSize())
             }
         }
-        if (!actions.host.settingsPage && !state.selecting && state.search == null && state.location != null && state.writable()) {
-            FileManagerFab(actions, Modifier.align(Alignment.BottomEnd).padding(InfinitySpacing.Large))
+        AnimatedVisibility(
+            visible = !actions.host.settingsPage && !state.selecting && state.search == null && state.location != null && state.writable(),
+            enter = scaleIn(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate), initialScale = 0.8f) +
+                fadeIn(tween(InfinityMotion.DurationMedium)),
+            exit = scaleOut(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate), targetScale = 0.8f) +
+                fadeOut(tween(InfinityMotion.DurationShort)),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(InfinitySpacing.Large),
+        ) {
+            FileManagerFab(actions, Modifier)
         }
     }
 }
@@ -640,24 +669,30 @@ private fun SearchResults(state: FileManagerUiState, search: FileSearchState, ac
         search.hits.isEmpty() -> Box(modifier.testTag(UiTags.FM_EMPTY)) {
             FolderStatusMessage(text = stringResource(R.string.fm_search_empty), icon = Icons.Rounded.SearchOff)
         }
-        else -> LazyColumn(modifier = modifier, contentPadding = PaddingValues(top = InfinitySpacing.XSmall, bottom = InfinitySpacing.XLarge)) {
-            if (search.running) {
-                item(key = "running") {
-                    Box(Modifier.fillMaxWidth().padding(InfinitySpacing.Small), contentAlignment = Alignment.Center) {
-                        InfinityLoadingIndicator(size = LoadingSize.SMALL)
-                    }
+        else -> Box(modifier) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = InfinitySpacing.XSmall, bottom = InfinitySpacing.XLarge),
+            ) {
+                items(search.hits, key = { it.item.ref.listKey() }) { hit ->
+                    FileRow(
+                        item = hit.item,
+                        highlighted = false,
+                        selecting = false,
+                        checked = false,
+                        onClick = { controller.reveal(hit) },
+                        onToggleSelection = {},
+                        location = (listOf(locationTitle) + pathCrumbs(hit.parentPath).map { it.title }).joinToString(" › "),
+                    )
                 }
             }
-            items(search.hits, key = { it.item.ref.listKey() }) { hit ->
-                FileRow(
-                    item = hit.item,
-                    highlighted = false,
-                    selecting = false,
-                    checked = false,
-                    onClick = { controller.reveal(hit) },
-                    onToggleSelection = {},
-                    location = (listOf(locationTitle) + pathCrumbs(hit.parentPath).map { it.title }).joinToString(" › "),
-                )
+            AnimatedVisibility(
+                visible = search.running,
+                enter = fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = fadeOut(tween(InfinityMotion.DurationShort)),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(3.dp))
             }
         }
     }

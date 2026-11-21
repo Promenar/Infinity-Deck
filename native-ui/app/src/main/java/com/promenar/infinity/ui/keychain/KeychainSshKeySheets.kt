@@ -1,11 +1,23 @@
 package com.promenar.infinity.ui.keychain
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -21,7 +33,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,9 +64,11 @@ import com.promenar.infinity.ui.common.SecretTextInput
 import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.ssh.sshErrorText
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 
 // ── 通用 ──
 
@@ -95,27 +111,88 @@ private fun KeychainSheetButtons(
     onConfirm: () -> Unit,
     confirmTag: String,
 ) {
-    InfinityPillRow(Modifier.fillMaxWidth()) {
-        InfinityPillButton(text = stringResource(R.string.common_cancel), onClick = onCancel, enabled = !busy)
+    val scheme = MaterialTheme.colorScheme
+    val interactive = confirmEnabled && !busy
+    val container = when {
+        busy -> scheme.primary.copy(alpha = 0.85f)
+        confirmEnabled -> scheme.primary
+        else -> scheme.onSurface.copy(alpha = 0.12f)
+    }
+    val content = when {
+        busy || confirmEnabled -> scheme.onPrimary
+        else -> scheme.onSurface.copy(alpha = 0.38f)
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         InfinityPillButton(
-            text = confirmText,
-            onClick = onConfirm,
-            enabled = confirmEnabled && !busy,
-            tone = InfinityPillTone.PRIMARY,
-            modifier = Modifier.testTag(confirmTag),
+            text = stringResource(R.string.common_cancel),
+            onClick = onCancel,
+            enabled = !busy,
+            modifier = Modifier.weight(1f),
         )
+        Surface(
+            onClick = onConfirm,
+            enabled = interactive,
+            shape = CircleShape,
+            color = container,
+            contentColor = content,
+            modifier = Modifier
+                .weight(1f)
+                .minimumInteractiveComponentSize()
+                .heightIn(min = 48.dp)
+                .testTag(confirmTag),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                AnimatedVisibility(
+                    visible = busy,
+                    enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                    exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = content,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                }
+                Text(
+                    text = confirmText,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun KeychainSheetError(code: String?) {
-    code ?: return
-    Text(
-        if (code.startsWith(KEYCHAIN_TEXT_ERROR)) code.removePrefix(KEYCHAIN_TEXT_ERROR) else sshErrorText(code),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.error,
-        modifier = Modifier.testTag("keychain_sheet_error"),
-    )
+    val lastCode = rememberLastNonNull(code)
+    AnimatedVisibility(
+        visible = code != null,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        lastCode?.let { shownCode ->
+            Text(
+                if (shownCode.startsWith(KEYCHAIN_TEXT_ERROR)) shownCode.removePrefix(KEYCHAIN_TEXT_ERROR) else sshErrorText(shownCode),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("keychain_sheet_error"),
+            )
+        }
+    }
 }
 
 /** 错误区直接显示文字时加此前缀，其余视为 SSH 错误码。 */
@@ -157,7 +234,10 @@ internal fun SshKeyGenerateContent(
     onCancel: () -> Unit,
     onGenerate: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+    Column(
+        modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+    ) {
         KeychainSheetField(form.name, { onChange(form.copy(name = it)) }, stringResource(R.string.keychain_field_name), "ssh_gen_name", enabled = !busy)
         InfinitySegmentedControl(
             segments = listOf(
@@ -174,7 +254,6 @@ internal fun SshKeyGenerateContent(
             stringResource(R.string.keychain_ssh_passphrase_optional), "ssh_gen_passphrase", secret = true, enabled = !busy,
         )
         KeychainSheetError(error)
-        if (busy) CircularProgressIndicator(Modifier.size(InfinitySpacing.XLarge))
         KeychainSheetButtons(
             confirmText = stringResource(R.string.keychain_ssh_generate),
             confirmEnabled = form.name.isNotBlank(),
@@ -208,62 +287,75 @@ internal fun SshKeyImportContent(
     onCancel: () -> Unit,
     onImport: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-        if (form.source == null) {
-            Text(
-                stringResource(R.string.keychain_ssh_import_formats),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            InfinitySettingsItem(
-                icon = Icons.Rounded.UploadFile,
-                title = stringResource(R.string.keychain_ssh_import_file),
-                onClick = onPickFile,
-                enabled = !busy,
-                modifier = Modifier.testTag("ssh_import_file"),
-            )
-            InfinitySettingsItem(
-                icon = Icons.Rounded.ContentPaste,
-                title = stringResource(R.string.keychain_ssh_import_clipboard),
-                subtitle = stringResource(R.string.keychain_ssh_import_clipboard_note),
-                onClick = onPickClipboard,
-                enabled = !busy,
-                modifier = Modifier.testTag("ssh_import_clipboard"),
-            )
-            KeychainSheetError(error)
-            InfinityPillRow(Modifier.fillMaxWidth()) {
-                InfinityPillButton(text = stringResource(R.string.common_cancel), onClick = onCancel, enabled = !busy)
+    AnimatedContent(
+        targetState = form.source == null,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        label = "ssh_import_stage",
+    ) { picking ->
+        if (picking) {
+            Column(
+                modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+            ) {
+                Text(
+                    stringResource(R.string.keychain_ssh_import_formats),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.UploadFile,
+                    title = stringResource(R.string.keychain_ssh_import_file),
+                    onClick = onPickFile,
+                    enabled = !busy,
+                    modifier = Modifier.testTag("ssh_import_file"),
+                )
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.ContentPaste,
+                    title = stringResource(R.string.keychain_ssh_import_clipboard),
+                    subtitle = stringResource(R.string.keychain_ssh_import_clipboard_note),
+                    onClick = onPickClipboard,
+                    enabled = !busy,
+                    modifier = Modifier.testTag("ssh_import_clipboard"),
+                )
+                KeychainSheetError(error)
+                InfinityPillRow(Modifier.fillMaxWidth()) {
+                    InfinityPillButton(text = stringResource(R.string.common_cancel), onClick = onCancel, enabled = !busy)
+                }
             }
-            return@Column
+        } else {
+            Column(
+                modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (form.source == SshKeyImportSource.FILE) Icons.Rounded.UploadFile else Icons.Rounded.ContentPaste,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        form.fileName ?: stringResource(R.string.keychain_ssh_import_clipboard_note),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                KeychainSheetField(form.name, { onChange(form.copy(name = it)) }, stringResource(R.string.keychain_field_name), "ssh_import_name", enabled = !busy)
+                KeychainSheetField(
+                    form.passphrase, { onChange(form.copy(passphrase = it)) },
+                    stringResource(R.string.keychain_ssh_passphrase), "ssh_import_passphrase", secret = true, enabled = !busy,
+                )
+                KeychainSheetError(error)
+                KeychainSheetButtons(
+                    confirmText = stringResource(R.string.keychain_ssh_import),
+                    confirmEnabled = form.name.isNotBlank(),
+                    busy = busy,
+                    onCancel = onCancel,
+                    onConfirm = onImport,
+                    confirmTag = "ssh_import_confirm",
+                )
+            }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                if (form.source == SshKeyImportSource.FILE) Icons.Rounded.UploadFile else Icons.Rounded.ContentPaste,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                form.fileName ?: stringResource(R.string.keychain_ssh_import_clipboard_note),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-            )
-        }
-        KeychainSheetField(form.name, { onChange(form.copy(name = it)) }, stringResource(R.string.keychain_field_name), "ssh_import_name", enabled = !busy)
-        KeychainSheetField(
-            form.passphrase, { onChange(form.copy(passphrase = it)) },
-            stringResource(R.string.keychain_ssh_passphrase), "ssh_import_passphrase", secret = true, enabled = !busy,
-        )
-        KeychainSheetError(error)
-        if (busy) CircularProgressIndicator(Modifier.size(InfinitySpacing.XLarge))
-        KeychainSheetButtons(
-            confirmText = stringResource(R.string.keychain_ssh_import),
-            confirmEnabled = form.name.isNotBlank(),
-            busy = busy,
-            onCancel = onCancel,
-            onConfirm = onImport,
-            confirmTag = "ssh_import_confirm",
-        )
     }
 }
 
@@ -286,7 +378,10 @@ internal fun SshKeyExportContent(
     onCancel: () -> Unit,
     onExport: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+    Column(
+        modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+    ) {
         Text(
             stringResource(R.string.keychain_ssh_export_format),
             style = MaterialTheme.typography.bodyMedium,
@@ -310,25 +405,30 @@ internal fun SshKeyExportContent(
                 color = MaterialTheme.infinityDomainColors.warning,
             )
         }
-        if (form.needsNew(item)) {
-            val short = form.passphrase.isNotEmpty() && form.passphrase.length < 8
-            val mismatch = form.repeat.isNotEmpty() && form.repeat != form.passphrase
-            KeychainSheetField(
-                form.passphrase, { onChange(form.copy(passphrase = it)) },
-                stringResource(R.string.keychain_ssh_export_passphrase), "ssh_export_passphrase", secret = true,
-                supporting = stringResource(R.string.keychain_ssh_passphrase_rule).takeIf { !short },
-                error = stringResource(R.string.keychain_ssh_passphrase_rule).takeIf { short },
-                enabled = !busy,
-            )
-            KeychainSheetField(
-                form.repeat, { onChange(form.copy(repeat = it)) },
-                stringResource(R.string.keychain_ssh_repeat), "ssh_export_repeat", secret = true,
-                error = stringResource(R.string.keychain_ssh_passphrase_mismatch).takeIf { mismatch },
-                enabled = !busy,
-            )
+        AnimatedVisibility(
+            visible = form.needsNew(item),
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+                val short = form.passphrase.isNotEmpty() && form.passphrase.length < 8
+                val mismatch = form.repeat.isNotEmpty() && form.repeat != form.passphrase
+                KeychainSheetField(
+                    form.passphrase, { onChange(form.copy(passphrase = it)) },
+                    stringResource(R.string.keychain_ssh_export_passphrase), "ssh_export_passphrase", secret = true,
+                    supporting = stringResource(R.string.keychain_ssh_passphrase_rule).takeIf { !short },
+                    error = stringResource(R.string.keychain_ssh_passphrase_rule).takeIf { short },
+                    enabled = !busy,
+                )
+                KeychainSheetField(
+                    form.repeat, { onChange(form.copy(repeat = it)) },
+                    stringResource(R.string.keychain_ssh_repeat), "ssh_export_repeat", secret = true,
+                    error = stringResource(R.string.keychain_ssh_passphrase_mismatch).takeIf { mismatch },
+                    enabled = !busy,
+                )
+            }
         }
         KeychainSheetError(error)
-        if (busy) CircularProgressIndicator(Modifier.size(InfinitySpacing.XLarge))
         KeychainSheetButtons(
             confirmText = stringResource(R.string.keychain_ssh_export_button),
             confirmEnabled = form.canExport(item),
@@ -355,7 +455,10 @@ internal fun SshKeyPassphraseContent(
     onCancel: () -> Unit,
     onSave: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+    Column(
+        modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+    ) {
         KeychainSheetField(
             form.passphrase, { onChange(form.copy(passphrase = it)) },
             stringResource(R.string.keychain_ssh_new_passphrase), "ssh_pass_new", secret = true,
@@ -368,7 +471,6 @@ internal fun SshKeyPassphraseContent(
             enabled = !busy,
         )
         KeychainSheetError(error)
-        if (busy) CircularProgressIndicator(Modifier.size(InfinitySpacing.XLarge))
         KeychainSheetButtons(
             confirmText = stringResource(R.string.keychain_save),
             confirmEnabled = form.canSave,
@@ -391,7 +493,10 @@ internal fun SshKeyRenameContent(
     onCancel: () -> Unit,
     onSave: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+    Column(
+        modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+    ) {
         KeychainSheetField(name, onChange, stringResource(R.string.keychain_field_name), "ssh_rename_name", enabled = !busy)
         KeychainSheetError(error)
         KeychainSheetButtons(
@@ -445,76 +550,94 @@ internal fun SshDeployContent(
     onRun: () -> Unit,
     onFinish: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-        if (run != null) {
-            SshDeployProgress(run, onFinish)
-            return@Column
-        }
-        Text(
-            stringResource(R.string.keychain_ssh_deploy_target),
-            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = com.promenar.infinity.ui.theme.InfinityMonospace),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (candidates.isEmpty()) {
-            Text(
-                stringResource(R.string.keychain_ssh_deploy_no_hosts),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = InfinitySpacing.Large),
-            )
-        }
-        candidates.forEach { candidate ->
-            val id = candidate.host.id
-            val checked = id in form.selected
-            InfinitySettingsItem(
-                title = candidate.host.alias,
-                subtitle = when (candidate.kind) {
-                    SshDeployLoginKind.CURRENT_KEY -> candidate.currentKeyName?.let { stringResource(R.string.keychain_ssh_deploy_via_key, it) }
-                        ?: stringResource(R.string.keychain_ssh_deploy_via_current_key)
-                    SshDeployLoginKind.STORED_PASSWORD -> stringResource(R.string.keychain_ssh_deploy_via_saved)
-                    SshDeployLoginKind.INPUT_PASSWORD -> stringResource(R.string.keychain_ssh_deploy_via_input)
-                },
-                onClick = {
-                    onChange(form.copy(selected = if (checked) form.selected - id else form.selected + id))
-                },
-                leadingContent = { Checkbox(checked = checked, onCheckedChange = null) },
-                horizontalPadding = 0.dp,
-                modifier = Modifier.testTag("ssh_deploy_host_${candidate.host.alias}"),
-            )
-            if (checked && candidate.kind == SshDeployLoginKind.INPUT_PASSWORD) {
-                KeychainSheetField(
-                    form.passwords[id].orEmpty(),
-                    { onChange(form.copy(passwords = form.passwords + (id to it))) },
-                    stringResource(R.string.keychain_ssh_deploy_password, candidate.host.alias),
-                    "ssh_deploy_password_${candidate.host.alias}",
-                    secret = true,
+    val lastRun = rememberLastNonNull(run)
+    AnimatedContent(
+        targetState = run != null,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        label = "ssh_deploy_stage",
+    ) { running ->
+        if (running && lastRun != null) {
+            SshDeployProgress(lastRun, onFinish)
+        } else {
+            Column(
+                modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+            ) {
+                Text(
+                    stringResource(R.string.keychain_ssh_deploy_target),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontFamily = com.promenar.infinity.ui.theme.InfinityMonospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (candidates.isEmpty()) {
+                    Text(
+                        stringResource(R.string.keychain_ssh_deploy_no_hosts),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = InfinitySpacing.Large),
+                    )
+                }
+                candidates.forEach { candidate ->
+                    val id = candidate.host.id
+                    val checked = id in form.selected
+                    InfinitySettingsItem(
+                        title = candidate.host.alias,
+                        subtitle = when (candidate.kind) {
+                            SshDeployLoginKind.CURRENT_KEY -> candidate.currentKeyName?.let { stringResource(R.string.keychain_ssh_deploy_via_key, it) }
+                                ?: stringResource(R.string.keychain_ssh_deploy_via_current_key)
+                            SshDeployLoginKind.STORED_PASSWORD -> stringResource(R.string.keychain_ssh_deploy_via_saved)
+                            SshDeployLoginKind.INPUT_PASSWORD -> stringResource(R.string.keychain_ssh_deploy_via_input)
+                        },
+                        onClick = {
+                            onChange(form.copy(selected = if (checked) form.selected - id else form.selected + id))
+                        },
+                        leadingContent = { Checkbox(checked = checked, onCheckedChange = null) },
+                        horizontalPadding = 0.dp,
+                        modifier = Modifier.testTag("ssh_deploy_host_${candidate.host.alias}"),
+                    )
+                    AnimatedVisibility(
+                        visible = checked && candidate.kind == SshDeployLoginKind.INPUT_PASSWORD,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        KeychainSheetField(
+                            form.passwords[id].orEmpty(),
+                            { onChange(form.copy(passwords = form.passwords + (id to it))) },
+                            stringResource(R.string.keychain_ssh_deploy_password, candidate.host.alias),
+                            "ssh_deploy_password_${candidate.host.alias}",
+                            secret = true,
+                        )
+                    }
+                }
+                if (candidates.isNotEmpty()) {
+                    SettingsToggle(
+                        title = stringResource(R.string.keychain_ssh_deploy_switch),
+                        checked = form.switchToKey,
+                        onCheckedChange = { onChange(form.copy(switchToKey = it)) },
+                        modifier = Modifier.testTag("ssh_deploy_switch"),
+                    )
+                    AnimatedVisibility(
+                        visible = form.switchToKey,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        SettingsToggle(
+                            title = stringResource(R.string.keychain_ssh_deploy_drop),
+                            checked = form.dropPassword,
+                            onCheckedChange = { onChange(form.copy(dropPassword = it)) },
+                            modifier = Modifier.testTag("ssh_deploy_drop"),
+                        )
+                    }
+                }
+                KeychainSheetButtons(
+                    confirmText = pluralStringResource(R.plurals.keychain_ssh_deploy_run, form.selected.size, form.selected.size),
+                    confirmEnabled = form.canRun(candidates),
+                    busy = false,
+                    onCancel = onCancel,
+                    onConfirm = onRun,
+                    confirmTag = "ssh_deploy_run",
                 )
             }
         }
-        if (candidates.isNotEmpty()) {
-            SettingsToggle(
-                title = stringResource(R.string.keychain_ssh_deploy_switch),
-                checked = form.switchToKey,
-                onCheckedChange = { onChange(form.copy(switchToKey = it)) },
-                modifier = Modifier.testTag("ssh_deploy_switch"),
-            )
-            if (form.switchToKey) {
-                SettingsToggle(
-                    title = stringResource(R.string.keychain_ssh_deploy_drop),
-                    checked = form.dropPassword,
-                    onCheckedChange = { onChange(form.copy(dropPassword = it)) },
-                    modifier = Modifier.testTag("ssh_deploy_drop"),
-                )
-            }
-        }
-        KeychainSheetButtons(
-            confirmText = pluralStringResource(R.plurals.keychain_ssh_deploy_run, form.selected.size, form.selected.size),
-            confirmEnabled = form.canRun(candidates),
-            busy = false,
-            onCancel = onCancel,
-            onConfirm = onRun,
-            confirmTag = "ssh_deploy_run",
-        )
     }
 }
 

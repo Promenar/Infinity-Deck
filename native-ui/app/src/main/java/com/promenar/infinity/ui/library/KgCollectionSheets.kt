@@ -21,7 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,6 +50,8 @@ import com.promenar.infinity.data.rag.KgResolutionLink
 import com.promenar.infinity.data.rag.KgResolutionPair
 import com.promenar.infinity.data.rag.KgResolutionRun
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -400,13 +401,20 @@ private fun ArticleOrderSection(
     onMove: (docId: String, targetIndex: Int) -> Unit,
     onReset: () -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val hasManualOrder = articles.any { it.orderSource == "manual" }
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         SectionHeader(R.string.kgc_order_header, Modifier.weight(1f))
-        if (articles.any { it.orderSource == "manual" }) {
-            TextButton(onClick = onReset, enabled = !busy, modifier = Modifier.testTag("kg_order_reset")) {
-                Text(stringResource(R.string.kgc_order_reset), maxLines = 1)
-            }
-        }
+        InfinityPillButton(
+            text = stringResource(R.string.kgc_order_reset),
+            onClick = onReset,
+            tone = InfinityPillTone.NEUTRAL,
+            enabled = !busy && hasManualOrder,
+            compact = true,
+            modifier = Modifier.testTag("kg_order_reset"),
+        )
     }
     SheetNote(stringResource(if (articles.isEmpty()) R.string.kgc_order_empty else R.string.kgc_order_desc))
     articles.forEachIndexed { index, article ->
@@ -508,8 +516,20 @@ private fun EntityMergeSection(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { onDecide(pair, false) }, enabled = !busy) { Text(stringResource(R.string.kgc_merge_different), maxLines = 1) }
-            FilledTonalButton(onClick = { onDecide(pair, true) }, enabled = !busy) { Text(stringResource(R.string.kgc_merge_same), maxLines = 1) }
+            InfinityPillButton(
+                text = stringResource(R.string.kgc_merge_different),
+                onClick = { onDecide(pair, false) },
+                tone = InfinityPillTone.NEUTRAL,
+                enabled = !busy,
+                compact = true,
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.kgc_merge_same),
+                onClick = { onDecide(pair, true) },
+                tone = InfinityPillTone.PRIMARY,
+                enabled = !busy,
+                compact = true,
+            )
         }
     }
     if (data.links.isNotEmpty()) {
@@ -538,7 +558,13 @@ private fun EntityMergeSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = { onRevoke(link) }, enabled = !busy) { Text(stringResource(R.string.kgc_merge_revoke), maxLines = 1) }
+                InfinityPillButton(
+                    text = stringResource(R.string.kgc_merge_revoke),
+                    onClick = { onRevoke(link) },
+                    tone = InfinityPillTone.NEUTRAL,
+                    enabled = !busy,
+                    compact = true,
+                )
             }
         }
     }
@@ -587,7 +613,13 @@ private fun SheetActions(
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onCancel, enabled = !busy) { Text(stringResource(R.string.common_btn_cancel), maxLines = 1) }
+        InfinityPillButton(
+            text = stringResource(R.string.common_btn_cancel),
+            onClick = onCancel,
+            tone = InfinityPillTone.NEUTRAL,
+            enabled = !busy,
+            compact = true,
+        )
         FilledTonalButton(onClick = onConfirm, enabled = confirmEnabled, modifier = Modifier.testTag(confirmTag)) {
             if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
             Text(confirmText, maxLines = 1, modifier = Modifier.padding(start = if (busy) InfinitySpacing.Small else 0.dp))

@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -268,12 +270,17 @@ internal fun ProductionPlaceholderCard(item: ShotPlaceholder, now: Long, busy: B
             chevron = false,
         )
         Column(
-            Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Medium),
+            Modifier.fillMaxWidth().animateContentSize(com.promenar.infinity.ui.theme.InfinityMotion.contentSizeSpec())
+                .padding(start = InfinitySpacing.RowHorizontal, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Medium),
             verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
         ) {
             when (item) {
                 is ShotPlaceholder.Chain -> {
-                    if (item.chain.state != ChainState.PLANNED) ProductionProgressBar(item.chain.progress())
+                    AnimatedVisibility(
+                        visible = item.chain.state != ChainState.PLANNED,
+                        enter = com.promenar.infinity.ui.theme.InfinityMotion.expandIn,
+                        exit = com.promenar.infinity.ui.theme.InfinityMotion.shrinkOut,
+                    ) { ProductionProgressBar(item.chain.progress()) }
                     ChainSegmentStrip(item.chain)
                 }
                 is ShotPlaceholder.Run -> {

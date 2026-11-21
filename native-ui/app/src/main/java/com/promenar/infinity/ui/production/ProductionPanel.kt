@@ -9,6 +9,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.promenar.infinity.ui.settings.MediaSettingsPanelHost
 import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import java.net.URLDecoder
 import java.net.URLEncoder
 import androidx.compose.foundation.layout.Arrangement
@@ -422,8 +423,14 @@ fun ProductionPanelContent(
                         is ProductionPage.Character -> {
                             val asset = production.findAsset(currentPage.assetId)
                             Column(Modifier.fillMaxSize()) {
-                                if (globalNotice == null) {
-                                    error?.let { InfinityStatusStrip(InfinityStatusKind.Error, it, onDismiss = { error = null }, modifier = Modifier.padding(16.dp)) }
+                                val charErrVisible = globalNotice == null && error != null
+                                val heldCharErr = rememberLastNonNull(error, key = "char-err")
+                                AnimatedVisibility(
+                                    visible = charErrVisible && heldCharErr != null,
+                                    enter = InfinityMotion.expandIn,
+                                    exit = InfinityMotion.shrinkOut,
+                                ) {
+                                    heldCharErr?.let { InfinityStatusStrip(InfinityStatusKind.Error, it, onDismiss = { error = null }, modifier = Modifier.padding(16.dp)) }
                                 }
                                 if (asset != null && asset.kind != AssetKind.SOUND) {
                                     ProductionCharacterPage(
@@ -467,8 +474,14 @@ fun ProductionPanelContent(
                             ManifestBanner(snapshot.manifest, onResolve = { resolution ->
                                 onResolve(resolution).also { error = it }
                             })
-                            if (globalNotice == null) {
-                                error?.let {
+                            val rootErrVisible = globalNotice == null && error != null
+                            val heldRootErr = rememberLastNonNull(error, key = "root-err")
+                            AnimatedVisibility(
+                                visible = rootErrVisible && heldRootErr != null,
+                                enter = InfinityMotion.expandIn,
+                                exit = InfinityMotion.shrinkOut,
+                            ) {
+                                heldRootErr?.let {
                                     InfinityStatusStrip(
                                         kind = InfinityStatusKind.Error,
                                         message = it,
@@ -788,40 +801,50 @@ private fun ProductionHeader(
     }
 }
 
+private data class ManifestBannerData(val kind: InfinityStatusKind, val message: String, val canAdopt: Boolean)
+
 /** 清单与数据库不一致时的提示与处理入口；同步中与已同步不显示。 */
 @Composable
 private fun ManifestBanner(manifest: ManifestSync, onResolve: suspend (ManifestResolution) -> String?) {
-    val (kind, message, canAdopt) = when (manifest) {
-        ManifestSync.InSync, ManifestSync.Pending -> return
-        is ManifestSync.WriteFailed -> Triple(InfinityStatusKind.Error, stringResource(R.string.production_panel_manifest_write_failed, manifest.reason), false)
-        is ManifestSync.ExternalChange -> Triple(InfinityStatusKind.Warning, stringResource(R.string.production_panel_manifest_external), true)
-        is ManifestSync.Invalid -> Triple(InfinityStatusKind.Error, stringResource(R.string.production_panel_manifest_invalid, manifest.reason), false)
+    val active = when (manifest) {
+        ManifestSync.InSync, ManifestSync.Pending -> null
+        is ManifestSync.WriteFailed -> ManifestBannerData(InfinityStatusKind.Error, stringResource(R.string.production_panel_manifest_write_failed, manifest.reason), false)
+        is ManifestSync.ExternalChange -> ManifestBannerData(InfinityStatusKind.Warning, stringResource(R.string.production_panel_manifest_external), true)
+        is ManifestSync.Invalid -> ManifestBannerData(InfinityStatusKind.Error, stringResource(R.string.production_panel_manifest_invalid, manifest.reason), false)
     }
+    val held = rememberLastNonNull(active, key = "manifest-banner")
     var confirming by remember { mutableStateOf<ManifestResolution?>(null) }
     var resolving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall).testTag(ProductionUiTags.MANIFEST_BANNER),
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+    AnimatedVisibility(
+        visible = active != null,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
     ) {
-        InfinityStatusStrip(kind = kind, message = message, busy = resolving)
-        Row(horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-            if (canAdopt) {
+        val data = held ?: return@AnimatedVisibility
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall).testTag(ProductionUiTags.MANIFEST_BANNER),
+            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        ) {
+            InfinityStatusStrip(kind = data.kind, message = data.message, busy = resolving)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
+                if (data.canAdopt) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.production_panel_manifest_adopt),
+                        onClick = { confirming = ManifestResolution.ADOPT_FILE },
+                        enabled = !resolving,
+                        compact = true,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(ProductionUiTags.MANIFEST_ADOPT),
+                    )
+                }
                 InfinityPillButton(
-                    text = stringResource(R.string.production_panel_manifest_adopt),
-                    onClick = { confirming = ManifestResolution.ADOPT_FILE },
+                    text = stringResource(R.string.production_panel_manifest_overwrite),
+                    onClick = { confirming = ManifestResolution.OVERWRITE_FILE },
                     enabled = !resolving,
                     compact = true,
-                    modifier = Modifier.heightIn(min = 48.dp).testTag(ProductionUiTags.MANIFEST_ADOPT),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag(ProductionUiTags.MANIFEST_OVERWRITE),
                 )
             }
-            InfinityPillButton(
-                text = stringResource(R.string.production_panel_manifest_overwrite),
-                onClick = { confirming = ManifestResolution.OVERWRITE_FILE },
-                enabled = !resolving,
-                compact = true,
-                modifier = Modifier.heightIn(min = 48.dp).testTag(ProductionUiTags.MANIFEST_OVERWRITE),
-            )
         }
     }
     confirming?.let { resolution ->
@@ -845,13 +868,17 @@ private fun ManifestBanner(manifest: ManifestSync, onResolve: suspend (ManifestR
     }
 }
 
-/** 底部操作按钮组：一行放不下时整组竖排，按钮文字始终单行。 */
+/** 底部操作按钮组：单按钮占满整行；多按钮一行放不下时整组竖排，按钮文字始终单行。 */
 @Composable
 internal fun ProductionActionRow(
     actions: List<ProductionButton>,
     modifier: Modifier = Modifier,
 ) {
     if (actions.isEmpty()) return
+    if (actions.size == 1) {
+        ProductionPill(actions.single(), modifier.fillMaxWidth())
+        return
+    }
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.Medium)

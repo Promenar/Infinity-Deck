@@ -190,14 +190,6 @@ internal fun PrototypeBoardContent(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Small),
                     )
                 }
-                if (isHistory) {
-                    Text(
-                        text = stringResource(R.string.canvas_history_notice),
-                        modifier = Modifier.padding(InfinitySpacing.Small),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = InfinityTypography.bodySmall,
-                    )
-                }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             val stage: PrototypeBoardStage = when {

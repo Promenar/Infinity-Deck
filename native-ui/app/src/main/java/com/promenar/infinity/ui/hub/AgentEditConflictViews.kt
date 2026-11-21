@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.hub
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,8 +32,10 @@ import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.PromptEditorHandle
 import com.promenar.infinity.ui.common.diff.FileDiffView
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -48,7 +52,12 @@ internal fun AgentConflictBanner(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.infinityDomainColors.warningContainer,
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            Modifier
+                .animateContentSize(InfinityMotion.contentSizeSpec())
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium.forReading(),
@@ -113,73 +122,89 @@ internal fun AgentPromptConflictBanner(
     val scope = rememberCoroutineScope()
     var showDiff by remember(conflict) { mutableStateOf(false) }
     var busy by remember(conflict) { mutableStateOf(false) }
-    if (conflict == null) {
-        if (notice == AgentEditNotice.ADOPTED_REMOTE_PROMPT) {
-            AgentEditNoticeLine(notice, onNoticeShown, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    val lastConflict = rememberLastNonNull(conflict)
+    Column {
+        AnimatedVisibility(
+            visible = conflict == null && notice == AgentEditNotice.ADOPTED_REMOTE_PROMPT,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            AgentEditNoticeLine(AgentEditNotice.ADOPTED_REMOTE_PROMPT, onNoticeShown, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
-        return
-    }
-    AgentConflictBanner(
-        message = stringResource(R.string.agent_edit_conflict_prompt),
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("agent_prompt_conflict_banner"),
-        details = {
-            if (showDiff) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = stringResource(R.string.agent_edit_conflict_diff_caption),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.infinityDomainColors.onWarningContainer,
+        AnimatedVisibility(
+            visible = conflict != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            lastConflict?.let { activeConflict ->
+                AgentConflictBanner(
+                    message = stringResource(R.string.agent_edit_conflict_prompt),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("agent_prompt_conflict_banner"),
+                    details = {
+                        AnimatedVisibility(
+                            visible = showDiff,
+                            enter = InfinityMotion.expandIn,
+                            exit = InfinityMotion.shrinkOut,
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = stringResource(R.string.agent_edit_conflict_diff_caption),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.infinityDomainColors.onWarningContainer,
+                                )
+                                FileDiffView(
+                                    oldText = handle.text,
+                                    newText = activeConflict.remotePrompt,
+                                    maxViewportHeight = 220.dp,
+                                    modifier = Modifier.testTag("agent_prompt_conflict_diff"),
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    InfinityPillButton(
+                        stringResource(if (showDiff) R.string.agent_edit_conflict_hide_diff else R.string.agent_edit_conflict_view_diff),
+                        { showDiff = !showDiff },
+                        Modifier.testTag("agent_prompt_conflict_diff_toggle"),
                     )
-                    FileDiffView(
-                        oldText = handle.text,
-                        newText = conflict.remotePrompt,
-                        maxViewportHeight = 220.dp,
-                        modifier = Modifier.testTag("agent_prompt_conflict_diff"),
+                    InfinityPillButton(
+                        stringResource(R.string.agent_edit_conflict_adopt),
+                        {
+                            if (!busy) {
+                                busy = true
+                                scope.launch {
+                                    try {
+                                        onAdopt(handle.text)?.let(handle::replace)
+                                    } finally {
+                                        busy = false
+                                    }
+                                }
+                            }
+                        },
+                        Modifier.testTag("agent_prompt_conflict_adopt"),
+                        enabled = !busy,
+                    )
+                    InfinityPillButton(
+                        stringResource(R.string.agent_edit_conflict_keep),
+                        {
+                            if (!busy) {
+                                busy = true
+                                scope.launch {
+                                    try {
+                                        if (onKeep(handle.text).isSuccess) handle.close()
+                                    } finally {
+                                        busy = false
+                                    }
+                                }
+                            }
+                        },
+                        Modifier.testTag("agent_prompt_conflict_keep"),
+                        tone = InfinityPillTone.PRIMARY,
+                        enabled = !busy,
                     )
                 }
             }
-        },
-    ) {
-        InfinityPillButton(
-            stringResource(if (showDiff) R.string.agent_edit_conflict_hide_diff else R.string.agent_edit_conflict_view_diff),
-            { showDiff = !showDiff },
-            Modifier.testTag("agent_prompt_conflict_diff_toggle"),
-        )
-        InfinityPillButton(
-            stringResource(R.string.agent_edit_conflict_adopt),
-            {
-                if (!busy) {
-                    busy = true
-                    scope.launch {
-                        try {
-                            onAdopt(handle.text)?.let(handle::replace)
-                        } finally {
-                            busy = false
-                        }
-                    }
-                }
-            },
-            Modifier.testTag("agent_prompt_conflict_adopt"),
-            enabled = !busy,
-        )
-        InfinityPillButton(
-            stringResource(R.string.agent_edit_conflict_keep),
-            {
-                if (!busy) {
-                    busy = true
-                    scope.launch {
-                        try {
-                            if (onKeep(handle.text).isSuccess) handle.close()
-                        } finally {
-                            busy = false
-                        }
-                    }
-                }
-            },
-            Modifier.testTag("agent_prompt_conflict_keep"),
-            tone = InfinityPillTone.PRIMARY,
-            enabled = !busy,
-        )
+        }
     }
 }
 

@@ -1,6 +1,8 @@
 package com.promenar.infinity.ui.chat
 
 import com.promenar.infinity.ui.common.InfinityTagScrollRow
+import androidx.compose.animation.AnimatedContent
+import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -175,17 +177,23 @@ internal fun RowScope.ToolStepTitle(title: String, toolName: String?) {
 @Composable
 internal fun ToolArgumentsPreview(rows: List<ToolFieldRow>) {
     var expanded by rememberSaveable(rows) { mutableStateOf(false) }
-    if (expanded) {
-        ToolFieldList(rows, arguments = true)
-    } else {
-        val preview = rows.filterNot { it.isHeader }.joinToString("　") { "${it.key}：${it.value.replace('\n', ' ')}" }
-        Text(
-            preview,
-            style = InfinityTypography.bodySmall.copy(lineHeight = 18.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().testTag(UiTags.CHAT_TOOL_ARGUMENTS_PREVIEW),
-        )
+    AnimatedContent(
+        targetState = expanded,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        label = "tool_arguments_preview",
+    ) { isExpanded ->
+        if (isExpanded) {
+            ToolFieldList(rows, arguments = true)
+        } else {
+            val preview = rows.filterNot { it.isHeader }.joinToString("　") { "${it.key}：${it.value.replace('\n', ' ')}" }
+            Text(
+                preview,
+                style = InfinityTypography.bodySmall.copy(lineHeight = 18.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().testTag(UiTags.CHAT_TOOL_ARGUMENTS_PREVIEW),
+            )
+        }
     }
     InfinityDisclosureRow(
         text = stringResource(if (expanded) R.string.tool_step_arguments_collapse else R.string.tool_step_arguments_expand),

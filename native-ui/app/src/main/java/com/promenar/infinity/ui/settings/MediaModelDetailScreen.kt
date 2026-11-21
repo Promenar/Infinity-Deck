@@ -1,5 +1,8 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -17,7 +20,9 @@ import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 
 @Composable
 internal fun MediaModelDetailScreenContent(
@@ -48,22 +53,48 @@ internal fun MediaModelDetailScreenContent(
                     contentPadding = PaddingValues(horizontal = 12.dp),
                 )
             }
-            if (caps.characterReferenceMode == CharacterReferenceMode.SEPARATE) {
+            AnimatedVisibility(
+                visible = caps.characterReferenceMode == CharacterReferenceMode.SEPARATE,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
                 InfinitySettingsSection(title = stringResource(R.string.media_settings_references)) {
                     ReferenceOrderList(caps.referenceOrder, !state.busy, onReferenceUp)
                 }
             }
         }
         InfinitySettingsSection(title = stringResource(R.string.media_settings_billing)) {
-            if (editing) {
-                MediaTariffEditor(draft, !state.busy, { draft = it })
-                draft.validationError()?.let { MediaNotice(formErrorLabel(it), error = true) }
-                MediaAction(stringResource(R.string.media_settings_save),
-                    onClick = { onSaveTariff(draft) { editing = false } }, enabled = !state.busy && draft.validationError() == null)
-                MediaAction(stringResource(R.string.media_settings_cancel), { editing = false }, !state.busy)
-            } else {
-                MediaTariffValues(settings.tariff)
-                MediaAction(stringResource(R.string.media_settings_edit), { draft = MediaTariffDraft.from(settings.tariff); editing = true }, !state.busy)
+            AnimatedContent(
+                targetState = editing,
+                transitionSpec = { InfinityMotion.fadeThrough() },
+                label = "media_model_tariff_mode",
+            ) { isEditing ->
+                Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec())) {
+                    if (isEditing) {
+                        val validationError = draft.validationError()
+                        val lastValidationError = rememberLastNonNull(validationError, model.id)
+                        MediaTariffEditor(draft, !state.busy, { draft = it })
+                        AnimatedVisibility(
+                            visible = validationError != null,
+                            enter = InfinityMotion.expandIn,
+                            exit = InfinityMotion.shrinkOut,
+                        ) {
+                            lastValidationError?.let { activeErr ->
+                                MediaNotice(formErrorLabel(activeErr), error = true)
+                            }
+                        }
+                        MediaAction(
+                            stringResource(R.string.media_settings_save),
+                            onClick = { onSaveTariff(draft) { editing = false } },
+                            enabled = !state.busy && validationError == null,
+                            primary = true,
+                        )
+                        MediaAction(stringResource(R.string.media_settings_cancel), { editing = false }, !state.busy)
+                    } else {
+                        MediaTariffValues(settings.tariff)
+                        MediaAction(stringResource(R.string.media_settings_edit), { draft = MediaTariffDraft.from(settings.tariff); editing = true }, !state.busy)
+                    }
+                }
             }
         }
     }

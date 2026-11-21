@@ -2,7 +2,11 @@ package com.promenar.infinity.ui.settings
 
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityModalSheet
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
@@ -111,7 +115,7 @@ internal fun BackupSettingsScreen(
 
     LaunchedEffect(uiState.operation) {
         if (uiState.operation != BackupOperation.Idle) {
-            listState.scrollToItem(1)
+            listState.animateScrollToItem(0)
         }
     }
     // 进入页面后首次空闲时在后台估算各层大小；估算失败不自动重试，避免反复扫描。
@@ -298,19 +302,30 @@ internal fun BackupSettingsScreen(
                     )
                 }
 
-                backupOperationText(uiState.operation)?.let { status ->
-                    Text(
-                        text = status,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (uiState.operation is BackupOperation.Blocked ||
-                            uiState.operation is BackupOperation.Error
-                        ) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                val webDavOpText = backupOperationText(uiState.operation)
+                val lastWebDavOpText = rememberLastNonNull(webDavOpText)
+                AnimatedVisibility(
+                    visible = webDavOpText != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    lastWebDavOpText?.let { status ->
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (uiState.operation is BackupOperation.Blocked ||
+                                uiState.operation is BackupOperation.Error
+                            ) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 val blockedCode = (uiState.operation as? BackupOperation.Blocked)?.code
-                if (blockedCode == BackupErrorCode.CONNECTION_FAILED ||
-                    blockedCode == BackupErrorCode.CONFIGURATION_MISSING
+                AnimatedVisibility(
+                    visible = blockedCode == BackupErrorCode.CONNECTION_FAILED ||
+                        blockedCode == BackupErrorCode.CONFIGURATION_MISSING,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
                 ) {
                     InfinitySettingsItem(
                         icon = Icons.Rounded.DeleteForever,
@@ -424,22 +439,34 @@ internal fun BackupSettingsScreenContent(
     var contentExpanded by remember { mutableStateOf(true) }
     InfinitySettingsPageLayout(title = stringResource(R.string.backup_title), onBack = onNavigateBack) { paddingValues ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth(), contentPadding = paddingValues) {
-            item {
-                backupOperationText(uiState.operation)?.let { status ->
-                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                        Text(
-                            text = status,
-                            modifier = Modifier.testTag(UiTags.BACKUP_OPERATION_STATUS),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (uiState.operation is BackupOperation.Error || uiState.operation is BackupOperation.Blocked)
-                                MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (uiState.operation.isCancellable) {
-                            InfinityPillButton(
-                                text = stringResource(R.string.common_btn_cancel),
-                                onClick = actions.onCancelOperation,
-                                modifier = Modifier.padding(top = 8.dp),
+            item(key = "operation_status") {
+                val operationText = backupOperationText(uiState.operation)
+                val lastOperationText = rememberLastNonNull(operationText)
+                AnimatedVisibility(
+                    visible = operationText != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    lastOperationText?.let { status ->
+                        Column(Modifier.fillMaxWidth().animateContentSize(InfinityMotion.contentSizeSpec()).padding(16.dp)) {
+                            Text(
+                                text = status,
+                                modifier = Modifier.testTag(UiTags.BACKUP_OPERATION_STATUS),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (uiState.operation is BackupOperation.Error || uiState.operation is BackupOperation.Blocked)
+                                    MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            AnimatedVisibility(
+                                visible = uiState.operation.isCancellable,
+                                enter = InfinityMotion.expandIn,
+                                exit = InfinityMotion.shrinkOut,
+                            ) {
+                                InfinityPillButton(
+                                    text = stringResource(R.string.common_btn_cancel),
+                                    onClick = actions.onCancelOperation,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -458,8 +485,12 @@ internal fun BackupSettingsScreenContent(
                             Icon(if (contentExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown, contentDescription = null)
                         },
                     )
-                    AnimatedVisibility(visible = contentExpanded) {
-                        Column {
+                    AnimatedVisibility(
+                        visible = contentExpanded,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec())) {
                             BackupLayerToggles(
                                 state = uiState,
                                 onLayerChange = actions.onLayerChange,
@@ -528,29 +559,43 @@ internal fun BackupSettingsScreenContent(
                         onClick = actions.onRefreshRemote,
                         enabled = webDavReady,
                     )
-                    AnimatedVisibility(visible = uiState.webdavEnabled) {
-                        Column {
-                            if (uiState.operation is BackupOperation.ListingRemote) {
-                                Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    AnimatedVisibility(
+                        visible = uiState.webdavEnabled,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        val remotePhase = when {
+                            uiState.operation is BackupOperation.ListingRemote -> 0
+                            uiState.remoteBackups.isEmpty() -> 1
+                            else -> 2
+                        }
+                        AnimatedContent(
+                            targetState = remotePhase,
+                            transitionSpec = { InfinityMotion.fadeThrough() },
+                            label = "backup_webdav_remotes",
+                        ) { phase ->
+                            Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec())) {
+                                when (phase) {
+                                    0 -> Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                    }
+                                    1 -> InfinitySettingsItem(
+                                        icon = Icons.Rounded.CloudOff,
+                                        title = stringResource(R.string.backup_remote_empty),
+                                        onClick = actions.onRefreshRemote,
+                                        enabled = uiState.canExecute && uiState.webDavReadiness == WebDavReadiness.Ready,
+                                    )
+                                    else -> uiState.remoteBackups.forEach { remote ->
+                                        val selected = uiState.selectedRemote == remote
+                                        InfinitySettingsItem(
+                                            icon = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.CloudSync,
+                                            title = remote.fileName,
+                                            onClick = { actions.onSelectRemote(remote) },
+                                            enabled = uiState.canExecute,
+                                            modifier = Modifier.semantics { this.selected = selected },
+                                        )
+                                    }
                                 }
-                            } else if (uiState.remoteBackups.isEmpty()) {
-                                InfinitySettingsItem(
-                                    icon = Icons.Rounded.CloudOff,
-                                    title = stringResource(R.string.backup_remote_empty),
-                                    onClick = actions.onRefreshRemote,
-                                    enabled = uiState.canExecute && uiState.webDavReadiness == WebDavReadiness.Ready,
-                                )
-                            }
-                            uiState.remoteBackups.forEach { remote ->
-                                val selected = uiState.selectedRemote == remote
-                                InfinitySettingsItem(
-                                    icon = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.CloudSync,
-                                    title = remote.fileName,
-                                    onClick = { actions.onSelectRemote(remote) },
-                                    enabled = uiState.canExecute,
-                                    modifier = Modifier.semantics { this.selected = selected },
-                                )
                             }
                         }
                     }

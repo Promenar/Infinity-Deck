@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -7,19 +9,21 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.theme.InfinityMotion
 
 /**
  * 展开/收起折叠行：次要色文字后跟方向箭头，整行可点，触控高度 48dp。
@@ -33,6 +37,11 @@ fun InfinityDisclosureRow(
     modifier: Modifier = Modifier,
 ) {
     val color = MaterialTheme.colorScheme.onSurfaceVariant
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "disclosure_chevron",
+    )
     Row(
         modifier = modifier
             .heightIn(min = 48.dp)
@@ -49,10 +58,10 @@ fun InfinityDisclosureRow(
             modifier = Modifier.weight(1f, fill = false),
         )
         Icon(
-            if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+            Icons.Rounded.KeyboardArrowDown,
             contentDescription = null,
             tint = color,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(20.dp).rotate(rotation),
         )
     }
 }

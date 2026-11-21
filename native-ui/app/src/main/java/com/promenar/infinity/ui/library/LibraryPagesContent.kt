@@ -13,6 +13,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import com.promenar.infinity.ui.common.bettboxListGroupItem
 import com.promenar.infinity.ui.common.ProvideGroupedPress
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.animation.AnimatedContent
@@ -713,14 +715,23 @@ private fun LibraryDocumentPage(
     var focus by rememberSaveable(documentId, located?.hitCount) { mutableIntStateOf(0) }
     val bodyScroll = rememberScrollState()
     var viewportTop by remember { mutableFloatStateOf(0f) }
+    val locateData = if (located != null && request != null) located to request else null
+    val locateDataHolder = remember(documentId) { LatestValue<Pair<LocatedBody, DocumentLocateRequest>>() }
+    if (locateData != null) locateDataHolder.value = locateData
     val locateBar: @Composable () -> Unit = {
-        if (located != null && request != null) {
-            DocumentLocateBar(
-                hitCount = located.hitCount,
-                focus = focus,
-                cited = !request.fromAsk,
-                onMove = { delta -> focus = (focus + delta).mod(located.hitCount) },
-            )
+        AnimatedVisibility(
+            visible = locateData != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            locateDataHolder.value?.let { (loc, req) ->
+                DocumentLocateBar(
+                    hitCount = loc.hitCount,
+                    focus = focus.coerceIn(0, (loc.hitCount - 1).coerceAtLeast(0)),
+                    cited = !req.fromAsk,
+                    onMove = { delta -> focus = (focus + delta).mod(loc.hitCount) },
+                )
+            }
         }
     }
     val bodyModifier = Modifier.onGloballyPositioned { viewportTop = it.positionInRoot().y }.verticalScroll(bodyScroll)
@@ -801,7 +812,11 @@ private fun LibraryDocumentPage(
             } else {
                 Column(Modifier.fillMaxSize()) {
                     locateBar()
-                    AnimatedVisibility(visible = attention != null) {
+                    AnimatedVisibility(
+                        visible = attention != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
                         val shown = attention ?: heldAttention.value
                         if (info != null && shown != null) {
                             DocumentAttentionBar(
@@ -1052,23 +1067,35 @@ private fun DocumentGraphRows(info: DocumentInsight, pending: PendingDocument?, 
             R.string.library_action_retry_graph to { host.viewModel.retry(info.documentId) }
         // 换了模型或提示词后可重新抽取，与批量抽取走同一个用量确认；旧图谱在新结果提交前保留。
         is DocumentGraphState.Complete -> R.string.kgc_action_reextract to { reextract = host.collections.editable }
-        is DocumentGraphState.Extracting -> null
+        is DocumentGraphState.Extracting -> R.string.library_graph_state_extracting to {}
     }
     InfinityPropertyRow(
         label = stringResource(R.string.library_graph_row),
         value = text,
         trailing = if (action == null) null else {
             {
-                FilledTonalButton(onClick = action.second, enabled = enabled, modifier = Modifier.testTag("library_doc_graph_action")) {
+                FilledTonalButton(
+                    onClick = action.second,
+                    enabled = enabled && graph !is DocumentGraphState.Extracting,
+                    modifier = Modifier.testTag("library_doc_graph_action"),
+                ) {
                     Text(stringResource(action.first), maxLines = 1)
                 }
             }
         },
     )
     // 尚未抽取时由上一行说明状态，不再重复一行。
-    if (info.entities.isNotEmpty()) {
-        InfinityPropertyValueAligned(Modifier.padding(bottom = InfinitySpacing.Small)) {
-            DocumentEntityChips(info.entities)
+    val heldEntities = remember(info.documentId) { LatestValue<List<String>>() }
+    if (info.entities.isNotEmpty()) heldEntities.value = info.entities
+    AnimatedVisibility(
+        visible = info.entities.isNotEmpty(),
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        heldEntities.value?.let { entities ->
+            InfinityPropertyValueAligned(Modifier.padding(bottom = InfinitySpacing.Small)) {
+                DocumentEntityChips(entities)
+            }
         }
     }
     collection?.let { current ->
@@ -1154,12 +1181,14 @@ private fun DocumentAttentionBar(attention: DocumentAttention, enabled: Boolean,
             horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
         ) {
             Text(stringResource(documentAttentionText(attention)), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(
+            InfinityPillButton(
+                text = stringResource(documentAttentionAction(attention)),
                 onClick = onAction,
                 enabled = enabled,
-                colors = ButtonDefaults.textButtonColors(contentColor = content),
+                tone = if (failed) InfinityPillTone.DESTRUCTIVE else InfinityPillTone.NEUTRAL,
+                compact = true,
                 modifier = Modifier.testTag("library_doc_attention_action"),
-            ) { Text(stringResource(documentAttentionAction(attention)), maxLines = 1) }
+            )
         }
     }
 }

@@ -1,6 +1,15 @@
 package com.promenar.infinity.ui.chat
 
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -80,8 +89,8 @@ internal fun ToolLiveOutputPanel(
             .testTag("CHAT_TOOL_LIVE_OUTPUT"),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        // 有停止按钮时行高由 48dp 触控区决定，标题与按钮同行居中；没有按钮时保持紧凑。
-        Row(modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+        // 固定 48dp 最小行高，避免无停止/转入后台切换时顶栏在 36dp 与 48dp 间跳高。
+        Row(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = stringResource(R.string.chat_tool_live_output_title),
                 style = InfinityTypography.labelSmall,
@@ -90,31 +99,43 @@ internal fun ToolLiveOutputPanel(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (onMoveToBackground != null && !snapshot.stopRequested) {
-                com.promenar.infinity.ui.common.InfinityPillButton(
-                    text = stringResource(R.string.exec_steer_move_to_background),
-                    onClick = onMoveToBackground,
-                    compact = true,
-                    modifier = Modifier.testTag(com.promenar.infinity.ui.testing.UiTags.CHAT_TOOL_MOVE_TO_BACKGROUND),
-                )
+            val heldMoveToBg = rememberLastNonNull(onMoveToBackground?.takeIf { !snapshot.stopRequested }, key = "live-output-move-bg")
+            AnimatedVisibility(
+                visible = onMoveToBackground != null && !snapshot.stopRequested && heldMoveToBg != null,
+                enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+            ) {
+                heldMoveToBg?.let { move ->
+                    com.promenar.infinity.ui.common.InfinityPillButton(
+                        text = stringResource(R.string.exec_steer_move_to_background),
+                        onClick = move,
+                        compact = true,
+                        modifier = Modifier.testTag(com.promenar.infinity.ui.testing.UiTags.CHAT_TOOL_MOVE_TO_BACKGROUND),
+                    )
+                }
             }
             if (showStop && snapshot.stoppable) {
-                // 已请求停止时以文字说明进度，代替不可再点的图标按钮。
-                if (snapshot.stopRequested) {
-                    Text(
-                        text = stringResource(R.string.chat_tool_live_stopping),
-                        style = InfinityTypography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        modifier = Modifier.heightIn(min = 48.dp).wrapContentHeight().padding(horizontal = 8.dp),
-                    )
-                } else {
-                    IconButton(onClick = onStop, modifier = Modifier.testTag("CHAT_TOOL_LIVE_STOP")) {
-                        Icon(
-                            Icons.Rounded.Stop,
-                            contentDescription = stringResource(R.string.chat_tool_live_stop),
-                            tint = MaterialTheme.colorScheme.error,
+                AnimatedContent(
+                    targetState = snapshot.stopRequested,
+                    transitionSpec = { InfinityMotion.fadeThrough() },
+                    label = "tool_live_stop_state",
+                ) { stopRequestedNow ->
+                    if (stopRequestedNow) {
+                        Text(
+                            text = stringResource(R.string.chat_tool_live_stopping),
+                            style = InfinityTypography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            modifier = Modifier.heightIn(min = 48.dp).wrapContentHeight().padding(horizontal = 8.dp),
                         )
+                    } else {
+                        IconButton(onClick = onStop, modifier = Modifier.testTag("CHAT_TOOL_LIVE_STOP")) {
+                            Icon(
+                                Icons.Rounded.Stop,
+                                contentDescription = stringResource(R.string.chat_tool_live_stop),
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
             }

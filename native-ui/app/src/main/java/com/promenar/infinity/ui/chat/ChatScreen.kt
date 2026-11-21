@@ -27,6 +27,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -1038,6 +1039,7 @@ fun ChatScreenContent(
                         canPin = inspectorCanPin,
                         onTogglePin = { inspectorPinned = !inspectorPinned },
                     ) else null,
+                    inspectorPinReserved = inspectorMode,
                     runMode = state.runMode,
                     onRunMode = actions.onOpenRunMode,
                     workspace = state.workspace,
@@ -2526,9 +2528,11 @@ internal fun ContextCompactionFeedback(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxWidth().testTag("context_compaction_feedback").semantics {
-            liveRegion = LiveRegionMode.Polite
-        },
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec())
+            .testTag("context_compaction_feedback")
+            .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
         if (state.isCompressing || state.result != null) {
             SummaryCard(
@@ -2536,33 +2540,36 @@ internal fun ContextCompactionFeedback(
                 progress = state.progress,
                 detail = state.detail,
                 result = state.result,
+                onDismiss = onDismiss,
             )
         } else if (state.detail.isNotBlank()) {
             Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
             ) {
-                Text(
-                    text = state.detail,
-                    style = InfinityTypography.bodyMedium,
-                    color = if (state.progress < 1f) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.Large),
-                )
-            }
-        }
-        if (!state.isCompressing) {
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .testTag("context_compaction_dismiss"),
-            ) {
-                Icon(
-                    Icons.Rounded.Close,
-                    contentDescription = stringResource(R.string.common_dismiss),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Large, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = state.detail,
+                        style = InfinityTypography.bodyMedium,
+                        color = if (state.progress < 1f) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).testTag("context_compaction_dismiss"),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = stringResource(R.string.common_dismiss),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
@@ -2592,6 +2599,8 @@ internal fun ChatTopBar(
     onWorkspaceStatus: () -> Unit = {},
     /** 宽窗口检视器打开时的图钉；功能面板在检视器页签里。 */
     inspector: ChatTopBarInspector? = null,
+    /** 宽窗口下保留图钉 48dp 固定槽，防止收起/展开检视器时标题与状态行横跳。 */
+    inspectorPinReserved: Boolean = false,
     /** 分支会话：标题前显示分支标记；主会话仍在时点按回到主会话。 */
     branchOpenParent: (() -> Unit)? = null,
     isBranch: Boolean = false,
@@ -2760,21 +2769,37 @@ internal fun ChatTopBar(
             LocalChatNavigationIcon.current?.invoke() ?: InfinityBackButton(onClick = onBack)
         },
         actions = {
-            // 宽窗口的功能面板都是检视器侧栏的页签，侧栏由右缘边缘条开合，顶栏只在侧栏打开时放图钉；
-            // 窄窗口顶栏是触摸锁占位、功能面板入口与选项菜单。
-            if (inspector != null) {
-                val pinnedNow = inspector.pinned && inspector.canPin
-                ChatTopBarAction(
-                    selected = pinnedNow,
-                    enabled = inspector.canPin,
-                    onClick = { haptics.toggle(!inspector.pinned); inspector.onTogglePin() },
-                    modifier = Modifier.testTag(ChatInspectorTags.PIN),
+            // 宽窗口保留 48dp 图钉固定槽位防标题横跳；收起检视器时仅透明禁用占位。
+            if (inspector != null || inspectorPinReserved) {
+                val activeInspector = inspector
+                val pinVisible = activeInspector != null
+                val pinAlpha by animateFloatAsState(
+                    targetValue = if (pinVisible) 1f else 0f,
+                    animationSpec = tween(InfinityMotion.DurationShort),
+                    label = "inspector_pin_alpha",
+                )
+                Box(
+                    Modifier
+                        .size(InfinitySpacing.MinimumTouchTarget)
+                        .graphicsLayer { alpha = pinAlpha }
+                        .then(if (pinVisible) Modifier else Modifier.clearAndSetSemantics {}),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        if (pinnedNow) Icons.Rounded.PushPin else Icons.Outlined.PushPin,
-                        stringResource(if (inspector.pinned) R.string.chat_inspector_unpin else R.string.chat_inspector_pin),
-                        modifier = Modifier.size(20.dp),
-                    )
+                    if (activeInspector != null) {
+                        val pinnedNow = activeInspector.pinned && activeInspector.canPin
+                        ChatTopBarAction(
+                            selected = pinnedNow,
+                            enabled = activeInspector.canPin,
+                            onClick = { haptics.toggle(!activeInspector.pinned); activeInspector.onTogglePin() },
+                            modifier = Modifier.testTag(ChatInspectorTags.PIN),
+                        ) {
+                            Icon(
+                                if (pinnedNow) Icons.Rounded.PushPin else Icons.Outlined.PushPin,
+                                stringResource(if (activeInspector.pinned) R.string.chat_inspector_unpin else R.string.chat_inspector_pin),
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
                 }
             }
             if (touchLock != null) {

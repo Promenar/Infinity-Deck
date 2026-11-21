@@ -235,11 +235,21 @@ fun AgentHubScreen(
             actions = actions,
             snackbarHostState = snackbarHostState,
             startupBanner = {
-                if (startupIssues.isNotEmpty()) {
-                    com.promenar.infinity.ui.startup.StartupIssuesBanner(startupIssues.size, onOpen = { showStartupIssues = true })
+                val shownIssueCount = com.promenar.infinity.ui.theme.rememberLastPositive(startupIssues.size)
+                val shownLinuxAffected = com.promenar.infinity.ui.theme.rememberLastPositive(linuxAffected)
+                AnimatedVisibility(
+                    visible = startupIssues.isNotEmpty(),
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    com.promenar.infinity.ui.startup.StartupIssuesBanner(shownIssueCount, onOpen = { showStartupIssues = true })
                 }
-                if (linuxAffected > 0) {
-                    com.promenar.infinity.ui.startup.LinuxUnavailableBanner(linuxAffected, onOpen = onOpenLinuxEnvironment)
+                AnimatedVisibility(
+                    visible = linuxAffected > 0,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    com.promenar.infinity.ui.startup.LinuxUnavailableBanner(shownLinuxAffected, onOpen = onOpenLinuxEnvironment)
                 }
             },
         )
@@ -685,7 +695,7 @@ internal fun AgentHubScreenContent(
     var expandedAgentId by rememberSaveable { mutableStateOf(initialExpandedAgentId) }
     val haptics = LocalInfinityHaptics.current
     LaunchedEffect(sessionGroupsShown) {
-        if (listState.firstVisibleItemIndex <= 1) listState.scrollToItem(0)
+        if (listState.firstVisibleItemIndex <= 1) listState.animateScrollToItem(0)
     }
     Scaffold(
         modifier = Modifier.testTag(UiTags.HUB_ROOT),
@@ -693,7 +703,7 @@ internal fun AgentHubScreenContent(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            Column {
+            Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec())) {
                 InfinityTabHeader(
                     title = stringResource(R.string.nav_tab_chat),
                     searchActive = state.searchActive,

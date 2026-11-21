@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.*
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.keepCjkTailTogether
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -636,13 +638,21 @@ fun SummaryCard(
     progress: Float,
     detail: String,
     result: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDismiss: (() -> Unit)? = null,
 ) {
     var isExpanded by remember { mutableStateOf(false) }
+    val heldResult = rememberLastNonNull(result, key = "summary-result")
+    val dismissAlpha by animateFloatAsState(
+        targetValue = if (!isCompressing && onDismiss != null) 1f else 0f,
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "summary_dismiss_alpha",
+    )
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec())
             .padding(vertical = InfinitySpacing.XSmall),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -654,46 +664,48 @@ fun SummaryCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (isCompressing) {
-                        val infiniteTransition = rememberInfiniteTransition(label = "summary_pulse")
-                        val alpha by infiniteTransition.animateFloat(
-                            initialValue = 0.4f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(800),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "summary_alpha"
-                        )
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .alpha(alpha)
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    } else {
-                        Icon(
-                            Icons.Rounded.CheckCircle,
-                            null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
+                Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                    AnimatedContent(
+                        targetState = isCompressing,
+                        transitionSpec = { InfinityMotion.fadeThrough() },
+                        label = "summary_status_icon",
+                    ) { compressingNow ->
+                        if (compressingNow) {
+                            val infiniteTransition = rememberInfiniteTransition(label = "summary_pulse")
+                            val pulseAlpha by infiniteTransition.animateFloat(
+                                initialValue = 0.4f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(800),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "summary_alpha"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .alpha(pulseAlpha)
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                        } else {
+                            Icon(
+                                Icons.Rounded.CheckCircle,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
-                    Text(
-                        text = stringResource(R.string.chat_summary_card_title),
-                        style = InfinityTypography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
                 }
-
+                Text(
+                    text = stringResource(R.string.chat_summary_card_title),
+                    style = InfinityTypography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
                 Surface(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(4.dp)
@@ -705,95 +717,134 @@ fun SummaryCard(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
-            }
-
-            if (isCompressing) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = detail,
-                        style = InfinityTypography.labelSmall.copy(fontSize = 11.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = "${(progress * 100).toInt()}%",
-                        style = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                ) {
-                    val animatedProgress by animateFloatAsState(
-                        targetValue = progress,
-                        animationSpec = tween(500),
-                        label = "summary_progress"
-                    )
+                Spacer(Modifier.weight(1f))
+                if (onDismiss != null) {
+                    val canDismiss = !isCompressing
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(animatedProgress)
-                            .fillMaxHeight()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)
-                                )
+                            .size(36.dp)
+                            .alpha(dismissAlpha)
+                            .then(if (canDismiss) Modifier else Modifier.clearAndSetSemantics {}),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            enabled = canDismiss,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("context_compaction_dismiss"),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = stringResource(R.string.common_dismiss),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                    )
+                        }
+                    }
                 }
             }
 
-            if (result != null) {
-                HorizontalDivider(
-                    thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { isExpanded = !isExpanded }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = if (isExpanded) stringResource(R.string.chat_summary_card_collapse) else stringResource(R.string.chat_summary_card_expand),
-                        style = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Icon(
-                        if (isExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                        null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = isExpanded,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape(12.dp)
+            AnimatedVisibility(
+                visible = isCompressing,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = result,
-                            style = InfinityTypography.bodyMedium.copy(fontSize = 15.sp).forReading(),
+                            text = detail,
+                            style = InfinityTypography.labelSmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(10.dp)
+                            modifier = Modifier.weight(1f)
                         )
+                        Text(
+                            text = "${(progress * 100).toInt()}%",
+                            style = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    ) {
+                        val animatedProgress by animateFloatAsState(
+                            targetValue = progress,
+                            animationSpec = tween(500),
+                            label = "summary_progress"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(animatedProgress)
+                                .fillMaxHeight()
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)
+                                    )
+                                )
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = result != null && heldResult != null,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                val displayResult = heldResult ?: return@AnimatedVisibility
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { isExpanded = !isExpanded }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (isExpanded) stringResource(R.string.chat_summary_card_collapse) else stringResource(R.string.chat_summary_card_expand),
+                            style = InfinityTypography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        Icon(
+                            if (isExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                            null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = isExpanded,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = displayResult,
+                                style = InfinityTypography.bodyMedium.copy(fontSize = 15.sp).forReading(),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
                     }
                 }
             }

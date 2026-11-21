@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.hub
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,8 +41,10 @@ import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.settings.SettingsViewModel
 import com.promenar.infinity.domain.avatar.AgentAvatarCodec
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -283,69 +287,97 @@ fun AgentEditScreen(
         },
     )
 
-    InfinitySettingsPageLayout(
-        title = stringResource(R.string.agent_edit_title),
-        onBack = onNavigateBack,
-    ) { contentPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding,
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            saveError?.let { error ->
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
-                            .padding(12.dp)
+    val snackbarHostState = remember { SnackbarHostState() }
+    var snackbarIsError by remember { mutableStateOf(false) }
+    val noticeText = when (notice) {
+        AgentEditNotice.ADOPTED_REMOTE_PROMPT -> stringResource(R.string.agent_edit_notice_adopted_prompt)
+        AgentEditNotice.KEPT_MY_PROMPT -> stringResource(R.string.agent_edit_notice_kept_prompt)
+        AgentEditNotice.ADOPTED_REMOTE -> stringResource(R.string.agent_edit_notice_adopted)
+        AgentEditNotice.KEPT_MINE -> stringResource(R.string.agent_edit_notice_kept)
+        AgentEditNotice.RESTORED -> stringResource(R.string.agent_edit_notice_restored)
+        null -> null
+    }
+    LaunchedEffect(notice, showSystemPromptEditor, noticeText) {
+        if (!showSystemPromptEditor && notice != null && noticeText != null) {
+            snackbarIsError = false
+            viewModel.consumeNotice()
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(noticeText)
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        InfinitySettingsPageLayout(
+            title = stringResource(R.string.agent_edit_title),
+            onBack = onNavigateBack,
+        ) { contentPadding ->
+            val lastSaveError = rememberLastNonNull(saveError)
+            val lastConflict = rememberLastNonNull(conflict)
+            val localValue = stringResource(R.string.agent_edit_conflict_local_value)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = contentPadding,
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                item(key = "agent_edit_save_error") {
+                    AnimatedVisibility(
+                        visible = saveError != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
                     ) {
-                        Text(
-                            text = stringResource(
-                                when (error) {
-                                    AgentEditErrorCode.NOT_FOUND -> R.string.agent_edit_error_load
-                                    AgentEditErrorCode.LOAD_FAILED -> R.string.agent_edit_error_load
-                                    AgentEditErrorCode.SAVE_FAILED -> R.string.agent_edit_error_save
-                                    AgentEditErrorCode.DELETE_FAILED -> R.string.agent_edit_error_delete
-                                    AgentEditErrorCode.AVATAR_IMPORT_FAILED -> R.string.agent_edit_error_avatar
-                                },
-                            ),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        InfinityRetryButton(
-                            onClick = viewModel::retryLastFailure,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
+                        lastSaveError?.let { error ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f))
+                                    .padding(12.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        when (error) {
+                                            AgentEditErrorCode.NOT_FOUND -> R.string.agent_edit_error_load
+                                            AgentEditErrorCode.LOAD_FAILED -> R.string.agent_edit_error_load
+                                            AgentEditErrorCode.SAVE_FAILED -> R.string.agent_edit_error_save
+                                            AgentEditErrorCode.DELETE_FAILED -> R.string.agent_edit_error_delete
+                                            AgentEditErrorCode.AVATAR_IMPORT_FAILED -> R.string.agent_edit_error_avatar
+                                        },
+                                    ),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                InfinityRetryButton(
+                                    onClick = viewModel::retryLastFailure,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                        }
                     }
                 }
-            }
 
-            // 冲突处理与恢复后的说明；提示词编辑器打开时由编辑器内显示。
-            notice?.takeUnless { showSystemPromptEditor }?.let { current ->
-                item(key = "agent_edit_notice") {
-                    AgentEditNoticeLine(current, viewModel::consumeNotice, Modifier.padding(bottom = 8.dp))
-                }
-            }
-            conflict?.let { current ->
                 item(key = "agent_edit_conflict") {
-                    val localValue = stringResource(R.string.agent_edit_conflict_local_value)
-                    AgentFieldConflictBanner(
-                        conflict = current,
-                        local = { field ->
-                            when (field) {
-                                com.promenar.infinity.domain.model.AgentField.NAME -> name
-                                com.promenar.infinity.domain.model.AgentField.DESCRIPTION -> description
-                                else -> localValue
-                            }
-                        },
-                        onAdopt = viewModel::adoptRemoteConflict,
-                        onKeep = viewModel::keepMineConflict,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                    )
+                    AnimatedVisibility(
+                        visible = conflict != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        lastConflict?.let { current ->
+                            AgentFieldConflictBanner(
+                                conflict = current,
+                                local = { field ->
+                                    when (field) {
+                                        com.promenar.infinity.domain.model.AgentField.NAME -> name
+                                        com.promenar.infinity.domain.model.AgentField.DESCRIPTION -> description
+                                        else -> localValue
+                                    }
+                                },
+                                onAdopt = viewModel::adoptRemoteConflict,
+                                onKeep = viewModel::keepMineConflict,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
+                    }
                 }
-            }
 
             // ─── 1. Hero 角色舞台：大头像 + 柔和光晕 + 实时身份预览 ───
             item {
@@ -593,6 +625,21 @@ fun AgentEditScreen(
                     )
                 }
             }
+        }
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Large),
+        ) { data ->
+            InfinitySnackbar(
+                InfinitySnackbarData(
+                    message = data.visuals.message,
+                    type = if (snackbarIsError) SnackbarType.ERROR else SnackbarType.SUCCESS,
+                ),
+            )
         }
     }
 }

@@ -1,6 +1,10 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import com.promenar.infinity.ui.common.excludeFromAutofill
 import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.common.InfinityModalSheet
@@ -326,12 +330,19 @@ fun SkillsScreen(
                     McpConfigError.SAVE_FAILED -> R.string.mcp_config_save_failed
                     null -> null
                 }
-                if (errorMessage != null) {
-                    Text(
-                        stringResource(errorMessage),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                val lastErrorMessage = rememberLastNonNull(errorMessage)
+                AnimatedVisibility(
+                    visible = errorMessage != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    lastErrorMessage?.let { msgRes ->
+                        Text(
+                            stringResource(msgRes),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
                 Button(
                     onClick = {
@@ -559,6 +570,7 @@ internal fun SearchConfigContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
+                .animateContentSize(InfinityMotion.contentSizeSpec())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -614,33 +626,47 @@ internal fun SearchConfigContent(
                 )
             }
 
-            if (searchState.searchEngine == "keenable") {
+            AnimatedVisibility(
+                visible = searchState.searchEngine == "keenable",
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
                 InfinitySettingsSection(
                     title = stringResource(R.string.search_api_key_optional),
                     footer = stringResource(R.string.search_keenable_keyless_hint),
                 ) { Column(Modifier.padding(16.dp)) { keenableSecretEditor() } }
             }
 
-            if (searchState.searchEngine == "tavily") {
-                InfinitySettingsSection(title = stringResource(R.string.search_api_key)) {
-                    Column(Modifier.padding(16.dp)) { tavilySecretEditor() }
-                }
+            AnimatedVisibility(
+                visible = searchState.searchEngine == "tavily",
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                Column {
+                    InfinitySettingsSection(title = stringResource(R.string.search_api_key)) {
+                        Column(Modifier.padding(16.dp)) { tavilySecretEditor() }
+                    }
 
-                InfinitySettingsSection(title = stringResource(R.string.settings_batch1_search_options)) {
-                    InfinityValueRow(
-                        title = stringResource(R.string.search_depth_label),
-                        value = when (searchState.searchDepth) {
-                            "basic" -> stringResource(R.string.search_depth_basic)
-                            "advanced" -> stringResource(R.string.search_depth_advanced)
-                            else -> searchState.searchDepth
-                        },
-                        onClick = { if (!depthAnchor.consumeRecentDismiss()) showDepthPicker = true },
-                        modifier = Modifier.infinityPopoverAnchor(depthAnchor).testTag("search_depth_picker"),
-                    )
+                    InfinitySettingsSection(title = stringResource(R.string.settings_batch1_search_options)) {
+                        InfinityValueRow(
+                            title = stringResource(R.string.search_depth_label),
+                            value = when (searchState.searchDepth) {
+                                "basic" -> stringResource(R.string.search_depth_basic)
+                                "advanced" -> stringResource(R.string.search_depth_advanced)
+                                else -> searchState.searchDepth
+                            },
+                            onClick = { if (!depthAnchor.consumeRecentDismiss()) showDepthPicker = true },
+                            modifier = Modifier.infinityPopoverAnchor(depthAnchor).testTag("search_depth_picker"),
+                        )
+                    }
                 }
             }
 
-            if (searchState.searchEngine == "searxng") {
+            AnimatedVisibility(
+                visible = searchState.searchEngine == "searxng",
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
                 OutlinedTextField(
                     label = { Text(stringResource(R.string.search_instance_url)) },
                     value = searchState.searXngUrl,

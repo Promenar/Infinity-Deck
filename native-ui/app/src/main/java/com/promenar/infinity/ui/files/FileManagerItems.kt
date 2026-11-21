@@ -2,8 +2,18 @@ package com.promenar.infinity.ui.files
 
 import com.promenar.infinity.ui.common.InfinityScrollingLine
 import com.promenar.infinity.ui.common.IndexingIndicator
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
+import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -406,11 +417,15 @@ internal fun FileRow(
     menu: (@Composable ColumnScope.(dismiss: () -> Unit) -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val background = when {
-        checked -> scheme.secondaryContainer
-        highlighted -> scheme.surfaceContainerHighest
-        else -> Color.Transparent
-    }
+    val background by animateColorAsState(
+        targetValue = when {
+            checked -> scheme.secondaryContainer
+            highlighted -> scheme.surfaceContainerHighest
+            else -> Color.Transparent
+        },
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "fm_row_bg",
+    )
     val toggleLabel = stringResource(if (checked) R.string.fm_deselect_item else R.string.fm_select_item, item.name)
     Row(
         modifier = modifier
@@ -442,14 +457,20 @@ internal fun FileRow(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (selecting) {
-                Icon(
-                    imageVector = if (checked) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
-                    contentDescription = null,
-                    tint = if (checked) scheme.primary else scheme.onSurfaceVariant,
-                )
-            } else {
-                FileTypeBadge(item)
+            Crossfade(
+                targetState = selecting,
+                animationSpec = tween(InfinityMotion.DurationShort),
+                label = "fm_row_leading",
+            ) { inSelection ->
+                if (inSelection) {
+                    Icon(
+                        imageVector = if (checked) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
+                        contentDescription = null,
+                        tint = if (checked) scheme.primary else scheme.onSurfaceVariant,
+                    )
+                } else {
+                    FileTypeBadge(item)
+                }
             }
         }
         Spacer(Modifier.width(InfinitySpacing.Small))
@@ -478,8 +499,8 @@ internal fun FileRow(
         }
         Spacer(Modifier.width(InfinitySpacing.Small))
         FileStatusBadge(item.knowledge)
-        if (menu != null && !selecting) {
-            RowMenuButton(item, menu)
+        if (menu != null) {
+            RowMenuButton(item, enabled = !selecting, menu = menu)
         } else {
             Spacer(Modifier.width(InfinitySpacing.Small))
         }
@@ -487,10 +508,22 @@ internal fun FileRow(
 }
 
 @Composable
-private fun RowMenuButton(item: FileItem, menu: @Composable ColumnScope.(dismiss: () -> Unit) -> Unit) {
+private fun RowMenuButton(item: FileItem, enabled: Boolean, menu: @Composable ColumnScope.(dismiss: () -> Unit) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    LaunchedEffect(enabled) {
+        if (!enabled) open = false
+    }
+    val alpha by animateFloatAsState(
+        targetValue = if (enabled) 1f else 0f,
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "fm_row_menu_alpha",
+    )
     Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.testTag(UiTags.fmRowMenu(item.ref.path))) {
+        IconButton(
+            onClick = { open = true },
+            enabled = enabled,
+            modifier = Modifier.alpha(alpha).testTag(UiTags.fmRowMenu(item.ref.path)),
+        ) {
             Icon(
                 Icons.Rounded.MoreVert,
                 contentDescription = stringResource(R.string.fm_item_actions, item.name),
@@ -556,11 +589,16 @@ internal fun FileTile(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val tileBackground by animateColorAsState(
+        targetValue = if (highlighted && !checked) scheme.surfaceContainerHighest else scheme.surfaceContainerLow,
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "fm_tile_bg",
+    )
     val toggleLabel = stringResource(if (checked) R.string.fm_deselect_item else R.string.fm_select_item, item.name)
     Column(
         modifier = modifier
             .clip(TileShape)
-            .background(if (highlighted && !checked) scheme.surfaceContainerHighest else scheme.surfaceContainerLow)
+            .background(tileBackground)
             .then(if (checked) Modifier.border(2.dp, scheme.primary, TileShape) else Modifier)
             .combinedClickable(
                 onClick = { if (selecting) onToggleSelection() else onClick() },
@@ -575,7 +613,11 @@ internal fun FileTile(
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
             FileTypeBadge(item, size = 48.dp)
-            if (selecting) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = selecting,
+                enter = scaleIn(tween(InfinityMotion.DurationShort), initialScale = 0.8f) + fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = scaleOut(tween(InfinityMotion.DurationShort), targetScale = 0.8f) + fadeOut(tween(InfinityMotion.DurationShort)),
+            ) {
                 Icon(
                     imageVector = if (checked) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
                     contentDescription = null,

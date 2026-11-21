@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -34,8 +36,10 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.production.*
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.*
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -255,10 +259,17 @@ internal fun ProductionShotDetail(
                             )
                         val defaultLabel = stringResource(R.string.p2_default)
                             .takeIf { !noChannel && preview?.channelIsDefault == true && !preview?.channelLabel.isNullOrBlank() }
-                        ProductionSection(stringResource(R.string.p2_channel_mode)) {
+                        ProductionSection(
+                            stringResource(R.string.p2_channel_mode),
+                            modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+                        ) {
                             ProductionRow(stringResource(R.string.p2_mode), value = shot.mode.label(), enabled = !working, onClick = { sheet = PlanningSheet.MODE })
                             ProductionRow(stringResource(R.string.p2_channel), valueSegments = channelName + listOfNotNull(defaultLabel), enabled = !working, onClick = { sheet = PlanningSheet.CHANNEL })
-                            if (noChannel && (!loading || preview != null || services.planner == null)) {
+                            AnimatedVisibility(
+                                visible = noChannel && (!loading || preview != null || services.planner == null),
+                                enter = InfinityMotion.expandIn,
+                                exit = InfinityMotion.shrinkOut,
+                            ) {
                                 ChannelMismatchGuideCard(
                                     shot = shot,
                                     channels = channels,
@@ -280,7 +291,10 @@ internal fun ProductionShotDetail(
                             stringResource(if (production.effectiveReferenceInputMode(it) == ReferenceInputMode.SHEET) R.string.p2_composite else R.string.p2_separate)
                         }
                         val images = inputs.count { it.kind == InputKind.IMAGE }
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             val sectionTitle = stringResource(R.string.production_panel_section_inputs)
                             ProductionSection(
                                 sectionTitle,
@@ -291,24 +305,59 @@ internal fun ProductionShotDetail(
                                     stringResource(R.string.p2_waiting_channel).takeIf { noChannel && inputs.isNotEmpty() },
                                 ),
                                 trailing = preview?.channel?.let { stringResource(R.string.p2_inputs_by_channel, preview?.channelLabel?.substringBefore(" $InfinityMetaSeparator ") ?: it.id) },
+                                modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
                             ) {
-                                if (loading && preview == null) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
+                                AnimatedVisibility(
+                                    visible = loading && preview == null,
+                                    enter = InfinityMotion.expandIn,
+                                    exit = InfinityMotion.shrinkOut,
+                                ) {
+                                    Box(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
+                                }
                                 inputs.forEach { PlannedInputRow(it) }
                                 if (preview != null && inputs.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_no_inputs))
                                 if (services.planner == null) ProductionMutedRow(noPlanner)
                             }
-                            preview?.overflow?.takeIf { it.isNotEmpty() }?.let { overflow -> InfinityStatusStrip(InfinityStatusKind.Warning, stringResource(R.string.p2_overflow, overflow.joinToString("、") { it.title })) }
-                            preview?.warnings?.forEach { warning ->
-                                val targetCharacter = shot.appearances.mapNotNull { app -> production.findAsset(app.characterAssetId) }
-                                    .firstOrNull { char -> char.status != AssetStatus.LOCKED && char.name in warning }
-                                if (targetCharacter != null) {
-                                    ReviewWarningBanner(warning) { onOpenCharacter(targetCharacter.id) }
-                                } else {
-                                    InfinityStatusStrip(InfinityStatusKind.Warning, warning)
+                            val overflowText = preview?.overflow?.takeIf { it.isNotEmpty() }?.let { overflow ->
+                                stringResource(R.string.p2_overflow, overflow.joinToString("、") { it.title })
+                            }
+                            val heldOverflow = rememberLastNonNull(overflowText, key = "plan-overflow")
+                            AnimatedVisibility(
+                                visible = overflowText != null && heldOverflow != null,
+                                enter = InfinityMotion.expandIn,
+                                exit = InfinityMotion.shrinkOut,
+                            ) {
+                                heldOverflow?.let { InfinityStatusStrip(InfinityStatusKind.Warning, it) }
+                            }
+                            val warnings = preview?.warnings.orEmpty()
+                            AnimatedVisibility(
+                                visible = warnings.isNotEmpty(),
+                                enter = InfinityMotion.expandIn,
+                                exit = InfinityMotion.shrinkOut,
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    warnings.forEach { warning ->
+                                        val targetCharacter = shot.appearances.mapNotNull { app -> production.findAsset(app.characterAssetId) }
+                                            .firstOrNull { char -> char.status != AssetStatus.LOCKED && char.name in warning }
+                                        if (targetCharacter != null) {
+                                            ReviewWarningBanner(warning) { onOpenCharacter(targetCharacter.id) }
+                                        } else {
+                                            InfinityStatusStrip(InfinityStatusKind.Warning, warning)
+                                        }
+                                    }
                                 }
                             }
-                            remainingBlockedReasons(preview, location.scene.storyboardLocked, noChannel, shot.channelId).forEach { reason ->
-                                InfinityStatusStrip(InfinityStatusKind.Warning, reason)
+                            val blockedReasons = remainingBlockedReasons(preview, location.scene.storyboardLocked, noChannel, shot.channelId)
+                            AnimatedVisibility(
+                                visible = blockedReasons.isNotEmpty(),
+                                enter = InfinityMotion.expandIn,
+                                exit = InfinityMotion.shrinkOut,
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    blockedReasons.forEach { reason ->
+                                        InfinityStatusStrip(InfinityStatusKind.Warning, reason)
+                                    }
+                                }
                             }
                         }
                     }

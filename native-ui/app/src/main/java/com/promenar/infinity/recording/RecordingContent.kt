@@ -14,8 +14,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -133,9 +136,11 @@ import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.common.motion.indicatorDesignSize
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import androidx.compose.ui.draw.alpha
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.forReading
@@ -314,8 +319,17 @@ internal fun RecordingPageContent(
                     TranscriptPaneHeader(view, titled, onDownloadAsr, onCancelDownload, onTranscriptMenu, onCancelRecognize)
                 }
                 val speakerTools: @Composable () -> Unit = {
-                    if (shown?.distinguishSpeakers == true && !view.active) {
-                        RecordingSpeakerStatus(shown, state, speakerModel, onAnalyzeSpeakers, onSpeakerSettings)
+                    val visibleSpeakerSession = rememberLastNonNull(
+                        shown?.takeIf { it.distinguishSpeakers && !view.active },
+                    )
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = shown?.distinguishSpeakers == true && !view.active,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        visibleSpeakerSession?.let { targetShown ->
+                            RecordingSpeakerStatus(targetShown, state, speakerModel, onAnalyzeSpeakers, onSpeakerSettings)
+                        }
                     }
                 }
                 val buttons: @Composable (Boolean) -> Unit = { compact ->
@@ -372,17 +386,36 @@ internal fun RecordingPageContent(
                                 )
                             }
                         }
-                        if (shown != null) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (view.active) {
-                                    TextButton(onClick = onDiscard) {
-                                        Text(stringResource(R.string.recording_discard), color = MaterialTheme.colorScheme.error)
+                        val hasFooterActions = shown != null && (
+                            view.active || view.state.activeId != null || shown.canContinue
+                        )
+                        AnimatedVisibility(
+                            visible = hasFooterActions,
+                            enter = InfinityMotion.expandIn,
+                            exit = InfinityMotion.shrinkOut,
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    AnimatedVisibility(
+                                        visible = view.active,
+                                        enter = expandHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) + fadeIn(tween(InfinityMotion.DurationMedium)),
+                                        exit = shrinkHorizontally(tween(InfinityMotion.DurationShort + InfinityMotion.DurationFadeOut, easing = InfinityMotion.EmphasizedAccelerate)) + fadeOut(tween(InfinityMotion.DurationShort)),
+                                    ) {
+                                        InfinityPillButton(
+                                            text = stringResource(R.string.recording_discard),
+                                            onClick = onDiscard,
+                                            tone = InfinityPillTone.DANGER,
+                                            compact = true,
+                                        )
                                     }
                                     Spacer(Modifier.weight(1f))
-                                } else Spacer(Modifier.weight(1f))
-                                buttons(false)
+                                    buttons(false)
+                                }
                             }
                         }
                     }
@@ -498,10 +531,20 @@ private fun RecordingNarrowBody(
         if (pageOrganized) {
             OrganizedPaneHeader(view, false, onLanguage, onEdit, onExport, editor != null)
         } else {
-            transcriptTools(false)
-            speakerTools()
-            if (current.distinguishSpeakers && !view.active && view.state.speakerAnalysisId != current.id) {
-                RecordingSpeakerStrip(current, onSpeakerSelect)
+            Column(Modifier.fillMaxWidth().animateContentSize(InfinityMotion.contentSizeSpec())) {
+                transcriptTools(false)
+                speakerTools()
+                val stripSession = rememberLastNonNull(
+                    current.takeIf { it.distinguishSpeakers && !view.active && view.state.speakerAnalysisId != it.id },
+                    current.id,
+                )
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = current.distinguishSpeakers && !view.active && view.state.speakerAnalysisId != current.id,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    stripSession?.let { RecordingSpeakerStrip(it, onSpeakerSelect) }
+                }
             }
         }
     }
@@ -767,7 +810,7 @@ private fun RecordingPaneHeader(title: String?, content: @Composable RowScope.()
     }
 }
 
-private val PaneHeaderHeight = 40.dp
+private val PaneHeaderHeight = 48.dp
 
 /** 逐字稿操作与进度跟随栏位；缺少模型时可在同处下载。 */
 @OptIn(ExperimentalLayoutApi::class)
@@ -781,18 +824,49 @@ private fun TranscriptPaneHeader(
     onCancelRecognize: () -> Unit,
 ) {
     if (view.current == null) return
-    if (titled || !view.active) RecordingPaneHeader(if (titled) stringResource(R.string.recording_raw) else null) {
-        if (!view.active) IconButton(onClick = onRecognize, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Rounded.MoreHoriz, stringResource(R.string.recording_transcript_actions), Modifier.size(18.dp))
+    val moreAlpha by animateFloatAsState(
+        targetValue = if (!view.active) 1f else 0f,
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "recording_transcript_more_alpha",
+    )
+    AnimatedVisibility(
+        visible = titled || !view.active,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        RecordingPaneHeader(if (titled) stringResource(R.string.recording_raw) else null) {
+            IconButton(
+                onClick = onRecognize,
+                enabled = !view.active,
+                modifier = Modifier.size(40.dp).alpha(moreAlpha),
+            ) {
+                Icon(Icons.Rounded.MoreHoriz, stringResource(R.string.recording_transcript_actions), Modifier.size(18.dp))
+            }
         }
     }
     if (titled) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    if (view.recognizing) {
-        RecordingWorkProgress(R.string.recording_recognizing, view.state.recognizeProgress, onCancelRecognize)
+    val lastRecognizeProgress = rememberLastNonNull(view.state.recognizeProgress, view.current?.id)
+    AnimatedVisibility(
+        visible = view.recognizing,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        RecordingWorkProgress(
+            R.string.recording_recognizing,
+            if (view.recognizing) view.state.recognizeProgress else lastRecognizeProgress,
+            onCancelRecognize,
+        )
     }
     val model = view.asrModel
-    if (model != RecordingAsrModelState.Installed) {
-        BettboxListGroup { RecordingAsrControls(model, onDownload, onCancelDownload, inTranscript = true) }
+    val missingModel = rememberLastNonNull(model.takeIf { it != RecordingAsrModelState.Installed })
+    AnimatedVisibility(
+        visible = model != RecordingAsrModelState.Installed,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        missingModel?.let { activeModel ->
+            BettboxListGroup { RecordingAsrControls(activeModel, onDownload, onCancelDownload, inTranscript = true) }
+        }
     }
 }
 
@@ -806,19 +880,56 @@ private fun OrganizedPaneHeader(
     editing: Boolean,
 ) {
     val current = view.current ?: return
+    val canEdit = !view.active && !view.organizing && current.organized.isNotBlank()
+    val canExport = !view.active && onExport != null && (current.organized.isNotBlank() || current.segments.isNotEmpty())
+    val editAlpha by animateFloatAsState(
+        targetValue = when {
+            canEdit -> 1f
+            !view.active && current.organized.isNotBlank() -> 0.35f
+            else -> 0f
+        },
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "recording_organized_edit_alpha",
+    )
+    val exportAlpha by animateFloatAsState(
+        targetValue = if (canExport) 1f else 0f,
+        animationSpec = tween(InfinityMotion.DurationShort),
+        label = "recording_organized_export_alpha",
+    )
     RecordingPaneHeader(if (titled) stringResource(R.string.recording_organized) else null) {
-        if (!editing) {
-            val next = current.publishedLanguage != null && current.outputLanguage != current.publishedLanguage
-            TextButton(onClick = onLanguage) {
-                Icon(Icons.Rounded.Language, stringResource(R.string.recording_output_language), Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(if (next) stringResource(R.string.recording_language_next, current.outputLanguage.label) else current.outputLanguage.label)
-            }
-            if (!view.active && !view.organizing && current.organized.isNotBlank()) {
-                IconButton(onClick = onEdit) { Icon(Icons.Rounded.Edit, stringResource(R.string.recording_edit_summary)) }
-            }
-            if (!view.active && onExport != null && (current.organized.isNotBlank() || current.segments.isNotEmpty())) {
-                IconButton(onClick = onExport) { Icon(Icons.Rounded.IosShare, stringResource(R.string.recording_export_action)) }
+        AnimatedVisibility(
+            visible = !editing,
+            enter = expandHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) + fadeIn(tween(InfinityMotion.DurationMedium)),
+            exit = shrinkHorizontally(tween(InfinityMotion.DurationShort + InfinityMotion.DurationFadeOut, easing = InfinityMotion.EmphasizedAccelerate)) + fadeOut(tween(InfinityMotion.DurationShort)),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                val next = current.publishedLanguage != null && current.outputLanguage != current.publishedLanguage
+                InfinityPillButton(
+                    text = if (next) stringResource(R.string.recording_language_next, current.outputLanguage.label) else current.outputLanguage.label,
+                    onClick = onLanguage,
+                    tone = InfinityPillTone.NEUTRAL,
+                    icon = Icons.Rounded.Language,
+                    compact = true,
+                )
+                IconButton(
+                    onClick = onEdit,
+                    enabled = canEdit,
+                    modifier = Modifier.alpha(editAlpha),
+                ) {
+                    Icon(Icons.Rounded.Edit, stringResource(R.string.recording_edit_summary))
+                }
+                if (onExport != null) {
+                    IconButton(
+                        onClick = onExport,
+                        enabled = canExport,
+                        modifier = Modifier.alpha(exportAlpha),
+                    ) {
+                        Icon(Icons.Rounded.IosShare, stringResource(R.string.recording_export_action))
+                    }
+                }
             }
         }
     }
@@ -873,7 +984,14 @@ private fun RecordingTranscriptList(
                     horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
                 ) {
                     if (view.active) {
-                        Text(recordingTimestamp(segment.startMs), color = MaterialTheme.colorScheme.primary, style = stamp)
+                        InfinityPillButton(
+                            text = recordingTimestamp(segment.startMs),
+                            onClick = {},
+                            enabled = false,
+                            tone = InfinityPillTone.NEUTRAL,
+                            icon = Icons.Rounded.PlayArrow,
+                            compact = true,
+                        )
                     } else {
                         InfinityPillButton(
                             text = recordingTimestamp(segment.startMs),
@@ -1055,9 +1173,13 @@ private fun RecordingOrganizedList(
                 RecordingEmpty(fill && leading == null) {
                     RecordingEmptyLabel(Icons.Rounded.Description, stringResource(if (view.route == RecordingRoute.Raw) R.string.recording_mode_raw else R.string.recording_no_organized))
                     if (current.segments.isNotEmpty()) {
-                        TextButton(onClick = if (view.route in setOf(RecordingRoute.Raw, RecordingRoute.Unavailable)) onMode else onOrganize) {
-                            Text(stringResource(if (view.route in setOf(RecordingRoute.Raw, RecordingRoute.Unavailable)) R.string.recording_settings else R.string.recording_generate_summary))
-                        }
+                        val openSettings = view.route in setOf(RecordingRoute.Raw, RecordingRoute.Unavailable)
+                        InfinityPillButton(
+                            text = stringResource(if (openSettings) R.string.recording_settings else R.string.recording_generate_summary),
+                            onClick = if (openSettings) onMode else onOrganize,
+                            tone = if (openSettings) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
+                            compact = true,
+                        )
                     }
                 }
             }
@@ -1418,20 +1540,61 @@ private fun RecordingEmptyLabel(icon: ImageVector, text: String) {
 
 private val EmptyIconSize = 28.dp
 
+private enum class RecordingFooterActionMode {
+    ACTIVE,
+    RETURN_ACTIVE,
+    CONTINUE,
+    NONE,
+}
+
 @Composable
 private fun RecordingActionButtons(
     view: RecordingView, compact: Boolean, onPauseResume: () -> Unit, onFinish: () -> Unit,
     onContinue: () -> Unit, onReturnActive: () -> Unit,
 ) {
-    if (view.active) {
-        InfinityPillButton(stringResource(if (view.paused) R.string.recording_continue_action else R.string.recording_pause),
-            onPauseResume, compact = compact, icon = if (view.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause)
-        InfinityPillButton(stringResource(R.string.recording_finish_save), onFinish, compact = compact,
-            tone = InfinityPillTone.PRIMARY, icon = Icons.Rounded.Stop)
-    } else if (view.state.activeId != null) {
-        InfinityPillButton(stringResource(R.string.recording_return_active), onReturnActive, icon = Icons.Rounded.Mic)
-    } else if (view.current?.canContinue == true) {
-        InfinityPillButton(stringResource(R.string.recording_resume), onContinue, icon = Icons.Rounded.Mic, enabled = !view.recognizing)
+    val actionMode = when {
+        view.active -> RecordingFooterActionMode.ACTIVE
+        view.state.activeId != null -> RecordingFooterActionMode.RETURN_ACTIVE
+        view.current?.canContinue == true -> RecordingFooterActionMode.CONTINUE
+        else -> RecordingFooterActionMode.NONE
+    }
+    AnimatedContent(
+        targetState = actionMode,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        label = "recording_action_buttons",
+    ) { mode ->
+        when (mode) {
+            RecordingFooterActionMode.ACTIVE -> Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                InfinityPillButton(
+                    stringResource(if (view.paused) R.string.recording_continue_action else R.string.recording_pause),
+                    onPauseResume,
+                    compact = compact,
+                    icon = if (view.paused) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                )
+                InfinityPillButton(
+                    stringResource(R.string.recording_finish_save),
+                    onFinish,
+                    compact = compact,
+                    tone = InfinityPillTone.PRIMARY,
+                    icon = Icons.Rounded.Stop,
+                )
+            }
+            RecordingFooterActionMode.RETURN_ACTIVE -> InfinityPillButton(
+                stringResource(R.string.recording_return_active),
+                onReturnActive,
+                icon = Icons.Rounded.Mic,
+            )
+            RecordingFooterActionMode.CONTINUE -> InfinityPillButton(
+                stringResource(R.string.recording_resume),
+                onContinue,
+                icon = Icons.Rounded.Mic,
+                enabled = !view.recognizing,
+            )
+            RecordingFooterActionMode.NONE -> Spacer(Modifier)
+        }
     }
 }
 

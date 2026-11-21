@@ -1,5 +1,13 @@
 package com.promenar.infinity.ui.media
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,11 +42,14 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -66,8 +77,10 @@ import com.promenar.infinity.domain.media.MediaKind
 import com.promenar.infinity.domain.media.MediaRef
 import com.promenar.infinity.domain.media.MediaResolution
 import com.promenar.infinity.domain.media.MediaUnavailableReason
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import kotlinx.coroutines.delay
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
@@ -279,26 +292,32 @@ fun WorkspaceVideoCard(
     }
     val ratio = mediaAspectRatio(ref.width, ref.height, DEFAULT_VIDEO_RATIO)
     val durationText = formatMediaDuration(ref.durationMs)
+    val lastError = rememberLastNonNull(session.error, ref.path)
     MediaCardSurface(modifier = modifier.widthIn(max = 560.dp)) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .aspectRatio(ratio, matchHeightConstraintsFirst = true)
-                    .clip(CardShape)
-                    .background(MaterialTheme.colorScheme.scrim),
-                contentAlignment = Alignment.Center,
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 420.dp)
+                .aspectRatio(ratio, matchHeightConstraintsFirst = true)
+                .clip(CardShape)
+                .background(MaterialTheme.colorScheme.scrim),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (player != null && !fullscreen) {
+                VideoSurface(player, Modifier.fillMaxSize())
+            } else {
+                VideoCover(model = model, description = stringResource(R.string.media_cd_video, name))
+            }
+            AnimatedVisibility(
+                visible = player == null,
+                enter = fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = fadeOut(tween(InfinityMotion.DurationShort)),
+                modifier = Modifier.matchParentSize(),
             ) {
-                if (player != null && !fullscreen) {
-                    VideoSurface(player, Modifier.fillMaxSize())
-                } else {
-                    VideoCover(model = model, description = stringResource(R.string.media_cd_video, name))
-                }
-                if (player == null) {
+                Box(Modifier.fillMaxSize()) {
                     FilledTonalIconButton(
                         onClick = { session.play(resumePositionMs) },
-                        modifier = Modifier.size(56.dp),
+                        modifier = Modifier.size(56.dp).align(Alignment.Center),
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f),
                             contentColor = MaterialTheme.infinityDomainColors.overlayContent,
@@ -315,18 +334,38 @@ fun WorkspaceVideoCard(
                         modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
                     )
                 }
-                session.error?.let {
-                    Box(Modifier.matchParentSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+            }
+            AnimatedVisibility(
+                visible = player != null,
+                enter = fadeIn(tween(InfinityMotion.DurationShort)) +
+                    slideInVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) { it / 2 },
+                exit = fadeOut(tween(InfinityMotion.DurationShort)) +
+                    slideOutVertically(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate)) { it / 2 },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            ) {
+                player?.let { activePlayer ->
+                    MediaPlaybackControls(
+                        player = activePlayer,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.72f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        onFullscreen = { fullscreen = true },
+                        compactOverlay = true,
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = session.error != null,
+                enter = fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = fadeOut(tween(InfinityMotion.DurationShort)),
+                modifier = Modifier.matchParentSize(),
+            ) {
+                if (lastError != null) {
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
                         MediaPlaybackError(onRetry = session::retry, contentColor = MaterialTheme.infinityDomainColors.overlayContent)
                     }
                 }
-            }
-            if (player != null) {
-                MediaPlaybackControls(
-                    player = player,
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                    onFullscreen = { fullscreen = true },
-                )
             }
         }
     }
@@ -389,15 +428,30 @@ fun WorkspaceAudioCard(
     }
     LaunchedEffect(session, autoPlay) { if (autoPlay && session.player == null) session.play(resumePositionMs) }
     val audioDescription = stringResource(R.string.media_cd_audio, name)
+    val lastError = rememberLastNonNull(session.error, ref.path)
+    val progressLabel = stringResource(R.string.media_playback_progress)
     MediaCardSurface(modifier = modifier.widthIn(max = 560.dp)) {
-        Column(modifier = Modifier.padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)) {
+        Column(
+            modifier = Modifier
+                .animateContentSize(InfinityMotion.contentSizeSpec())
+                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (player == null) {
-                    IconButton(onClick = { session.play(resumePositionMs) }) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.media_action_play))
+                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                    AnimatedContent(
+                        targetState = player != null,
+                        transitionSpec = { InfinityMotion.fadeThrough() },
+                        label = "audio_play_slot",
+                    ) { active ->
+                        val activePlayer = player
+                        if (active && activePlayer != null) {
+                            MediaPlayPauseButton(activePlayer)
+                        } else {
+                            IconButton(onClick = { session.play(resumePositionMs) }) {
+                                Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.media_action_play))
+                            }
+                        }
                     }
-                } else {
-                    Box(Modifier.size(48.dp))
                 }
                 Column(
                     modifier = Modifier
@@ -411,22 +465,51 @@ fun WorkspaceAudioCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = listOfNotNull(
-                            stringResource(R.string.media_kind_audio),
-                            formatMediaDuration(ref.durationMs) ?: stringResource(R.string.media_duration_unknown),
-                        ).joinToString(" · "),  // wrap-check: allow 单行显示
-                        style = InfinityTypography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
+                    if (player != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.media_kind_audio),
+                                style = InfinityTypography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                            Text(
+                                text = "·",
+                                style = InfinityTypography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurfaceVariant) {
+                                ProvideTextStyle(InfinityTypography.labelSmall) {
+                                    MediaPositionText(player)
+                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = listOfNotNull(
+                                stringResource(R.string.media_kind_audio),
+                                formatMediaDuration(ref.durationMs) ?: stringResource(R.string.media_duration_unknown),
+                            ).joinToString(" · "),  // wrap-check: allow 单行显示
+                            style = InfinityTypography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
             if (player != null) {
-                MediaPlaybackControls(player = player, showMute = false)
+                MediaProgressSlider(
+                    player = player,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                        .semantics { contentDescription = progressLabel },
+                )
             } else {
                 val duration = ref.durationMs?.takeIf { it > 0 }
-                val progressLabel = stringResource(R.string.media_playback_progress)
                 Slider(
                     value = duration?.let { (resumePositionMs.toFloat() / it).coerceIn(0f, 1f) } ?: 0f,
                     onValueChange = { fraction -> duration?.let { resumePositionMs = (fraction * it).toLong() } },
@@ -437,8 +520,14 @@ fun WorkspaceAudioCard(
                         .semantics { contentDescription = progressLabel },
                 )
             }
-            session.error?.let {
-                MediaPlaybackError(onRetry = session::retry, modifier = Modifier.fillMaxWidth())
+            AnimatedVisibility(
+                visible = session.error != null,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                if (lastError != null) {
+                    MediaPlaybackError(onRetry = session::retry, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
     }

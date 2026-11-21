@@ -73,6 +73,7 @@
     <string name="production_review_retract_approve">撤回当前批准</string>
     <string name="production_review_retract_reject">撤回当前否决</string>
     <string name="production_review_retract_suggest">撤回待发送建议</string>
+    <string name="production_review_has_unsent_suggestion">已有待发建议（切回建议可改）</string>
     <string name="production_review_footer_staged">已暂存本轮意见，可随时调整</string>
     <string name="production_review_footer_pending">尚未提交审批结论</string>
     <string name="production_review_footer_suggest">可提交改进或调整建议</string>

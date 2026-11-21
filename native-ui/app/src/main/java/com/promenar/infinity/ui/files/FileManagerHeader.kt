@@ -2,6 +2,10 @@ package com.promenar.infinity.ui.files
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -108,6 +112,7 @@ import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 
 /*
  * 资源管理器页头：浏览、选择模式上下文栏与搜索三种形态，同一时刻只显示一种。
@@ -117,12 +122,31 @@ import com.promenar.infinity.ui.theme.forInput
 private val HeaderMinHeight = 64.dp
 private val MenuIconSize = 20.dp
 
+private enum class FileTopBarMode {
+    BROWSE,
+    SEARCH,
+    SELECTION,
+}
+
 @Composable
 internal fun FileManagerTopBar(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier = Modifier) {
-    when {
-        state.selecting -> FileSelectionBar(state, actions, modifier)
-        state.search != null -> FileSearchBar(state, state.search, actions, modifier)
-        else -> FileBrowseBar(state, actions, modifier)
+    val mode = when {
+        state.selecting -> FileTopBarMode.SELECTION
+        state.search != null -> FileTopBarMode.SEARCH
+        else -> FileTopBarMode.BROWSE
+    }
+    val lastSearch = rememberLastNonNull(state.search)
+    AnimatedContent(
+        targetState = mode,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        modifier = modifier,
+        label = "fm_top_bar",
+    ) { currentMode ->
+        when (currentMode) {
+            FileTopBarMode.SELECTION -> FileSelectionBar(state, actions, Modifier)
+            FileTopBarMode.SEARCH -> lastSearch?.let { FileSearchBar(state, it, actions, Modifier) }
+            FileTopBarMode.BROWSE -> FileBrowseBar(state, actions, Modifier)
+        }
     }
 }
 
@@ -816,20 +840,33 @@ private fun FileSearchBar(state: FileManagerUiState, search: FileSearchState, ac
                             }
                         },
                     )
-                    if (text.isNotEmpty()) {
-                        IconButton(onClick = {
-                            text = ""
-                            controller.updateSearch { it.copy(text = "") }
-                        }) {
-                            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.fm_search_clear))
+                    Box(
+                        modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = text.isNotEmpty(),
+                            enter = fadeIn(tween(InfinityMotion.DurationShort)),
+                            exit = fadeOut(tween(InfinityMotion.DurationShort)),
+                        ) {
+                            IconButton(onClick = {
+                                text = ""
+                                controller.updateSearch { it.copy(text = "") }
+                            }) {
+                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.fm_search_clear))
+                            }
                         }
-                    } else {
-                        Spacer(Modifier.width(InfinitySpacing.Medium))
                     }
                 }
             }
         }
-        FileSearchFilters(search, actions)
+        AnimatedVisibility(
+            visible = state.search != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            FileSearchFilters(search, actions)
+        }
     }
 }
 

@@ -31,8 +31,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -105,6 +110,11 @@ internal fun RecordingSpeakerSummary(
     }
 }
 
+private enum class SpeakerStatusSlot {
+    ANALYZING,
+    ACTION,
+}
+
 @Composable
 internal fun RecordingSpeakerStatus(
     session: RecordingSession,
@@ -113,24 +123,50 @@ internal fun RecordingSpeakerStatus(
     onAnalyze: () -> Unit,
     onSettings: () -> Unit,
 ) {
-    if (state.speakerAnalysisId == session.id) {
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = InfinitySpacing.Small),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
-        ) {
-            Text(stringResource(R.string.recording_speaker_analysis), style = InfinityTypography.labelMedium)
-            LinearProgressIndicator(progress = { state.speakerProgress }, modifier = Modifier.weight(1f))
-            Text("${(state.speakerProgress * 100).toInt()}%", style = InfinityTypography.labelMedium)
+    val analyzing = state.speakerAnalysisId == session.id
+    val needsAnalysis = session.audioBytes > 0 && session.speakerAnalyzedBytes != session.audioBytes
+    val targetSlot = when {
+        analyzing -> SpeakerStatusSlot.ANALYZING
+        needsAnalysis -> SpeakerStatusSlot.ACTION
+        else -> null
+    }
+    val lastSlot = rememberLastNonNull(targetSlot, session.id)
+    AnimatedVisibility(
+        visible = targetSlot != null,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        lastSlot?.let { visibleSlot ->
+            AnimatedContent(
+                targetState = visibleSlot,
+                transitionSpec = { InfinityMotion.fadeThrough() },
+                label = "recording_speaker_status",
+            ) { slot ->
+                when (slot) {
+                    SpeakerStatusSlot.ANALYZING -> Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .animateContentSize(InfinityMotion.contentSizeSpec())
+                            .padding(vertical = InfinitySpacing.Small),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+                    ) {
+                        Text(stringResource(R.string.recording_speaker_analysis), style = InfinityTypography.labelMedium)
+                        LinearProgressIndicator(progress = { state.speakerProgress }, modifier = Modifier.weight(1f))
+                        Text("${(state.speakerProgress * 100).toInt()}%", style = InfinityTypography.labelMedium)
+                    }
+                    SpeakerStatusSlot.ACTION -> {
+                        val installed = model == RecordingAsrModelState.Installed
+                        InfinityPillButton(
+                            stringResource(if (installed) R.string.recording_speaker_analyze_action else R.string.recording_speaker_model_missing),
+                            if (installed) onAnalyze else onSettings,
+                            enabled = state.activeId == null && state.recognizingId == null && state.speakerAnalysisId == null,
+                            compact = true,
+                        )
+                    }
+                }
+            }
         }
-    } else if (session.audioBytes > 0 && session.speakerAnalyzedBytes != session.audioBytes) {
-        val installed = model == RecordingAsrModelState.Installed
-        InfinityPillButton(
-            stringResource(if (installed) R.string.recording_speaker_analyze_action else R.string.recording_speaker_model_missing),
-            if (installed) onAnalyze else onSettings,
-            enabled = state.activeId == null && state.recognizingId == null && state.speakerAnalysisId == null,
-            compact = true,
-        )
     }
 }
 

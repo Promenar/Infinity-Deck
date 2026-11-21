@@ -4,6 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SliderColors
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,6 +73,7 @@ import androidx.media3.ui.compose.material3.indicator.PositionAndDurationText
 import androidx.media3.ui.compose.material3.indicator.ProgressSlider
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityRetryButton
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.domain.media.MediaResolution
 import com.promenar.infinity.domain.media.MediaSource
@@ -178,6 +186,35 @@ internal fun VideoSurface(player: Player, modifier: Modifier = Modifier) {
     ContentFrame(player = player, modifier = modifier, contentScale = ContentScale.Fit)
 }
 
+@OptIn(UnstableApi::class, ExperimentalApi::class)
+@Composable
+internal fun MediaPlayPauseButton(player: Player, modifier: Modifier = Modifier) {
+    PlayPauseButton(player = player, modifier = modifier)
+}
+
+@OptIn(UnstableApi::class, ExperimentalApi::class)
+@Composable
+internal fun MediaPositionText(player: Player, modifier: Modifier = Modifier) {
+    PositionAndDurationText(player = player, modifier = modifier)
+}
+
+@OptIn(UnstableApi::class, ExperimentalApi::class)
+@Composable
+internal fun MediaProgressSlider(
+    player: Player,
+    modifier: Modifier = Modifier,
+    colors: SliderColors = SliderDefaults.colors(
+        thumbColor = MaterialTheme.colorScheme.primary,
+        activeTrackColor = MaterialTheme.colorScheme.primary,
+    ),
+) {
+    ProgressSlider(
+        player = player,
+        modifier = modifier,
+        colors = colors,
+    )
+}
+
 /** 进度条与控制行：播放/暂停、时间、静音与全屏切换均使用 Media3 Material3 组件。 */
 @OptIn(UnstableApi::class, ExperimentalApi::class)
 @Composable
@@ -187,8 +224,46 @@ internal fun MediaPlaybackControls(
     onFullscreen: (() -> Unit)? = null,
     fullscreen: Boolean = false,
     showMute: Boolean = true,
+    compactOverlay: Boolean = false,
 ) {
     val progressLabel = stringResource(R.string.media_playback_progress)
+    if (compactOverlay) {
+        val overlayColor = MaterialTheme.infinityDomainColors.overlayContent
+        CompositionLocalProvider(LocalContentColor provides overlayColor) {
+            Row(
+                modifier = modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                PlayPauseButton(player = player)
+                ProgressSlider(
+                    player = player,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp)
+                        .semantics { contentDescription = progressLabel },
+                    colors = SliderDefaults.colors(
+                        thumbColor = overlayColor,
+                        activeTrackColor = overlayColor,
+                        inactiveTrackColor = overlayColor.copy(alpha = 0.32f),
+                    ),
+                )
+                PositionAndDurationText(player = player)
+                if (showMute) MuteButton(player = player)
+                if (onFullscreen != null) {
+                    IconButton(onClick = onFullscreen) {
+                        Icon(
+                            imageVector = if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                            contentDescription = stringResource(
+                                if (fullscreen) R.string.media_action_exit_fullscreen else R.string.media_action_fullscreen,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        return
+    }
     Column(modifier = modifier.fillMaxWidth()) {
         ProgressSlider(
             player = player,
@@ -277,25 +352,44 @@ fun FullscreenVideoDialog(
             if (player != null) VideoSurface(player, Modifier.fillMaxSize())
             val error = session.error
             CompositionLocalProvider(LocalContentColor provides overlay) {
-                if (error != null) {
+                AnimatedVisibility(
+                    visible = error != null,
+                    enter = fadeIn(tween(InfinityMotion.DurationShort)),
+                    exit = fadeOut(tween(InfinityMotion.DurationShort)),
+                    modifier = Modifier.align(Alignment.Center),
+                ) {
                     MediaPlaybackError(onRetry = session::retry, contentColor = overlay)
                 }
-                if (controlsVisible || error != null) {
+                AnimatedVisibility(
+                    visible = controlsVisible || error != null,
+                    enter = fadeIn(tween(InfinityMotion.DurationShort)) +
+                        slideInVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) { -it / 2 },
+                    exit = fadeOut(tween(InfinityMotion.DurationShort)) +
+                        slideOutVertically(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate)) { -it / 2 },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(8.dp),
+                ) {
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .statusBarsPadding()
-                            .padding(8.dp),
                         colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f), contentColor = overlay),
                     ) {
                         Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.media_action_close))
                     }
-                    if (player != null) {
+                }
+                AnimatedVisibility(
+                    visible = (controlsVisible || error != null) && player != null,
+                    enter = fadeIn(tween(InfinityMotion.DurationShort)) +
+                        slideInVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) { it / 2 },
+                    exit = fadeOut(tween(InfinityMotion.DurationShort)) +
+                        slideOutVertically(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate)) { it / 2 },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                ) {
+                    player?.let { activePlayer ->
                         MediaPlaybackControls(
-                            player = player,
+                            player = activePlayer,
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
                                 .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f))
                                 .navigationBarsPadding()
                                 .padding(horizontal = 8.dp, vertical = 4.dp),

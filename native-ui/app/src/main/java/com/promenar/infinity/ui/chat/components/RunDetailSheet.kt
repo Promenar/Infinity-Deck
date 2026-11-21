@@ -85,11 +85,15 @@ import kotlinx.coroutines.delay
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.tween
@@ -299,12 +303,24 @@ private fun RunDetailHeader(
             .padding(start = InfinitySpacing.ScreenHorizontal, end = InfinitySpacing.ScreenHorizontal, top = inspectorTopGap(8.dp))
             .testTag(UiTags.CHAT_RUN_STATUS_CARD),
     ) {
-        // 有菜单时第一行由 48dp 按钮撑高，上下内边距收窄；没有菜单时按文字行高留出对称留白。
+        // 固定首行 48dp 最小高、统一边距与 48dp 菜单槽，避免有无菜单切态时标题与第二行基线跳动。
         Column(
-            Modifier.padding(start = 14.dp, end = if (hasMenu) 4.dp else 14.dp, top = if (hasMenu) 2.dp else 10.dp, bottom = 12.dp),
+            Modifier
+                .animateContentSize(InfinityMotion.contentSizeSpec())
+                .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 10.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                status?.let { RunStatusPill(it) }
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AnimatedContent(
+                    targetState = status,
+                    transitionSpec = { InfinityMotion.fadeThrough() },
+                    label = "run_status_pill",
+                ) { activeStatus ->
+                    activeStatus?.let { RunStatusPill(it) }
+                }
                 Text(
                     text = plan?.title?.takeIf(String::isNotBlank) ?: stringResource(R.string.run_detail_title_default),
                     style = MaterialTheme.typography.titleSmall,
@@ -313,7 +329,20 @@ private fun RunDetailHeader(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                if (hasMenu) RunDetailMenu(onHidePlan, onClearPlan)
+                val menuAlpha by animateFloatAsState(
+                    targetValue = if (hasMenu) 1f else 0f,
+                    animationSpec = tween(InfinityMotion.DurationShort),
+                    label = "run_header_menu_alpha",
+                )
+                Box(
+                    modifier = Modifier
+                        .size(InfinitySpacing.MinimumTouchTarget)
+                        .graphicsLayer { alpha = menuAlpha }
+                        .then(if (hasMenu) Modifier else Modifier.clearAndSetSemantics {}),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (hasMenu) RunDetailMenu(onHidePlan, onClearPlan)
+                }
             }
             val clock = elapsedMillis?.let { runClockText(it) }
             val spokenClock = elapsedMillis?.let { runElapsedText(it) }
@@ -323,7 +352,7 @@ private fun RunDetailHeader(
                     clock = clock,
                     spokenClock = spokenClock,
                     progress = progress,
-                    modifier = Modifier.padding(top = if (hasMenu) 0.dp else 6.dp, end = if (hasMenu) 10.dp else 0.dp),
+                    modifier = Modifier.padding(top = 2.dp, end = 10.dp),
                 )
             }
         }
@@ -512,24 +541,31 @@ private fun ColumnScope.RunPlanFooter(
     onContinue: () -> Unit,
     onComplete: () -> Unit,
 ) {
-    if (plan.isCompleted) return
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-    Row(
-        Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    AnimatedVisibility(
+        visible = !plan.isCompleted,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
     ) {
-        OutlinedButton(
-            onClick = onComplete,
-            enabled = !isGenerating,
-            modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_COMPLETE),
-            contentPadding = RunPlanFooterButtonPadding,
-        ) { Text(stringResource(R.string.chat_task_mark_completed), textAlign = TextAlign.Center) }
-        Button(
-            onClick = onContinue,
-            enabled = !isGenerating,
-            modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_CONTINUE),
-            contentPadding = RunPlanFooterButtonPadding,
-        ) { Text(stringResource(R.string.chat_task_continue), textAlign = TextAlign.Center) }
+        Column(Modifier.fillMaxWidth()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Row(
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onComplete,
+                    enabled = !isGenerating,
+                    modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_COMPLETE),
+                    contentPadding = RunPlanFooterButtonPadding,
+                ) { Text(stringResource(R.string.chat_task_mark_completed), textAlign = TextAlign.Center) }
+                Button(
+                    onClick = onContinue,
+                    enabled = !isGenerating,
+                    modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp).testTag(UiTags.CHAT_TASK_CONTINUE),
+                    contentPadding = RunPlanFooterButtonPadding,
+                ) { Text(stringResource(R.string.chat_task_continue), textAlign = TextAlign.Center) }
+            }
+        }
     }
 }
 

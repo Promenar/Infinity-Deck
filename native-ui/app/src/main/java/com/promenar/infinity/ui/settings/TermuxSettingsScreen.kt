@@ -1,6 +1,8 @@
 package com.promenar.infinity.ui.settings
 
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -12,6 +14,8 @@ import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -363,9 +367,12 @@ internal fun TermuxSettingsContent(
                     showChevron = true,
                 )
                 TermuxSectionBody {
-                    if (state.busy || state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    state.notice?.let { message ->
-                        TermuxInlineNotice(message, if (state.noticeIsError) TermuxStepStatus.Error else TermuxStepStatus.Complete)
+                    AnimatedVisibility(
+                        visible = state.busy || state.refreshing,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                     InfinityCommandBlock(command = stringResource(R.string.termux_command_diagnostic), enabled = !state.busy, onCopy = actions.onCopyCommand)
                     InfinityPillRow(Modifier.fillMaxWidth()) {
@@ -383,7 +390,14 @@ internal fun TermuxSettingsContent(
                             modifier = Modifier.testTag("termux_diagnostic_test"),
                         )
                     }
-                    state.diagnostic?.let { TermuxDiagnosticResult(it) }
+                    val lastDiagnostic = rememberLastNonNull(state.diagnostic)
+                    AnimatedVisibility(
+                        visible = state.diagnostic != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        lastDiagnostic?.let { TermuxDiagnosticResult(it) }
+                    }
                 }
             }
         }
@@ -419,14 +433,12 @@ internal fun TermuxSettingsContent(
                 title = stringResource(R.string.termux_step_permission),
                 footer = stringResource(R.string.settings_batch1_termux_permission_footer),
             ) {
-                if (visuals.permission != TermuxStepStatus.Complete) {
-                    InfinitySettingsItem(
-                        icon = Icons.Rounded.Settings,
-                        title = stringResource(R.string.termux_request_permission),
-                        onClick = actions.onRequestPermission,
-                        enabled = state.availability?.installed == true && !state.busy,
-                    )
-                }
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.Settings,
+                    title = stringResource(R.string.termux_request_permission),
+                    onClick = actions.onRequestPermission,
+                    enabled = state.availability?.installed == true && !state.busy && visuals.permission != TermuxStepStatus.Complete,
+                )
                 InfinitySettingsItem(
                     icon = Icons.Rounded.Settings,
                     title = stringResource(R.string.termux_app_details),
@@ -533,7 +545,10 @@ internal fun TermuxSettingsContent(
 @Composable
 private fun TermuxSectionBody(content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.Large),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec())
+            .padding(InfinitySpacing.Large),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
         content = content,
     )

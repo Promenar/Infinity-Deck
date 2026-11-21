@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.settings
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
@@ -35,6 +36,8 @@ import com.promenar.infinity.ui.common.InfinityIdentifierText
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import com.promenar.infinity.ui.ssh.SshTailnetCandidate
 import com.promenar.infinity.ui.ssh.sshTailnetCandidates
 import androidx.compose.ui.semantics.stateDescription
@@ -248,9 +251,8 @@ internal fun TailscaleSettingsContent(
         modifier = modifier.fillMaxSize().testTag("tailscale_settings_screen"),
         state = listState,
         contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
     ) {
-        item {
+        item(key = "node") {
             InfinitySettingsSection(
                 title = stringResource(R.string.tailscale_section_node),
                 footer = stringResource(if (state.available) R.string.tailscale_node_footer else R.string.tailscale_unavailable_desc),
@@ -266,52 +268,81 @@ internal fun TailscaleSettingsContent(
                 )
             }
         }
-        if (enabled) {
-            item { TailscaleStatusSection(state, actions) }
-            val health = summary?.health.orEmpty()
-            if (health.isNotEmpty()) {
-                item {
-                    InfinitySettingsSection(title = stringResource(R.string.tailscale_health_title)) {
-                        health.take(5).forEach { message -> TailscaleHealthRow(message) }
-                    }
+        item(key = "status") {
+            AnimatedVisibility(
+                visible = enabled,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                Box(Modifier.padding(top = InfinitySpacing.Large)) {
+                    TailscaleStatusSection(state, actions)
                 }
             }
-            if (tailnet.phase == TailnetPhase.RUNNING) {
-                item {
-                    TailscalePeersSection(tailnet.peers, sshHosts, onAddSshHost, state.lastPing) { peer ->
-                        openPeer = peer.name
-                        actions.onStartPing(peer)
+        }
+        val health = summary?.health.orEmpty()
+        item(key = "health") {
+            val shownHealth = rememberLastNonNull(health.takeIf { enabled && it.isNotEmpty() })
+            AnimatedVisibility(
+                visible = enabled && health.isNotEmpty(),
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                shownHealth?.let { items ->
+                    Box(Modifier.padding(top = InfinitySpacing.Large)) {
+                        InfinitySettingsSection(title = stringResource(R.string.tailscale_health_title)) {
+                            items.take(5).forEach { message -> TailscaleHealthRow(message) }
+                        }
                     }
                 }
             }
         }
-        item {
-            InfinitySettingsSection(title = stringResource(R.string.tailscale_section_login)) {
-                InfinityValueRow(
-                    title = stringResource(R.string.tailscale_auth_key),
-                    value = stringResource(if (settings.hasAuthKey) R.string.tailscale_value_saved else R.string.tailscale_value_not_set),
-                    onClick = { editor = TailscaleEditor.AUTH_KEY },
-                    icon = Icons.Rounded.Key,
-                    enabled = state.available,
-                    modifier = Modifier.testTag("tailscale_auth_key"),
-                )
-                InfinityValueRow(
-                    title = stringResource(R.string.tailscale_control_url),
-                    value = controlServerLabel(settings.controlUrl),
-                    onClick = { editor = TailscaleEditor.CONTROL_URL },
-                    icon = Icons.Rounded.Public,
-                    enabled = state.available,
-                    modifier = Modifier.testTag("tailscale_control_url"),
-                )
-                SettingsToggle(
-                    title = stringResource(R.string.tailscale_ephemeral),
-                    description = stringResource(R.string.tailscale_ephemeral_desc),
-                    checked = settings.ephemeral,
-                    onCheckedChange = actions.onEphemeralChange,
-                    icon = Icons.Rounded.Timer,
-                    enabled = state.available && !state.busy,
-                    modifier = Modifier.testTag("tailscale_ephemeral"),
-                )
+        item(key = "peers") {
+            val showPeers = enabled && tailnet.phase == TailnetPhase.RUNNING
+            val shownPeers = rememberLastNonNull(tailnet.peers.takeIf { showPeers })
+            AnimatedVisibility(
+                visible = showPeers,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                shownPeers?.let { peers ->
+                    Box(Modifier.padding(top = InfinitySpacing.Large)) {
+                        TailscalePeersSection(peers, sshHosts, onAddSshHost, state.lastPing) { peer ->
+                            openPeer = peer.name
+                            actions.onStartPing(peer)
+                        }
+                    }
+                }
+            }
+        }
+        item(key = "login") {
+            Box(Modifier.padding(top = InfinitySpacing.Large)) {
+                InfinitySettingsSection(title = stringResource(R.string.tailscale_section_login)) {
+                    InfinityValueRow(
+                        title = stringResource(R.string.tailscale_auth_key),
+                        value = stringResource(if (settings.hasAuthKey) R.string.tailscale_value_saved else R.string.tailscale_value_not_set),
+                        onClick = { editor = TailscaleEditor.AUTH_KEY },
+                        icon = Icons.Rounded.Key,
+                        enabled = state.available,
+                        modifier = Modifier.testTag("tailscale_auth_key"),
+                    )
+                    InfinityValueRow(
+                        title = stringResource(R.string.tailscale_control_url),
+                        value = controlServerLabel(settings.controlUrl),
+                        onClick = { editor = TailscaleEditor.CONTROL_URL },
+                        icon = Icons.Rounded.Public,
+                        enabled = state.available,
+                        modifier = Modifier.testTag("tailscale_control_url"),
+                    )
+                    SettingsToggle(
+                        title = stringResource(R.string.tailscale_ephemeral),
+                        description = stringResource(R.string.tailscale_ephemeral_desc),
+                        checked = settings.ephemeral,
+                        onCheckedChange = actions.onEphemeralChange,
+                        icon = Icons.Rounded.Timer,
+                        enabled = state.available && !state.busy,
+                        modifier = Modifier.testTag("tailscale_ephemeral"),
+                    )
+                }
             }
         }
 

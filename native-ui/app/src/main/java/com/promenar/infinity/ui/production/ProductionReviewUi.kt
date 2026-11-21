@@ -493,37 +493,51 @@ internal fun ProductionUnifiedReviewDialog(
                     textStyle = LocalTextStyle.current.forInput(),
                     modifier = Modifier.fillMaxWidth().testTag(ProductionUiTags.REASON_FIELD),
                 )
-                if (retractLabel != null && retractTargetKind != null) {
+                val hasAnyUnsent = hasUnsentVerdict || hasUnsentSuggestion
+                if (hasAnyUnsent) {
+                    val activeRetractKind = retractTargetKind
+                    val canRetractNow = !saving && activeRetractKind != null
+                    val slotLabel = retractLabel ?: stringResource(R.string.production_review_has_unsent_suggestion)
                     OutlinedButton(
                         onClick = {
+                            val kindToRetract = activeRetractKind ?: return@OutlinedButton
                             saving = true
                             scope.launch {
                                 try {
-                                    error = onSubmit(ProductionUserAction.RetractReview(target, retractTargetKind))
+                                    error = onSubmit(ProductionUserAction.RetractReview(target, kindToRetract))
                                     if (error == null) onDismiss()
                                 } finally {
                                     saving = false
                                 }
                             }
                         },
-                        enabled = !saving,
+                        enabled = canRetractNow,
                         shape = CircleShape,
-                        border = BorderStroke(1.dp, scheme.error.copy(alpha = 0.45f)),
+                        border = BorderStroke(
+                            1.dp,
+                            if (canRetractNow) scheme.error.copy(alpha = 0.45f) else scheme.outlineVariant.copy(alpha = 0.5f),
+                        ),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = scheme.error),
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).testTag(ProductionUiTags.REVIEW_RETRACT),
                     ) {
                         Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(retractLabel, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(slotLabel, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                error?.let { err ->
-                    Text(
-                        err,
-                        color = scheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                AnimatedVisibility(
+                    visible = error != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    error?.let { err ->
+                        Text(
+                            err,
+                            color = scheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
         },

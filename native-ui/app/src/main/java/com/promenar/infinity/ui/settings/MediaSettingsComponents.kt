@@ -1,5 +1,10 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,12 +26,23 @@ import com.promenar.infinity.data.mediagen.cloud.BillingUnit
 import com.promenar.infinity.data.mediagen.comfy.ComfyAuthKind
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
+import com.promenar.infinity.ui.theme.InfinityMotion
 
 @Composable
 internal fun MediaSettingsPage(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     InfinitySettingsPageLayout(title = title, onBack = onBack) { padding ->
-        Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(padding), content = content)
+        Column(
+            Modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .animateContentSize(InfinityMotion.contentSizeSpec())
+                .padding(padding),
+            content = content,
+        )
     }
 }
 
@@ -67,10 +83,17 @@ internal fun ConnectionChip(value: ComfyConnection) {
 }
 
 @Composable
-internal fun MediaAction(text: String, onClick: () -> Unit, enabled: Boolean = true) {
-    TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+internal fun MediaAction(text: String, onClick: () -> Unit, enabled: Boolean = true, primary: Boolean = false) {
+    InfinityPillButton(
+        text = text,
+        onClick = onClick,
+        enabled = enabled,
+        tone = if (primary) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
+        compact = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -81,11 +104,31 @@ internal fun MediaNotice(text: String, error: Boolean = false) {
 
 @Composable
 internal fun MediaOperationState(state: MediaSettingsUiState, onRetry: () -> Unit) {
-    if (!state.loaded && !state.failed) MediaNotice(stringResource(R.string.media_settings_loading))
-    if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-    if (state.failed) {
-        MediaNotice(stringResource(R.string.media_settings_failed), error = true)
-        MediaAction(stringResource(R.string.media_settings_retry), onRetry, !state.busy)
+    Box(Modifier.fillMaxWidth().height(3.dp)) {
+        AnimatedVisibility(
+            visible = state.busy,
+            enter = fadeIn(tween(InfinityMotion.DurationShort)),
+            exit = fadeOut(tween(InfinityMotion.DurationShort)),
+        ) {
+            LinearProgressIndicator(Modifier.fillMaxWidth().height(3.dp))
+        }
+    }
+    AnimatedVisibility(
+        visible = !state.loaded && !state.failed,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        MediaNotice(stringResource(R.string.media_settings_loading))
+    }
+    AnimatedVisibility(
+        visible = state.failed,
+        enter = InfinityMotion.expandIn,
+        exit = InfinityMotion.shrinkOut,
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            MediaNotice(stringResource(R.string.media_settings_failed), error = true)
+            MediaAction(stringResource(R.string.media_settings_retry), onRetry, !state.busy)
+        }
     }
 }
 

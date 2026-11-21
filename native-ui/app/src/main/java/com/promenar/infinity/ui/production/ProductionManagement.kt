@@ -1,5 +1,11 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.EditNote
@@ -37,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -488,12 +496,18 @@ private fun MediaTask.kindLabel(channels: List<MediaChannel>): String = stringRe
     },
 )
 
-/** 任务行：对象、种类、通道与错误，右侧状态；进行中的任务只有“取消”。 */
+/** 任务行：对象、种类、通道与错误，右侧状态与紧凑取消钮。 */
 @Composable
 internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelServices, busy: Boolean, onCancel: (String) -> Unit, titleSegments: List<String> = emptyList(), channels: List<MediaChannel> = emptyList()) {
     val running = task.isActiveTask() && task.state != MediaTaskState.QUEUED
-    Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .animateContentSize(com.promenar.infinity.ui.theme.InfinityMotion.contentSizeSpec())
+            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val title = titleSegments.ifEmpty { listOf(task.request.sourceRef) } + task.kindLabel(channels)
                 Text(
@@ -511,11 +525,32 @@ internal fun ProductionTaskRow(task: MediaTask, services: ProductionPanelService
             }
             val percent = task.progress?.takeIf { running }?.let { " ${(it * 100).toInt()}%" }.orEmpty()
             ProductionStatusChip(task.stateLabel(services.pendingRegistrations) + percent, task.tone(services.pendingRegistrations))
+            AnimatedVisibility(
+                visible = task.canCancel(),
+                enter = expandHorizontally() + fadeIn(),
+                exit = shrinkHorizontally() + fadeOut(),
+            ) {
+                OutlinedIconButton(
+                    onClick = { onCancel(task.id) },
+                    enabled = !busy && services.queue != null,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier.size(36.dp).testTag(ProductionUiTags.TASK_CANCEL),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.production_task_cancel),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         }
-        if (running) ProductionProgressBar(task.progress)
-        if (task.canCancel()) ProductionActionRow(listOf(
-            ProductionButton(stringResource(R.string.production_task_cancel), InfinityPillTone.NEUTRAL, !busy && services.queue != null, ProductionUiTags.TASK_CANCEL) { onCancel(task.id) },
-        ))
+        AnimatedVisibility(
+            visible = running,
+            enter = com.promenar.infinity.ui.theme.InfinityMotion.expandIn,
+            exit = com.promenar.infinity.ui.theme.InfinityMotion.shrinkOut,
+        ) {
+            ProductionProgressBar(task.progress)
+        }
     }
 }
 

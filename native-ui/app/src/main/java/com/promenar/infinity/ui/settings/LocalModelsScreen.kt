@@ -5,17 +5,25 @@ import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -37,9 +45,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -207,28 +220,50 @@ internal fun LocalModelsScreenContent(
                         title = stringResource(R.string.local_models_library),
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = onImport, enabled = !isImporting) {
-                        if (isImporting) {
-                            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
+                    Surface(
+                        onClick = onImport,
+                        enabled = !isImporting,
+                        shape = CircleShape,
+                        color = if (!isImporting) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                        contentColor = if (!isImporting) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        modifier = Modifier
+                            .padding(end = InfinitySpacing.Small)
+                            .minimumInteractiveComponentSize()
+                            .heightIn(min = 36.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+                        ) {
+                            if (isImporting) {
+                                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Rounded.Add, null, Modifier.size(16.dp))
+                            }
+                            Text(
+                                stringResource(if (isImporting) R.string.local_models_importing else R.string.local_models_import),
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                            )
                         }
-                        Text(
-                            stringResource(if (isImporting) R.string.local_models_importing else R.string.local_models_import),
-                            Modifier.padding(start = InfinitySpacing.XSmall),
-                        )
                     }
                 }
             }
-            if (showDownload) {
-                item(key = "download") {
-                    Column(Modifier.bettboxListGroupItem(0, libraryRows)) {
-                        RecordingModelDownloadRow(downloadProgress, !isImporting, formatFileSize, requireNotNull(onInstall), onCancelInstall)
+            item(key = "download") {
+                AnimatedVisibility(
+                    visible = showDownload,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                    modifier = Modifier.animateItem(),
+                ) {
+                    Column(Modifier.bettboxListGroupItem(0, libraryRows.coerceAtLeast(1))) {
+                        RecordingModelDownloadRow(downloadProgress, !isImporting, formatFileSize, onInstall ?: {}, onCancelInstall)
                     }
                 }
             }
             itemsIndexed(availableModels, key = { _, model -> model.id }) { index, model ->
-                Column(Modifier.bettboxListGroupItem(index + downloadRows, libraryRows)) {
+                Column(Modifier.animateItem().bettboxListGroupItem(index + downloadRows, libraryRows)) {
                     if (showDownload || index > 0) HorizontalDivider()
                     val label = model.displayName()
                     val fixed = pinned?.path == model.filePath
@@ -263,15 +298,29 @@ internal fun LocalModelsScreenContent(
                     )
                 }
             }
-            item {
-                if (modelError != null) {
-                    Text(
-                        stringResource(modelError),
-                        Modifier.padding(horizontal = InfinitySpacing.RowHorizontal).padding(top = InfinitySpacing.FooterTop),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } else if (availableModels.isEmpty() && downloadProgress == null) {
+            item(key = "library_footer") {
+                val lastError = rememberLastNonNull(modelError)
+                AnimatedVisibility(
+                    visible = modelError != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                    modifier = Modifier.animateItem(),
+                ) {
+                    lastError?.let { err ->
+                        Text(
+                            stringResource(err),
+                            Modifier.padding(horizontal = InfinitySpacing.RowHorizontal).padding(top = InfinitySpacing.FooterTop),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                AnimatedVisibility(
+                    visible = modelError == null && availableModels.isEmpty() && downloadProgress == null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                    modifier = Modifier.animateItem(),
+                ) {
                     BettboxListGroup(modifier = Modifier.padding(top = 4.dp)) {
                         InfinitySettingsRowLayout(
                             title = stringResource(R.string.local_models_empty_library),
@@ -449,39 +498,58 @@ private fun RecordingModelDownloadRow(
     onInstall: () -> Unit,
     onCancel: () -> Unit,
 ) {
-    InfinitySettingsRowLayout(
-        title = stringResource(R.string.recording_library_ui_local_model),
-        icon = Icons.Rounded.Layers,
-        titleMaxLines = 2,
-        subtitle = if (progress == null) stringResource(
-            R.string.recording_model_download_details,
-            RecordingModelPackage.displayName, formatFileSize(RecordingModelPackage.bytes), RecordingModelPackage.quantization,
-        )
+    val lastProgress = rememberLastNonNull(progress)
+    Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec())) {
+        InfinitySettingsRowLayout(
+            title = stringResource(R.string.recording_library_ui_local_model),
+            icon = Icons.Rounded.Layers,
+            titleMaxLines = 2,
+            subtitle = if (progress == null) stringResource(
+                R.string.recording_model_download_details,
+                RecordingModelPackage.displayName, formatFileSize(RecordingModelPackage.bytes), RecordingModelPackage.quantization,
+            )
             else stringResource(R.string.local_models_downloading, RecordingModelPackage.displayName),
-        subtitleMaxLines = 2,
-        trailingContent = {
-            TextButton(onClick = if (progress == null) onInstall else onCancel, enabled = enabled || progress != null) {
-                Text(stringResource(if (progress == null) R.string.local_models_download else R.string.common_btn_cancel))
-            }
-        },
-    )
-    if (progress != null) {
-        Row(
-            Modifier.fillMaxWidth().padding(
-                start = InfinitySpacing.RowHorizontal, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Medium,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-            verticalAlignment = Alignment.CenterVertically,
+            subtitleMaxLines = 2,
+            trailingContent = {
+                AnimatedContent(
+                    targetState = progress != null,
+                    transitionSpec = { InfinityMotion.fadeThrough() },
+                    label = "recording_model_download_action",
+                ) { active ->
+                    InfinityPillButton(
+                        text = stringResource(if (!active) R.string.local_models_download else R.string.common_btn_cancel),
+                        onClick = if (!active) onInstall else onCancel,
+                        tone = if (!active) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
+                        enabled = enabled || active,
+                        compact = true,
+                    )
+                }
+            },
+        )
+        AnimatedVisibility(
+            visible = progress != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
         ) {
-            LinearProgressIndicator(
-                progress = { progress.coerceIn(0, 100) / 100f },
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                stringResource(R.string.local_models_progress, progress),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            lastProgress?.let { shownProgress ->
+                Row(
+                    Modifier.fillMaxWidth().padding(
+                        start = InfinitySpacing.RowHorizontal, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Medium,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LinearProgressIndicator(
+                        progress = { shownProgress.coerceIn(0, 100) / 100f },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        stringResource(R.string.local_models_progress, shownProgress),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
         }
     }
 }
@@ -512,18 +580,29 @@ private fun AssignmentSheet(
         dragGesturesEnabled = false,
         popover = anchor?.let { InfinityPopoverSpec(it, width = 360.dp) },
     ) {
-        if (!engineEnabled) {
-            SheetHint(stringResource(R.string.local_models_engine_disabled))
-            InfinityOptionItem(
-                icon = Icons.Rounded.Memory,
-                title = stringResource(R.string.local_models_enable_engine),
-                onClick = onEnable,
-                role = Role.Button,
-            )
-        } else if (state.isLoading) {
-            LinearProgressIndicator(progress = { state.loadProgress }, modifier = Modifier.fillMaxWidth())
-            SheetHint(stringResource(R.string.shared_loading))
-        } else {
+        val sheetPhase = when {
+            !engineEnabled -> 0
+            state.isLoading -> 1
+            else -> 2
+        }
+        AnimatedContent(
+            targetState = sheetPhase,
+            transitionSpec = { InfinityMotion.fadeThrough() },
+            label = "local_model_assignment_phase",
+        ) { phase ->
+            Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec())) {
+                if (phase == 0) {
+                    SheetHint(stringResource(R.string.local_models_engine_disabled))
+                    InfinityOptionItem(
+                        icon = Icons.Rounded.Memory,
+                        title = stringResource(R.string.local_models_enable_engine),
+                        onClick = onEnable,
+                        role = Role.Button,
+                    )
+                } else if (phase == 1) {
+                    LinearProgressIndicator(progress = { state.loadProgress }, modifier = Modifier.fillMaxWidth())
+                    SheetHint(stringResource(R.string.shared_loading))
+                } else {
             if (state.error != null) SheetHint(stringResource(R.string.local_models_load_failed), error = true)
             val options = models.filter { pinned == null || pinned.path == it.filePath }
             if (options.isNotEmpty()) {
@@ -570,6 +649,8 @@ private fun AssignmentSheet(
                     enabled = seeModelLibrary || importEnabled,
                     role = Role.Button,
                 )
+            }
+                }
             }
         }
     }

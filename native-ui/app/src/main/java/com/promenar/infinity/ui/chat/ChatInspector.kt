@@ -1,6 +1,14 @@
 package com.promenar.infinity.ui.chat
 
 import android.content.Context
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -94,8 +102,11 @@ import com.promenar.infinity.ui.common.panelTabScrollTarget
 import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.common.rememberFrostedChromeMaterial
 import com.promenar.infinity.ui.startup.StartupNotice
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.rememberLastNonNull
+import com.promenar.infinity.ui.theme.rememberLastPositive
 import kotlin.math.roundToInt
 
 /** 远程条目的状态：智能体正在使用 SSH，或 Tailscale 需要登录、连接失败；两种情况同时出现时需要用户处理的优先。 */
@@ -188,8 +199,15 @@ internal fun ChatInspectorCard(
                                 .height(20.dp)
                                 .background((chrome?.edgeDivider ?: MaterialTheme.colorScheme.outlineVariant).copy(alpha = 0.55f)),
                         )
-                        // 宽窗口没有运行坞，生成中的触摸锁放在检视器底栏。
-                        onLockTouch?.let { TouchLockButton(onLock = it) }
+                        // 宽窗口没有运行坞，生成中的触摸锁放在检视器底栏；使用水平折叠与退场回调缓存避免挤跳页签。
+                        val heldLock = rememberLastNonNull(onLockTouch, key = "inspector-card-lock")
+                        AnimatedVisibility(
+                            visible = onLockTouch != null && heldLock != null,
+                            enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                            exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+                        ) {
+                            heldLock?.let { TouchLockButton(onLock = it) }
+                        }
                         IconButton(onClick = { haptics.toggle(!widened); onToggleWiden() }, modifier = Modifier.testTag(ChatInspectorTags.WIDEN)) {
                             Icon(
                                 if (widened) Icons.Rounded.CloseFullscreen else Icons.Rounded.OpenInFull,
@@ -290,19 +308,41 @@ private fun InspectorTab(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val tint = when {
+    val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val targetTint = when {
         !entry.available -> scheme.onSurface.copy(alpha = 0.38f)
         selected -> scheme.onSurface
         else -> scheme.onSurfaceVariant
     }
-    val description = entry.description()
+    val tint by animateColorAsState(
+        targetValue = targetTint,
+        animationSpec = tween(if (animate) InfinityMotion.DurationShort else 0),
+        label = "inspector_tab_tint",
+    )
     val chrome = LocalFrostedChromeMaterial.current
-    // 未被 Agent 调用过的条目灰调显示、不可点按；选中态展开短标题胶囊，未选中态保留紧凑图标与角标。
+    val targetBg = if (selected) (chrome?.innerCard ?: scheme.surfaceContainerHigh) else Color.Transparent
+    val backgroundColor by animateColorAsState(
+        targetValue = targetBg,
+        animationSpec = tween(if (animate) InfinityMotion.DurationShort else 0),
+        label = "inspector_tab_bg",
+    )
+    val startPad by animateDpAsState(
+        targetValue = if (selected) InspectorTabLabelStart else 13.dp,
+        animationSpec = tween(if (animate) InfinityMotion.DurationMedium else 0, easing = InfinityMotion.EmphasizedDecelerate),
+        label = "inspector_tab_start_pad",
+    )
+    val endPad by animateDpAsState(
+        targetValue = if (selected) InspectorTabLabelEnd else 13.dp,
+        animationSpec = tween(if (animate) InfinityMotion.DurationMedium else 0, easing = InfinityMotion.EmphasizedDecelerate),
+        label = "inspector_tab_end_pad",
+    )
+    val description = entry.description()
+    // 未被 Agent 调用过的条目灰调显示、不可点按；统一单一 Row 结构，选中态水平展开短标题与底色。
     Surface(
         onClick = onClick,
         enabled = entry.available,
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) (chrome?.innerCard ?: scheme.surfaceContainerHigh) else Color.Transparent,
+        color = backgroundColor,
         border = if (selected) chrome?.innerCardBorder else null,
         modifier = modifier
             .heightIn(min = 40.dp)
@@ -314,31 +354,35 @@ private fun InspectorTab(
             }
             .testTag(ChatInspectorTags.tab(entry.page)),
     ) {
-        if (selected) {
-            Row(
-                modifier = Modifier.padding(
-                    PaddingValues(
-                        start = InspectorTabLabelStart,
-                        end = InspectorTabLabelEnd,
-                        top = InspectorTabLabelVerticalPadding,
-                        bottom = InspectorTabLabelVerticalPadding,
-                    ),
+        Row(
+            modifier = Modifier
+                .heightIn(min = 40.dp)
+                .padding(
+                    start = startPad,
+                    end = endPad,
+                    top = InspectorTabLabelVerticalPadding,
+                    bottom = InspectorTabLabelVerticalPadding,
                 ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(InspectorTabLabelGap),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PanelHubIcon(entry, tint, reserveBadge = selected)
+            AnimatedVisibility(
+                visible = selected,
+                enter = expandHorizontally(tween(if (animate) InfinityMotion.DurationMedium else 0, easing = InfinityMotion.EmphasizedDecelerate)) +
+                    fadeIn(tween(if (animate) InfinityMotion.DurationShort else 0)),
+                exit = shrinkHorizontally(tween(if (animate) InfinityMotion.DurationShort else 0)) +
+                    fadeOut(tween(if (animate) InfinityMotion.DurationFadeOut else 0)),
             ) {
-                PanelHubIcon(entry, tint, reserveBadge = true)
-                Text(
-                    text = entry.page.inspectorTabLabel(),
-                    style = InfinityTypography.labelLarge,
-                    color = tint,
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
-        } else {
-            Box(Modifier.width(InspectorTabWidth).height(40.dp), contentAlignment = Alignment.Center) {
-                PanelHubIcon(entry, tint)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(InspectorTabLabelGap))
+                    Text(
+                        text = entry.page.inspectorTabLabel(),
+                        style = InfinityTypography.labelLarge,
+                        color = tint,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
             }
         }
     }
@@ -405,7 +449,14 @@ internal fun ChatInspectorStrip(
                     modifier = Modifier.width(24.dp).padding(vertical = 2.dp),
                     color = chrome.edgeDivider,
                 )
-                onLockTouch?.let { TouchLockButton(onLock = it) }
+                val heldStripLock = rememberLastNonNull(onLockTouch, key = "inspector-strip-lock")
+                AnimatedVisibility(
+                    visible = onLockTouch != null && heldStripLock != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    heldStripLock?.let { TouchLockButton(onLock = it) }
+                }
                 IconButton(onClick = { haptics.toggle(true); onExpand() }, modifier = Modifier.testTag(ChatInspectorTags.EXPAND)) {
                     Icon(
                         Icons.Rounded.KeyboardDoubleArrowLeft,
@@ -480,9 +531,14 @@ internal fun ChatInspectorRunTab(
     content: @Composable () -> Unit,
 ) {
     Column(modifier.fillMaxSize()) {
-        if (pendingApprovals > 0) {
+        val heldApprovals = rememberLastPositive(pendingApprovals, key = "run-pending-approvals")
+        AnimatedVisibility(
+            visible = pendingApprovals > 0 && heldApprovals > 0,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
             StartupNotice(
-                title = pluralStringResource(R.plurals.chat_inspector_pending_approvals, pendingApprovals, pendingApprovals),
+                title = pluralStringResource(R.plurals.chat_inspector_pending_approvals, heldApprovals, heldApprovals),
                 detail = stringResource(R.string.chat_inspector_approval_detail),
                 actionLabel = stringResource(R.string.chat_inspector_approval_action),
                 icon = Icons.Rounded.VerifiedUser,

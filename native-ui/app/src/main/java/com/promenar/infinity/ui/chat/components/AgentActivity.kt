@@ -74,6 +74,14 @@ import com.promenar.infinity.ui.common.ChannelLimitChip
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.rememberLastNonNull
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -337,6 +345,7 @@ internal fun BackgroundJobRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec())
             .clickable(role = Role.Button, onClick = onToggle)
             .padding(start = InfinitySpacing.Large, end = InfinitySpacing.Small, top = InfinitySpacing.Small, bottom = InfinitySpacing.Small)
             .testTag(UiTags.backgroundJob(job.id)),
@@ -356,15 +365,30 @@ internal fun BackgroundJobRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
-                if (running) job.transfer?.let { SftpTransferProgress(it, Modifier.padding(top = InfinitySpacing.XSmall), metaMaxLines = 1) }
+                val heldTransfer = rememberLastNonNull(job.transfer?.takeIf { running }, key = "job-transfer-${job.id}")
+                AnimatedVisibility(
+                    visible = running && job.transfer != null && heldTransfer != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    heldTransfer?.let { SftpTransferProgress(it, Modifier.padding(top = InfinitySpacing.XSmall), metaMaxLines = 1) }
+                }
             }
-            if (running) {
+            AnimatedVisibility(
+                visible = running,
+                enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+            ) {
                 FilledTonalIconButton(onClick = onStop, modifier = Modifier.testTag(UiTags.backgroundJobStop(job.id))) {
                     Icon(Icons.Rounded.Stop, contentDescription = stringResource(R.string.agent_jobs_stop), modifier = Modifier.size(18.dp))
                 }
             }
         }
-        if (expanded) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
             Column(
                 modifier = Modifier.padding(start = 24.dp + InfinitySpacing.Medium, top = InfinitySpacing.Small, end = InfinitySpacing.Small),
                 verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),

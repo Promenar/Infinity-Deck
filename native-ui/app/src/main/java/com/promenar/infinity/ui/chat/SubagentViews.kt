@@ -1,6 +1,15 @@
 package com.promenar.infinity.ui.chat
 
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.rememberLastNonNull
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.widthIn
 import com.promenar.infinity.domain.tool.CommandToolClassification
 import com.promenar.infinity.domain.tool.ToolRisk
@@ -44,7 +53,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.StopCircle
-import androidx.compose.material.icons.rounded.CallMade
+import androidx.compose.material.icons.automirrored.rounded.CallMade
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton
@@ -167,7 +176,11 @@ internal fun SubagentGroupCardContent(
         }
     }
     Column(
-        modifier = modifier.fillMaxWidth().padding(bottom = ExpandedStepBottomPadding).testTag("CHAT_SUBAGENT_GROUP"),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec())
+            .padding(bottom = ExpandedStepBottomPadding)
+            .testTag("CHAT_SUBAGENT_GROUP"),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val wait = batch.wait?.takeIf { active }
@@ -177,8 +190,10 @@ internal fun SubagentGroupCardContent(
             active -> stringResource(R.string.subagent_running_background)
             else -> null
         }
+        val canDetach = wait != null && onDetach != null
+        val heldDetach = rememberLastNonNull(onDetach?.takeIf { wait != null }, key = "subagent-detach")
         Row(
-            modifier = Modifier.heightIn(min = 32.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -189,38 +204,36 @@ internal fun SubagentGroupCardContent(
                 style = InfinityTypography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // 有“转入后台”按钮时状态文字换到下一行，不和按钮抢宽度。
-            waitText?.takeUnless { wait != null && onDetach != null }?.let {
-                Text(
-                    text = "· $it",  // wrap-check: allow 行内单行省略的状态后缀
-                    style = InfinityTypography.labelMedium,
-                    color = if (wait != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-            }
-            if (wait != null && onDetach != null) {
-                Spacer(Modifier.weight(1f))
-                val detachLabel = stringResource(R.string.subagent_detach_cd)
-                FilledTonalButton(
-                    onClick = onDetach,
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    modifier = Modifier.height(32.dp).semantics { contentDescription = detachLabel }.testTag("CHAT_SUBAGENT_DETACH"),
-                ) {
-                    Icon(Icons.Rounded.CallMade, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.subagent_detach), style = InfinityTypography.labelLarge)
+            // 状态文案固定同一行位，转入后台时不再从第二行弹回首行；按钮单独水平展开收缩。
+            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                waitText?.let { status ->
+                    Text(
+                        text = "· $status",  // wrap-check: allow 行内单行省略的状态后缀
+                        style = InfinityTypography.labelMedium,
+                        color = if (wait != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
-        }
-        if (wait != null && onDetach != null && waitText != null) {
-            Text(
-                text = waitText,
-                style = InfinityTypography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 22.dp),
-            )
+            AnimatedVisibility(
+                visible = canDetach && heldDetach != null,
+                enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+            ) {
+                heldDetach?.let { detachAction ->
+                    val detachLabel = stringResource(R.string.subagent_detach_cd)
+                    FilledTonalButton(
+                        onClick = detachAction,
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.height(32.dp).semantics { contentDescription = detachLabel }.testTag("CHAT_SUBAGENT_DETACH"),
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.CallMade, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(stringResource(R.string.subagent_detach), style = InfinityTypography.labelLarge)
+                    }
+                }
+            }
         }
         batch.runs.forEach { run ->
             key(run.index) {
@@ -243,6 +256,7 @@ private fun SubagentRunRow(run: SubagentRun, now: Long, modelName: String, onCli
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec())
             .clip(RoundedCornerShape(12.dp))
             .toolCardSurface()
             .clickable(onClickLabel = openLabel, role = Role.Button, onClick = onClick)
@@ -270,10 +284,17 @@ private fun SubagentRunRow(run: SubagentRun, now: Long, modelName: String, onCli
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (onStop != null) {
-                val stopLabel = stringResource(R.string.subagent_stop_cd, name)
-                IconButton(onClick = onStop, modifier = Modifier.size(40.dp).testTag("CHAT_SUBAGENT_STOP")) {
-                    Icon(Icons.Rounded.StopCircle, contentDescription = stopLabel, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            val heldStop = rememberLastNonNull(onStop, key = "subagent-row-stop-${run.index}")
+            AnimatedVisibility(
+                visible = onStop != null && heldStop != null,
+                enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+            ) {
+                heldStop?.let { stopAction ->
+                    val stopLabel = stringResource(R.string.subagent_stop_cd, name)
+                    IconButton(onClick = stopAction, modifier = Modifier.size(40.dp).testTag("CHAT_SUBAGENT_STOP")) {
+                        Icon(Icons.Rounded.StopCircle, contentDescription = stopLabel, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -300,8 +321,14 @@ private fun SubagentRunRow(run: SubagentRun, now: Long, modelName: String, onCli
             )
         }
         SubagentModelTag(subagentModelLabel(run, modelName), Modifier.padding(start = 24.dp, end = 8.dp, top = 2.dp))
-        if (run.status == SubagentStatus.COMPLETED) {
-            run.result?.let(::subagentResultSummary)?.let { summary ->
+        val completedSummary = run.result?.takeIf { run.status == SubagentStatus.COMPLETED }?.let(::subagentResultSummary)
+        val heldSummary = rememberLastNonNull(completedSummary, key = "subagent-summary-${run.index}")
+        AnimatedVisibility(
+            visible = completedSummary != null && heldSummary != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            heldSummary?.let { summary ->
                 Text(
                     text = summary,
                     style = InfinityTypography.bodySmall,
@@ -637,7 +664,15 @@ fun SubagentViewerScreen(
         Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             SubagentViewerContent(run, modelName(run.modelId), now = clock)
         }
-        if (onStop != null && run.status.isActive && run.id.isNotEmpty()) SubagentViewerFooter(onStop = { onStop(run) })
+        val activeStop = onStop?.takeIf { run.status.isActive && run.id.isNotEmpty() }?.let { stop -> { stop(run) } }
+        val heldViewerStop = rememberLastNonNull(activeStop, key = "subagent-viewer-stop-${run.id}")
+        AnimatedVisibility(
+            visible = activeStop != null && heldViewerStop != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            heldViewerStop?.let { SubagentViewerFooter(onStop = it) }
+        }
     }
 }
 
@@ -855,7 +890,7 @@ private fun SubagentInterventionRow(event: SubagentEvent, startedAt: Long) {
     ) {
         HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
         Icon(
-            if (event.kind == SubagentEvent.Kind.DETACH) Icons.Rounded.CallMade else Icons.Rounded.StopCircle,
+            if (event.kind == SubagentEvent.Kind.DETACH) Icons.AutoMirrored.Rounded.CallMade else Icons.Rounded.StopCircle,
             contentDescription = null,
             modifier = Modifier.size(14.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,

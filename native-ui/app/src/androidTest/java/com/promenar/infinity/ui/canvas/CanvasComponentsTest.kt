@@ -143,12 +143,12 @@ class CanvasComponentsTest {
             .assertIsDisplayed()
             .assertHeightIsAtLeast(48.dp)
             .performClick()
-        rule.onNodeWithText(resources.getString(R.string.canvas_history_notice)).assertIsDisplayed()
+        rule.onNodeWithText(resources.getString(R.string.canvas_history_version, 1)).assertIsDisplayed()
         rule.runOnIdle { assertEquals(1, selected) }
 
         rule.onNodeWithTag(UiTags.CANVAS_VERSION_SELECTOR).performClick()
         rule.onNodeWithText(resources.getString(R.string.canvas_follow_latest, 3)).performClick()
-        rule.onNodeWithText(resources.getString(R.string.canvas_history_notice)).assertDoesNotExist()
+        rule.onNodeWithText(resources.getString(R.string.canvas_follow_latest, 3)).assertIsDisplayed()
         rule.runOnIdle { assertEquals(null, selected) }
     }
 }

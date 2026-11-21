@@ -1,9 +1,15 @@
 package com.promenar.infinity.recording
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,8 +45,10 @@ import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.rememberLastNonNull
 
 @Composable
 internal fun RecordingAsrControls(
@@ -205,6 +213,14 @@ internal fun RecordingRefineStrategyControls(
     }
 }
 
+private enum class RecordingModelCardSlot {
+    DOWNLOAD,
+    RETRY,
+    WORKING,
+    INSTALLED,
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RecordingModelPackageCard(
     icon: ImageVector,
@@ -218,14 +234,42 @@ private fun RecordingModelPackageCard(
     onDownload: () -> Unit,
     onCancel: () -> Unit,
 ) {
+    val activeDownloading = state as? RecordingAsrModelState.Downloading
+    val lastDownloading = rememberLastNonNull(activeDownloading, title)
+    val failedState = state as? RecordingAsrModelState.Failed
+    val lastFailed = rememberLastNonNull(failedState, title)
+    val lastDescription = rememberLastNonNull(description?.takeIf { it.isNotBlank() }, title)
+    val isWorking = state is RecordingAsrModelState.Downloading || state == RecordingAsrModelState.Installing
+    val progress = if (state == RecordingAsrModelState.Installing) {
+        null
+    } else {
+        lastDownloading?.let { (it.downloadedBytes.toFloat() / it.totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f) }
+    }
+    val actionSlot = when (state) {
+        RecordingAsrModelState.Missing -> RecordingModelCardSlot.DOWNLOAD
+        is RecordingAsrModelState.Failed -> RecordingModelCardSlot.RETRY
+        is RecordingAsrModelState.Downloading, RecordingAsrModelState.Installing -> RecordingModelCardSlot.WORKING
+        RecordingAsrModelState.Installed -> RecordingModelCardSlot.INSTALLED
+    }
+    val subtitleText = when (state) {
+        is RecordingAsrModelState.Downloading -> {
+            val pct = (((state.downloadedBytes.toFloat() / state.totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f)) * 100).toInt()
+            stringResource(R.string.recording_progress_label, stringResource(downloadingLabel), pct)
+        }
+        RecordingAsrModelState.Installing -> stringResource(installingLabel)
+        else -> sizeLine
+    }
     Column(
         Modifier
             .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec())
             .padding(InfinitySpacing.RowHorizontal),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
         ) {
@@ -235,93 +279,153 @@ private fun RecordingModelPackageCard(
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
-            Text(
-                text = title,
-                style = InfinityTypography.titleSmall,
+            Column(
                 modifier = Modifier.weight(1f),
-            )
-            if (!badge.isNullOrBlank()) {
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = badge,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        text = title,
+                        style = InfinityTypography.titleSmall,
                     )
+                    if (!badge.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                        ) {
+                            Text(
+                                text = badge,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
-            }
-        }
-        Text(
-            text = sizeLine,
-            style = InfinityTypography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (!description.isNullOrBlank()) {
-            Text(
-                text = description,
-                style = InfinityTypography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        when (state) {
-            RecordingAsrModelState.Missing, is RecordingAsrModelState.Failed -> {
-                if (state is RecordingAsrModelState.Failed) {
-                    Text(
-                        stringResource(state.message),
-                        style = InfinityTypography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                    )
-                }
-                InfinityPillButton(
-                    text = stringResource(if (state is RecordingAsrModelState.Failed) R.string.common_retry else R.string.recording_asr_download),
-                    onClick = onDownload,
-                    tone = InfinityPillTone.PRIMARY,
-                    icon = Icons.Rounded.Download,
-                    compact = true,
+                Text(
+                    text = subtitleText,
+                    style = InfinityTypography.bodySmall,
+                    color = if (isWorking) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            is RecordingAsrModelState.Downloading -> {
-                val progress = (state.downloadedBytes.toFloat() / state.totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f)
-                RecordingWorkProgress(downloadingLabel, progress, onCancel)
-            }
-
-            RecordingAsrModelState.Installing -> RecordingWorkProgress(installingLabel, null, onCancel)
-            RecordingAsrModelState.Installed -> {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary,
+            AnimatedContent(
+                targetState = actionSlot,
+                transitionSpec = { InfinityMotion.fadeThrough() },
+                label = "recording_model_card_action",
+            ) { slot ->
+                when (slot) {
+                    RecordingModelCardSlot.DOWNLOAD -> InfinityPillButton(
+                        text = stringResource(R.string.recording_asr_download),
+                        onClick = onDownload,
+                        tone = InfinityPillTone.PRIMARY,
+                        icon = Icons.Rounded.Download,
+                        compact = true,
                     )
-                    Text(
-                        stringResource(R.string.recording_asr_installed),
-                        style = InfinityTypography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                    RecordingModelCardSlot.RETRY -> InfinityPillButton(
+                        text = stringResource(R.string.common_retry),
+                        onClick = onDownload,
+                        tone = InfinityPillTone.PRIMARY,
+                        icon = Icons.Rounded.Download,
+                        compact = true,
                     )
+                    RecordingModelCardSlot.WORKING -> InfinityPillButton(
+                        text = stringResource(R.string.recording_cancel),
+                        onClick = onCancel,
+                        tone = InfinityPillTone.NEUTRAL,
+                        compact = true,
+                    )
+                    RecordingModelCardSlot.INSTALLED -> Row(
+                        modifier = Modifier.heightIn(min = 32.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            stringResource(R.string.recording_asr_installed),
+                            style = InfinityTypography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
+        }
+        AnimatedVisibility(
+            visible = !description.isNullOrBlank(),
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            lastDescription?.let { note ->
+                Text(
+                    text = note,
+                    style = InfinityTypography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = failedState != null,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            lastFailed?.let { failed ->
+                Text(
+                    stringResource(failed.message),
+                    style = InfinityTypography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = isWorking,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            if (progress == null) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            else LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
 internal fun RecordingWorkProgress(label: Int, progress: Float?, onCancel: () -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-        Text(
-            if (progress == null) stringResource(label) else stringResource(R.string.recording_progress_label, stringResource(label), (progress * 100).toInt()),
-            style = InfinityTypography.bodySmall,
-        )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .animateContentSize(InfinityMotion.contentSizeSpec()),
+        verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        ) {
+            Text(
+                text = if (progress == null) stringResource(label) else stringResource(R.string.recording_progress_label, stringResource(label), (progress * 100).toInt()),
+                style = InfinityTypography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.recording_cancel),
+                onClick = onCancel,
+                tone = InfinityPillTone.NEUTRAL,
+                compact = true,
+            )
+        }
         if (progress == null) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         else LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-        InfinityPillButton(text = stringResource(R.string.recording_cancel), onClick = onCancel, compact = true)
     }
 }
