@@ -25,9 +25,9 @@
     <string name="production_panel_version">v%d</string>
 
     <string name="production_panel_stage_script">剧本</string>
-    <string name="production_panel_stage_visual_dev">视觉开发</string>
+    <string name="production_panel_stage_visual_dev">视觉资产</string>
     <string name="production_panel_stage_storyboard">分镜</string>
-    <string name="production_panel_stage_animatic">动态预演</string>
+    <string name="production_panel_stage_animatic">分镜预演</string>
     <string name="production_panel_stage_generation">生成</string>
     <string name="production_panel_stage_sound">声音</string>
     <string name="production_panel_stage_edit">剪辑</string>
@@ -71,7 +71,7 @@
     <string name="production_panel_section_stages">阶段</string>
     <string name="production_panel_section_pending">待你处理</string>
     <string name="production_panel_section_episodes">剧集</string>
-    <string name="production_panel_section_bible">故事圣经</string>
+    <string name="production_panel_section_bible">设定集</string>
     <string name="production_panel_section_takes">候选</string>
     <string name="production_panel_section_inputs">输入</string>
     <string name="production_panel_section_prompt">提示词</string>
@@ -97,9 +97,9 @@
     <string name="production_panel_manifest_write_failed">清单写入失败：%s</string>
     <string name="production_panel_manifest_external">清单文件已在外部修改</string>
     <string name="production_panel_manifest_invalid">清单文件无法读取：%s</string>
-    <string name="production_panel_manifest_adopt">采用文件</string>
+    <string name="production_panel_manifest_adopt">以文件为准</string>
     <string name="production_panel_manifest_overwrite">覆盖文件</string>
-    <string name="production_panel_manifest_adopt_title">采用清单文件？</string>
+    <string name="production_panel_manifest_adopt_title">使用外部清单文件？</string>
     <string name="production_panel_manifest_adopt_body">面板数据将替换为文件内容。</string>
     <string name="production_panel_manifest_overwrite_title">覆盖清单文件？</string>
     <string name="production_panel_manifest_overwrite_body">清单文件将按面板数据重写。</string>

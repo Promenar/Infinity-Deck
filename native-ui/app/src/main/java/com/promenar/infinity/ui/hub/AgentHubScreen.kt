@@ -42,6 +42,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -58,6 +60,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.LocalTextStyle
@@ -996,6 +999,8 @@ private fun HubSessionRow(
     tag: String = UiTags.hubSession(session.id),
     /** 分支排在主会话之下时缩进。 */
     nested: Boolean = false,
+    rowShape: Shape = RectangleShape,
+    horizontalPadding: Dp = InfinitySpacing.RowHorizontal,
 ) {
     val isBranch = session.parentSessionId != null
     val branchState = stringResource(R.string.branch_label)
@@ -1015,8 +1020,10 @@ private fun HubSessionRow(
             subtitle = subtitle,
             // 会话行固定单行：长标题横滑查看，不折成两行撑高列表。
             singleLineTitle = true,
+            horizontalPadding = horizontalPadding,
             modifier = Modifier
                 .testTag(tag)
+                .then(if (rowShape != RectangleShape) Modifier.clip(rowShape) else Modifier)
                 // 内屏三列：会话列正在显示的会话与设置目录的选中项同样高亮。
                 .then(if (selected) Modifier.background(chrome?.innerCard ?: MaterialTheme.colorScheme.secondaryContainer) else Modifier)
                 .semantics {
@@ -1275,18 +1282,19 @@ private fun HubAgentSessions(
                     .drawWithContent {
                         drawContent()
                         val lineX = (InfinitySpacing.RowHorizontal + 20.dp).toPx()
-                        val insetY = 6.dp.toPx()
-                        if (size.height > insetY * 2) {
+                        val topInset = 4.dp.toPx()
+                        val bottomInset = 10.dp.toPx()
+                        if (size.height > topInset + bottomInset) {
                             drawLine(
                                 color = guideColor,
-                                start = Offset(lineX, insetY),
-                                end = Offset(lineX, size.height - insetY),
+                                start = Offset(lineX, topInset),
+                                end = Offset(lineX, size.height - bottomInset),
                                 strokeWidth = 2.dp.toPx(),
                                 cap = StrokeCap.Round,
                             )
                         }
                     }
-                    .padding(start = 24.dp),
+                    .padding(start = 46.dp, end = 8.dp, bottom = 6.dp),
             ) {
                 val nestedSessions = remember(sessions) { nestBranchSessions(sessions) { it } }
                 nestedSessions.forEach { (session, nested) ->
@@ -1297,6 +1305,8 @@ private fun HubAgentSessions(
                         activity = activity[session.id],
                         generation = generation[session.id],
                         selected = session.id == selectedSessionId,
+                        rowShape = RoundedCornerShape(10.dp),
+                        horizontalPadding = 12.dp,
                         onOpen = { actions.onOpenChat(session.id) },
                         onTogglePin = { actions.onToggleSessionPin(session.id) },
                         onRequestDelete = { actions.onRequestDeleteSession(session.id) },

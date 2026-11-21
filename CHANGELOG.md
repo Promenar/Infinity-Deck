@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.69.3-beta] - 2026-11-21
+
+- **对话首页智能体展开列表树线与选中态重叠修复（[AgentHubScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/hub/AgentHubScreen.kt)、[HubAgentSessionsGuideFixPrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/hub/HubAgentSessionsGuideFixPrototype.kt)、[AgentHubScreenContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/hub/AgentHubScreenContractTest.kt)）**：
+  - 将 `HubAgentSessions` 展开子会话竖线保留在上方 `40dp` 智能体头像圆心对齐线（`36dp`），子会话容器外移至竖线右侧（`padding(start = 46.dp, end = 8.dp, bottom = 6.dp)`），同时为 `HubSessionRow` 新增可选 `rowShape`（展开子项使用 `RoundedCornerShape(10.dp)`）与 `horizontalPadding`（`12.dp`），先裁圆角再绘制选中背景与点击水波纹，消除蓝线劈穿选中高亮矩形的重叠问题。
+- **制作面板中文化文案全量白话化精修（`production_panel_strings.xml`、`production_review_strings.xml`、`production_progress_strings.xml`、`production_panel_phase2_strings.xml`、`shot_planning_strings.xml`、`media_settings_strings.xml`、`production_tool_strings.xml`、[ProductionSamples.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionSamples.kt)）**：
+  - 统一消除翻译腔与工程黑话：`视觉开发 → 视觉资产`、`成本 → 生成统计`、`故事圣经 → 设定集`、`动态预演 → 分镜预演`、`重新编译 → 重写提示词`（弹窗改为「重新生成并覆盖当前提示词？」）、`采用文件 → 以文件为准 / 使用外部清单文件？`、`衔接链 / 登记项 / 未回报 → 分段续拍 / 生成记录 / 待同步结果`、`试验项目 / 跳过场批准检查 → 自由试拍模式 / 无需先批准分镜即可直接出片`、`缺口 → 缺画面 / 缺画面镜头`、`角色设定与谱系 → 角色设定`、`定义 / 附加制作项目 → 创建/更新 / 关联制作项目`，并将「入参 / 覆写 / 多视图资产卡 / 分张单视图组」口语化为「传入 / 单独调整 / 多视角整卡（单图）/ 分张单视图（多图）」（保留 `烧录字幕`），同时完成制作面板 15 张差异截图基线与 9 处 Linux overlay 同步验证。
+
 ## [0.69.2-beta] - 2026-11-21
 
 - **制作面板已发送就地否决内容更新后自动退回待审与同路径剧本文档自动感知（[ProductionReview.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionReview.kt)、[ProductionEngine.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionEngine.kt)、[ProductionUserEngine.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionUserEngine.kt)、[ProductionRepository.kt](native-ui/app/src/main/java/com/promenar/infinity/data/repository/ProductionRepository.kt)、[ProductionModel.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionModel.kt)、[ProductionManifest.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionManifest.kt)、[ProductionWorkspaceFiles.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionWorkspaceFiles.kt)、[DefaultProductionWorkspaceFiles.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/DefaultProductionWorkspaceFiles.kt)）**：

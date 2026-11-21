@@ -11,7 +11,7 @@
     <string name="media_settings_move_up">上移：%1$s</string>
     <string name="media_settings_composite">合图</string>
     <string name="media_settings_separate">分张</string>
-    <string name="media_settings_reference_input">角色参考入参</string>
+    <string name="media_settings_reference_input">角色参考图方式</string>
     <string name="media_settings_reference_limit">%1$s ≤%2$d</string>
     <string name="media_settings_references">参考位顺序</string>
     <string name="media_settings_front_full_body">正面全身</string>

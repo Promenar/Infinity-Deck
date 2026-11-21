@@ -77,7 +77,7 @@ internal object ProductionSamples {
         rootPath = ROOT,
         logline = "失踪案十年后，女儿回到雾港，在旧码头找到父亲留下的信。",
         aspectRatio = "16:9",
-        bible = listOf(DocumentRef("故事圣经", "$ROOT/bible/story.md"), DocumentRef("视觉风格", "$ROOT/bible/look.md")),
+        bible = listOf(DocumentRef("设定集", "$ROOT/bible/story.md"), DocumentRef("视觉风格", "$ROOT/bible/look.md")),
         stages = listOf(
             StageState(ProductionStage.SCRIPT, StageStatus.LOCKED),
             StageState(ProductionStage.VISUAL_DEV, StageStatus.LOCKED),

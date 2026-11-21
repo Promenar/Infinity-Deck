@@ -206,4 +206,17 @@ class AgentHubScreenContractTest {
         assertThat(layout).contains("InfinityScrollingLine(")
         assertThat(layout).doesNotContain("basicMarquee(")
     }
+
+    @Test
+    fun `智能体展开子会话区保留竖线在头像中线并将圆角选中态置于竖线右侧避免交叉`() {
+        val source = hubSource.readText()
+        val expandedArea = source.substringAfter("private fun HubAgentSessions(").substringBefore("/** 带头像的列表行")
+        val row = source.substringAfter("private fun HubSessionRow(").substringBefore("private fun HubAgentRow(")
+
+        assertThat(expandedArea).contains(".padding(start = 46.dp, end = 8.dp, bottom = 6.dp)")
+        assertThat(expandedArea).contains("rowShape = RoundedCornerShape(10.dp)")
+        assertThat(expandedArea).contains("horizontalPadding = 12.dp")
+        assertThat(row).contains(".then(if (rowShape != RectangleShape) Modifier.clip(rowShape) else Modifier)")
+        assertThat(row.indexOf("Modifier.clip(rowShape)")).isLessThan(row.indexOf("Modifier.background("))
+    }
 }

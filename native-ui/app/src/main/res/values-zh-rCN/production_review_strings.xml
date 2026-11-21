@@ -37,7 +37,7 @@
         <item quantity="other">%d 条</item>
     </plurals>
 
-    <string name="production_cost_section">成本</string>
+    <string name="production_cost_section">生成统计</string>
     <string name="production_cost_unit">生成次数</string>
     <string name="production_cost_none">暂无生成</string>
     <string name="production_cost_failed">失败 %1$d</string>

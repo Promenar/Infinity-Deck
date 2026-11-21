@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="production_chain_title">衔接链</string>
+    <string name="production_chain_title">分段续拍</string>
     <string name="production_chain_planned">待开始</string>
     <string name="production_chain_segment_of">段 %1$d/%2$d</string>
     <string name="production_chain_handoff">衔接 %1$d/%2$d</string>
@@ -14,13 +14,13 @@
     <string name="production_segment_number">段 %1$d</string>
     <string name="production_segment_range">%1$s–%2$s 秒</string>
     <string name="production_segments_title">分段</string>
-    <string name="production_run_unreported">未回报</string>
+    <string name="production_run_unreported">待同步结果</string>
     <string name="production_run_steps">%1$d/%2$d 步</string>
     <string name="production_source_title">来源</string>
     <string name="production_source_take">来源候选</string>
     <string name="production_source_operation">处理</string>
     <string name="production_source_params">参数</string>
-    <string name="production_source_run">登记项</string>
+    <string name="production_source_run">生成记录</string>
     <string name="production_spec_fps">%1$s 帧/秒</string>
     <string name="production_unregistered_title">未登记</string>
     <string name="production_unregistered_more">其余 %1$d 个</string>
