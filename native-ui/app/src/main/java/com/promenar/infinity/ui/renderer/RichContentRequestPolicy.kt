@@ -41,7 +41,7 @@ internal object RichContentRequestPolicy {
         if (!uri.rawPath.startsWith("/assets/") || !path.matches(Regex("[A-Za-z0-9_./-]+"))) return null
         if (path.split('/').any { it.isEmpty() || it == "." || it == ".." }) return null
         return path.takeIf {
-            it == "kg_template.html" || listOf("katex/", "mermaid/", "echarts/").any(it::startsWith)
+            it == "kg_template.html" || listOf("katex/", "mermaid/", "echarts/", "previs/").any(it::startsWith)
         }
     }
 

@@ -136,6 +136,7 @@ class ProductionPresentationTest {
         assertThat(workflowStageTarget(ProductionStage.SCRIPT)).isEqualTo(ProductionTab.SCRIPT)
         assertThat(workflowStageTarget(ProductionStage.VISUAL_DEV)).isEqualTo(ProductionTab.ASSETS)
         assertThat(workflowStageTarget(ProductionStage.STORYBOARD)).isEqualTo(ProductionTab.STORYBOARD)
+        assertThat(workflowStageTarget(ProductionStage.ANIMATIC)).isEqualTo(ProductionTab.CUT)
         assertThat(workflowStageTarget(ProductionStage.GENERATION)).isEqualTo(ProductionTab.OUTPUT)
         assertThat(workflowStageTarget(ProductionStage.SOUND)).isEqualTo(ProductionTab.ASSETS)
         assertThat(workflowStageTarget(ProductionStage.EDIT)).isEqualTo(ProductionTab.CUT)

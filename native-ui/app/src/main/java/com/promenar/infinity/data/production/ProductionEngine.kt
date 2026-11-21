@@ -75,6 +75,7 @@ object ProductionEngine {
                         val existing = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == id }
                         require(existing == null || season.episodes.any { it.id == id }) { "集 $id 已属于其他季。" }
                         val scriptPath = optional(op, "script_path", existing?.scriptPath)
+                        val previsPath = optional(op, "previs_path", existing?.previsPath)
                         val scriptChanged = existing != null && "script_path" in op && scriptPath != existing.scriptPath
                         existing?.let {
                             checkEpisode(it)
@@ -86,10 +87,11 @@ object ProductionEngine {
                             number = int(op, "number"),
                             title = text(op, "title"),
                             scriptPath = scriptPath,
+                            previsPath = previsPath,
                             scriptSha256 = nextScriptSha256,
                             scriptLocked = if (unlockScript) false else existing?.scriptLocked ?: false,
                             changedBy = existing?.changedBy ?: ChangeSource.AGENT,
-                            changedAt = if ("script_path" in op) rev else if (existing?.changedBy == ChangeSource.USER) existing?.changedAt ?: rev else rev,
+                            changedAt = if ("script_path" in op || "previs_path" in op) rev else if (existing?.changedBy == ChangeSource.USER) existing?.changedAt ?: rev else rev,
                             contentChangedAt = if ("script_path" in op) rev else existing?.contentChangedAt,
                         )
                         p = p.copy(seasons = p.seasons.map { if (it.id != sid) it else it.copy(episodes = if (existing == null) it.episodes + e else it.episodes.map { item -> if (item.id == id) e else item }) })

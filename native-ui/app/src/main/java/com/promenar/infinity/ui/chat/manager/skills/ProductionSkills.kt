@@ -271,7 +271,7 @@ internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, e
 private val productionUpdateDescription = """
     原子批量执行 1～100 项 operations，按依赖顺序排列，每项必填 op。季 id 为 S[0-9]+（S1），集 id 为 S[0-9]+E[0-9]{2,}（S1E01）且属于该季，场 code 为 SC[0-9]+（SC01），镜头 code 为 SC[0-9]+-[0-9]+（SC01-01）且属于该场。资产 id 为 [a-z][a-z0-9-]*，最多48字符。number 为正整数，position 为场内从 0 起算的位置，duration_seconds 为有限正数。
     upsert_season 必填 id、number，可选 title。
-    upsert_episode 必填 season_id、id、number、title，可选 script_path。登记同路径剧本正文更新时也须提供 script_path。
+    upsert_episode 必填 season_id、id、number、title，可选 script_path、previs_path。登记同路径剧本正文更新时也须提供 script_path。
     upsert_scene 必填 episode_id、code、number、heading。
     upsert_shot 必填 episode_id、scene_code、code，新建还须 title、duration_seconds。可选 title、duration_seconds、size、camera、camera_movement、visual、performance、dialogue、sound、transition、continuity、appearances、location_asset_id、prop_asset_ids、channel_id、mode、prompt、inputs、preview、preview_path、agent_note、change_note、position。
     set_shot_status 必填 episode_id、shot_code、status（todo、generating、review）。
@@ -359,6 +359,7 @@ private val productionFieldDescriptions = mapOf(
     "view_id" to "场景/道具/画风资产的自由参考视角标识。",
     "code" to "场或镜头的编号。", "number" to "从 1 起算的序号。", "title" to "季、集或镜头标题。",
     "heading" to "场标题，通常包含内外景、地点与时间。", "script_path" to "剧本文档的工作区路径。",
+    "previs_path" to "3D 白模预演 DSL 文件的工作区路径；null 可清空。",
     "duration_seconds" to "镜头时长，单位秒。", "size" to "镜头景别。", "camera" to "机位或拍摄角度。",
     "camera_movement" to "摄影机运动。", "visual" to "画面内容。", "performance" to "表演说明。",
     "sound" to "声音设计。", "transition" to "镜头之间的转场。", "continuity" to "连续性要求。",

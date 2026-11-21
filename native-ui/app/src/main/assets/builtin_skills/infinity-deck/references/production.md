@@ -10,6 +10,8 @@
 
 `production_cut` 用 camelCase 参数。list 可传 `episodeId`，create 必填 `episodeId`（每集最多 20 版），export 和 status 必填 `versionId`，可用 `episodeId` 核对归属。create 或 export 可传布尔 `burnSubtitles`。export 返回 accepted 后用 status 取进度与产物。
 
+`production_previs` 为指定集绑定或更新离线 3D 白模分镜预演（Previs DSL v1），用于在制作面板「剪辑 → 分镜预演」实时预览 3D 走位、机位焦段、180° 轴线并离线导出白模构图 PNG、线性深度图 PNG 与 H.264 预演视频。编写 3D 预演前，先用 `read_skill_file(name="infinity-deck", path="references/production-previs.md")` 读取完整坐标系与 DSL 规范。
+
 ## 批量更新
 
 `production_update({"operations":[...],"reason":"..."})` 一次接受 1～100 项并原子提交，可选 `reason`（最多 300 字）用于修改已锁定项时向用户说明原因。每项用 `op` 指定动作。静态格式错误按操作序号汇总，纠正后可整批重试。结构通过后按顺序核对父级、媒体与锁定状态。修订冲突先调用 `production_get`。待审内容由用户在制作面板处理；当直接修改已锁定剧本、视觉资产、镜头或制作阶段时，系统会弹出审批卡交由用户决定（涉及视觉参考图、剧本文件或增删重排镜头在批准后自动退回待审，锁定场允许的内容修改仍产生改动请求）。用户改写的提示词受保护。审核回合逐条处理，用 `agent_note`、`change_note` 或资产 `description` 记录结果。镜头或资产达到 6 次生成提醒时，继续生成前向用户说明。
@@ -17,7 +19,7 @@
 | op | 必填字段 | 可选字段 |
 | --- | --- | --- |
 | upsert_season | id, number | title |
-| upsert_episode | season_id, id, number, title | script_path |
+| upsert_episode | season_id, id, number, title | script_path, previs_path |
 | upsert_scene | episode_id, code, number, heading | |
 | upsert_shot | episode_id, scene_code, code，新建还需 title, duration_seconds | title, duration_seconds, size, camera, camera_movement, visual, performance, dialogue, sound, transition, continuity, appearances, location_asset_id, prop_asset_ids, channel_id, mode, prompt, inputs, preview, preview_path, agent_note, change_note, position |
 | set_shot_status | episode_id, shot_code, status | |

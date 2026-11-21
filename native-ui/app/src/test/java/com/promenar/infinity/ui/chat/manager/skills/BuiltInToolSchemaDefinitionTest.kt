@@ -48,6 +48,11 @@ class BuiltInToolSchemaDefinitionTest {
             RunScriptSkill(mockk<ScriptToolRunner>()),
             TermuxExecSkill({ error("不应派发") }, { true }),
             ProductionCutSkill({ error("不应读库") }, { error("不应派发") }),
+            ProductionPrevisSkill(
+                { error("不应读库") },
+                { _, _, _ -> error("不应写库") },
+                com.promenar.infinity.data.production.ProductionPrevisStore(mockk(relaxed = true)),
+            ),
         ) + scheduleSkillRegistry(mockk<DefaultScheduledTaskController>(relaxed = true)).getAllSkills() +
             backgroundJobTools(mockk<BackgroundJobManager>(relaxed = true))
         definitions.forEach { assertValid(it.id, it.parametersSchema) }

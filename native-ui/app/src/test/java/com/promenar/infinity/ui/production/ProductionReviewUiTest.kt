@@ -163,6 +163,15 @@ class ProductionReviewUiTest {
         assertThat(cutPage).contains("clipIndex = activeClipIndex ?: 0")
         assertThat(cutPage).contains("isPreviewMode = isPreview")
         assertThat(cutPage).contains("activeClipIndex = activeClipIndex")
+        assertThat(cutPage).contains("UnifiedCutMonitorCard(")
+        assertThat(cutPage).contains("InfinitySplitPillButton(")
+        assertThat(cutPage).doesNotContain("ProductionCommand(stringResource(R.string.p2_next_clip))")
+        assertThat(cutPage).doesNotContain("ProductionActionRow(")
+
+        val viewport = productionSource("ProductionPrevisViewport.kt")
+        assertThat(viewport).contains("PermanentCutTransportBar(")
+        assertThat(viewport).contains("ProductionCutTags.PREV_CLIP")
+        assertThat(viewport).contains("ProductionCutTags.NEXT_CLIP")
 
         val management = productionSource("ProductionManagement.kt")
         assertThat(management).contains("activeClipIndex: Int? = null")

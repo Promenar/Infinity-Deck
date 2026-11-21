@@ -62,6 +62,7 @@ internal fun ProductionManagementTab(
     onShot: (String, String) -> Unit = { _, _ -> },
     onOpenTab: (ProductionTab) -> Unit = {},
     onOpenAssets: (AssetKind?) -> Unit = {},
+    onOpenPrevis: () -> Unit = { onOpenTab(ProductionTab.CUT) },
 ) {
     val pendingChanges = production.pendingChangeRequests()
     val active = tasks.overviewQueueTasks(services.pendingRegistrations)
@@ -98,6 +99,7 @@ internal fun ProductionManagementTab(
                         onToggleSkipAnimatic = { skipped ->
                             onRun(ProductionUserAction.SetStage(ProductionStage.ANIMATIC, if (skipped) StageStatus.SKIPPED else StageStatus.NOT_STARTED))
                         },
+                        onOpenPrevis = onOpenPrevis,
                     )
                 }
             }
@@ -195,29 +197,47 @@ private fun WorkflowStageRow(
     busy: Boolean,
     onNavigate: () -> Unit,
     onToggleSkipAnimatic: (Boolean) -> Unit,
+    onOpenPrevis: () -> Unit = onNavigate,
 ) {
     val episodes = production.episodes()
     val stats = production.shotStats()
     when (stage.stage) {
         ProductionStage.ANIMATIC -> {
-            val done = production.shotLocations().count { it.shot.previewPath != null }
-            val skipped = stage.status == StageStatus.SKIPPED
-            val subtitle = if (stats.total > 0) stringResource(R.string.p2_stage_animatic_optional, done, stats.total) else stringResource(R.string.p2_optional_stage)
-            ProductionRow(
-                title = stage.stage.label(),
-                icon = stage.stage.icon(),
-                subtitle = subtitle,
-                chevron = false,
-                enabled = !busy,
-                role = Role.Switch,
-                trailing = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.p2_skip), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
-                        InfinitySwitch(checked = skipped, onCheckedChange = null, enabled = !busy)
-                    }
-                },
-                onClick = { onToggleSkipAnimatic(!skipped) },
-            )
+            val previsEpisodes = episodes.filter { !it.previsPath.isNullOrBlank() }
+            if (previsEpisodes.isNotEmpty()) {
+                val previsShotCount = previsEpisodes.sumOf { ep -> ep.scenes.sumOf { sc -> sc.shots.size } }
+                val totalCount = stats.total.coerceAtLeast(previsShotCount)
+                ProductionRow(
+                    title = stage.stage.label(),
+                    icon = stage.stage.icon(),
+                    subtitleSegments = listOf(
+                        stringResource(R.string.p3_previs_overview_subtitle, previsShotCount, totalCount),
+                        stringResource(R.string.p3_previs_clay),
+                    ),
+                    chip = ProductionChipSpec(stringResource(R.string.p3_previs_badge), ProductionTone.INFO),
+                    enabled = !busy,
+                    onClick = onOpenPrevis,
+                )
+            } else {
+                val done = production.shotLocations().count { it.shot.previewPath != null }
+                val skipped = stage.status == StageStatus.SKIPPED
+                val subtitle = if (stats.total > 0) stringResource(R.string.p2_stage_animatic_optional, done, stats.total) else stringResource(R.string.p2_optional_stage)
+                ProductionRow(
+                    title = stage.stage.label(),
+                    icon = stage.stage.icon(),
+                    subtitle = subtitle,
+                    chevron = false,
+                    enabled = !busy,
+                    role = Role.Switch,
+                    trailing = {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.p2_skip), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+                            InfinitySwitch(checked = skipped, onCheckedChange = null, enabled = !busy)
+                        }
+                    },
+                    onClick = { onToggleSkipAnimatic(!skipped) },
+                )
+            }
         }
         ProductionStage.SCRIPT -> {
             val done = episodes.count { it.scriptLocked }
@@ -693,6 +713,7 @@ internal fun CutTimeline(
     isPreview: Boolean,
     onShot: (String, String) -> Unit,
     activeClipIndex: Int? = null,
+    onSelectClip: ((Int) -> Unit)? = null,
 ) {
     val locations = production.shotLocations().toList()
     val clipWidths = version.clips.map(::cutClipWidth)
@@ -719,7 +740,9 @@ internal fun CutTimeline(
                                     else -> Modifier.border(1.dp, scheme.outline, shape)
                                 },
                             )
-                            .clickable(role = Role.Button) { onShot(clip.episodeId, clip.shotCode) },
+                            .clickable(role = Role.Button) {
+                                if (onSelectClip != null) onSelectClip(index) else onShot(clip.episodeId, clip.shotCode)
+                            },
                     ) {
                         when {
                             clip.path != null -> {

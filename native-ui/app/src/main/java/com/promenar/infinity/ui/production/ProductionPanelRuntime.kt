@@ -67,6 +67,7 @@ fun rememberProductionPanelServices(
                 requestShotContentChange(source, sessionId, revision, location, proposed, conflict, invalid, failed)
             },
             pendingRegistrations = pending,
+            previsStore = app.productionPrevisStore,
         )
     }
 }

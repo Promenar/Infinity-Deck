@@ -138,6 +138,7 @@ object ProductionLockApprovalPlanner {
                         if (existing != null && season.episodes.none { it.id == id }) throw IllegalArgumentException("wrong season")
                         if (existing != null && stale(existing.changedBy, existing.changedAt)) throw IllegalArgumentException("stale")
                         val nextScriptPath = opt(op, "script_path", existing?.scriptPath)
+                        val nextPrevisPath = opt(op, "previs_path", existing?.previsPath)
                         val nextNumber = numInt(op, "number")
                         val nextTitle = str(op, "title")
                         if (existing != null && existing.scriptLocked && "script_path" in op && nextScriptPath != existing.scriptPath) {
@@ -154,6 +155,7 @@ object ProductionLockApprovalPlanner {
                                 number = nextNumber,
                                 title = nextTitle,
                                 scriptPath = nextScriptPath,
+                                previsPath = nextPrevisPath,
                                 scriptLocked = false,
                                 changedAt = rev,
                                 contentChangedAt = rev,
@@ -164,6 +166,7 @@ object ProductionLockApprovalPlanner {
                                 number = nextNumber,
                                 title = nextTitle,
                                 scriptPath = nextScriptPath,
+                                previsPath = nextPrevisPath,
                                 changedBy = existing?.changedBy ?: ChangeSource.AGENT,
                                 changedAt = rev,
                                 contentChangedAt = if ("script_path" in op) rev else existing?.contentChangedAt,

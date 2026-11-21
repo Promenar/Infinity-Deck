@@ -1,6 +1,8 @@
 package com.promenar.infinity.data.production
 
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.copyExternalStream
+import com.promenar.infinity.data.storage.externalStreamHash
 import com.promenar.infinity.data.storage.namespaceBindings
 import com.promenar.infinity.data.workspace.LinuxSessionPaths
 import com.promenar.infinity.data.workspace.LinuxWorkspaceLocation
@@ -27,7 +29,7 @@ class DefaultProductionWorkspaceFiles(
     private val media: WorkspaceMediaResolver,
     private val modeFor: suspend (String) -> SessionRunMode?,
     private val sessionWorkspace: suspend (String) -> SessionWorkspace,
-) : ProductionWorkspaceFiles {
+) : ProductionWorkspaceFiles, PrevisFileAccess {
     override suspend fun normalizeRelativePath(sessionId: String, rawPath: String, projectRoot: String?): String = withContext(Dispatchers.IO) {
         val linux = modeFor(sessionId) == SessionRunMode.LINUX
         val current = if (linux) sessionWorkspace(sessionId) else null
@@ -99,6 +101,49 @@ class DefaultProductionWorkspaceFiles(
                 }
             }
             Unit
+        }
+    }
+
+    override suspend fun replaceBytes(sessionId: String, path: String, bytes: ByteArray): Unit = withContext(Dispatchers.IO) {
+        replaceWith(sessionId, path) { backend, virtualPath, rootUuid ->
+            backend.write(virtualPath, bytes, null, true)
+            if (rootUuid != null) (backend as PrivateWorkspaceTransferBackend).confirmCreated()
+        }
+    }
+
+    override suspend fun replaceFile(sessionId: String, path: String, file: java.io.File): Unit = withContext(Dispatchers.IO) {
+        val length = file.length().coerceAtLeast(0L)
+        replaceWith(sessionId, path) { backend, virtualPath, rootUuid ->
+            backend.writeStream(virtualPath, length, createOnly = true) { output ->
+                file.inputStream().use { input -> copyExternalStream(input, output) }
+            }
+            if (rootUuid != null) (backend as PrivateWorkspaceTransferBackend).confirmCreated()
+        }
+    }
+
+    private suspend fun replaceWith(
+        sessionId: String,
+        path: String,
+        writeNew: suspend (ExternalFolderBackend, String, String?) -> Unit,
+    ) {
+        val target = target(sessionId, path)
+        withContext(ExternalMountOperationBindings(target.bindings)) {
+            val virtualPath = backendPath(path)
+            var parent = ""
+            virtualPath.substringBeforeLast('/', "").split('/').filter { it.isNotEmpty() }.forEach { part ->
+                parent += "/$part"
+                val entry = target.backend.stat(parent)
+                if (entry == null) target.backend.createDirectory(parent) else require(entry.isDirectory) { "$parent 不是目录。" }
+            }
+            val existing = target.backend.stat(virtualPath)
+            if (existing != null) {
+                require(!existing.isDirectory) { "$virtualPath 是目录，不能覆盖写入。" }
+                val oldHash = target.backend.readStream(virtualPath, existing.size.coerceAtLeast(16L * 1024 * 1024)) {
+                    externalStreamHash(it)
+                }
+                target.backend.deleteForTransfer(virtualPath, existing, oldHash)
+            }
+            writeNew(target.backend, virtualPath, target.rootUuid)
         }
     }
     suspend fun publishChainMedia(sessionId: String, path: String, file: java.io.File, cacheDir: java.io.File): Unit = withContext(Dispatchers.IO) {

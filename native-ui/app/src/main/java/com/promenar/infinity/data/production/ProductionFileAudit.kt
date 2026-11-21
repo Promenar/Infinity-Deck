@@ -31,11 +31,14 @@ class ProductionFileAudit(
 fun findUnregisteredProductionFiles(production: Production, paths: List<String>): List<String> {
     val referenced = buildSet {
         fun plan(value: TakePlanSnapshot?) { value?.inputs?.forEach { add(it.path) }; value?.mediaInputs?.forEach { add(it.location) } }
-        production.seasons.flatMap { it.episodes }.forEach { ep -> ep.scenes.flatMap { it.shots }.forEach { shot ->
+        production.seasons.flatMap { it.episodes }.forEach { ep ->
+            ep.previsPath?.let(::add)
+            ep.scenes.flatMap { it.shots }.forEach { shot ->
             shot.previewPath?.let(::add); shot.inputs.forEach { add(it.path) }; shot.audio.forEach { add(it.path); plan(it.planSnapshot) }
             shot.takes.forEach { take -> add(take.path); plan(take.planSnapshot); take.segments.forEach { add(it.path) } }
             shot.chains.forEach { chain -> plan(chain.planSnapshot); chain.outputPath?.let(::add); chain.segments.forEach { segment -> segment.path?.let(::add); segment.firstFramePath?.let(::add); segment.taskOutputPath?.let(::add) } }
-        } }
+        }
+        }
         production.assets.forEach { asset ->
             asset.versions.forEach { add(it.path) }
             asset.looks.forEach { look -> look.sheetPath?.let(::add); look.slots.forEach { it.path?.let(::add) } }

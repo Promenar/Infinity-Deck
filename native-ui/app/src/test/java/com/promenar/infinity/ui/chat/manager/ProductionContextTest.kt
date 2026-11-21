@@ -32,6 +32,17 @@ class ProductionContextTest {
         val text = productionContext(ProductionSnapshot(project, 1, ManifestSync.InSync), 0)
         assertThat(text).contains("\"default_video_channel_id\":\"comfyui:h3-ref\"")
         assertThat(text).contains("\"reference_input_mode\":\"separate\"")
+        assertThat(text).doesNotContain("\"previs\":")
+    }
+
+    @Test fun `剧集存在 previsPath 时仅按集追加紧凑路径，不膨胀固定前言`() {
+        val withPrevis = Production(
+            "p", "项目", ProductionKind.FILM, "productions/p", createdAt = 1, updatedAt = 1,
+            seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "第1集", previsPath = "productions/p/previs/S1E01.previs.json")))),
+        )
+        val text = productionContext(ProductionSnapshot(withPrevis, 2, ManifestSync.InSync), 0)
+        assertThat(text).contains("\"previs\":\"productions/p/previs/S1E01.previs.json\"")
+        assertThat(text).doesNotContain("PrevisScene")
     }
 
     @Test fun `未结事项摘要接在项目数据之后且不受项目数据截断影响`() {

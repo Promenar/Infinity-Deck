@@ -14,10 +14,10 @@ class RichContentRequestPolicyTest {
 
     @Test
     fun `仅允许指定打包资源且拒绝路径穿越和伪造本地域名`() {
-        listOf("katex/katex.min.css", "katex/fonts/KaTeX_Main-Regular.woff2", "mermaid/mermaid.min.js", "echarts/echarts.min.js", "kg_template.html").forEach {
+        listOf("katex/katex.min.css", "katex/fonts/KaTeX_Main-Regular.woff2", "mermaid/mermaid.min.js", "echarts/echarts.min.js", "previs/three.module.min.js", "previs/previs_engine.js", "kg_template.html").forEach {
             assertThat(RichContentRequestPolicy.assetPath(RichContentRequestPolicy.BASE_URL + it)).isEqualTo(it)
         }
-        listOf("../model-catalog/manifest.json", "%2e%2e/model-catalog/manifest.json", "katex/%2e%2e/model-catalog/manifest.json", "katex/%252e%252e/secret", "katex/a%2fb", "katex/a%5cb", "missing.js").forEach {
+        listOf("../model-catalog/manifest.json", "%2e%2e/model-catalog/manifest.json", "katex/%2e%2e/model-catalog/manifest.json", "previs/../model-catalog/manifest.json", "katex/%252e%252e/secret", "katex/a%2fb", "katex/a%5cb", "missing.js").forEach {
             assertThat(RichContentRequestPolicy.classify(RichContentRequestPolicy.BASE_URL + it)).isEqualTo(RichContentRequestPolicy.Kind.BLOCKED)
         }
         listOf("https://appassets.androidplatform.net/secret", "https://appassets.androidplatform.net:8443/assets/katex/katex.min.js", "https://user@appassets.androidplatform.net/assets/katex/katex.min.js").forEach {

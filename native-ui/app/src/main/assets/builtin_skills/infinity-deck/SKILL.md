@@ -108,6 +108,7 @@ SSH 主机配置存在 `ssh_host_save`、`ssh_host_delete`、`ssh_host_install_k
 
 - `references/background-processes.md`：后台任务的启动参数、状态与日志、存活条件、定时任务、`infinity-wake`、SSH 远端长期服务。
 - `references/command-execution.md`：各命令工具的分工与环境差异（起始目录、身份、终端、时限、输出上限）、结果字段、错误码与下一步。
+- `references/production-previs.md`：离线 3D 白模分镜预演（`production_previs`）的坐标系、DSL 结构、机位/走位与构图/深度/视频导出说明。
 
 ## 创建与编辑技能
 

@@ -305,8 +305,9 @@ fun ProductionPanelContent(
     val signals = production.tabSignals()
     var addedShotAtRevision by rememberSaveable(production.id) { mutableStateOf<Long?>(null) }
     var storyboardEpisodeId by rememberSaveable(production.id) { mutableStateOf(initialShot?.first) }
-    // 总览点剪辑版本后，剪辑页打开时选中该版本；用过即清空。
+    // 总览点剪辑版本后，剪辑页打开时选中该版本；点 3D 分镜预演行时切到预演视图；用过即清空。
     var focusCutId by rememberSaveable(production.id) { mutableStateOf<String?>(null) }
+    var focusPreview by rememberSaveable(production.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<ProductionNotice?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -514,6 +515,7 @@ fun ProductionPanelContent(
                                         costStats = costStats, onShot = openShot,
                                         onOpenTab = { tab = it },
                                         onOpenAssets = { kind -> requestedAssetKind = kind; tab = ProductionTab.ASSETS },
+                                        onOpenPrevis = { focusPreview = true; tab = ProductionTab.CUT },
                                     )
                                     ProductionTab.SCRIPT -> ProductionScriptTab(production = production, busy = busy, onRun = run, onSubmit = submit, onOpenEpisode = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD })
                                     ProductionTab.ASSETS -> ProductionAssetsTab(
@@ -536,7 +538,21 @@ fun ProductionPanelContent(
                                         onScene = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD },
                                         busy = busy, onRun = run, onSubmit = submit,
                                     )
-                                    ProductionTab.CUT -> ProductionCutTab(production, services, sessionId, openShot, onError = { error = it }, busy = busy, onRun = run, onSubmit = submit, focusCutId = focusCutId, onFocusHandled = { focusCutId = null })
+                                    ProductionTab.CUT -> ProductionCutTab(
+                                        production = production,
+                                        services = services,
+                                        sessionId = sessionId,
+                                        onShot = openShot,
+                                        onError = { error = it },
+                                        busy = busy,
+                                        onRun = run,
+                                        onSubmit = submit,
+                                        focusCutId = focusCutId,
+                                        onFocusHandled = { focusCutId = null },
+                                        focusPreview = focusPreview,
+                                        onFocusPreviewHandled = { focusPreview = false },
+                                        snapshotRevision = snapshot.revision,
+                                    )
                                 }
                             }
                         }

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.promenar.infinity.R
@@ -54,7 +55,7 @@ internal fun builtinToolCategory(id: String): BuiltinToolCategory = when (id) {
     "exec_js", "run_script", "shell_exec", "python_exec", "python_sandbox" -> BuiltinToolCategory.EXECUTION
     "image_generation", "view_media", "media_fetch" -> BuiltinToolCategory.MEDIA
     "state_define", "state_update", "state_get", "state_remove",
-    "production_define", "production_attach", "production_get", "production_update", "production_remove",
+    "production_define", "production_attach", "production_get", "production_update", "production_remove", "production_previs",
     "initialize_plan", "update_plan", "get_plan", "drop_plan" -> BuiltinToolCategory.PLANNING
     else -> BuiltinToolCategory.OTHER
 }
@@ -99,5 +100,6 @@ internal fun builtinToolIcon(id: String): ImageVector = when (id) {
     "update_plan" -> Icons.Rounded.Checklist
     "get_plan" -> Icons.AutoMirrored.Rounded.ListAlt
     "drop_plan" -> Icons.Rounded.PlaylistRemove
+    "production_previs" -> Icons.Rounded.ViewInAr
     else -> Icons.Rounded.Code
 }

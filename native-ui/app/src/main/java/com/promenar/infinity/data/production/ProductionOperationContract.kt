@@ -14,7 +14,7 @@ private fun fields(required: String, optional: String = "") = ProductionOperatio
 
 internal val productionOperationFields = linkedMapOf(
     "upsert_season" to fields("id number", "title"),
-    "upsert_episode" to fields("season_id id number title", "script_path"),
+    "upsert_episode" to fields("season_id id number title", "script_path previs_path"),
     "upsert_scene" to fields("episode_id code number heading"),
     "upsert_shot" to fields(
         "episode_id scene_code code",
@@ -52,7 +52,7 @@ internal val productionAssetStatuses = listOf("draft", "review")
 internal val productionStageStatuses = listOf("not_started", "in_progress", "skipped")
 internal val productionReferenceInputModes = listOf("sheet", "separate")
 internal val nullableProductionOperationFields = setOf(
-    "title", "script_path", "size", "camera", "camera_movement", "visual", "performance", "sound", "transition",
+    "title", "script_path", "previs_path", "size", "camera", "camera_movement", "visual", "performance", "sound", "transition",
     "continuity", "location_asset_id", "channel_id", "mode", "preview", "preview_path", "agent_note", "change_note",
     "model", "task_id", "usage_ref", "note", "description", "reference_voice",
     "sheet_path", "sheet_note", "path", "default_video_channel_id", "reference_input_mode",
@@ -285,7 +285,7 @@ internal inline fun normalizeProductionOperation(
 ): JsonObject = buildJsonObject {
     for ((key, value) in op) {
         val result = when (key) {
-            "path", "script_path", "preview_path", "sheet_path" -> if (value == JsonNull) value else {
+            "path", "script_path", "previs_path", "preview_path", "sheet_path" -> if (value == JsonNull) value else {
                 JsonPrimitive(normalize(key, value.jsonPrimitive.content, key in setOf("path", "sheet_path")))
             }
             "inputs" -> {

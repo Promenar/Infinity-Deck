@@ -26,6 +26,7 @@ data class ProductionPanelServices(
     /** 打开面板时扫描项目目录里的未登记文件。 */
     val auditFiles: (suspend () -> Unit)? = null,
     val channelLabelSegments: (String) -> List<String> = { listOf(channelLabel(it)) },
+    val previsStore: ProductionPrevisStore? = null,
 )
 
 /** 通道名称作为完整句子的插值使用。 */

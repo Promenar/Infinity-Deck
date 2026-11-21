@@ -176,6 +176,31 @@ object ProductionUserEngine {
             is ProductionUserAction.SetStage -> p = p.copy(stages = p.stages.map { stage ->
                 if (stage.stage == action.stage) stage.copy(status = action.status, changedBy = ChangeSource.USER, changedAt = revision) else stage
             })
+            is ProductionUserAction.SetEpisodePrevis -> {
+                action.previsPath?.let(ProductionManifestCodec::validatePath)
+                updateEpisode(action.episodeId) { ep ->
+                    ep.copy(previsPath = action.previsPath, changedBy = ChangeSource.USER, changedAt = revision)
+                }
+            }
+            is ProductionUserAction.AttachPrevisFrame -> {
+                ProductionManifestCodec.validatePath(action.path)
+                updateShot(action.episodeId, action.shotCode) { shot ->
+                    val role = action.inputRole
+                    if (role == null) {
+                        shot.copy(preview = PreviewKind.KEYFRAME, previewPath = action.path)
+                    } else {
+                        val existingIdx = shot.inputs.indexOfFirst { it.path == action.path }
+                        val entry = ShotInput(role = role, path = action.path, label = action.label)
+                        val updatedInputs = if (existingIdx >= 0) {
+                            shot.inputs.mapIndexed { i, item -> if (i == existingIdx) entry else item }
+                        } else {
+                            require(shot.inputs.size < 12) { "每个镜头最多 12 个输入，请先清理后再加入预演参考。" }
+                            shot.inputs + entry
+                        }
+                        shot.copy(inputs = updatedInputs)
+                    }
+                }
+            }
         }
         if (action is ProductionUserAction.CancelChain) p = p.mapShot(action.episodeId, action.shotCode) { it.copy(changedBy = ChangeSource.USER, changedAt = revision) }
         if (action is ProductionUserAction.CreateCut || action is ProductionUserAction.SetCutSubtitles || action is ProductionUserAction.RegisterCutExport) {

@@ -126,7 +126,7 @@ fun workflowStageTarget(stage: ProductionStage): ProductionTab = when (stage) {
     ProductionStage.SCRIPT -> ProductionTab.SCRIPT
     ProductionStage.VISUAL_DEV -> ProductionTab.ASSETS
     ProductionStage.STORYBOARD -> ProductionTab.STORYBOARD
-    ProductionStage.ANIMATIC -> ProductionTab.OUTPUT
+    ProductionStage.ANIMATIC -> ProductionTab.CUT
     ProductionStage.GENERATION -> ProductionTab.OUTPUT
     ProductionStage.SOUND -> ProductionTab.ASSETS
     ProductionStage.EDIT -> ProductionTab.CUT

@@ -50,6 +50,7 @@ internal fun ProductionCutPlayer(
     clipIndex: Int = 0,
     totalClips: Int = 0,
     isPreviewMode: Boolean = true,
+    embeddedInMonitor: Boolean = false,
 ) {
     val environment = LocalWorkspaceMedia.current
     val complete by rememberUpdatedState(onComplete)
@@ -69,6 +70,7 @@ internal fun ProductionCutPlayer(
             clipIndex = clipIndex,
             totalClips = totalClips,
             isPreviewMode = isPreviewMode,
+            embeddedInMonitor = embeddedInMonitor,
         )
         return
     }
@@ -118,6 +120,7 @@ private fun CutPlaceholderMonitor(
     clipIndex: Int,
     totalClips: Int,
     isPreviewMode: Boolean,
+    embeddedInMonitor: Boolean,
 ) {
     val scheme = MaterialTheme.colorScheme
     val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
@@ -141,12 +144,7 @@ private fun CutPlaceholderMonitor(
         onComplete()
     }
 
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = scheme.surfaceContainerHigh,
-        border = BorderStroke(0.5.dp, scheme.outlineVariant.copy(alpha = 0.45f)),
-        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
-    ) {
+    val monitorContent: @Composable () -> Unit = {
         if (clip == null) {
             Column(
                 modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -179,10 +177,7 @@ private fun CutPlaceholderMonitor(
                     textAlign = TextAlign.Center,
                 )
             }
-            return@Surface
-        }
-
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        } else BoxWithConstraints(Modifier.fillMaxSize()) {
             val compactHeight = maxHeight < 195.dp
             Row(
                 modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
@@ -309,6 +304,25 @@ private fun CutPlaceholderMonitor(
                     )
                 }
             }
+        }
+    }
+    if (embeddedInMonitor) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .background(scheme.surfaceContainerHigh),
+        ) {
+            monitorContent()
+        }
+    } else {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = scheme.surfaceContainerHigh,
+            border = BorderStroke(0.5.dp, scheme.outlineVariant.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+        ) {
+            monitorContent()
         }
     }
 }

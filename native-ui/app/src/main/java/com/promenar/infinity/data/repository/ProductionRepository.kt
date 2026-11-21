@@ -286,6 +286,39 @@ class ProductionRepository(
     suspend fun applyForProduction(sessionId: String, productionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot =
         applyChecked(sessionId, productionId, expectedRevision, action)
 
+    /** 原子登记或清除指定集的 3D 白模预演 DSL 路径，总是递增修订号以驱动面板热加载。 */
+    suspend fun setEpisodePrevis(sessionId: String, episodeId: String, previsPath: String?): ProductionSnapshot = withContext(Dispatchers.IO) {
+        previsPath?.let(ProductionManifestCodec::validatePath)
+        mutex.withLock {
+            val id = database.withTransaction {
+                val row = required(sessionId)
+                require(row.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
+                val current = snapshot(row).production
+                var found = false
+                val updated = current.copy(
+                    seasons = current.seasons.map { season ->
+                        season.copy(
+                            episodes = season.episodes.map { episode ->
+                                if (episode.id != episodeId) episode else {
+                                    found = true
+                                    episode.copy(previsPath = previsPath)
+                                }
+                            },
+                        )
+                    },
+                    updatedAt = now(),
+                )
+                require(found) { "集 $episodeId 不存在，请先创建或读取该集。" }
+                val nextRev = row.revision + 1
+                ProductionManifestCodec.encode(updated, nextRev)
+                dao.update(entity(ProductionSnapshot(updated, nextRev, ManifestSync.Pending), row))
+                row.id
+            }
+            enqueue(id)
+            snapshot(requireNotNull(dao.get(id)), ManifestSync.Pending)
+        }
+    }
+
     private suspend fun applyChecked(sessionId: String, productionId: String?, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot = withContext(Dispatchers.IO) {
         val scriptHashes = if (action is ProductionUserAction.MarkReviewSent) {
             val current = mutex.withLock { dao.getForSession(sessionId)?.let(::snapshot) }

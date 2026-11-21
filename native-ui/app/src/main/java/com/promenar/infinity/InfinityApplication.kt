@@ -1928,11 +1928,19 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
 
-    val productionRepository by lazy {
-        com.promenar.infinity.data.repository.ProductionRepository(database, com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles(
+    val productionWorkspaceFiles by lazy {
+        com.promenar.infinity.data.production.DefaultProductionWorkspaceFiles(
             workspaceRepository, fileOperationRepository, externalFolderManager, workspaceMediaResolver,
             sessionRunModes::modeFor, sessionWorkspaceResolver::resolve,
-        ))
+        )
+    }
+
+    val productionPrevisStore by lazy {
+        com.promenar.infinity.data.production.ProductionPrevisStore(productionWorkspaceFiles)
+    }
+
+    val productionRepository by lazy {
+        com.promenar.infinity.data.repository.ProductionRepository(database, productionWorkspaceFiles)
     }
 
     val comfyMedia by lazy {
@@ -2105,6 +2113,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionRemoveSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionCutSkill({ productionRepository.get(it) }, { productionCutRuntime.controller }))
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionPrevisSkill({ productionRepository.get(it) }, productionRepository::setEpisodePrevis, productionPrevisStore))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionPlanSkill { shotGenerationPlanner })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerateSkill { shotGenerationPlanner })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionOperationsSkill { productionMediaRuntime.processing })

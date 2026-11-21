@@ -222,6 +222,7 @@ data class Episode(
     val number: Int,
     val title: String,
     val scriptPath: String? = null,
+    val previsPath: String? = null,
     /** 最近一次登记或发送剧本审核时记录的剧本文档 SHA-256，用于自动感知同路径原地改写。 */
     val scriptSha256: String? = null,
     val scriptLocked: Boolean = false,
@@ -378,6 +379,8 @@ sealed interface ProductionUserAction {
     data class SetVideoSettings(val defaultVideoChannelId: String?, val referenceInputMode: ReferenceInputMode?) : ProductionUserAction
     data class AddAssetView(val assetId: String, val slot: ReferenceSlot) : ProductionUserAction
     data class RemoveAssetView(val assetId: String, val slotId: String) : ProductionUserAction
+    data class SetEpisodePrevis(val episodeId: String, val previsPath: String?) : ProductionUserAction
+    data class AttachPrevisFrame(val episodeId: String, val shotCode: String, val path: String, val inputRole: InputRole? = null, val label: String? = null) : ProductionUserAction
 }
 
 enum class ManifestResolution {
