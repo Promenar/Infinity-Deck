@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.70.1-beta] - 2026-11-22
+
+- **修复真机全屏 3D 预演弹窗崩溃与内联视口画布塌陷（[ProductionPrevisFullscreenDialog.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPrevisFullscreenDialog.kt)、[PrevisWebViewClient.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/PrevisWebViewClient.kt)、[ProductionPrevisViewport.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPrevisViewport.kt)、[previs_player.html](native-ui/app/src/main/assets/previs/previs_player.html)、[previs_engine.js](native-ui/app/src/main/assets/previs/previs_engine.js)）**：
+  - 将全屏预演弹窗从在 `Dialog` 内直接调用 `InfinityTheme(...)` 改为标准 `InfinityFullscreenDialog` + `MaterialTheme(InfinityDarkColorScheme, InfinityTypography, InfinityShapes)`，消除 `ContextThemeWrapper` 强转 `Activity` 引发的 `ClassCastException`。
+  - 在 `configureOfflinePrevisWebView` 显式配置 `MATCH_PARENT` 布局参数、`useWideViewPort` / `loadWithOverviewMode` 与权限拒绝 `WebChromeClient`，并将 `previs_player.html` 画布固定为 `100vw × 100vh` 搭配 `previs_engine.js` `ResizeObserver` / 渲染前尺寸同步及自由视角触摸防抢占拦截，解决真机内联 16:9 视口高度塌陷为 0 仅显 `#10151F` 底色的问题。
+
 ## [0.70.0-beta] - 2026-11-21
 
 - **离线 Three.js 3D 白模分镜预演端到端闭环（`three@0.187.0` / [PrevisModel.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/PrevisModel.kt)、[PrevisValidation.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/PrevisValidation.kt)、[ProductionPrevisStore.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionPrevisStore.kt)、[DefaultProductionWorkspaceFiles.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/DefaultProductionWorkspaceFiles.kt)、[ProductionRepository.kt](native-ui/app/src/main/java/com/promenar/infinity/data/repository/ProductionRepository.kt)、[PrevisWebViewClient.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/PrevisWebViewClient.kt)、[RichContentRequestPolicy.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/RichContentRequestPolicy.kt)）**：

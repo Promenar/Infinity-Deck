@@ -71,6 +71,9 @@ const runtime = {
   exporting: false,
   exportShader: 'clay',
   orbitDirty: false,
+  lastCssW: 0,
+  lastCssH: 0,
+  lastDpr: 0,
   lastFrameMs: 0,
   lastTickSentMs: 0,
   pendingJson: null,
@@ -249,6 +252,11 @@ function initEngine() {
 
     resizeToContainer();
     window.addEventListener('resize', resizeToContainer);
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => resizeToContainer());
+      ro.observe(canvas);
+      if (document.documentElement) ro.observe(document.documentElement);
+    }
 
     runtime.ready = true;
     if (runtime.pendingJson) {
@@ -263,11 +271,19 @@ function initEngine() {
   }
 }
 
-function resizeToContainer() {
+function syncCanvasSizeIfNeeded() {
   if (!renderer || runtime.exporting) return;
-  const width = Math.max(1, canvas.clientWidth || window.innerWidth || 320);
-  const height = Math.max(1, canvas.clientHeight || window.innerHeight || 180);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const width = Math.max(0, Math.round(canvas.clientWidth || window.innerWidth || 0));
+  const height = Math.max(0, Math.round(canvas.clientHeight || window.innerHeight || 0));
+  if (width < 2 || height < 2) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (width === runtime.lastCssW && height === runtime.lastCssH && dpr === runtime.lastDpr) {
+    return;
+  }
+  runtime.lastCssW = width;
+  runtime.lastCssH = height;
+  runtime.lastDpr = dpr;
+  renderer.setPixelRatio(dpr);
   renderer.setSize(width, height, false);
   const aspect = width / height;
   if (shotCamera) {
@@ -278,6 +294,12 @@ function resizeToContainer() {
     orbitCamera.aspect = aspect;
     orbitCamera.updateProjectionMatrix();
   }
+}
+
+function resizeToContainer() {
+  runtime.lastCssW = 0;
+  runtime.lastCssH = 0;
+  syncCanvasSizeIfNeeded();
 }
 
 function createRampGeometry(w, h, d) {
@@ -666,6 +688,7 @@ function applySceneData(jsonInput) {
   runtime.shotIndex = clamp(runtime.shotIndex, 0, Math.max(0, (parsed.shots?.length || 1) - 1));
   runtime.localTime = 0;
   runtime.orbitDirty = false;
+  syncCanvasSizeIfNeeded();
   evaluateFrame(runtime.shotIndex, runtime.localTime, runtime.shaderMode, runtime.viewMode);
   renderCurrentView();
   return {
@@ -980,6 +1003,7 @@ function animationLoop(nowMs) {
     controls.update();
   }
 
+  syncCanvasSizeIfNeeded();
   renderCurrentView();
 }
 
@@ -1034,6 +1058,7 @@ window.__previs = {
     if (typeof opts.showAxis === 'boolean') {
       runtime.showAxis = opts.showAxis;
     }
+    syncCanvasSizeIfNeeded();
     evaluateFrame(runtime.shotIndex, runtime.localTime, runtime.shaderMode, runtime.viewMode);
     renderCurrentView();
     return true;
@@ -1045,9 +1070,6 @@ window.__previs = {
   },
   captureStill(shotIndex, localTime, shaderMode, width, height) {
     if (!renderer || !runtime.data?.shots?.length) return '';
-    const prevW = canvas.clientWidth || 320;
-    const prevH = canvas.clientHeight || 180;
-    const prevPr = renderer.getPixelRatio();
     const prevShader = runtime.shaderMode;
     const prevView = runtime.viewMode;
     const idx = clamp(shotIndex ?? runtime.shotIndex, 0, runtime.data.shots.length - 1);
@@ -1067,10 +1089,7 @@ window.__previs = {
       return renderer.domElement.toDataURL('image/png');
     } finally {
       runtime.exporting = false;
-      renderer.setPixelRatio(prevPr);
-      renderer.setSize(Math.max(1, prevW), Math.max(1, prevH), false);
-      shotCamera.aspect = Math.max(1, prevW) / Math.max(1, prevH);
-      shotCamera.updateProjectionMatrix();
+      resizeToContainer();
       evaluateFrame(runtime.shotIndex, runtime.localTime, prevShader, prevView);
       renderCurrentView();
     }

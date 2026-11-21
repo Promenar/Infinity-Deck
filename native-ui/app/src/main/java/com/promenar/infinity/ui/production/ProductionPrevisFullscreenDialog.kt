@@ -47,21 +47,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.PrevisScene
 import com.promenar.infinity.data.production.totalDurationSeconds
 import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityFullscreenDialog
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
-import com.promenar.infinity.ui.theme.InfinityColorSource
+import com.promenar.infinity.ui.theme.InfinityDarkColorScheme
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityShapes
 import com.promenar.infinity.ui.theme.InfinitySpacing
-import com.promenar.infinity.ui.theme.InfinityTheme
-import com.promenar.infinity.ui.theme.InfinityThemeMode
-import com.promenar.infinity.ui.theme.InfinityThemePreferences
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.forInput
 
@@ -102,18 +99,14 @@ internal fun ProductionPrevisFullscreenDialog(
     var suggestDialogShot by remember { mutableStateOf<String?>(null) }
     var suggestText by remember { mutableStateOf("") }
 
-    Dialog(
+    InfinityFullscreenDialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
+        systemBarColor = InfinityDarkColorScheme.background,
     ) {
-        InfinityTheme(
-            preferences = InfinityThemePreferences(
-                mode = InfinityThemeMode.DARK,
-                colorSource = InfinityColorSource.INFINITY,
-            ),
+        MaterialTheme(
+            colorScheme = InfinityDarkColorScheme,
+            typography = InfinityTypography,
+            shapes = InfinityShapes,
         ) {
             val scheme = MaterialTheme.colorScheme
             Surface(

@@ -2,6 +2,9 @@ package com.promenar.infinity.ui.production
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.view.ViewGroup
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -81,10 +84,21 @@ internal class PrevisWebViewClient(context: Context) : WebViewClient() {
     }
 }
 
-/** 统一配置纯离线 WebGL 预演 WebView 参数；禁止本地文件与外网加载。 */
+/** 统一配置纯离线 WebGL 预演 WebView 参数；禁止本地文件与外网加载，并固定填充容器避免画布高度塌陷。 */
 @SuppressLint("SetJavaScriptEnabled")
 internal fun configureOfflinePrevisWebView(view: WebView) {
+    view.layoutParams = ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT,
+    )
+    view.isVerticalScrollBarEnabled = false
+    view.isHorizontalScrollBarEnabled = false
     view.setBackgroundColor(android.graphics.Color.rgb(16, 21, 31))
+    view.webChromeClient = object : WebChromeClient() {
+        override fun onPermissionRequest(request: PermissionRequest) {
+            request.deny()
+        }
+    }
     view.settings.apply {
         javaScriptEnabled = true
         blockNetworkLoads = true
@@ -97,6 +111,8 @@ internal fun configureOfflinePrevisWebView(view: WebView) {
         domStorageEnabled = false
         @Suppress("DEPRECATION")
         databaseEnabled = false
+        useWideViewPort = true
+        loadWithOverviewMode = true
         setSupportZoom(false)
         builtInZoomControls = false
         displayZoomControls = false

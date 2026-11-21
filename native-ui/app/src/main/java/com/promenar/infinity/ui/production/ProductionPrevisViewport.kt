@@ -1,9 +1,11 @@
 package com.promenar.infinity.ui.production
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
+import android.view.MotionEvent
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.compose.foundation.BorderStroke
@@ -311,6 +313,7 @@ internal fun PrevisStageViewport(
     val currentOnTick by rememberUpdatedState(onTick)
     val currentOnComplete by rememberUpdatedState(onComplete)
     val currentOnError by rememberUpdatedState(onEngineError)
+    val currentViewMode by rememberUpdatedState(viewMode)
 
     DisposableEffect(controller) {
         controller.onPlaybackTick = { idx, local, global, isPlaying ->
@@ -342,6 +345,7 @@ internal fun PrevisStageViewport(
                         configureOfflinePrevisWebView(this)
                         webViewClient = PrevisWebViewClient(ctx)
                         addJavascriptInterface(PrevisJsBridge(controller), "PrevisBridge")
+                        attachOrbitTouchGuard(this) { currentViewMode }
                         controller.attach(this)
                         loadUrl(PrevisWebViewClient.PLAYER_URL)
                         webViewRef.value = this
@@ -761,6 +765,22 @@ internal fun PrevisOverlayIconButton(
                 modifier = Modifier.size(17.dp),
             )
         }
+    }
+}
+
+@SuppressLint("ClickableViewAccessibility")
+private fun attachOrbitTouchGuard(view: WebView, modeProvider: () -> PrevisViewMode) {
+    view.setOnTouchListener { v, event ->
+        if (modeProvider() == PrevisViewMode.ORBIT) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN,
+                MotionEvent.ACTION_POINTER_DOWN,
+                MotionEvent.ACTION_MOVE -> v.parent?.requestDisallowInterceptTouchEvent(true)
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> v.parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        false
     }
 }
 
