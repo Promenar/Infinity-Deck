@@ -24,4 +24,12 @@
     <string name="p3_cut_reexport">重新导出</string>
     <string name="p3_cut_burn_subtitles">烧录字幕</string>
     <string name="p3_cut_delete">删除版本</string>
+    <string name="production_cut_shot_position">第 %1$d/%2$d 镜</string>
+    <string name="production_cut_placeholder_playing">占位连播中</string>
+    <string name="production_cut_placeholder_preview_badge">预演占位</string>
+    <string name="production_cut_placeholder_no_frame_badge">暂无画面</string>
+    <string name="production_cut_placeholder_no_preview">暂无预演画面</string>
+    <string name="production_cut_placeholder_no_take">待选定镜头成片</string>
+    <string name="production_cut_planned_duration">计划时长 %1$s</string>
+    <string name="production_cut_placeholder_empty_hint">分镜拆分完成后可在此预览序列</string>
 </resources>

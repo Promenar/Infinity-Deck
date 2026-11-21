@@ -14,6 +14,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.69.1-beta] - 2026-11-21
+
+- **制作面板剪辑占位监视器语义化与时间轴当前镜高亮（[ProductionCutPlayer.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionCutPlayer.kt)、[ProductionCutPage.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionCutPage.kt)、[ProductionManagement.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionManagement.kt)）**：
+  - 重构剪辑页 16:9 无可用视频占位监视器 `CutPlaceholderMonitor`：顶部增加镜序胶囊（`第 X/Y 镜`）与模式状态胶囊（`预演占位` / `暂无画面` / 连播态主色 `占位连播中`），中央明确展示「镜号 · 镜头名」与「暂无预演画面 / 待选定镜头成片 · 计划时长」，消除仅有镜头标题与秒数（如“经过 / 4.5 秒”）导致的歧义；
+  - 连播占位态新增遵循系统动画缩放的 `2.5dp` 底部微进度条与倒计时驱动；下方 `CutTimeline` 同步接收 `activeClipIndex`，为当前预览/连播镜头绘制 `1.5dp` 主色高亮边框与柔和主色底（缩略图与空占位均适用）。
+- **剧本内嵌阅读卡展开态限高与框内嵌套滚动（[ProductionTabs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionTabs.kt)）**：
+  - `ProductionScriptTab` 根据当前窗体可用高度与检视器/全屏形态动态限定 `ScriptInlineReadingCard` 展开态视口上限（检视器 `240dp~360dp`、常规页 `300dp~400dp`），避免长剧本展开后把下方审批批注、「审批 / 修改审批」入口与「场次」列表推远；
+  - 收起态保持 `220dp` 静态裁剪不抢外层列表手势，展开态启用框内垂直滚动并在收起时自动归顶，外层视口固定绘制与容器底层色像素精确合成（`compositeOver`）的上下边缘渐隐与右侧 `3dp` 半透细滚动条，同时补齐 [ProductionReviewUiTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/production/ProductionReviewUiTest.kt) 契约测试、3 项剪辑截图基线与 Linux overlay 同步。
+
 ## [0.69.0-beta] - 2026-11-21
 
 - **全站根级悬浮通知胶囊（方案 A 熏黑微光）与布局零跳变机制（[InfinityNoticeHost.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityNoticeHost.kt)、[MainActivity.kt](native-ui/app/src/main/java/com/promenar/infinity/MainActivity.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[MainTabScaffold.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/MainTabScaffold.kt)、[HubThreePane.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/hub/HubThreePane.kt)、[ImageLightbox.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/ImageLightbox.kt)）**：

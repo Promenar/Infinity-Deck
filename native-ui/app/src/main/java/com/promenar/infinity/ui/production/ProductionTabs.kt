@@ -1,13 +1,16 @@
 package com.promenar.infinity.ui.production
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,7 +28,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
@@ -46,6 +51,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -54,10 +60,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
@@ -69,6 +80,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.Asset
@@ -98,11 +110,14 @@ import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityLoadingIndicator
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityMetaSeparator
+import com.promenar.infinity.ui.common.InfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
 import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
+import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
 import com.promenar.infinity.ui.common.MarkdownText
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
@@ -327,78 +342,93 @@ private fun ProductionFileRowHost(
 @Composable
 internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String? = { null }, onOpenEpisode: (String) -> Unit = {}) {
     val episodes = production.episodes()
-    LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
-        production.logline?.takeIf(String::isNotBlank)?.let { logline ->
-            item("logline") {
-                ProductionSection(stringResource(R.string.p2_logline)) {
-                    Text(logline, style = MaterialTheme.typography.bodyMedium, modifier = ProductionCardInset)
+    val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // 展开态视口上限按当前窗体可用高度缩放并钳制，确保审批区与下方「场次」始终就近可达。
+        val expandedReadingMaxHeight = if (constraints.hasBoundedHeight) {
+            if (inInspector) (maxHeight * 0.38f).coerceIn(240.dp, 360.dp)
+            else (maxHeight * 0.44f).coerceIn(300.dp, 400.dp)
+        } else {
+            if (inInspector) 320.dp else 360.dp
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = ProductionPagePadding,
+            verticalArrangement = Arrangement.spacedBy(ProductionSectionGap),
+        ) {
+            production.logline?.takeIf(String::isNotBlank)?.let { logline ->
+                item("logline") {
+                    ProductionSection(stringResource(R.string.p2_logline)) {
+                        Text(logline, style = MaterialTheme.typography.bodyMedium, modifier = ProductionCardInset)
+                    }
                 }
             }
-        }
-        item("scripts") {
-            if (episodes.isEmpty()) {
-                ProductionSection(if (production.logline.isNullOrBlank()) null else stringResource(R.string.production_panel_stage_script)) {
-                    ProductionMutedRow(stringResource(R.string.production_panel_no_script))
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (!production.logline.isNullOrBlank()) {
-                        ProductionSectionHeader(stringResource(R.string.production_panel_stage_script))
+            item("scripts") {
+                if (episodes.isEmpty()) {
+                    ProductionSection(if (production.logline.isNullOrBlank()) null else stringResource(R.string.production_panel_stage_script)) {
+                        ProductionMutedRow(stringResource(R.string.production_panel_no_script))
                     }
-                    episodes.forEach { episode ->
-                        val title = episodeDisplayName(production, episode).joinToString(" ")
-                        val path = episode.scriptPath
-                        if (path == null) {
-                            BettboxListGroup {
-                                ProductionRow(title, icon = Icons.Rounded.Description, subtitle = stringResource(R.string.production_panel_no_script), chevron = false)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (!production.logline.isNullOrBlank()) {
+                            ProductionSectionHeader(stringResource(R.string.production_panel_stage_script))
+                        }
+                        episodes.forEach { episode ->
+                            val title = episodeDisplayName(production, episode).joinToString(" ")
+                            val path = episode.scriptPath
+                            if (path == null) {
+                                BettboxListGroup {
+                                    ProductionRow(title, icon = Icons.Rounded.Description, subtitle = stringResource(R.string.production_panel_no_script), chevron = false)
+                                }
+                            } else {
+                                ScriptInlineReadingCard(
+                                    episode = episode,
+                                    title = title,
+                                    path = path,
+                                    production = production,
+                                    busy = busy,
+                                    onRun = onRun,
+                                    onSubmit = onSubmit,
+                                    expandedReadingMaxHeight = expandedReadingMaxHeight,
+                                )
                             }
-                        } else {
-                            ScriptInlineReadingCard(
-                                episode = episode,
-                                title = title,
-                                path = path,
-                                production = production,
-                                busy = busy,
-                                onRun = onRun,
-                                onSubmit = onSubmit,
+                        }
+                    }
+                }
+            }
+            episodes.forEach { episode ->
+                item("scenes-${episode.id}") {
+                    val scenes = stringResource(R.string.p2_scenes)
+                    val titleSegments = if (production.showEpisodeNumbers()) listOf(episodeDisplayName(production, episode).joinToString(" "), scenes) else null
+                    ProductionSection(scenes, titleSegments = titleSegments) {
+                        if (episode.scenes.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_no_shots))
+                        episode.scenes.forEach { scene ->
+                            val chip = if (scene.shots.isEmpty()) ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                            else production.reviewChipSpec(ReviewTarget.scene(episode.id, scene.code), settled = scene.storyboardLocked)
+                            ProductionRow(
+                                title = scene.heading,
+                                subtitle = if (scene.shots.isEmpty()) stringResource(R.string.p2_no_shots_split) else stringResource(R.string.p2_scene_shots_duration, scene.shots.size, formatShotSeconds(scene.shots.sumOf { it.durationSeconds })),
+                                leading = { Text(scene.number.toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                chip = chip,
+                                chevron = false,
+                                onClick = { onOpenEpisode(episode.id) },
                             )
                         }
                     }
                 }
             }
-        }
-        episodes.forEach { episode ->
-            item("scenes-${episode.id}") {
-                val scenes = stringResource(R.string.p2_scenes)
-                val titleSegments = if (production.showEpisodeNumbers()) listOf(episodeDisplayName(production, episode).joinToString(" "), scenes) else null
-                ProductionSection(scenes, titleSegments = titleSegments) {
-                    if (episode.scenes.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_no_shots))
-                    episode.scenes.forEach { scene ->
-                        val chip = if (scene.shots.isEmpty()) ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
-                        else production.reviewChipSpec(ReviewTarget.scene(episode.id, scene.code), settled = scene.storyboardLocked)
-                        ProductionRow(
-                            title = scene.heading,
-                            subtitle = if (scene.shots.isEmpty()) stringResource(R.string.p2_no_shots_split) else stringResource(R.string.p2_scene_shots_duration, scene.shots.size, formatShotSeconds(scene.shots.sumOf { it.durationSeconds })),
-                            leading = { Text(scene.number.toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                            chip = chip,
-                            chevron = false,
-                            onClick = { onOpenEpisode(episode.id) },
-                        )
+            if (production.bible.isNotEmpty()) {
+                item("bible") {
+                    ProductionSection(stringResource(R.string.production_panel_section_bible)) {
+                        production.bible.forEach { document -> ProductionFileRow(document.path, document.title, Icons.AutoMirrored.Rounded.MenuBook, subtitle = document.path) }
                     }
-                }
-            }
-        }
-        if (production.bible.isNotEmpty()) {
-            item("bible") {
-                ProductionSection(stringResource(R.string.production_panel_section_bible)) {
-                    production.bible.forEach { document -> ProductionFileRow(document.path, document.title, Icons.AutoMirrored.Rounded.MenuBook, subtitle = document.path) }
                 }
             }
         }
     }
 }
 
-/** 剧本内嵌阅读卡：内嵌可展开 Markdown 正文、全屏查看与统一单入口「审批 / 修改审批」闭环。 */
+/** 剧本内嵌阅读卡：内嵌限高滚动 Markdown 正文、全屏查看与统一单入口「审批 / 修改审批」闭环。 */
 @Composable
 private fun ScriptInlineReadingCard(
     episode: Episode,
@@ -408,6 +438,7 @@ private fun ScriptInlineReadingCard(
     busy: Boolean,
     onRun: (ProductionUserAction) -> Unit,
     onSubmit: suspend (ProductionUserAction) -> String?,
+    expandedReadingMaxHeight: Dp = 360.dp,
 ) {
     val scheme = MaterialTheme.colorScheme
     val chrome = LocalFrostedChromeMaterial.current
@@ -426,6 +457,25 @@ private fun ScriptInlineReadingCard(
 
     var fullscreenOpen by remember(episode.id, path) { mutableStateOf(false) }
     var expanded by rememberSaveable(episode.id, path) { mutableStateOf(false) }
+    val bodyScrollState = rememberScrollState()
+    LaunchedEffect(expanded) {
+        if (!expanded) bodyScrollState.scrollTo(0)
+    }
+    val canScrollUp by remember(bodyScrollState, expanded) {
+        derivedStateOf { expanded && bodyScrollState.value > 2 }
+    }
+    val canScrollDown by remember(bodyScrollState, expanded) {
+        derivedStateOf {
+            val max = bodyScrollState.maxValue
+            expanded && max in 1 until Int.MAX_VALUE && bodyScrollState.value < max - 2
+        }
+    }
+    val hasScrollableOverflow by remember(bodyScrollState, expanded) {
+        derivedStateOf { expanded && bodyScrollState.maxValue in 1 until Int.MAX_VALUE }
+    }
+    val fadeAnimSpec = if (animate) tween<Float>(InfinityMotion.DurationShort) else snap()
+    val topFadeAlpha by animateFloatAsState(if (canScrollUp) 1f else 0f, animationSpec = fadeAnimSpec, label = "scriptTopFade")
+    val bottomFadeAlpha by animateFloatAsState(if (!expanded || canScrollDown) 1f else 0f, animationSpec = fadeAnimSpec, label = "scriptBottomFade")
 
     val onFullscreen: (() -> Unit)? = when {
         available != null && isText -> ({ fullscreenOpen = true })
@@ -442,7 +492,13 @@ private fun ScriptInlineReadingCard(
     } else {
         scheme.surfaceContainer
     }
-    val fadeTarget = if (chrome != null && dark) com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer else scheme.surfaceContainerLow
+    // 将渐隐目标色按实际容器背景像素合成，确保深浅主题及熏黑毛玻璃下边缘渐隐不出现色阶或暗带。
+    val effectiveCardBg = if (chrome != null) {
+        chrome.innerCard.compositeOver(chrome.frostedTint ?: chrome.container)
+    } else {
+        scheme.surfaceContainerLow
+    }
+    val fadeTarget = readingBg.compositeOver(effectiveCardBg)
 
     BettboxListGroup(Modifier.testTag(ProductionUiTags.SCRIPT_CARD)) {
         Column(
@@ -509,19 +565,71 @@ private fun ScriptInlineReadingCard(
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .then(if (expanded) Modifier else Modifier.heightIn(max = 220.dp).clipToBounds()),
+                                    .heightIn(max = if (expanded) expandedReadingMaxHeight else 220.dp)
+                                    .clipToBounds(),
                             ) {
-                                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                                // 收起态不挂 verticalScroll，避免日常扫览页面时抢占外层 LazyColumn 滚动手势。
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .then(if (expanded) Modifier.verticalScroll(bodyScrollState) else Modifier)
+                                        .padding(
+                                            start = 12.dp,
+                                            end = if (hasScrollableOverflow) 16.dp else 12.dp,
+                                            top = 12.dp,
+                                            bottom = 12.dp,
+                                        ),
+                                ) {
                                     MarkdownText(markdown = textBody, isStreaming = false, showCursor = false, fontSize = 14)
                                 }
-                                if (!expanded) {
-                                    Box(
-                                        Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .fillMaxWidth()
-                                            .height(30.dp)
-                                            .background(Brush.verticalGradient(listOf(Color.Transparent, fadeTarget.copy(alpha = 0.78f)))),
-                                    )
+                                // 上下渐隐与细滚动条绘制在外层固定视口内，不随正文滚动且不撑高短剧本。
+                                Box(Modifier.matchParentSize()) {
+                                    if (topFadeAlpha > 0.01f) {
+                                        Box(
+                                            Modifier
+                                                .align(Alignment.TopCenter)
+                                                .fillMaxWidth()
+                                                .height(20.dp)
+                                                .alpha(topFadeAlpha)
+                                                .background(Brush.verticalGradient(listOf(fadeTarget, Color.Transparent))),
+                                        )
+                                    }
+                                    if (bottomFadeAlpha > 0.01f) {
+                                        Box(
+                                            Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .fillMaxWidth()
+                                                .height(if (expanded) 28.dp else 30.dp)
+                                                .alpha(bottomFadeAlpha)
+                                                .background(Brush.verticalGradient(listOf(Color.Transparent, fadeTarget))),
+                                        )
+                                    }
+                                    if (hasScrollableOverflow) {
+                                        val thumbColor = scheme.onSurfaceVariant.copy(alpha = 0.30f)
+                                        Canvas(Modifier.matchParentSize()) {
+                                            val maxScroll = bodyScrollState.maxValue
+                                            if (maxScroll in 1 until Int.MAX_VALUE) {
+                                                val edgePad = 8.dp.toPx()
+                                                val trackHeight = (size.height - edgePad * 2f).coerceAtLeast(0f)
+                                                if (trackHeight > 0f) {
+                                                    val totalContentPx = size.height + maxScroll.toFloat()
+                                                    val viewportProportion = (size.height / totalContentPx).coerceIn(0.10f, 1f)
+                                                    val minThumb = 28.dp.toPx()
+                                                    val thumbHeight = (trackHeight * viewportProportion).coerceIn(minThumb, trackHeight)
+                                                    val progress = (bodyScrollState.value.toFloat() / maxScroll.toFloat()).coerceIn(0f, 1f)
+                                                    val thumbTop = edgePad + (trackHeight - thumbHeight) * progress
+                                                    val thumbWidth = 3.dp.toPx()
+                                                    val thumbLeft = size.width - thumbWidth - 4.dp.toPx()
+                                                    drawRoundRect(
+                                                        color = thumbColor,
+                                                        topLeft = Offset(thumbLeft, thumbTop),
+                                                        size = Size(thumbWidth, thumbHeight),
+                                                        cornerRadius = CornerRadius(thumbWidth / 2f, thumbWidth / 2f),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             Row(
@@ -531,8 +639,15 @@ private fun ScriptInlineReadingCard(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
+                                val charCountText = stringResource(R.string.production_script_char_count, textBody.length)
+                                val footerText = if (hasScrollableOverflow) {
+                                    listOf(charCountText, stringResource(R.string.production_script_scrollable_hint))
+                                        .joinToString(" $InfinityMetaSeparator ") // wrap-check: allow 剧本字数栏单行省略
+                                } else {
+                                    charCountText
+                                }
                                 Text(
-                                    text = stringResource(R.string.production_script_char_count, textBody.length),
+                                    text = footerText,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = scheme.onSurfaceVariant,
                                     maxLines = 1,

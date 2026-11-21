@@ -86,6 +86,7 @@
     <string name="production_script_expand_full">Expand</string>
     <string name="production_script_collapse">Collapse</string>
     <string name="production_script_char_count">%1$d chars</string>
+    <string name="production_script_scrollable_hint">Scrollable</string>
     <string name="production_script_loading">Loading script…</string>
     <string name="production_script_unavailable">Preview unavailable locally. Open full view or locate in files.</string>
 

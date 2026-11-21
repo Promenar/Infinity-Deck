@@ -24,4 +24,12 @@
     <string name="p3_cut_reexport">Re-export</string>
     <string name="p3_cut_burn_subtitles">Burn in subtitles</string>
     <string name="p3_cut_delete">Delete version</string>
+    <string name="production_cut_shot_position">Shot %1$d/%2$d</string>
+    <string name="production_cut_placeholder_playing">Playing placeholder</string>
+    <string name="production_cut_placeholder_preview_badge">Animatic</string>
+    <string name="production_cut_placeholder_no_frame_badge">No frame</string>
+    <string name="production_cut_placeholder_no_preview">No animatic frame</string>
+    <string name="production_cut_placeholder_no_take">No approved take</string>
+    <string name="production_cut_planned_duration">Planned %1$s</string>
+    <string name="production_cut_placeholder_empty_hint">Split scenes into shots to preview the sequence</string>
 </resources>

@@ -145,4 +145,33 @@ class ProductionReviewUiTest {
         assertThat(tabs).contains("ScriptInlineReadingCard(")
         assertThat(tabs).contains("ProductionUiTags.SCRIPT_CARD")
     }
+
+    @Test fun `剪辑占位监视器语义化与剧本展开态限高嵌套滚动契约成立`() {
+        fun productionSource(name: String): String = Files.readString(
+            Path.of("app/src/main/java/com/promenar/infinity/ui/production/$name"),
+        )
+        val cutPlayer = productionSource("ProductionCutPlayer.kt")
+        assertThat(cutPlayer).contains("R.string.production_cut_shot_position")
+        assertThat(cutPlayer).contains("R.string.production_cut_placeholder_no_preview")
+        assertThat(cutPlayer).contains("R.string.production_cut_placeholder_no_take")
+        assertThat(cutPlayer).contains("R.string.production_cut_planned_duration")
+        assertThat(cutPlayer).contains("rememberAnimationsEnabled()")
+
+        val cutPage = productionSource("ProductionCutPage.kt")
+        assertThat(cutPage).contains("ProductionCutPlayer(")
+        assertThat(cutPage).contains("clipIndex = activeClipIndex ?: 0")
+        assertThat(cutPage).contains("isPreviewMode = isPreview")
+        assertThat(cutPage).contains("activeClipIndex = activeClipIndex")
+
+        val management = productionSource("ProductionManagement.kt")
+        assertThat(management).contains("activeClipIndex: Int? = null")
+        assertThat(management).contains("border(1.5.dp, scheme.primary, shape)")
+
+        val tabs = productionSource("ProductionTabs.kt")
+        assertThat(tabs).contains("expandedReadingMaxHeight: Dp = 360.dp")
+        assertThat(tabs).contains("if (expanded) Modifier.verticalScroll(bodyScrollState) else Modifier")
+        assertThat(tabs).contains("if (!expanded) bodyScrollState.scrollTo(0)")
+        assertThat(tabs).contains("compositeOver")
+        assertThat(tabs).contains("R.string.production_script_scrollable_hint")
+    }
 }

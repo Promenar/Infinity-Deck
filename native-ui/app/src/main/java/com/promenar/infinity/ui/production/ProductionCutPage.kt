@@ -101,6 +101,8 @@ internal fun ProductionCutTab(
     val anyRunning = states.values.any { it is CutExportState.Running }
     val current = version.clips.getOrNull(clipIndex.coerceIn(0, (version.clips.size - 1).coerceAtLeast(0)))
     val totalSeconds = version.clips.sumOf { it.seconds }
+    val isWholeCutVideo = version.path != null
+    val activeClipIndex = if (!isWholeCutVideo && version.clips.isNotEmpty()) clipIndex.coerceIn(0, version.clips.lastIndex) else null
     val select: (String) -> Unit = { versionId = it; clipIndex = 0; playing = false }
     LaunchedEffect(focusCutId) {
         if (focusCutId == null) return@LaunchedEffect
@@ -130,9 +132,17 @@ internal fun ProductionCutTab(
         item("player") {
             val clip = version.path?.let { ProductionCutClip("", version.id, version.title, totalSeconds, it) } ?: current
             key(version.id, clip?.episodeId, clip?.shotCode, clip?.path) {
-                ProductionCutPlayer(clip, playing, onComplete = {
-                    if (version.path != null || clipIndex + 1 >= version.clips.size) playing = false else clipIndex++
-                }, onStop = { playing = false })
+                ProductionCutPlayer(
+                    clip = clip,
+                    playing = playing,
+                    onComplete = {
+                        if (version.path != null || clipIndex + 1 >= version.clips.size) playing = false else clipIndex++
+                    },
+                    onStop = { playing = false },
+                    clipIndex = activeClipIndex ?: 0,
+                    totalClips = if (isWholeCutVideo) 0 else version.clips.size,
+                    isPreviewMode = isPreview,
+                )
             }
         }
         item("timeline") {
@@ -142,7 +152,7 @@ internal fun ProductionCutTab(
                         androidx.compose.material3.Text(episode?.let { episodeDisplayName(production, it).joinToString(" ") } ?: stringResource(R.string.p2_timeline), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                         androidx.compose.material3.Text(secondsLabel(totalSeconds), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    CutTimeline(production, version, isPreview, onShot)
+                    CutTimeline(production, version, isPreview, onShot, activeClipIndex = activeClipIndex)
                 }
             }
         }

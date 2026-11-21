@@ -81,6 +81,7 @@
     <string name="production_script_expand_full">展开全文</string>
     <string name="production_script_collapse">收起正文</string>
     <string name="production_script_char_count">共 %1$d 字</string>
+    <string name="production_script_scrollable_hint">可滚动</string>
     <string name="production_script_loading">正在加载剧本正文…</string>
     <string name="production_script_unavailable">暂无法读取本地剧本正文，可点击全屏查看或定位文件</string>
 

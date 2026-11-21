@@ -687,7 +687,13 @@ private val ClipDpPerSecond = 18.dp
 private fun cutClipWidth(clip: ProductionCutClip): Dp = (ClipDpPerSecond * clip.seconds.toFloat()).coerceAtLeast(64.dp)
 
 @Composable
-internal fun CutTimeline(production: Production, version: ProductionCutVersion, isPreview: Boolean, onShot: (String, String) -> Unit) {
+internal fun CutTimeline(
+    production: Production,
+    version: ProductionCutVersion,
+    isPreview: Boolean,
+    onShot: (String, String) -> Unit,
+    activeClipIndex: Int? = null,
+) {
     val locations = production.shotLocations().toList()
     val clipWidths = version.clips.map(::cutClipWidth)
     val width = clipWidths.fold(0.dp) { sum, it -> sum + it }.coerceAtLeast(120.dp)
@@ -698,12 +704,21 @@ internal fun CutTimeline(production: Production, version: ProductionCutVersion, 
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 version.clips.forEachIndexed { index, clip ->
                     val clipWidth = clipWidths[index]
+                    val active = activeClipIndex == index
                     val shot = locations.firstOrNull { it.episode.id == clip.episodeId && it.shot.code == clip.shotCode }?.shot
                     val shape = RoundedCornerShape(7.dp)
                     val label = clip.shotCode.removePrefix("SC").ifBlank { clip.shotCode }
                     Box(
                         Modifier.width(clipWidth).height(54.dp).clip(shape)
-                            .then(if (clip.path == null && !isPreview) Modifier.border(1.dp, scheme.outline, shape) else Modifier.background(scheme.surfaceContainerHighest))
+                            .then(
+                                when {
+                                    clip.path != null && active -> Modifier.background(scheme.surfaceContainerHighest).border(1.5.dp, scheme.primary, shape)
+                                    clip.path != null -> Modifier.background(scheme.surfaceContainerHighest)
+                                    active -> Modifier.background(scheme.primary.copy(alpha = 0.12f)).border(1.5.dp, scheme.primary, shape)
+                                    isPreview -> Modifier.background(scheme.surfaceContainerHighest)
+                                    else -> Modifier.border(1.dp, scheme.outline, shape)
+                                },
+                            )
                             .clickable(role = Role.Button) { onShot(clip.episodeId, clip.shotCode) },
                     ) {
                         when {
@@ -714,10 +729,29 @@ internal fun CutTimeline(production: Production, version: ProductionCutVersion, 
                                 ClipBadge(badge, Modifier.align(Alignment.BottomStart))
                             }
                             isPreview -> Column(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 4.dp), verticalArrangement = Arrangement.Center) {
-                                Text(clip.title, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(secondsLabel(clip.seconds), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1)
+                                Text(
+                                    clip.title,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (active) scheme.onSurface else scheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    secondsLabel(clip.seconds),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (active) scheme.primary else scheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
                             }
-                            else -> Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1, modifier = Modifier.align(Alignment.Center))
+                            else -> Text(
+                                label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (active) scheme.primary else scheme.onSurfaceVariant,
+                                maxLines = 1,
+                                modifier = Modifier.align(Alignment.Center),
+                            )
                         }
                     }
                 }
