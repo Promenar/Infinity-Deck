@@ -16,6 +16,13 @@ All notable changes to this project will be documented in this file.
 
 ## [0.70.3-beta] - 2026-11-22
 
+自上一公开版 `v0.61.2-beta` 以来的主要更新：
+
+- **离线 Three.js 3D 白模分镜预演与剪辑监视器升级**：内置 `three@0.187.0` 严格离线 3D 预演管线，支持声明式 `PrevisScene` DSL、机位/自由观察切换、180° 轴线安全区与白模/线性深度视图、全屏暗房审阅、无损 Beauty/Depth PNG 抽帧挂载与纯硬件 `MediaCodec` 24fps H.264 MP4 导出；统一剪辑页 16:9 监视器与常驻 `48dp` 走带条及总览直达入口，消除播放态跳变与弹窗主题强转崩溃。
+- **全视觉参考资产双模、锁审批与制作面板白话化精修**：支持 `sheet` 整卡与 `separate` 分张单视图双模入参及项目默认视频通道联动；为已锁定制作项（剧本/资产/分镜）AI 改写引入逐次审批卡与事务内 TOCTOU 复核；将多弹层审批统一收口为单入口 `ProductionUnifiedReviewDialog`、内嵌展开态限高剧本阅读卡与一物一标合并发送徽章，并完成制作面板术语全量白话化精修与就地否决内容更新自动退回待审。
+- **全站黑曜石毛玻璃Chrome、根级悬浮通知与 46 项布局稳定性改造**：全站 TopBar、折叠屏内屏 `40dp` 电路分支窄栏、悬浮检视器与会话抽屉统一黑曜石熏黑毛玻璃 / 冷白磨砂并联动「环境光」省电实底；引入 `InfinityNoticeHost` 顶部悬浮通知胶囊与 `NoticeClearanceStack` 避让机制；检视器底栏改用横滑轨道与 `≤3` 字符短标题；完成制作/对话/录音/媒体/文件/密钥库/资料/画布/设置共 5 批 46 项常驻控件与过渡改造，清理全站可点击裸 `TextButton`。
+- **全站大图查看器重构与录音富格式及知识库双向同步**：重构 `ImageLightboxGallery` 多图滑切查看器（1×–5× 双指捏合/双击缩放与 90° 旋转）并下移视频播控至 16:9 画面底缘浮层；录音整理稿支持 GFM 表格、Mermaid、ECharts、LaTeX 公式、双模式预览编辑、1440px+ 单张 PNG/自适应 PDF 导出、长会议 28K 综述与整理状态可追溯；支持会话经 `/mnt/knowledge` 分级授权（`read_only` / `read_write`）读写文档及 CAS 双向同步录音 `.md`、只读访问虚拟 `.wav`。
+- **已发送消息编辑重生成、Ktor 3.6.1 与统一诊断体系**：支持用户消息就地编辑、重新生成及派生分支会话（含 `tool` 配对修复）；升级 Ktor 3.6.1 解决 OkHttp multipart 崩溃并全站消除 `BlurMaskFilter` 泄漏与 `Dispatchers.IO` 重入饥饿；下线旧日志，统一 `2 MiB` 滚动 JSONL 诊断包、单会话轨迹导出与 `DiagnosticDumpProvider` ADB 调试桥。
 - **修复真机「本地模型」设置页首帧闪现与空态文字重叠（[LocalModelsViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/LocalModelsViewModel.kt)、[LocalModelsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/LocalModelsScreen.kt)、[LayoutStabilityContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/LayoutStabilityContractTest.kt)）**：
   - 在 `LocalModelsViewModel` 新增 `modelsLoaded` 状态，首轮模型扫描未完成前延后渲染 `RecordingModelDownloadRow` 与空态提示，消除进入页面瞬间的「录音整理模型 [下载]」与「暂无本地模型。」闪现。
   - 用单一 `Column` 包裹 `item(key = "library_footer")` 内错误条、空态行与节间距，并移除与 `AnimatedVisibility` 混用的 `Modifier.animateItem()`，彻底解决已下载模型行 `Qwen3-0.6B` 与退场中「暂无本地模型。」在 OPPO Find N5 上叠加重合的问题，新增 `LayoutStabilityContractTest` 契约守护。

@@ -26,7 +26,7 @@
 - **本地执行层**：内置免 Root 的 Alpine Linux（`arm64-v8a`，含 git、ripgrep、Python、Node.js、FFmpeg）及轻量 Python / QuickJS 隔离沙箱，可在设备端直接运行脚本、构建项目与处理文件，不依赖远程桌面主机在线。
 - **模型与端侧推理**：支持通过自有 API Key 接入主流大模型服务商与各类 Coding Plan 接口；内置基于 `llama.cpp` 的 GGUF 本地推理引擎（支持主对话、Embedding、Rerank 三槽位与 `16K / 8K / 4K` Prefix KV Cache）及基于 `sherpa-onnx` 的离线语音管线（X-ASR 流式转写、SenseVoice 二遍校准、说话人分段与声纹识别）。
 - **私有网络与远程运维**：内置用户态 Tailscale 节点（兼容自建 Headscale），不占用 Android 系统 VPN 槽位，使 SSH、私有模型端点、ComfyUI、MCP 服务与内置浏览器直达 `tailnet` 内网。
-- **知识库与创作工作台**：支持外部目录挂载、文档切片检索与实体知识图谱查询、离线录音纪要整理、可交互多屏网页画布、图像局部重绘，以及串联剧本、资产、分镜与视频生成的制作面板。
+- **知识库与创作工作台**：支持外部目录挂载与 `read_only / read_write` 分级受管读写、文档切片检索与实体知识图谱查询、离线录音富格式整理（表格 / Mermaid / ECharts / LaTeX 与长图 PNG/PDF 导出）、可交互多屏网页画布、图像局部重绘，以及集成离线 `Three.js` 3D 白模预演与剧本/资产/分镜/粗剪导出的制作面板。
 
 ## 目录
 
@@ -82,24 +82,24 @@
     <td width="50%" valign="top">
       <img src="assets/screenshots/zh/fold-inspector.webp" alt="折叠屏内屏三列布局与右侧固定检视器">
       <h3>折叠屏三列工作台与检视器</h3>
-      大屏与折叠屏内屏采用「导航 · 会话列表 · 主会话」三列结构。右侧检视器集成运行计划、后台任务、文件树、Git 与内置浏览器，支持图钉固定并排显示或浮动叠放。
+      大屏与折叠屏内屏采用「导航 · 40dp 极简分支窄栏 / 会话列表 · 主会话」自适应结构。右侧检视器采用统一黑曜石熏黑毛玻璃与底缘横滑短标题轨道，集中承载任务进度、文件树、Git、内置浏览器、远程终端与制作面板，支持图钉固定或浮动叠放。
     </td>
     <td width="50%" valign="top">
       <p align="center"><img src="assets/screenshots/zh/outer-chat.webp" alt="折叠屏外屏浏览长报告并单手操作" width="190"></p>
       <h3>开合屏状态无缝接续</h3>
-      合上折叠屏后，当前活动会话自动迁移至外屏并保持滚动位置与输入状态，便于单手审阅输出、点击命令审批卡或追加指令。
+      合上折叠屏后，当前活动会话自动迁移至外屏并保持滚动位置与输入状态，便于单手审阅输出、点击命令或锁审批卡片，以及从顶部悬浮通知胶囊快速处理状态提示。
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="assets/screenshots/zh/recording-workbench.webp" alt="内屏录音整理工作台：左栏说话人逐字稿与右栏结构化整理稿并排对照">
       <h3>端侧离线语音与录音整理</h3>
-      内置离线流式听写（X-ASR）、可选 `SenseVoice-Small int8` 二遍精修（按设备内存与 CPU 自动分级，含 RTF 熔断退避）及本地说话人分离（pyannote + CAM++）。支持录制中同步生成整理草稿、按时间戳点击回听与双栏对照编辑。
+      内置离线流式听写（X-ASR）、可选 `SenseVoice-Small int8` 二遍精修（按设备内存与 CPU 自动分级，含 RTF 熔断退避）及本地说话人分离（pyannote + CAM++）。支持录制中生成整理草稿、富格式图表与公式整理稿、双栏「编辑 / 预览」、双向 CAS 同步 `/mnt/knowledge` 与 `1440px+` 单张 PNG/PDF 导出。
     </td>
     <td width="50%" valign="top">
       <img src="assets/screenshots/zh/library-ask.webp" alt="资料库混合检索与带编号引用溯源">
       <h3>混合 RAG 资料库与知识图谱</h3>
-      支持导入 PDF、Word、Markdown、HTML 或直接挂载手机外部目录，融合文档向量、关键词检索、跨会话长期记忆与实体知识图谱生成带编号引用的答案，一键定位高亮原文。
+      支持导入 PDF、Word、Markdown、HTML 或以 `read_only / read_write` 分级挂载目录，融合文档向量、关键词检索、跨会话长期记忆与实体知识图谱生成带编号引用的答案，一键定位高亮原文。
     </td>
   </tr>
   <tr>
@@ -110,8 +110,8 @@
     </td>
     <td width="50%" valign="top">
       <img src="assets/screenshots/zh/production-storyboard.webp" alt="短片制作面板：雾港分镜列表、参考图输入与多通道视频生成规划">
-      <h3>画布原型、图像重绘与音视频制作面板</h3>
-      支持在对话中生成可交互多屏网页原型与版本化文档产物；接入云端或自建 ComfyUI 进行生图与画板蒙版重绘；通过制作面板管理剧本、资产、分镜与视频候选（兼容火山方舟 Seedance、MiniMax 与 ComfyUI），支持回合制审片与导出 MP4 粗剪及 SRT 字幕。
+      <h3>画布原型、3D 白模预演与音视频制作面板</h3>
+      支持生成可交互多屏网页原型、画板蒙版重绘与多图滑切查看器（1×–5× / 90° 旋转）；通过制作面板管理剧本、双模视觉参考资产、已锁定项 AI 改写审批、离线 `three.js` 3D 白模分镜预演（Beauty/Depth 抽帧与硬件 MP4 导出）及多通道生视频（Seedance、MiniMax、ComfyUI）粗剪合成。
     </td>
   </tr>
 </table>
@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.66.3-beta`（versionCode `184`）。全面统一制作面板审批状态徽章布局与结构化反馈容器（`InfinityBottomSheet` `titleTrailing` 锚点、一物一标合并发送态、`ProductionReviewCard` 独立页内审批卡、`ProductionSceneHeader` 首行 `FlowRow` 紧随状态、两段式剧本卡、资产网格右上角高对比角标，消除角色/资产/配乐详情同屏重复双标并修复总览单集剧本实时审核状态）。延续 `v0.66.2-beta`、`v0.66.1-beta`、`v0.66.0-beta`、`v0.65.1-beta`、`v0.65.0-beta`、`v0.64.1-beta`、`v0.64.0-beta` 等前序能力。 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)
+- **当前版本**：`v0.70.3-beta`（versionCode `195`）。自上一公开版 `v0.61.2-beta` 以来累计交付离线 `three.js` 3D 白模分镜预演与 Beauty/Depth 抽帧及硬件 MP4 导出、全视觉参考资产双模与已锁定项 AI 改写审批、全站黑曜石熏黑毛玻璃与「环境光」省电实底及根级悬浮通知胶囊、全站 46 项常驻控件与布局稳定性改造、多图滑切查看器（1×–5× 与 90° 旋转）、录音富格式整理（表格 / Mermaid / ECharts / LaTeX / 1440px+ PNG·PDF 导出）、已发送消息编辑重生成及 `2 MiB` 滚动诊断与单会话轨迹导出，并在真机复验后修复本地模型列表首帧闪现与空态重叠。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
 
 ### 从源码构建
 
@@ -155,8 +155,9 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 
 - 支持接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi、百炼、OpenRouter、SiliconFlow、xAI 等服务商与任意兼容端点，内置主流 Coding Plan（OpenCode Go/Zen、百炼、智谱、Kimi、方舟）预设与端点/协议变体快切
 - 端侧 GGUF 推理（`llama.cpp`）：支持 `MAIN`（对话与工具调用）、`EMBEDDING`、`RERANK` 三槽位独立管理与重启自动恢复；支持 `Q8_0` KV 缓存量化、跨轮前缀 KV 复用与按可用内存自适应 `16K / 8K / 4K` 上下文；已加载的主槽位模型动态注入会话模型选择器
-- 支持会话中途切换模型，最多 16 个会话并发生成；生成期间支持下一条消息排队或插队打断
+- 支持会话中途切换模型，最多 16 个会话并发生成；生成期间支持下一条消息排队或插队打断，并支持对已发送用户消息就地编辑、重新生成或派生分支会话
 - 上下文自动压缩后保留原文检索能力，智能体可按关键词搜索并分页调阅历史原始消息
+- 全站采用黑曜石熏黑毛玻璃 / 冷白磨砂材质与「环境光」无模糊省电档，搭配顶部悬浮通知胶囊与常驻稳态交互控件；内置 2 MiB 分片滚动诊断导出与单会话轨迹追踪
 - 支持结构化提问卡、后台前台服务保活、防误触触摸锁
 - 支持 Skills 技能包与 MCP 服务器接入，内置技能商店可从官方或自定义源安装经校验的技能
 - 支持导入 `.idpet` 会话宠物包（[官网下载](https://infinityware.work/download/#pets)），根据任务状态与四段作息切换动画与台词
@@ -202,8 +203,8 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 
 - 内置多标签浏览器，支持移动/桌面 UA 切换、直连本地端口（如 `localhost:8888`）与 `tailnet` 内部站点；支持智能体操作旁观与人工接管
 - 支持生成可交互多屏原型、画布页面与多版本产物
-- 支持云端与 ComfyUI 图像生成，内置画板提供标注与局部重绘蒙版涂抹
-- 内置影视制作面板：管理剧本、资产、分镜、视频候选与配乐，支持回合制审片批注、按尾帧串联续接镜头、调用 ComfyUI 超分/补帧模板，支持剧集粗剪并在本机合成导出 MP4 与 SRT 字幕（兼容火山方舟 Seedance、MiniMax 与自建 ComfyUI）
+- 支持云端与 ComfyUI 图像生成，内置画板提供标注与局部重绘蒙版涂抹，配合全站多图滑切查看器（1×–5× 双指/双击缩放、90° 旋转）统一浏览参考图与生成结果
+- 内置影视制作面板：管理剧本、双模视觉参考资产（多视角整卡 / 分张单视图）、分镜、视频候选与配乐，支持单入口审批、已锁定项 AI 改写逐次审批、按尾帧串联续接镜头、调用 ComfyUI 超分/补帧模板、离线 `three.js` 3D 白模分镜预演（机位/自由观察、180° 轴线安全区与 Beauty/Depth 抽帧及硬件 MP4 导出），以及本机合成导出 MP4 粗剪与 SRT 字幕（兼容火山方舟 Seedance、MiniMax 与自建 ComfyUI）
 - 会话内容支持导出为独立 HTML、A4 PDF 或长图
 
 各模块的详细说明与限制边界见[功能详解](docs/guide/features.md)。

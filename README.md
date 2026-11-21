@@ -26,7 +26,7 @@
 - **Local execution layer**: One-tap rootless Alpine Linux (`arm64-v8a`, with `git`, `ripgrep`, Python, Node.js, and FFmpeg) alongside built-in Python and QuickJS sandboxes — run scripts, build projects, and transform files directly on the phone without keeping a remote desktop host awake.
 - **Models and on-device inference**: Connect major cloud APIs and Coding Plan presets with your own keys, or run `llama.cpp` GGUF inference locally (independent `MAIN`, `EMBEDDING`, and `RERANK` slots with `16K / 8K / 4K` Prefix KV Cache) and an on-device `sherpa-onnx` speech pipeline (`X-ASR` streaming, two-pass `SenseVoice-Small int8` refinement with RAM-tier gating and RTF backoff, and speaker diarization).
 - **Private networking and remote ops**: Embedded userspace Tailscale node (compatible with self-hosted Headscale) that never occupies Android's system VPN slot — routing SSH, self-hosted LLM gateways, ComfyUI, MCP servers, and the built-in browser straight onto your `tailnet`.
-- **Knowledge & creative workspace**: Mount device folders, query chunked vector search + cross-session memory + per-work knowledge graphs with numbered citations, organize voice recordings side by side, generate clickable web prototypes, paint inpainting masks for ComfyUI, and run script-to-rough-cut short-film production.
+- **Knowledge & creative workspace**: Mount device folders with `read_only / read_write` scoped permissions, query chunked vector search + cross-session memory + per-work knowledge graphs with numbered citations, export rich-format recordings (tables, Mermaid, ECharts, LaTeX, unbounded PNG/PDF), generate clickable web prototypes, paint inpainting masks for ComfyUI, and run short-film production with offline `Three.js` 3D previs and on-device MP4 + SRT export.
 
 ## Contents
 
@@ -82,24 +82,24 @@
     <td width="50%" valign="top">
       <img src="assets/screenshots/en/fold-inspector.webp" alt="Foldable inner screen three-column layout with pinned inspector">
       <h3>Foldable Workbench &amp; Pinned Inspector</h3>
-      Unfolded screens switch to three columns (`Navigation · Chats · Session`) paired with a right-hand inspector housing run progress, background jobs, file browser, Git, and the built-in web browser.
+      Unfolded screens switch to an adaptive multi-column workspace (`Navigation · 40dp circuit branch rail or chat list · Conversation`) paired with an obsidian frosted-glass inspector housing tasks, files, Git, browser, remote tools, and the production panel on a scrollable short-label strip.
     </td>
     <td width="50%" valign="top">
       <p align="center"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report for one-handed reading" width="190"></p>
       <h3>Seamless Fold/Unfold Continuity</h3>
-      Fold the device and the active chat transitions to the cover screen with scroll position and draft state intact for one-handed review, approval taps, or quick follow-up prompts.
+      Fold the device and the active chat transitions to the cover screen with scroll position and draft state intact for one-handed review, command/lock approval taps, floating notice capsules, or quick follow-up prompts.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="assets/screenshots/en/recording-workbench.webp" alt="Inner-screen recording workbench with speaker-labeled transcript on the left and structured notes on the right">
       <h3>Offline Speech &amp; Recording Cleanup</h3>
-      On-device streaming dictation (`X-ASR`), optional `SenseVoice-Small int8` two-pass refiner (with RAM-tier sizing and RTF circuit-breaker fallback), and local speaker diarization (`pyannote + CAM++`), producing live organization drafts, clickable timestamp links, and dual-pane editing.
+      On-device streaming dictation (`X-ASR`), optional `SenseVoice-Small int8` two-pass refiner (with RAM-tier sizing and RTF circuit-breaker fallback), and local speaker diarization (`pyannote + CAM++`), producing live drafts, rich-format Markdown notes (GFM tables, Mermaid, ECharts, LaTeX), dual Edit/Preview editing, `/mnt/knowledge` CAS sync, and `1440px+` PNG/PDF export.
     </td>
     <td width="50%" valign="top">
       <img src="assets/screenshots/en/library-ask.webp" alt="Hybrid library search answer with numbered citations across documents, memory, and graph">
       <h3>Hybrid RAG Library &amp; Knowledge Graph</h3>
-      Import PDF, Word, Markdown, and HTML files or mount device folders. Combines vector + keyword search, cross-session long-term memory, and entity knowledge graphs to generate cited answers that jump straight to highlighted source passages.
+      Import PDF, Word, Markdown, and HTML files or mount folders with `read_only / read_write` approval tiers. Combines vector + keyword search, cross-session long-term memory, and entity knowledge graphs to generate cited answers jumping straight to highlighted passages.
     </td>
   </tr>
   <tr>
@@ -110,8 +110,8 @@
     </td>
     <td width="50%" valign="top">
       <img src="assets/screenshots/en/production-storyboard.webp" alt="Short-film production panel displaying episode storyboard scenes, reference inputs, and Seedance generation plans">
-      <h3>Canvas Prototypes, Image Editing &amp; Film Panel</h3>
-      Build clickable multi-screen HTML prototypes, generate or inpaint images via cloud APIs or ComfyUI, and coordinate scripts, character/location assets, storyboards, and video takes (Volcano Ark Seedance, MiniMax, ComfyUI) with round-based review and on-device MP4 + SRT rough-cut export.
+      <h3>Canvas Prototypes, 3D Previs &amp; Film Panel</h3>
+      Build clickable multi-screen web prototypes, generate or inpaint images via cloud APIs or ComfyUI with a 1×–5× / 90° swipeable lightbox gallery, and run scripts, dual-mode visual assets, locked-item approvals, offline `three.js` 3D storyboard previs (Beauty/Depth frame capture &amp; hardware MP4 export), and multi-channel video rough-cuts.
     </td>
   </tr>
 </table>
@@ -135,7 +135,7 @@
 
 - **Requirements**: Android 12 (API 31) or later. Built-in Linux and on-device GGUF inference require `arm64-v8a`; Alpine base occupies ~64 MB, or ~470 MB with the default toolchain (`git`, `ripgrep`, Python, Node.js, FFmpeg, each optional at install time).
 - **App updates**: Check **Settings › About › Check for updates** to query the latest GitHub Release and open the download page; nothing downloads or installs silently in the background.
-- **Current release**: `v0.70.3-beta` (`versionCode` `195`), fixing a cold-entry transition overlap in the Local Models settings library (`modelsLoaded` readiness gate in `LocalModelsViewModel` + removing conflicting `animateItem()` modifiers around `AnimatedVisibility` in `LocalModelsScreen` so the empty-library placeholder never overlaps loaded GGUF rows). Builds on `v0.70.2-beta` (`versionCode` `194`, 46-item site-wide persistent-control & layout-stability overhaul), `v0.70.1-beta` (`versionCode` `193`), `v0.70.0-beta` (`versionCode` `192`), `v0.69.4-beta` (`versionCode` `191`), `v0.69.3-beta` (`versionCode` `190`), `v0.69.2-beta` (`versionCode` `189`), `v0.69.1-beta` (`versionCode` `188`), `v0.69.0-beta` (`versionCode` `187`), `v0.68.0-beta` (`versionCode` `186`), `v0.67.0-beta` (`versionCode` `185`), `v0.66.3-beta` (`versionCode` `184`), `v0.66.2-beta` (`versionCode` `183`), `v0.66.1-beta` (`versionCode` `182`), `v0.66.0-beta` (`versionCode` `181`), `v0.65.1-beta` (`versionCode` `180`), `v0.65.0-beta` (`versionCode` `179`), `v0.64.1-beta` (`versionCode` `178`), `v0.64.0-beta` (`versionCode` `177`), `v0.63.4-beta` (`versionCode` `176`), `v0.63.3-beta` (`versionCode` `175`), `v0.63.2-beta` (`versionCode` `174`), `v0.63.1-beta` (`versionCode` `173`), and `v0.63.0-beta` (`versionCode` `172`). [Releases](https://github.com/Promenar/Infinity-Deck/releases)
+- **Current release**: `v0.70.3-beta` (`versionCode` `195`), the latest public release following `v0.61.2-beta` — adding offline `three.js` 3D storyboard previs with Beauty/Depth capture & hardware MP4 export, dual-mode visual reference assets & locked-item approval gates, obsidian frosted-glass chrome with ambient solid fallback & root floating notices, 46 site-wide persistent-control & layout-stability improvements (including the cold-entry Local Models library fix), a swipeable 1×–5× / 90° image gallery, rich-format Mermaid/ECharts/LaTeX recording exports, inline message edit/branch regeneration, and unified `2 MiB` rolling diagnostics. Builds on `v0.70.2-beta` (`194`) down through `v0.62.0-beta` (`171`); full version-by-version history is in [CHANGELOG.md](CHANGELOG.md) and [Releases](https://github.com/Promenar/Infinity-Deck/releases).
 
 ### Build from Source
 
@@ -155,8 +155,9 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/app-
 
 - Connect OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi, Bailian, OpenRouter, SiliconFlow, xAI, and any compatible API with built-in Coding Plan presets (OpenCode Go/Zen, Bailian, Zhipu, Kimi, Ark) and fast protocol/endpoint variant switching
 - On-device GGUF inference (`llama.cpp`): independent `MAIN`, `EMBEDDING`, and `RERANK` slots with restart auto-restore, `Q8_0` KV cache quantization, cross-turn Prefix KV reuse, and RAM-adaptive `16K / 8K / 4K` context sizing; loaded main model is injected directly into the session picker
-- Switch models mid-session, run up to 16 concurrent generating chats, queue or steer follow-up messages during streaming
+- Switch models mid-session, run up to 16 concurrent generating chats, queue or steer follow-up messages during streaming, and edit previously sent user messages to regenerate or fork a branch session
 - Original message search and pagination remain available even after automatic conversation compaction
+- Unified obsidian frosted-glass chrome with an unblurred ambient power-saving preset, zero-jump floating notice capsules, and persistent layout-stable UI controls alongside 2 MiB rolling diagnostics and single-session trace export
 - Structured question cards, foreground service keep-alive, and pocket touch-lock
 - Skills & MCP server support with a built-in catalog installer, plus `.idpet` chat pet packs ([download](https://infinityware.work/en/download/#pets))
 
@@ -202,8 +203,8 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/app-
 
 - Multi-tab built-in browser supporting mobile/desktop user-agent switching, direct `localhost` port access, `tailnet` URLs, agent observation, and manual login takeover
 - Interactive multi-screen prototypes, canvas pages, and versioned document artifacts
-- Cloud and ComfyUI image generation with an integrated sketch & inpainting mask editor
-- Production panel connecting scripts, character/location/prop assets, storyboards, multi-take generation, music/score versions, round-based reviews, last-frame shot chaining, ComfyUI upscale/interpolation templates, and on-device MP4 + SRT export
+- Cloud and ComfyUI image generation with an integrated sketch & inpainting mask editor, unified under a 1×–5× / 90°-rotating swipeable image gallery lightbox
+- Production panel connecting scripts, dual-mode visual reference assets (`sheet` / `separate`), per-change approval gates for locked items, storyboards, multi-take generation, music/score versions, last-frame shot chaining, ComfyUI upscale/interpolation templates, offline `three.js` 3D storyboard previs (camera/orbit views, 180-degree axis zone, Beauty/Depth PNG capture & hardware MP4 export), and on-device MP4 + SRT export
 - Export any chat as standalone HTML, A4 PDF, or a long scrolling PNG
 
 See the [feature guide](docs/guide/features.md) for detailed limits and specifications across modules.
