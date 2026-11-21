@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.ViewQuilt
 import androidx.compose.material3.FilledTonalIconButton
@@ -68,7 +67,6 @@ import com.promenar.infinity.data.production.ShotMode
 import com.promenar.infinity.data.production.effectiveReferenceInputMode
 import com.promenar.infinity.data.production.populatedReferenceViews
 import com.promenar.infinity.data.production.populatedSlots
-import com.promenar.infinity.data.production.unsentReviews
 import com.promenar.infinity.domain.mediagen.MediaChannel
 import com.promenar.infinity.domain.mediagen.MediaGroup
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
@@ -809,7 +807,6 @@ private fun ReviewFooterBlock(
     onRun: (ProductionUserAction) -> Unit,
     onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
-    val domain = MaterialTheme.infinityDomainColors
     ProductionReviewBlock(
         production = production,
         target = target,
@@ -820,15 +817,6 @@ private fun ReviewFooterBlock(
         settled = settled,
         showStatus = false,
     )
-    val unsentCount = LocalProductionSend.current?.count ?: 0
-    if (unsentCount > 0 && production.unsentReviews().any { it.target == target }) {
-        Surface(shape = RoundedCornerShape(10.dp), color = domain.infoContainer.copy(alpha = 0.55f), modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = domain.onInfoContainer)
-                Text(stringResource(R.string.p2_review_staged_hint, unsentCount), style = MaterialTheme.typography.labelMedium, color = domain.onInfoContainer)
-            }
-        }
-    }
 }
 
 @Composable

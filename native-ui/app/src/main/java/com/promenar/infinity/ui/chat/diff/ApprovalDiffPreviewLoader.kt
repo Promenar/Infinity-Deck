@@ -40,6 +40,9 @@ sealed interface ApprovalDiffPreview {
     /** 删除文件：只给出将删除的行数。 */
     data class Deletion(val lines: Int) : ApprovalDiffPreview
 
+    /** `production_update` 涉及已锁定制作项：结构化前后差异与自动退回待审影响。 */
+    data class ProductionLock(val preflight: com.promenar.infinity.data.production.ProductionLockPreflight) : ApprovalDiffPreview
+
     /**
      * `agents_write`：操作与对象、有变化的字段（旧值 → 新值）、提示词差异与影响说明。
      * [targetName] 为 Agent 名称或会话标题；新建会话时 [ownerAgentName] 为归属 Agent。
@@ -195,7 +198,7 @@ internal fun rememberApprovalDiffPreview(
         ApprovalPreview.arguments(call, messages, assistantMessageId)
     }
     val agentConfigLabels = rememberAgentConfigValueLabels()
-    val preview by produceState<ApprovalDiffPreview?>(null, loader, call.toolName, arguments, sessionId, privateWorkspaceRootUuid, approvalReason) {
+    val preview by produceState<ApprovalDiffPreview?>(null, loader, call.toolName, call.executionTarget, assistantMessageId, arguments, sessionId, privateWorkspaceRootUuid, approvalReason) {
         value = when {
             loader == null || application == null || arguments == null || sessionId == null -> null
             call.toolName == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE -> try {
@@ -210,6 +213,19 @@ internal fun rememberApprovalDiffPreview(
             call.toolName == "comfy_define_template" ->
                 ComfyTemplatePreviewLoader(AppComfyTemplatePreviewSources(application.comfyMedia.repository))
                     .load(arguments, approvalReason)
+            call.toolName == "production_update" && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(call.executionTarget) -> try {
+                val ops = arguments["operations"] as? JsonArray ?: return@produceState
+                val reason = runCatching {
+                    com.promenar.infinity.data.production.ProductionLockApprovalPlanner.extractReason(arguments)
+                }.getOrDefault("")
+                application.productionRepository
+                    .preflightLockApproval(sessionId, assistantMessageId.orEmpty(), ops, reason, expectedTarget = call.executionTarget)
+                    ?.let(ApprovalDiffPreview::ProductionLock)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
             else -> loader.load(call.toolName, arguments, sessionId, privateWorkspaceRootUuid)
         }
     }

@@ -10,6 +10,7 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import com.promenar.infinity.ui.common.ReportInfinityNoticeHorizontalClearance
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.onSelectionIndicator
 import com.promenar.infinity.ui.theme.selectionIndicator
@@ -336,12 +337,16 @@ fun MainTabScaffold(
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val navigationRail = shouldUseNavigationRail(maxWidth)
+        val reportRailClearance = navigationRail &&
+            !(hubThreePaneShown && state.hubExpanded) &&
+            !(libraryTwoPaneShown && state.libraryExpanded)
         AdaptiveNavigationFrame(
             expanded = navigationRail,
             selectedTab = selectedTab,
             onTabSelected = state::selectTab,
             railShift = railShift,
             dockVisible = bottomDockVisible(selectedTab, state.libraryStack, libraryTwoPane),
+            reportRailClearance = reportRailClearance,
         ) {
             AnimatedContent(
                 targetState = selectedTab,
@@ -415,10 +420,17 @@ internal fun AdaptiveNavigationFrame(
     railShift: (() -> Float)? = null,
     /** 只作用于底栏布局：为 false 时底栏随次级页推入向下滑出并收起占位，返回时滑回。 */
     dockVisible: Boolean = true,
+    /** 展开态且 80dp 导航轨停留在屏幕左侧时，同步通知全局悬浮通知胶囊水平避让。 */
+    reportRailClearance: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     if (expanded) {
         val railInset = remember { mutableIntStateOf(0) }
+        val railInsetDp = with(androidx.compose.ui.platform.LocalDensity.current) { railInset.intValue.toDp() }
+        ReportInfinityNoticeHorizontalClearance(
+            startOffset = railInsetDp,
+            enabled = reportRailClearance && railInset.intValue > 0,
+        )
         androidx.compose.ui.layout.Layout(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
             content = {

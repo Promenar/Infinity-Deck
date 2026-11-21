@@ -99,6 +99,7 @@ import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityMetaSeparator
 import com.promenar.infinity.ui.common.infinityPopoverAnchor
 import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
+import com.promenar.infinity.ui.common.reportInfinityNoticeHeaderBottom
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CleaningServices
@@ -1018,6 +1019,7 @@ fun ChatScreenContent(
             topBar = {
               com.promenar.infinity.ui.common.FrostedTopBar(chatBackdrop) {
               Column(Modifier.statusBarsPadding()) {
+              Column(Modifier.reportInfinityNoticeHeaderBottom(gap = 8.dp)) {
                 ChatTopBar(
                     title = sessionTitle,
                     showDivider = showTopBarDivider,
@@ -1047,6 +1049,7 @@ fun ChatScreenContent(
                 if (state.startupWritePaused) {
                     com.promenar.infinity.ui.startup.StartupWritePausedBanner(onOpen = actions.onOpenStartupIssues)
                 }
+              }
               }
               }
             },
@@ -1351,10 +1354,16 @@ fun ChatScreenContent(
                                         ?: stringResource(R.string.chat_approval_unknown_tool),
                                     description = request.reason.orEmpty(),
                                     calls = request.calls.map { call ->
+                                        val isProductionLock = call.toolName == "production_update" &&
+                                            com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(call.executionTarget)
                                         ApprovalDisplayCall(
                                             name = call.toolName,
                                             argumentsSummary = call.argumentsSummary,
-                                            riskLabel = approvalRiskLabel(call.risk),
+                                            riskLabel = if (isProductionLock) {
+                                                stringResource(R.string.production_lock_approval_tag)
+                                            } else {
+                                                approvalRiskLabel(call.risk)
+                                            },
                                             executionTarget = call.executionTarget,
                                             highRisk = call.risk in setOf("delete", "process"),
                                             timedGrantLabel = call.grantCategory?.let { timedGrantLabel(it) },
@@ -1785,6 +1794,10 @@ fun ChatScreenContent(
                     targetValue = inspectorWidth,
                     animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
                     label = "chat_inspector_width",
+                )
+                com.promenar.infinity.ui.common.ReportInfinityNoticeHorizontalClearance(
+                    endOffset = animatedInspectorWidth + inspectorEnd + 12.dp,
+                    enabled = inspectorRoot != null,
                 )
                 Box(Modifier.fillMaxSize().padding(top = inspectorTop, bottom = padding.calculateBottomPadding()).imePadding()) {
                     AnimatedVisibility(

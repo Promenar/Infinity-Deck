@@ -257,6 +257,7 @@ fun ImageLightboxGallery(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        com.promenar.infinity.ui.common.ReportInfinityNoticeTopOffset(12.dp)
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()

@@ -1284,6 +1284,16 @@ internal class DefaultChatGenerationRuntime(
                 com.promenar.infinity.data.knowledge.parseKnowledgeAccessArguments(args)?.let { (base, accessMode) ->
                     knowledgeAccessPlanner?.preview(session.id, base, accessMode)?.let { com.promenar.infinity.data.model.json.encodeToString(it) }
                 }
+            } else if (call.name == "production_update") {
+                val args = (com.promenar.infinity.domain.tool.ToolArgumentsValidator().validate(call.arguments) as? com.promenar.infinity.domain.tool.ToolArgumentsValidation.Valid)?.arguments
+                val ops = args?.get("operations") as? kotlinx.serialization.json.JsonArray
+                val reason = args?.let {
+                    runCatching { com.promenar.infinity.data.production.ProductionLockApprovalPlanner.extractReason(it) }.getOrDefault("")
+                }.orEmpty()
+                ops?.let {
+                    productionRepository?.preflightLockApproval(session.id, assistantMessageId(request), it, reason)
+                        ?.authorizationTarget
+                }
             } else branchService?.invoke()?.approvalTarget(session, call.name, call.arguments) ?: resolveSessionToolTarget(session, it, call.arguments, workspaceRepository, externalFolders, sshRuntime?.hostStore, sshRuntime?.let { runtime -> runtime::sessionHost }, linuxFiles) }
         }
         val mode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode)

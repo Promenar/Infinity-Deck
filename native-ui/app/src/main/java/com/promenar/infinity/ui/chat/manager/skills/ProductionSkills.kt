@@ -37,9 +37,15 @@ abstract class ProductionSkill(private val repo: ProductionRepository, override 
             }
             "production_attach" -> { keys(setOf("manifest_path"), setOf("manifest_path")); repo.attach(context.sessionId, text("manifest_path")) }
             "production_update" -> {
-                keys(setOf("operations"), setOf("operations"))
+                keys(setOf("operations"), setOf("operations", "reason"))
+                com.promenar.infinity.data.production.ProductionLockApprovalPlanner.extractReason(args)
                 val ops = args["operations"] as? JsonArray ?: throw IllegalArgumentException("operations 必须是包含 1～100 个操作对象的数组。")
-                repo.update(context.sessionId, requireNotNull(context.assistantMessageId) { "缺少所属助手消息。" }, ops)
+                val owner = requireNotNull(context.assistantMessageId) { "缺少所属助手消息。" }
+                val lockTarget = context.approvedExecutionTarget?.takeIf {
+                    context.isApprovalBoundExecution && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(it)
+                }
+                if (lockTarget != null) repo.update(context.sessionId, owner, ops, lockTarget)
+                else repo.update(context.sessionId, owner, ops)
             }
             "production_remove" -> { keys(emptySet(), emptySet()); repo.unbind(context.sessionId); null }
             else -> { keys(setOf("scope"), setOf("scope", "episode_id", "shot_code", "limit", "offset")); repo.get(context.sessionId) }
@@ -81,7 +87,7 @@ internal fun productionErrorSuggestion(reason: String): String = when {
     listOf("在读取后由用户修改", "修订冲突", "修订号已变", "绑定已改变", "会话绑定或项目根目录已改变", "清单已变化").any { it in reason } ->
         "请先调用 production_get 获取最新修订与用户决定，再修改。"
     listOf("已锁定", "解锁", "待审核", "待用户审核", "待审批", "待用户审批").any { it in reason } ->
-        "请说明需要修改的原因，由用户在制作面板解锁或审核。"
+        "请说明需要修改的原因，并在 production_update 中发起已锁定项修改（系统将弹出审批卡交由用户决定），或在制作面板解锁或审核。"
     else -> "请根据错误信息中的操作序号与字段规范修正参数后重试。"
 }
 
@@ -283,7 +289,7 @@ private val productionUpdateDescription = """
     remove 必填 target（season、episode、scene、shot、asset）、非空且无重复的 ids 字符串数组。target 为 scene 或 shot 时还必填 episode_id。
     mode 为 text、first_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。路径保存为工作区相对路径，可使用同一会话文件工具给出的工作区虚拟路径。
     ${productionNestedFields.filterKeys { it !in setOf("ids", "prop_asset_ids") }.entries.joinToString("\n    ") { (key, format) -> "$key 用 $format。" }}
-    prop_asset_ids 为资产 ID 字符串数组。锁定场内容修改生成改动请求，由用户面板审核。收到审核回合后逐条处理，用 agent_note、change_note 或资产 description 写明结果。用户改写的提示词受保护。
+    prop_asset_ids 为资产 ID 字符串数组。可选顶层字段 reason（最多 300 字）用于在本次批量操作涉及已锁定剧本、视觉资产、镜头或制作阶段时向用户说明修改原因，系统将弹出审批卡交由用户决定是否放行（涉及视觉参考图、剧本文件或增删重排镜头在批准后自动退回待审；锁定场允许的内容修改仍产生改动请求）。收到审核回合后逐条处理，用 agent_note、change_note 或资产 description 写明结果。用户改写的提示词受保护。
 """.trimIndent()
 
 private val productionUpdateSchema by lazy { buildJsonObject {
@@ -291,6 +297,10 @@ private val productionUpdateSchema by lazy { buildJsonObject {
     put("required", schemaStrings(listOf("operations")))
     put("additionalProperties", false)
     putJsonObject("properties") {
+        putJsonObject("reason") {
+            put("type", schemaStrings(listOf("string", "null")))
+            put("description", "可选。当本次操作需要修改或移除已锁定制作项时向用户展示的原因说明（最多 300 字）。")
+        }
         putJsonObject("operations") {
             put("type", "array")
             put("description", "按依赖顺序排列的 1～100 项原子操作。各操作的必填字段见工具说明。")

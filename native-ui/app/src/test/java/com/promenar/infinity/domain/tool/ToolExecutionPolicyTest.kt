@@ -38,6 +38,31 @@ class ToolExecutionPolicyTest {
                 assertThat(ToolExecutionPolicy.requiresApproval(mode, "write_file", ToolRisk.FILE_WRITE,
                     """{"path":"$path"}""")).isTrue()
             }
+            assertThat(
+                ToolExecutionPolicy.requiresApproval(mode, "production_update", ToolRisk.SESSION_STATE, "{}"),
+            ).isFalse()
+            assertThat(
+                ToolExecutionPolicy.grantCategory(mode, "production_update", ToolRisk.SESSION_STATE, "{}"),
+            ).isNull()
+            val lockTarget = "production-lock:p1:r3:0123456789abcdef01234567"
+            assertThat(
+                ToolExecutionPolicy.requiresApproval(
+                    mode = mode,
+                    toolName = "production_update",
+                    risk = ToolRisk.SESSION_STATE,
+                    arguments = "{}",
+                    resolvedTarget = lockTarget,
+                ),
+            ).isTrue()
+            assertThat(
+                ToolExecutionPolicy.grantCategory(
+                    mode = mode,
+                    toolName = "production_update",
+                    risk = ToolRisk.SESSION_STATE,
+                    arguments = "{}",
+                    resolvedTarget = lockTarget,
+                ),
+            ).isNull()
         }
     }
 }

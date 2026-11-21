@@ -896,6 +896,7 @@ internal fun approvalToolTitle(name: String): String = when {
     name.startsWith("mcp__") -> stringResource(R.string.chat_approval_title_mcp)
     name == REQUEST_KNOWLEDGE_ACCESS_TOOL -> stringResource(R.string.chat_approval_title_knowledge_access)
     name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE -> stringResource(R.string.agent_config_title_generic)
+    name == "production_update" -> stringResource(R.string.production_lock_approval_title)
     else -> toolFriendlyName(name)
 }
 
@@ -928,6 +929,8 @@ internal fun ApprovalKindBand(
     val backend = CommandToolClassification.backendFor(toolName, ToolExecutionTargets.runsInLinux(executionTarget))
     val label = approvalKindLabel(toolName, executionTarget)
     val transfer = sftpTransferDirection(toolName) != null
+    val productionLock = toolName == "production_update" &&
+        com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(executionTarget)
     val scheme = MaterialTheme.colorScheme
     val accent = if (backend != null) scheme.primary else scheme.onSurfaceVariant
     val band = if (backend != null) scheme.primary.copy(alpha = 0.10f).compositeOver(scheme.surfaceContainerLow) else scheme.surfaceContainerHigh
@@ -946,6 +949,7 @@ internal fun ApprovalKindBand(
                 transfer -> Icons.Rounded.ImportExport
                 backend != null -> Icons.Rounded.Terminal
                 toolName == REQUEST_KNOWLEDGE_ACCESS_TOOL -> Icons.Rounded.Key
+                productionLock -> Icons.Rounded.Movie
                 else -> Icons.Rounded.Extension
             },
             contentDescription = null,
@@ -1034,7 +1038,9 @@ internal fun ApprovalCallTitle(
  */
 internal fun approvalKindLabel(toolName: String, executionTarget: String?): Int =
     if (sftpTransferDirection(toolName) != null) R.string.chat_approval_kind_file_transfer
-    else when (CommandToolClassification.backendFor(toolName, ToolExecutionTargets.runsInLinux(executionTarget))) {
+    else if (toolName == "production_update" && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(executionTarget)) {
+        R.string.production_lock_approval_where
+    } else when (CommandToolClassification.backendFor(toolName, ToolExecutionTargets.runsInLinux(executionTarget))) {
         CommandToolBackend.BUILTIN_SHELL, CommandToolBackend.BUILTIN_PYTHON -> R.string.chat_approval_kind_builtin_command
         CommandToolBackend.LINUX -> R.string.chat_approval_kind_linux_command
         CommandToolBackend.TERMUX -> R.string.chat_approval_kind_termux_command
@@ -1105,6 +1111,13 @@ private fun ApprovalReason(description: String) {
 private fun approvalCallWhere(call: ApprovalDisplayCall): String? {
     // 授权目标是挂载预览 JSON，不作为位置显示；类别条写“访问授权”。
     if (call.knowledgeAccess != null) return call.riskLabel
+    // 制作项目已锁定修改：类别条右侧副标签只显示所属项目名称。
+    if (call.name == "production_update" &&
+        com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(call.executionTarget)
+    ) {
+        return (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ProductionLock)
+            ?.preflight?.productionTitle?.takeIf(String::isNotBlank)
+    }
     // 智能体配置的授权目标含字段摘要，不作为位置显示。
     if (call.name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE ||
         com.promenar.infinity.domain.agentconfig.AgentConfigTools.isWriteTarget(call.executionTarget)
@@ -1146,6 +1159,10 @@ private fun ApprovalCallBody(call: ApprovalDisplayCall, description: String, pen
     }
     (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyTemplate)?.let { template ->
         ComfyTemplateApprovalBody(template, call.name, pending)
+        return
+    }
+    (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ProductionLock)?.let { productionLock ->
+        ProductionLockApprovalBody(productionLock, call.name, pending)
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1389,9 +1406,16 @@ fun ApprovalCard(
                 if (isExecuted) {
                     Text(statusLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    val knowledgeApproveLabel = if (remainingCount == 0) {
-                        currentCall?.knowledgeAccess?.takeIf { it.allowed }?.let { access ->
+                    val actionApproveLabel = if (remainingCount == 0) {
+                        val isProductionLock = currentCall?.name == "production_update" &&
+                            com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(currentCall.executionTarget)
+                        val knowledgeApprove = currentCall?.knowledgeAccess?.takeIf { it.allowed }?.let { access ->
                             stringResource(if (access.readWrite) R.string.knowledge_access_approve_rw else R.string.knowledge_access_approve_ro)
+                        }
+                        when {
+                            knowledgeApprove != null -> knowledgeApprove
+                            isProductionLock -> stringResource(R.string.production_lock_approval_approve_btn)
+                            else -> null
                         }
                     } else null
                     ApprovalActionBar(
@@ -1403,7 +1427,7 @@ fun ApprovalCard(
                         onApprove = onApprove,
                         onDecline = onDecline,
                         onApproveAll = onApproveAll?.takeIf { remainingCount > 0 },
-                        approveLabel = knowledgeApproveLabel,
+                        approveLabel = actionApproveLabel,
                         timedGrantLabel = currentCall?.timedGrantLabel,
                         onApproveTimed = onApproveTimed?.takeIf { currentCall?.timedGrantLabel != null },
                         oneShotOnly = currentCall?.oneShotOnly == true,

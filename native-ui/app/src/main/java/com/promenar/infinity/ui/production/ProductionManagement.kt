@@ -21,7 +21,6 @@ import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.RateReview
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Slideshow
@@ -528,7 +527,6 @@ internal fun ProductionOutputTab(
 ) {
     val rows = production.outputItems(filter)
     val multiEpisode = production.showEpisodeNumbers()
-    var reviewing by remember { mutableStateOf<Pair<Episode, Scene>?>(null) }
     // 按场分组：同一场的镜头放进一张卡片，未锁定的场只占一行。
     val groups = rows.fold(mutableListOf<Pair<Pair<Episode, Scene>, MutableList<OutputItem>>>()) { acc, row ->
         val key = when (row) {
@@ -546,7 +544,9 @@ internal fun ProductionOutputTab(
             val (episode, scene) = key
             item("${episode.id}/${scene.code}") {
                 val unlocked = items.any { it is OutputItem.UnlockedScene }
-                val chip = production.reviewChipSpec(ReviewTarget.scene(episode.id, scene.code), settled = scene.storyboardLocked)
+                val sceneTarget = ReviewTarget.scene(episode.id, scene.code)
+                val chip = production.reviewChipSpec(sceneTarget, settled = scene.storyboardLocked)
+                val sceneLabel = listOf(stringResource(R.string.production_panel_scene_number, scene.number), scene.heading)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ProductionSceneHeader(
                         scene = scene,
@@ -556,16 +556,19 @@ internal fun ProductionOutputTab(
                         ),
                         statusChip = chip,
                         action = if (unlocked && scene.shots.isNotEmpty()) ({
-                            InfinityPillButton(
-                                text = stringResource(R.string.p2_review_action),
-                                onClick = { reviewing = episode to scene },
-                                tone = InfinityPillTone.NEUTRAL,
-                                icon = Icons.Rounded.RateReview,
-                                enabled = !busy,
+                            ProductionReviewActions(
+                                production = production,
+                                target = sceneTarget,
+                                label = sceneLabel,
+                                busy = busy,
+                                onRun = onRun,
+                                onSubmit = onSubmit,
+                                settled = scene.storyboardLocked,
                                 compact = true,
                             )
                         }) else null,
                     )
+                    ProductionReviewNotes(production, sceneTarget)
                     BettboxListGroup {
                         Column(Modifier.padding(vertical = InfinitySpacing.XSmall)) {
                             items.forEach { row ->
@@ -579,19 +582,6 @@ internal fun ProductionOutputTab(
                 }
             }
         }
-    }
-    reviewing?.let { (episode, scene) ->
-        ProductionReviewSheet(
-            title = stringResource(R.string.production_panel_scene_number, scene.number),
-            subtitle = scene.heading,
-            production = production,
-            target = ReviewTarget.scene(episode.id, scene.code),
-            busy = busy,
-            onRun = onRun,
-            onSubmit = onSubmit,
-            onDismiss = { reviewing = null },
-            settled = scene.storyboardLocked,
-        )
     }
 }
 

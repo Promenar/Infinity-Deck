@@ -61,4 +61,39 @@
     <string name="comfy_template_approval_added">新增 %1$s</string>
     <string name="comfy_template_approval_removed">删除 %1$s</string>
     <string name="comfy_template_approval_model">模型 · %1$s</string>
+
+    <string name="production_review_entry">审批</string>
+    <string name="production_review_edit">修改审批</string>
+    <string name="production_review_save">保存</string>
+    <string name="production_review_approve_note">批准附注</string>
+    <string name="production_review_note_optional_approve">审批附注（选填）</string>
+    <string name="production_review_note_optional_reject">否决原因（选填）</string>
+    <string name="production_review_note_required_suggest">修改建议（必填）</string>
+    <string name="production_review_note_placeholder">输入审批意见或修改说明…</string>
+    <string name="production_review_retract_approve">撤回当前批准</string>
+    <string name="production_review_retract_reject">撤回当前否决</string>
+    <string name="production_review_retract_suggest">撤回待发送建议</string>
+    <string name="production_review_footer_staged">已暂存本轮意见，可随时调整</string>
+    <string name="production_review_footer_pending">尚未提交审批结论</string>
+    <string name="production_review_footer_suggest">可提交改进或调整建议</string>
+
+    <string name="production_script_fullscreen">全屏查看</string>
+    <string name="production_script_expand_full">展开全文</string>
+    <string name="production_script_collapse">收起正文</string>
+    <string name="production_script_char_count">共 %1$d 字</string>
+    <string name="production_script_loading">正在加载剧本正文…</string>
+    <string name="production_script_unavailable">暂无法读取本地剧本正文，可点击全屏查看或定位文件</string>
+
+    <string name="production_lock_approval_where">制作项目变更</string>
+    <string name="production_lock_approval_tag">已锁定项</string>
+    <string name="production_lock_approval_title">修改已锁定制作项</string>
+    <string name="production_lock_approval_approve_btn">允许修改</string>
+    <string name="production_lock_outcome_keep_locked">批准后保持锁定</string>
+    <string name="production_lock_outcome_return_review">批准后退回待审</string>
+    <string name="production_lock_outcome_permanent_remove">永久移除</string>
+    <string name="production_lock_visual_revert_warning">涉及视觉参考图或剧本文件，批准写入后将自动转为「待审」，方便你在制作面板复看。</string>
+    <string name="production_lock_unlocked_summary_one">另包含 %1$d 项未锁定更新：%2$s</string>
+    <string name="production_lock_unlocked_summary_more">另包含 %1$d 项未锁定更新：%2$s</string>
+    <string name="production_lock_diff_old_empty">无</string>
+    <string name="production_lock_diff_cleared">已清空</string>
 </resources>

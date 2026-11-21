@@ -1,20 +1,37 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.RateReview
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,28 +39,39 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ProductionUserAction
 import com.promenar.infinity.data.production.ReviewKind
 import com.promenar.infinity.data.production.ReviewTarget
+import com.promenar.infinity.data.production.queuedReviews
 import com.promenar.infinity.data.production.unsentReviews
 import com.promenar.infinity.data.production.unsentSuggestions
-import com.promenar.infinity.data.production.queuedReviews
 import com.promenar.infinity.data.production.verdictOf
-import com.promenar.infinity.ui.common.InfinityBottomSheet
+import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.InfinitySegment
+import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.infinityDomainColors
+import kotlinx.coroutines.launch
 
-/* 回合制审核的界面构件：页头“发送”、结论标签、批准/否决/建议三个动作与审核弹层。全界面只用这一组。 */
+/* 回合制审核的界面构件：页头“发送”、结论标签、结构化反馈、统一单入口“审批/修改审批”与一步式表单弹窗。 */
 
 /**
  * 页头“发送”的状态：未发送条数、是否正在发送、是否有一轮正在会话队列里排队，以及点击回调。
@@ -140,55 +168,108 @@ internal fun ProductionReviewChips(production: Production, target: ReviewTarget,
     ProductionStatusChip(spec.text, spec.tone, modifier = modifier)
 }
 
-/** 结构化审批反馈容器：否决原因用浅错误色带边框，待发送建议用中性高表面并配静默弱化“未发送”。 */
+/**
+ * 结构化审批反馈容器：
+ * - 否决原因用浅错误色带边框；
+ * - 批准附注用浅成功色带边框；
+ * - 待发送建议用中性高表面并配静默弱化“未发送”；
+ * - 全 block 随显隐做纵向平滑动画（尊重系统减少动态效果）。
+ */
 @Composable
 internal fun ProductionReviewNotes(production: Production, target: ReviewTarget, modifier: Modifier = Modifier) {
-    val reason = production.verdictOf(target)?.takeIf { it.kind == ReviewKind.REJECT }?.note?.takeIf(String::isNotBlank)
+    val verdict = production.verdictOf(target)
+    val rejectReason = verdict?.takeIf { it.kind == ReviewKind.REJECT }?.note?.takeIf(String::isNotBlank)
+    val approveNote = verdict?.takeIf { it.kind == ReviewKind.APPROVE }?.note?.takeIf(String::isNotBlank)
     val suggestions = production.unsentSuggestions(target).mapNotNull { it.note?.takeIf(String::isNotBlank) }
-    if (reason == null && suggestions.isEmpty()) return
-    val scheme = MaterialTheme.colorScheme
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        reason?.let { text ->
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = scheme.errorContainer.copy(alpha = 0.24f),
-                border = BorderStroke(0.5.dp, scheme.error.copy(alpha = 0.28f)),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        stringResource(R.string.production_review_reject_reason),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = scheme.error,
-                    )
-                    Text(text, style = MaterialTheme.typography.bodySmall, color = scheme.onSurface)
-                }
-            }
-        }
-        if (suggestions.isNotEmpty()) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = scheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val hasContent = rejectReason != null || approveNote != null || suggestions.isNotEmpty()
+
+    var lastRejectReason by remember(target) { mutableStateOf(rejectReason) }
+    var lastApproveNote by remember(target) { mutableStateOf(approveNote) }
+    var lastSuggestions by remember(target) { mutableStateOf(suggestions) }
+    if (hasContent) {
+        lastRejectReason = rejectReason
+        lastApproveNote = approveNote
+        lastSuggestions = suggestions
+    }
+
+    val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val enter = if (animate) {
+        expandVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) +
+            fadeIn(tween(InfinityMotion.DurationShort))
+    } else {
+        fadeIn(tween(InfinityMotion.DurationShort))
+    }
+    val exit = if (animate) {
+        shrinkVertically(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate)) +
+            fadeOut(tween(InfinityMotion.DurationShort))
+    } else {
+        fadeOut(tween(InfinityMotion.DurationShort))
+    }
+
+    AnimatedVisibility(visible = hasContent, enter = enter, exit = exit, modifier = modifier.fillMaxWidth()) {
+        val scheme = MaterialTheme.colorScheme
+        val domain = MaterialTheme.infinityDomainColors
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            lastRejectReason?.let { text ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = scheme.errorContainer.copy(alpha = 0.24f),
+                    border = BorderStroke(0.5.dp, scheme.error.copy(alpha = 0.28f)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            stringResource(R.string.production_review_pending_suggestion),
+                            stringResource(R.string.production_review_reject_reason),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = scheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
+                            color = scheme.error,
                         )
-                        Text(
-                            stringResource(R.string.production_review_unsent),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = scheme.onSurfaceVariant.copy(alpha = 0.78f),
-                        )
-                    }
-                    suggestions.forEach { text ->
                         Text(text, style = MaterialTheme.typography.bodySmall, color = scheme.onSurface)
+                    }
+                }
+            }
+            lastApproveNote?.let { text ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = domain.successContainer.copy(alpha = 0.28f),
+                    border = BorderStroke(0.5.dp, domain.success.copy(alpha = 0.30f)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            stringResource(R.string.production_review_approve_note),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = domain.success,
+                        )
+                        Text(text, style = MaterialTheme.typography.bodySmall, color = scheme.onSurface)
+                    }
+                }
+            }
+            if (lastSuggestions.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = scheme.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(R.string.production_review_pending_suggestion),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = scheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                stringResource(R.string.production_review_unsent),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.onSurfaceVariant.copy(alpha = 0.78f),
+                            )
+                        }
+                        lastSuggestions.forEach { text ->
+                            Text(text, style = MaterialTheme.typography.bodySmall, color = scheme.onSurface)
+                        }
                     }
                 }
             }
@@ -197,9 +278,9 @@ internal fun ProductionReviewNotes(production: Production, target: ReviewTarget,
 }
 
 /**
- * 同一组审核动作：否决、建议、批准。只接受建议的对象只有“建议”。
- * 否决与建议打开同一个文本弹层，否决的原因可以留空；未发送的同种结论再点一次即撤回。
- * [label] 为弹层里写明的对象称呼，按段排版（例如镜头编号与候选序号）。
+ * 统一单入口审批操作栏：
+ * 全站所有可审批与仅接受建议的对象均收口为唯一「审批 / 修改审批」胶囊按钮，
+ * 点按直接打开一步式表单弹窗（顶部三段裁决 + 输入框 + 撤回/保存/取消）。
  */
 @Composable
 internal fun ProductionReviewActions(
@@ -207,69 +288,270 @@ internal fun ProductionReviewActions(
     target: ReviewTarget,
     label: List<String>,
     busy: Boolean,
-    onRun: (ProductionUserAction) -> Unit,
+    onRun: (ProductionUserAction) -> Unit = {},
     onSubmit: suspend (ProductionUserAction) -> String?,
     modifier: Modifier = Modifier,
+    settled: Boolean = false,
+    compact: Boolean = false,
+    statusHint: String? = null,
 ) {
-    var dialog by remember(target) { mutableStateOf<ReviewKind?>(null) }
-    val verdict = production.verdictOf(target)?.kind
-    ProductionActionRow(
-        buildList {
-            if (target.acceptsVerdict) add(
-                ProductionButton(stringResource(R.string.production_review_reject), InfinityPillTone.DANGER, !busy, ProductionUiTags.REVIEW_REJECT, icon = Icons.Rounded.Close.takeIf { verdict == ReviewKind.REJECT }) {
-                    val action = production.verdictAction(target, ReviewKind.REJECT)
-                    if (action is ProductionUserAction.RetractReview) onRun(action) else dialog = ReviewKind.REJECT
-                },
+    var dialogOpen by remember(target) { mutableStateOf(false) }
+    val verdict = production.verdictOf(target)
+    val hasUnsentSuggestion = production.unsentSuggestions(target).isNotEmpty()
+    val hasSavedReview = verdict != null || settled || hasUnsentSuggestion
+
+    if (compact && statusHint == null) {
+        InfinityPillButton(
+            text = stringResource(if (hasSavedReview) R.string.production_review_edit else R.string.production_review_entry),
+            onClick = { dialogOpen = true },
+            tone = if (hasSavedReview) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
+            icon = Icons.Rounded.RateReview,
+            enabled = !busy,
+            compact = true,
+            modifier = modifier.testTag(ProductionUiTags.REVIEW_ENTRY),
+        )
+    } else {
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (!statusHint.isNullOrBlank()) {
+                Text(
+                    text = statusHint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            InfinityPillButton(
+                text = stringResource(if (hasSavedReview) R.string.production_review_edit else R.string.production_review_entry),
+                onClick = { dialogOpen = true },
+                tone = if (hasSavedReview) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
+                icon = Icons.Rounded.RateReview,
+                enabled = !busy,
+                compact = compact,
+                modifier = Modifier.testTag(ProductionUiTags.REVIEW_ENTRY),
             )
-            add(ProductionButton(stringResource(R.string.production_review_suggest), InfinityPillTone.NEUTRAL, !busy, ProductionUiTags.REVIEW_SUGGEST) { dialog = ReviewKind.SUGGEST })
-            if (target.acceptsVerdict) add(
-                ProductionButton(stringResource(R.string.production_review_approve), InfinityPillTone.PRIMARY, !busy, ProductionUiTags.REVIEW_APPROVE, icon = Icons.Rounded.Check.takeIf { verdict == ReviewKind.APPROVE }) {
-                    onRun(production.verdictAction(target, ReviewKind.APPROVE))
-                },
-            )
-        },
-        modifier = modifier,
-    )
-    dialog?.let { kind ->
-        val reject = kind == ReviewKind.REJECT
-        val word = stringResource(if (reject) R.string.production_review_reject else R.string.production_review_suggest)
-        ProductionTextDialog(
-            title = word,
-            messageSegments = label,
-            label = stringResource(if (reject) R.string.production_review_reason else R.string.production_review_content),
-            initial = "",
-            confirmText = word,
-            maxLength = PRODUCTION_NOTE_MAX,
-            minLines = 3,
-            fieldTag = ProductionUiTags.REASON_FIELD,
-            onDismiss = { dialog = null },
-            onSubmit = { note -> onSubmit(ProductionUserAction.Review(target, kind, note.ifBlank { null })) },
-            allowEmpty = reject,
+        }
+    }
+
+    if (dialogOpen) {
+        ProductionUnifiedReviewDialog(
+            production = production,
+            target = target,
+            label = label,
+            settled = settled,
+            onDismiss = { dialogOpen = false },
+            onSubmit = onSubmit,
         )
     }
 }
 
-/** 审核内容块：可选结论标签、结构化原因与建议、三个动作。用于镜头候选、资产版本、剪辑版本等页内对象。 */
+/**
+ * 统一一步到位审批表单弹窗：
+ * 顶部「批准 / 否决 / 建议」三段选择（只接受建议的对象锁定「建议」）+ 直出输入框 + 可选「撤回当前结论」+ 取消/保存。
+ */
+@Composable
+internal fun ProductionUnifiedReviewDialog(
+    production: Production,
+    target: ReviewTarget,
+    label: List<String>,
+    settled: Boolean = false,
+    onDismiss: () -> Unit,
+    onSubmit: suspend (ProductionUserAction) -> String?,
+) {
+    val verdict = production.verdictOf(target)
+    val unsentSuggestions = production.unsentSuggestions(target)
+    val hasUnsentVerdict = verdict != null && verdict.round == null && verdict.queuedRound == null
+    val hasUnsentSuggestion = unsentSuggestions.isNotEmpty()
+    val hasSavedReview = verdict != null || settled || hasUnsentSuggestion
+
+    val initialKind = when {
+        !target.acceptsVerdict -> ReviewKind.SUGGEST
+        verdict != null -> verdict.kind
+        settled -> ReviewKind.APPROVE
+        hasUnsentSuggestion -> ReviewKind.SUGGEST
+        else -> ReviewKind.APPROVE
+    }
+    fun initialNoteFor(kind: ReviewKind): String = when (kind) {
+        ReviewKind.APPROVE -> verdict?.takeIf { it.kind == ReviewKind.APPROVE }?.note.orEmpty()
+        ReviewKind.REJECT -> verdict?.takeIf { it.kind == ReviewKind.REJECT }?.note.orEmpty()
+        ReviewKind.SUGGEST -> ""
+    }
+
+    var selectedKind by remember(target) { mutableStateOf(initialKind) }
+    var noteText by remember(target) { mutableStateOf(initialNoteFor(initialKind)) }
+    var noteEdited by remember(target) { mutableStateOf(false) }
+    var error by remember(target) { mutableStateOf<String?>(null) }
+    var saving by remember(target) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val chip = production.reviewChipSpec(target, settled)
+    val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
+
+    val dialogTitle = stringResource(if (hasSavedReview) R.string.production_review_edit else R.string.production_review_entry)
+    val fieldLabel = stringResource(
+        when (selectedKind) {
+            ReviewKind.APPROVE -> R.string.production_review_note_optional_approve
+            ReviewKind.REJECT -> R.string.production_review_note_optional_reject
+            ReviewKind.SUGGEST -> R.string.production_review_note_required_suggest
+        },
+    )
+    val retractTargetKind = when {
+        hasUnsentVerdict -> requireNotNull(verdict).kind
+        hasUnsentSuggestion && selectedKind == ReviewKind.SUGGEST -> ReviewKind.SUGGEST
+        else -> null
+    }
+    val retractLabel = when (retractTargetKind) {
+        ReviewKind.APPROVE -> stringResource(R.string.production_review_retract_approve)
+        ReviewKind.REJECT -> stringResource(R.string.production_review_retract_reject)
+        ReviewKind.SUGGEST -> stringResource(R.string.production_review_retract_suggest)
+        null -> null
+    }
+    val canSave = !saving && (selectedKind != ReviewKind.SUGGEST || noteText.isNotBlank())
+
+    InfinityConfirmDialog(
+        title = dialogTitle,
+        message = "",
+        messageSegments = label.takeIf { it.isNotEmpty() },
+        confirmText = stringResource(R.string.production_review_save),
+        onConfirm = {
+            saving = true
+            scope.launch {
+                try {
+                    val cleanNote = noteText.trim().takeIf { it.isNotEmpty() }
+                    error = onSubmit(ProductionUserAction.Review(target, selectedKind, cleanNote))
+                    if (error == null) onDismiss()
+                } finally {
+                    saving = false
+                }
+            }
+        },
+        onCancel = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
+        confirmEnabled = canSave,
+        cancelEnabled = !saving,
+        confirmButtonModifier = Modifier.heightIn(min = 46.dp).testTag(ProductionUiTags.DIALOG_CONFIRM),
+        cancelButtonModifier = Modifier.heightIn(min = 46.dp),
+        modifier = Modifier.testTag(ProductionUiTags.REVIEW_DIALOG),
+        titleTrailing = chip?.let { { ProductionStatusChip(it.text, it.tone) } },
+        content = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (target.acceptsVerdict) {
+                    InfinitySegmentedControl(
+                        segments = listOf(
+                            InfinitySegment(
+                                value = ReviewKind.APPROVE,
+                                label = stringResource(R.string.production_review_approve),
+                                leading = { Box(Modifier.size(7.dp).clip(CircleShape).background(domain.success)) },
+                            ),
+                            InfinitySegment(
+                                value = ReviewKind.REJECT,
+                                label = stringResource(R.string.production_review_reject),
+                                leading = { Box(Modifier.size(7.dp).clip(CircleShape).background(scheme.error)) },
+                            ),
+                            InfinitySegment(
+                                value = ReviewKind.SUGGEST,
+                                label = stringResource(R.string.production_review_suggest),
+                                leading = { Box(Modifier.size(7.dp).clip(CircleShape).background(scheme.primary)) },
+                            ),
+                        ),
+                        selected = selectedKind,
+                        onSelect = { next ->
+                            selectedKind = next
+                            error = null
+                            if (!noteEdited) {
+                                noteText = initialNoteFor(next)
+                            }
+                        },
+                        enabled = !saving,
+                        fillWidth = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = {
+                        noteText = it.take(PRODUCTION_NOTE_MAX)
+                        noteEdited = true
+                        error = null
+                    },
+                    label = { Text(fieldLabel) },
+                    placeholder = { Text(stringResource(R.string.production_review_note_placeholder)) },
+                    enabled = !saving,
+                    minLines = 3,
+                    maxLines = 5,
+                    textStyle = LocalTextStyle.current.forInput(),
+                    modifier = Modifier.fillMaxWidth().testTag(ProductionUiTags.REASON_FIELD),
+                )
+                if (retractLabel != null && retractTargetKind != null) {
+                    OutlinedButton(
+                        onClick = {
+                            saving = true
+                            scope.launch {
+                                try {
+                                    error = onSubmit(ProductionUserAction.RetractReview(target, retractTargetKind))
+                                    if (error == null) onDismiss()
+                                } finally {
+                                    saving = false
+                                }
+                            }
+                        },
+                        enabled = !saving,
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, scheme.error.copy(alpha = 0.45f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = scheme.error),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).testTag(ProductionUiTags.REVIEW_RETRACT),
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(retractLabel, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                error?.let { err ->
+                    Text(
+                        err,
+                        color = scheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+    )
+}
+
+/** 审核内容块：可选结论标签、平滑结构化原因与建议、单入口审核动作。用于镜头候选、资产版本、剪辑版本等页内对象。 */
 @Composable
 internal fun ProductionReviewBlock(
     production: Production,
     target: ReviewTarget,
     label: List<String>,
     busy: Boolean,
-    onRun: (ProductionUserAction) -> Unit,
+    onRun: (ProductionUserAction) -> Unit = {},
     onSubmit: suspend (ProductionUserAction) -> String?,
     modifier: Modifier = Modifier,
     settled: Boolean = false,
     showStatus: Boolean = true,
+    statusHint: String? = null,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
         if (showStatus) ProductionReviewChips(production, target, settled = settled)
         ProductionReviewNotes(production, target)
-        ProductionReviewActions(production, target, label, busy, onRun, onSubmit)
+        ProductionReviewActions(production, target, label, busy, onRun, onSubmit, settled = settled, statusHint = statusHint)
     }
 }
 
-/** 独立页内审核卡片：卡头左标题右唯一状态徽章，内部放反馈与三个动作。 */
+/** 独立页内审核卡片：卡头左标题右唯一状态徽章，内部放反馈与统一入口。 */
 @Composable
 internal fun ProductionReviewCard(
     title: String,
@@ -277,7 +559,7 @@ internal fun ProductionReviewCard(
     target: ReviewTarget,
     label: List<String>,
     busy: Boolean,
-    onRun: (ProductionUserAction) -> Unit,
+    onRun: (ProductionUserAction) -> Unit = {},
     onSubmit: suspend (ProductionUserAction) -> String?,
     modifier: Modifier = Modifier,
     settled: Boolean = false,
@@ -302,41 +584,5 @@ internal fun ProductionReviewCard(
             }
             ProductionReviewBlock(production, target, label, busy, onRun, onSubmit, settled = settled, showStatus = false)
         }
-    }
-}
-
-/** 列表里的对象（剧本、场、改动请求）点开后的审核弹层，标题右锚定唯一合并态徽章。 */
-@Composable
-internal fun ProductionReviewSheet(
-    title: String,
-    production: Production,
-    target: ReviewTarget,
-    busy: Boolean,
-    onRun: (ProductionUserAction) -> Unit,
-    onSubmit: suspend (ProductionUserAction) -> String?,
-    onDismiss: () -> Unit,
-    subtitle: String? = null,
-    settled: Boolean = false,
-) {
-    val chip = production.reviewChipSpec(target, settled)
-    InfinityBottomSheet(
-        show = true,
-        onDismiss = onDismiss,
-        title = title,
-        titleTrailing = chip?.let { { ProductionStatusChip(it.text, it.tone) } },
-        scrollContent = true,
-    ) {
-        Column(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Small).testTag(ProductionUiTags.REVIEW_SHEET), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-            subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            ProductionReviewBlock(production, target, listOf(title), busy, onRun, onSubmit, settled = settled, showStatus = false)
-        }
-    }
-}
-
-/** 列表行与场标题上打开审核弹层的图标按钮。 */
-@Composable
-internal fun ProductionReviewIconButton(enabled: Boolean, modifier: Modifier = Modifier.size(40.dp), onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = modifier) {
-        Icon(Icons.Rounded.RateReview, contentDescription = stringResource(R.string.production_review_actions), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

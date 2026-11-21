@@ -197,13 +197,17 @@ internal suspend fun resolveChatApprovalExecutionTarget(
     linuxFiles: com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess? = null,
     sessionCommunicationTarget: (suspend (Session, String, String) -> String?)? = null,
     knowledgeAccessTarget: (suspend (Session, String, String) -> String?)? = null,
+    productionLockTarget: (suspend (Session, String, String, String, String?) -> String?)? = null,
 ): String? {
     val call = session.messages.firstOrNull { it.id == assistantMessageId }?.toolCalls.orEmpty()
         .firstOrNull { it.id == identity.toolCallId && it.name == identity.toolName } ?: return null
     val tool = toolLookup(identity.runtimeToolId) ?: return null
-    return knowledgeAccessTarget?.invoke(session, call.name, call.arguments) ?: sessionCommunicationTarget?.invoke(session, call.name, call.arguments) ?: com.promenar.infinity.data.generation.resolveSessionToolTarget(
-        session, tool, call.arguments, workspaceRepository, mounts, sshHostStore, sshSessionHost, linuxFiles,
-    )
+    return knowledgeAccessTarget?.invoke(session, call.name, call.arguments)
+        ?: productionLockTarget?.invoke(session, assistantMessageId, call.name, call.arguments, identity.executionTarget)
+        ?: sessionCommunicationTarget?.invoke(session, call.name, call.arguments)
+        ?: com.promenar.infinity.data.generation.resolveSessionToolTarget(
+            session, tool, call.arguments, workspaceRepository, mounts, sshHostStore, sshSessionHost, linuxFiles,
+        )
 }
 
 data class ChatUiState(
@@ -502,6 +506,21 @@ class ChatViewModel(
                 linuxFiles = (application as InfinityApplication).linuxSessionFiles,
                 sessionCommunicationTarget = (application as InfinityApplication)::sessionCommunicationApprovalTarget,
                 knowledgeAccessTarget = (application as InfinityApplication)::knowledgeAccessApprovalTarget,
+                productionLockTarget = { currentSession, msgId, toolName, arguments, expectedTarget ->
+                    if (toolName != "production_update") null else {
+                        val validArgs = (com.promenar.infinity.domain.tool.ToolArgumentsValidator()
+                            .validate(arguments) as? com.promenar.infinity.domain.tool.ToolArgumentsValidation.Valid)?.arguments
+                        val ops = validArgs?.get("operations") as? kotlinx.serialization.json.JsonArray
+                        val reason = validArgs?.let {
+                            runCatching { com.promenar.infinity.data.production.ProductionLockApprovalPlanner.extractReason(it) }.getOrDefault("")
+                        }.orEmpty()
+                        ops?.let {
+                            (application as InfinityApplication).productionRepository
+                                .preflightLockApproval(currentSession.id, msgId, it, reason, expectedTarget = expectedTarget)
+                                ?.authorizationTarget
+                        }
+                    }
+                },
             )
         },
         resolveAllowlistScope = (application as InfinityApplication)::resolveToolAllowlistScope,

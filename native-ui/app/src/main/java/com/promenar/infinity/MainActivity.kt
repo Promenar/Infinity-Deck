@@ -9,10 +9,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import com.promenar.infinity.ui.common.InfinityNoticeController
+import com.promenar.infinity.ui.common.InfinityNoticeHost
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
+import com.promenar.infinity.ui.common.backdropSource
+import com.promenar.infinity.ui.common.rememberBackdropSource
+import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
+import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -186,11 +195,18 @@ open class MainActivity : ComponentActivity() {
                     val chatRouteDependencies = remember(app) {
                         provideChatRouteDependencies(app)
                     }
+                    val noticeController = remember { InfinityNoticeController() }
+                    var noticeOverlayActive by remember { mutableStateOf(false) }
+                    val rootBackdrop = rememberBackdropSource(
+                        enabled = LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED && noticeOverlayActive,
+                    )
+                    CompositionLocalProvider(LocalInfinityNoticeController provides noticeController) {
                     Box(
                         Modifier
                             .fillMaxSize()
                             .semantics { testTagsAsResourceId = true }
                     ) {
+                        Box(Modifier.fillMaxSize().backdropSource(rootBackdrop)) {
                         val navController = rememberNavController()
                         val backStackEntry by navController.currentBackStackEntryAsState()
                         val importState by shareImportViewModel.state.collectAsStateWithLifecycle()
@@ -332,6 +348,13 @@ open class MainActivity : ComponentActivity() {
                             visible = !importState.visible && importState.pendingCount > 0,
                             onOpen = shareImportViewModel::presentNext,
                         )
+                        }
+                        InfinityNoticeHost(
+                            controller = noticeController,
+                            backdrop = rootBackdrop,
+                            onOverlayActiveChange = { noticeOverlayActive = it },
+                        )
+                    }
                     }
                 }
             }

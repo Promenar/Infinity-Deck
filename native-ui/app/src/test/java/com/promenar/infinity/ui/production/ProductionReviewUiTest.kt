@@ -126,4 +126,23 @@ class ProductionReviewUiTest {
         assertThat(management).contains("production.reviewChipSpec(ReviewTarget.script(ep.id), settled = ep.scriptLocked)")
         assertThat(management).contains("FlowRow(")
     }
+
+    @Test fun `全站统一单入口审批框与移除冗余提示契约成立`() {
+        fun productionSource(name: String): String = Files.readString(
+            Path.of("app/src/main/java/com/promenar/infinity/ui/production/$name"),
+        )
+        val reviewUi = productionSource("ProductionReviewUi.kt")
+        assertThat(reviewUi).contains("ProductionUnifiedReviewDialog(")
+        assertThat(reviewUi).contains("ProductionUiTags.REVIEW_ENTRY")
+        assertThat(reviewUi).contains("R.string.production_review_approve_note")
+        assertThat(reviewUi).doesNotContain("ProductionReviewSheet")
+        assertThat(reviewUi).doesNotContain("ProductionReviewIconButton")
+
+        val character = productionSource("ProductionCharacter.kt")
+        assertThat(character).doesNotContain("p2_review_staged_hint")
+
+        val tabs = productionSource("ProductionTabs.kt")
+        assertThat(tabs).contains("ScriptInlineReadingCard(")
+        assertThat(tabs).contains("ProductionUiTags.SCRIPT_CARD")
+    }
 }

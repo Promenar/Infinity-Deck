@@ -65,10 +65,13 @@ import com.promenar.infinity.data.production.productionCostStats
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityLoadingIndicator
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
+import com.promenar.infinity.ui.common.toNoticeSeverity
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
 import com.promenar.infinity.ui.media.rememberSessionWorkspaceMedia
 import com.promenar.infinity.ui.theme.InfinitySpacing
@@ -369,7 +372,18 @@ fun ProductionPanelContent(
         }
     }
     val costStats = remember(production, tasks) { productionCostStats(production, tasks) }
-    val sendState = rememberProductionSend(snapshot, services) { notice = it }
+    val globalNotice = LocalInfinityNoticeController.current
+    val sendState = rememberProductionSend(snapshot, services) { nextNotice ->
+        if (globalNotice != null) globalNotice.showStatus(nextNotice.kind, nextNotice.message)
+        else notice = nextNotice
+    }
+    LaunchedEffect(error, globalNotice) {
+        val activeError = error
+        if (activeError != null && globalNotice != null) {
+            globalNotice.show(InfinityNoticeSeverity.ERROR, activeError)
+            error = null
+        }
+    }
     // 打开面板时核对排队中的审核轮次并扫描未登记文件；失败不打断面板。
     LaunchedEffect(sessionId, services.reconcileReviews, services.auditFiles) {
         listOfNotNull(services.reconcileReviews, services.auditFiles).forEach { step ->
@@ -407,7 +421,9 @@ fun ProductionPanelContent(
                         is ProductionPage.Character -> {
                             val asset = production.findAsset(currentPage.assetId)
                             Column(Modifier.fillMaxSize()) {
-                                error?.let { InfinityStatusStrip(InfinityStatusKind.Error, it, onDismiss = { error = null }, modifier = Modifier.padding(16.dp)) }
+                                if (globalNotice == null) {
+                                    error?.let { InfinityStatusStrip(InfinityStatusKind.Error, it, onDismiss = { error = null }, modifier = Modifier.padding(16.dp)) }
+                                }
                                 if (asset != null && asset.kind != AssetKind.SOUND) {
                                     ProductionCharacterPage(
                                         asset = asset,
@@ -450,13 +466,15 @@ fun ProductionPanelContent(
                             ManifestBanner(snapshot.manifest, onResolve = { resolution ->
                                 onResolve(resolution).also { error = it }
                             })
-                            error?.let {
-                                InfinityStatusStrip(
-                                    kind = InfinityStatusKind.Error,
-                                    message = it,
-                                    onDismiss = { error = null },
-                                    modifier = Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall).testTag(ProductionUiTags.ERROR),
-                                )
+                            if (globalNotice == null) {
+                                error?.let {
+                                    InfinityStatusStrip(
+                                        kind = InfinityStatusKind.Error,
+                                        message = it,
+                                        onDismiss = { error = null },
+                                        modifier = Modifier.padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall).testTag(ProductionUiTags.ERROR),
+                                    )
+                                }
                             }
                             InfinityPanelTabs(
                                 tabs = listOf(
@@ -530,7 +548,9 @@ fun ProductionPanelContent(
                     ProductionAssetSheet(asset, production, busy, { openSheetAssetId = null }, run, submit)
                 }
             }
-            notice?.let { ProductionNoticeStrip(it, onDismiss = { notice = null }, modifier = Modifier.align(Alignment.BottomCenter)) }
+            if (globalNotice == null) {
+                notice?.let { ProductionNoticeStrip(it, onDismiss = { notice = null }, modifier = Modifier.align(Alignment.BottomCenter)) }
+            }
         }
     }
 }

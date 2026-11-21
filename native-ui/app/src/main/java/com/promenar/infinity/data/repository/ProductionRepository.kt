@@ -171,7 +171,15 @@ class ProductionRepository(
     }
     suspend fun unbind(sessionId: String) = withContext(Dispatchers.IO) { mutex.withLock { dao.unbind(sessionId); clearReads(sessionId) } }
 
-    suspend fun update(sessionId: String, owner: String, operations: List<JsonElement>): ProductionSnapshot = withContext(Dispatchers.IO) {
+    suspend fun update(sessionId: String, owner: String, operations: List<JsonElement>): ProductionSnapshot =
+        update(sessionId, owner, operations, authorizedLockTarget = null)
+
+    suspend fun update(
+        sessionId: String,
+        owner: String,
+        operations: List<JsonElement>,
+        authorizedLockTarget: String?,
+    ): ProductionSnapshot = withContext(Dispatchers.IO) {
         val row = mutex.withLock { required(sessionId) }
         val prepared = prepareProductionOperations(operations, snapshot(row).production) { path ->
             files.normalizeRelativePath(sessionId, path, row.rootPath)
@@ -182,11 +190,67 @@ class ProductionRepository(
             database.withTransaction {
                 val current = required(sessionId)
                 require(current.id == row.id && current.rootPath == row.rootPath) { "会话绑定或项目根目录已改变，请重新读取项目后重试。" }
-                val result = ProductionEngine.update(snapshot(current), prepared, seen, now()) { it in validMedia }
+                val expectedRev = com.promenar.infinity.data.production.ProductionLockApprovalPlanner.parseRevision(authorizedLockTarget)
+                val effectiveSeen = if (expectedRev != null && current.revision == expectedRev) {
+                    maxOf(seen ?: 0L, expectedRev)
+                } else seen
+                val lockAuth = if (authorizedLockTarget == null) null else {
+                    val preflight = com.promenar.infinity.data.production.ProductionLockApprovalPlanner.analyze(
+                        snapshot = snapshot(current),
+                        prepared = prepared,
+                        seenRevision = effectiveSeen,
+                        isMedia = { it in validMedia },
+                    )
+                    require(preflight != null && preflight.authorizationTarget == authorizedLockTarget) {
+                        "制作项目状态或锁定内容已发生变化，本次修改授权已失效，请重新获取项目并提交修改。"
+                    }
+                    preflight
+                }
+                val result = ProductionEngine.update(
+                    snapshot = snapshot(current),
+                    prepared = prepared,
+                    seenRevision = effectiveSeen,
+                    now = now(),
+                    isMedia = { it in validMedia },
+                    lockAuthorization = lockAuth,
+                )
                 dao.update(entity(result, current))
             }
             enqueue(row.id)
             snapshot(requireNotNull(dao.get(row.id)), ManifestSync.Pending)
+        }
+    }
+
+    /** 只读预检：在不写入数据库与缓存的前提下判断整批更新是否触及受锁定制作项。 */
+    suspend fun preflightLockApproval(
+        sessionId: String,
+        owner: String,
+        operations: List<JsonElement>,
+        reason: String = "",
+        expectedTarget: String? = null,
+    ): com.promenar.infinity.data.production.ProductionLockPreflight? = withContext(Dispatchers.IO) {
+        val row = mutex.withLock { dao.getForSession(sessionId) } ?: return@withContext null
+        val prepared = runCatching {
+            prepareProductionOperations(operations, snapshot(row).production) { path ->
+                files.normalizeRelativePath(sessionId, path, row.rootPath)
+            }
+        }.getOrNull() ?: return@withContext null
+        val validMedia = prepared.media.filterTo(mutableSetOf()) { files.isImageOrVideo(sessionId, it) }
+        mutex.withLock {
+            val current = dao.getForSession(sessionId) ?: return@withLock null
+            if (current.id != row.id || current.rootPath != row.rootPath) return@withLock null
+            val seen = reads["$sessionId:$owner:${current.id}"]
+            val expectedRev = com.promenar.infinity.data.production.ProductionLockApprovalPlanner.parseRevision(expectedTarget)
+            val effectiveSeen = if (expectedRev != null && current.revision == expectedRev) {
+                maxOf(seen ?: 0L, expectedRev)
+            } else seen
+            com.promenar.infinity.data.production.ProductionLockApprovalPlanner.analyze(
+                snapshot = snapshot(current),
+                prepared = prepared,
+                seenRevision = effectiveSeen,
+                isMedia = { it in validMedia },
+                reason = reason,
+            )
         }
     }
     override suspend fun apply(sessionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot =

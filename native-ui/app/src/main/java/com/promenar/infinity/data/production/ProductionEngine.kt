@@ -8,8 +8,16 @@ object ProductionEngine {
     fun update(snapshot: ProductionSnapshot, operations: List<JsonElement>, seenRevision: Long?, now: Long, isMedia: (String) -> Boolean): ProductionSnapshot =
         update(snapshot, prepareProductionOperations(operations, snapshot.production) { it }, seenRevision, now, isMedia)
 
-    internal fun update(snapshot: ProductionSnapshot, prepared: PreparedProductionOperations, seenRevision: Long?, now: Long, isMedia: (String) -> Boolean): ProductionSnapshot {
+    internal fun update(
+        snapshot: ProductionSnapshot,
+        prepared: PreparedProductionOperations,
+        seenRevision: Long?,
+        now: Long,
+        isMedia: (String) -> Boolean,
+        lockAuthorization: ProductionLockPreflight? = null,
+    ): ProductionSnapshot {
         require(snapshot.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
+        val authorized = lockAuthorization != null
         val rev = snapshot.revision + 1
         var p = snapshot.production
         val baseline = seenRevision ?: 0L
@@ -32,7 +40,18 @@ object ProductionEngine {
         fun checkScene(s: Scene) = check(s.changedBy, s.changedAt, "场 ${s.code}")
         fun checkEpisode(e: Episode) = check(e.changedBy, e.changedAt, "集 ${e.id}")
         fun checkAsset(a: Asset) = check(a.changedBy, a.changedAt, "资产 ${a.id}")
-        fun checkTree(e: Episode) { checkEpisode(e); require(!e.scriptLocked) { "集 ${e.id} 的剧本已锁定，请先由用户解锁。" }; e.scenes.forEach { sc -> checkScene(sc); require(!sc.storyboardLocked) { "场 ${sc.code} 已锁定，请先由用户解锁。" }; sc.shots.forEach { checkShot(it); require(it.status != ShotStatus.LOCKED) { "镜头 ${it.code} 已锁定，请先由用户解锁。" } } } }
+        fun checkTree(e: Episode) {
+            checkEpisode(e)
+            if (!authorized) require(!e.scriptLocked) { "集 ${e.id} 的剧本已锁定，请先由用户解锁。" }
+            e.scenes.forEach { sc ->
+                checkScene(sc)
+                if (!authorized) require(!sc.storyboardLocked) { "场 ${sc.code} 已锁定，请先由用户解锁。" }
+                sc.shots.forEach {
+                    checkShot(it)
+                    if (!authorized) require(it.status != ShotStatus.LOCKED) { "镜头 ${it.code} 已锁定，请先由用户解锁。" }
+                }
+            }
+        }
         fun text(o: JsonObject, key: String): String = (o[key] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw IllegalArgumentException("$key 必须是字符串，请检查参数。")
         fun optional(o: JsonObject, key: String, old: String?): String? = if (key !in o) old else if (o[key] == JsonNull) null else text(o, key)
         fun int(o: JsonObject, key: String): Int = (o[key] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull ?: throw IllegalArgumentException("$key 必须是整数，请检查参数。")
@@ -53,9 +72,26 @@ object ProductionEngine {
                         val sid = text(op, "season_id"); val id = text(op, "id"); val season = p.seasons.firstOrNull { it.id == sid } ?: throw IllegalArgumentException("季 $sid 不存在，请先创建该季。")
                         val existing = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == id }
                         require(existing == null || season.episodes.any { it.id == id }) { "集 $id 已属于其他季。" }
-                        existing?.let { checkEpisode(it); require(!it.scriptLocked || "script_path" !in op || optional(op, "script_path", it.scriptPath) == it.scriptPath) { "剧本已锁定，请先由用户解锁。" } }
-                        val e = (existing ?: Episode(id, int(op, "number"), text(op, "title"))).copy(number = int(op, "number"), title = text(op, "title"), scriptPath = optional(op, "script_path", existing?.scriptPath), changedBy = existing?.changedBy ?: ChangeSource.AGENT, changedAt = if ("script_path" in op) rev else if (existing?.changedBy == ChangeSource.USER) existing?.changedAt ?: rev else rev, contentChangedAt = if ("script_path" in op) rev else existing?.contentChangedAt)
+                        val scriptPath = optional(op, "script_path", existing?.scriptPath)
+                        val scriptChanged = existing != null && "script_path" in op && scriptPath != existing.scriptPath
+                        existing?.let {
+                            checkEpisode(it)
+                            if (!authorized) require(!it.scriptLocked || !scriptChanged) { "剧本已锁定，请先由用户解锁。" }
+                        }
+                        val unlockScript = existing != null && existing.scriptLocked && scriptChanged
+                        val e = (existing ?: Episode(id, int(op, "number"), text(op, "title"))).copy(
+                            number = int(op, "number"),
+                            title = text(op, "title"),
+                            scriptPath = scriptPath,
+                            scriptLocked = if (unlockScript) false else existing?.scriptLocked ?: false,
+                            changedBy = existing?.changedBy ?: ChangeSource.AGENT,
+                            changedAt = if ("script_path" in op) rev else if (existing?.changedBy == ChangeSource.USER) existing?.changedAt ?: rev else rev,
+                            contentChangedAt = if ("script_path" in op) rev else existing?.contentChangedAt,
+                        )
                         p = p.copy(seasons = p.seasons.map { if (it.id != sid) it else it.copy(episodes = if (existing == null) it.episodes + e else it.episodes.map { item -> if (item.id == id) e else item }) })
+                        if (unlockScript) {
+                            p = p.reopenNonQueuedReviewGroup(ReviewTarget.script(existing.id))
+                        }
                     }
                     "upsert_scene" -> {
                         val ep = episode(text(op, "episode_id")); val code = text(op, "code"); val old = ep.scenes.firstOrNull { it.code == code }
@@ -69,7 +105,8 @@ object ProductionEngine {
                         existing?.let(::checkShot)
                         val position = if ("position" in op) int(op, "position") else null
                         if (existing == null || position != null && position != sc.shots.indexOf(existing)) checkScene(sc)
-                        require(!sc.storyboardLocked || existing != null && (position == null || position == sc.shots.indexOf(existing))) { "场 ${sc.code} 的分镜已锁定，请由用户解锁后增删或重排。" }
+                        val structuralLockedChange = sc.storyboardLocked && (existing == null || position != null && position != sc.shots.indexOf(existing))
+                        if (!authorized) require(!structuralLockedChange) { "场 ${sc.code} 的分镜已锁定，请由用户解锁后增删或重排。" }
                         val old = existing ?: Shot(code, text(op, "title"), durationSeconds = number(op, "duration_seconds"))
                         val inputs = if ("inputs" in op) decodeProductionField(op, "inputs") else old.inputs
                         if ("inputs" in op) inputs.forEach { media(it.path) }
@@ -94,7 +131,7 @@ object ProductionEngine {
                             propAssetIds = if ("prop_asset_ids" in op) decodeProductionField(op, "prop_asset_ids") else old.propAssetIds,
                             channelId = optional(op, "channel_id", old.channelId), changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev)
                         val changes = ProductionRules.changes(old, updated)
-                        val stored = if (sc.storyboardLocked && changes.isNotEmpty()) {
+                        val stored = if (sc.storyboardLocked && !structuralLockedChange && changes.isNotEmpty()) {
                             val id = UUID.nameUUIDFromBytes("${p.id}:$rev:$index:change".toByteArray(Charsets.UTF_8)).toString()
                             p = p.copy(changeRequests = p.changeRequests + ShotChangeRequest(id, ep.id, sc.code, code, changes, ChangeSource.AGENT, optional(op, "change_note", null), changedAt = rev))
                             ProductionRules.applyChanges(updated, changes.mapValues { (_, change) -> ShotFieldChange(change.newValue, change.oldValue) })
@@ -102,13 +139,23 @@ object ProductionEngine {
                         val remaining = sc.shots.filterNot { it.code == code }.toMutableList()
                         val target = position ?: if (existing == null) remaining.size else sc.shots.indexOf(existing)
                         require(target in 0..remaining.size) { "position 超出场内范围，请使用 0～${remaining.size}。" }
-                        remaining.add(target, stored); setScene(ep, sc.copy(shots = remaining))
+                        remaining.add(target, stored)
+                        val nextScene = if (structuralLockedChange) sc.copy(storyboardLocked = false, shots = remaining) else sc.copy(shots = remaining)
+                        setScene(ep, nextScene)
+                        if (structuralLockedChange) p = p.reopenNonQueuedReviewGroup(ReviewTarget.scene(ep.id, sc.code))
                     }
                     "set_shot_status" -> {
                         val ep = episode(text(op, "episode_id")); val old = shot(ep, text(op, "shot_code")); checkShot(old)
-                        require(old.status != ShotStatus.LOCKED) { "镜头 ${old.code} 已锁定，请先由用户解锁。" }
+                        if (!authorized) require(old.status != ShotStatus.LOCKED) { "镜头 ${old.code} 已锁定，请先由用户解锁。" }
                         val status = listOf(ShotStatus.TODO, ShotStatus.GENERATING, ShotStatus.REVIEW)[enumText(text(op, "status"), productionShotStatuses, "status")]
-                        setShot(ep, old.copy(status = status, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                        val wasLocked = old.status == ShotStatus.LOCKED
+                        setShot(ep, old.copy(
+                            status = status,
+                            selectedTakeId = if (wasLocked) null else old.selectedTakeId,
+                            changedBy = old.changedBy,
+                            changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev,
+                        ))
+                        if (wasLocked) p = p.reopenNonQueuedReviewGroup(ReviewTarget.shot(ep.id, old.code))
                     }
                     "add_take" -> {
                         val ep = episode(text(op, "episode_id")); val old = shot(ep, text(op, "shot_code")); checkShot(old); ProductionRules.generationRejection(p, ep.id, old.code)?.let { throw IllegalArgumentException(it) }; val path = text(op, "path"); media(path)
@@ -120,39 +167,65 @@ object ProductionEngine {
                     "upsert_asset" -> {
                         val id = text(op, "id"); val old = p.assets.firstOrNull { it.id == id }; old?.let(::checkAsset)
                         val kind = AssetKind.entries[enumText(text(op, "kind"), productionAssetKinds, "kind")]
-                        require(old == null || old.status != AssetStatus.LOCKED || old.kind == kind && old.name == text(op, "name")) { "资产 $id 已锁定，请先由用户解锁后修改名称或种类。" }
+                        val nextName = text(op, "name")
+                        if (!authorized) {
+                            require(old == null || old.status != AssetStatus.LOCKED || old.kind == kind && old.name == nextName) { "资产 $id 已锁定，请先由用户解锁后修改名称或种类。" }
+                        }
+                        val unlockedLookIds = mutableSetOf<String>()
                         val looks = if ("looks" in op) {
                             decodeProductionField<List<CharacterLook>>(op, "looks").map { newLook ->
                                 val prev = old?.looks?.firstOrNull { it.id == newLook.id }
-                                require(prev == null || !prev.locked || (prev.name == newLook.name && prev.note == newLook.note && prev.sheetPath == newLook.sheetPath && prev.sheetNote == newLook.sheetNote && prev.slots == newLook.slots)) {
-                                    "造型 ${prev?.name} 已锁定，请先由用户解锁。"
+                                val visualChanged = prev != null && prev.locked &&
+                                    (prev.sheetPath != newLook.sheetPath || prev.slots.map { it.id to it.path } != newLook.slots.map { it.id to it.path })
+                                val textChanged = prev != null && prev.locked && !visualChanged &&
+                                    (prev.name != newLook.name || prev.note != newLook.note || prev.sheetNote != newLook.sheetNote || prev.slots != newLook.slots)
+                                if (!authorized) {
+                                    require(prev == null || !prev.locked || (!visualChanged && !textChanged)) {
+                                        "造型 ${prev?.name} 已锁定，请先由用户解锁。"
+                                    }
                                 }
-                                newLook.copy(locked = prev?.locked ?: false, contentChangedAt = prev?.contentChangedAt)
+                                if (visualChanged) unlockedLookIds += newLook.id
+                                newLook.copy(locked = (prev?.locked ?: false) && !visualChanged, contentChangedAt = prev?.contentChangedAt)
                             }
                         } else old?.looks ?: emptyList()
+                        var viewsVisualChanged = false
                         val referenceViews = if ("reference_views" in op) {
                             require(kind in setOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE)) { "reference_views 仅用于场景、道具与画风资产。" }
                             val incoming = decodeProductionField<List<ReferenceSlot>>(op, "reference_views")
-                            require(old == null || !old.viewsLocked || old.referenceViews == incoming) { "资产参考视图组已锁定，请先由用户解锁。" }
+                            if (old != null && old.viewsLocked && old.referenceViews != incoming) {
+                                if (!authorized) throw IllegalArgumentException("资产参考视图组已锁定，请先由用户解锁。")
+                                viewsVisualChanged = old.referenceViews.map { it.id to it.path } != incoming.map { it.id to it.path }
+                            }
                             incoming
                         } else old?.referenceViews ?: emptyList()
                         if ("looks" in op) looks.forEach { look -> look.sheetPath?.let(::media); look.slots.mapNotNull { it.path }.forEach(::media) }
                         if ("reference_views" in op) referenceViews.mapNotNull { it.path }.forEach(::media)
                         if ("reference_voice" in op) decodeProductionField<ReferenceVoice?>(op, "reference_voice")?.path?.let(::media)
+                        unlockedLookIds.forEach { lookId ->
+                            p = p.reopenNonQueuedReviewGroup(ReviewTarget.assetLook(id, lookId))
+                        }
+                        if (viewsVisualChanged) {
+                            p = p.reopenNonQueuedReviewGroup(ReviewTarget.assetViews(id))
+                        }
+                        val nextViewsLocked = (old?.viewsLocked ?: false) && !viewsVisualChanged
                         val hasNewVisualMedia = ("looks" in op && looks.any { it.sheetPath != null || it.slots.any { slot -> !slot.path.isNullOrBlank() } }) ||
                             ("reference_views" in op && referenceViews.any { !it.path.isNullOrBlank() })
-                        val nextStatus = if (hasNewVisualMedia && (old?.status ?: AssetStatus.DRAFT) in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old?.status ?: AssetStatus.DRAFT
-                        val a = (old ?: Asset(id, kind, text(op, "name"))).copy(
+                        val baseNextStatus = if (hasNewVisualMedia && (old?.status ?: AssetStatus.DRAFT) in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old?.status ?: AssetStatus.DRAFT
+                        val draftAsset = (old ?: Asset(id, kind, nextName)).copy(
                             kind = kind,
-                            name = text(op, "name"),
+                            name = nextName,
                             description = optional(op, "description", old?.description),
                             looks = looks,
                             referenceVoice = if ("reference_voice" in op) decodeProductionField(op, "reference_voice") else old?.referenceVoice,
                             referenceViews = referenceViews,
-                            status = nextStatus,
+                            viewsLocked = nextViewsLocked,
+                            status = baseNextStatus,
                             changedBy = old?.changedBy ?: ChangeSource.AGENT,
                             changedAt = if (old?.changedBy == ChangeSource.USER) old?.changedAt ?: rev else rev,
                         )
+                        val a = if (unlockedLookIds.isNotEmpty() || viewsVisualChanged) {
+                            draftAsset.copy(status = p.deriveAssetStatusAfterLockChange(draftAsset))
+                        } else draftAsset
                         p = p.copy(assets = if (old == null) p.assets + a else p.assets.map { if (it.id == id) a else it })
                     }
                     "add_asset_version" -> {
@@ -165,7 +238,6 @@ object ProductionEngine {
                         require(old.kind == AssetKind.CHARACTER) { "仅角色资产支持造型。" }
                         val lookId = text(op, "look_id")
                         val prev = old.looks.firstOrNull { it.id == lookId }
-                        require(prev == null || !prev.locked) { "造型 ${prev?.name} 已锁定，请先由用户解锁。" }
                         val sheetPath = optional(op, "sheet_path", prev?.sheetPath)
                         sheetPath?.let(::media)
                         val baseSlots = prev?.slots ?: defaultReferenceSlots()
@@ -178,25 +250,38 @@ object ProductionEngine {
                             orderedDefaults + customIds.map { id -> byId.getValue(id) }
                         }
                         mergedSlots.mapNotNull { it.path }.forEach(::media)
-                        val updatedLook = (prev ?: CharacterLook(lookId, text(op, "name"))).copy(
-                            name = text(op, "name"),
-                            note = optional(op, "note", prev?.note),
+                        val nextName = text(op, "name")
+                        val nextNote = optional(op, "note", prev?.note)
+                        val nextSheetNote = optional(op, "sheet_note", prev?.sheetNote)
+                        val visualChanged = prev != null && prev.locked &&
+                            (prev.sheetPath != sheetPath || prev.slots.map { it.id to it.path } != mergedSlots.map { it.id to it.path })
+                        val anyChanged = prev != null && (prev.name != nextName || prev.note != nextNote || prev.sheetNote != nextSheetNote || prev.sheetPath != sheetPath || prev.slots != mergedSlots)
+                        if (!authorized && prev != null && prev.locked) {
+                            require(!anyChanged) { "造型 ${prev.name} 已锁定，请先由用户解锁。" }
+                        }
+                        val updatedLook = (prev ?: CharacterLook(lookId, nextName)).copy(
+                            name = nextName,
+                            note = nextNote,
                             sheetPath = sheetPath,
-                            sheetNote = optional(op, "sheet_note", prev?.sheetNote),
+                            sheetNote = nextSheetNote,
                             slots = mergedSlots,
-                            locked = false,
+                            locked = prev?.locked == true && !visualChanged,
                         )
                         val hasMedia = updatedLook.sheetPath != null || updatedLook.slots.any { !it.path.isNullOrBlank() }
-                        val nextStatus = if (hasMedia && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
                         val nextLooks = if (prev == null) old.looks + updatedLook else old.looks.map { if (it.id == lookId) updatedLook else it }
-                        setAsset(old.copy(looks = nextLooks, status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                        if (visualChanged) {
+                            p = p.reopenNonQueuedReviewGroup(ReviewTarget.assetLook(old.id, lookId))
+                        }
+                        val candidateAsset = old.copy(looks = nextLooks)
+                        val nextStatus = if (visualChanged) p.deriveAssetStatusAfterLockChange(candidateAsset)
+                        else if (hasMedia && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
+                        setAsset(candidateAsset.copy(status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "set_look_slot" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old)
                         require(old.kind == AssetKind.CHARACTER) { "仅角色资产支持造型槽位。" }
                         val lookId = text(op, "look_id")
                         val prev = old.looks.firstOrNull { it.id == lookId } ?: throw IllegalArgumentException("造型 $lookId 不存在，请先用 upsert_look 创建。")
-                        require(!prev.locked) { "造型 ${prev.name} 已锁定，请先由用户解锁。" }
                         val slotId = text(op, "slot_id")
                         val existing = prev.slots.firstOrNull { it.id == slotId }
                         if (existing == null) require("name" in op && op["name"] != JsonNull) { "新增参考位 $slotId 须提供 name。" }
@@ -205,21 +290,35 @@ object ProductionEngine {
                         val nextPath = optional(op, "path", existing?.path)
                         nextPath?.let(::media)
                         val nextNote = optional(op, "note", existing?.note)
+                        val visualChanged = prev.locked && (existing == null || existing.path != nextPath)
+                        val anyChanged = existing == null || existing.name != nextName || existing.path != nextPath || existing.note != nextNote
+                        if (!authorized && prev.locked) {
+                            require(!anyChanged) { "造型 ${prev.name} 已锁定，请先由用户解锁。" }
+                        }
                         val updatedSlot = (existing ?: ReferenceSlot(slotId, nextName)).copy(name = nextName, path = nextPath, note = nextNote)
                         val nextSlots = if (existing == null) prev.slots + updatedSlot else prev.slots.map { if (it.id == slotId) updatedSlot else it }
-                        val updatedLook = prev.copy(slots = nextSlots)
-                        val nextStatus = if (nextPath != null && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
-                        setAsset(old.copy(looks = old.looks.map { if (it.id == lookId) updatedLook else it }, status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                        val updatedLook = prev.copy(slots = nextSlots, locked = prev.locked && !visualChanged)
+                        val nextLooks = old.looks.map { if (it.id == lookId) updatedLook else it }
+                        if (visualChanged) {
+                            p = p.reopenNonQueuedReviewGroup(ReviewTarget.assetLook(old.id, lookId))
+                        }
+                        val candidateAsset = old.copy(looks = nextLooks)
+                        val nextStatus = if (visualChanged) p.deriveAssetStatusAfterLockChange(candidateAsset)
+                        else if (nextPath != null && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
+                        setAsset(candidateAsset.copy(status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "set_asset_view" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old)
                         require(old.kind in setOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE)) { "set_asset_view 仅用于场景、道具与画风资产。" }
-                        require(!old.viewsLocked) { "资产参考视图组已锁定，请先由用户解锁。" }
                         val viewId = text(op, "view_id")
                         val removeView = "remove" in op && bool(op, "remove")
                         val existing = old.referenceViews.firstOrNull { it.id == viewId }
+                        val visualChanged: Boolean
+                        val anyChanged: Boolean
                         val nextViews = if (removeView) {
                             require(existing != null) { "参考视图 $viewId 不存在。" }
+                            visualChanged = old.viewsLocked
+                            anyChanged = true
                             old.referenceViews.filterNot { it.id == viewId }
                         } else {
                             if (existing == null) require("name" in op && op["name"] != JsonNull) { "新建参考视图 $viewId 须提供 name。" }
@@ -227,13 +326,24 @@ object ProductionEngine {
                             val nextPath = optional(op, "path", existing?.path)
                             nextPath?.let(::media)
                             val nextNote = optional(op, "note", existing?.note)
+                            visualChanged = old.viewsLocked && (existing == null || existing.path != nextPath)
+                            anyChanged = existing == null || existing.name != nextName || existing.path != nextPath || existing.note != nextNote
                             val updatedSlot = (existing ?: ReferenceSlot(viewId, nextName)).copy(name = nextName, path = nextPath, note = nextNote)
                             require(existing != null || old.referenceViews.size < 30) { "每个资产最多 30 个参考视图。" }
                             if (existing == null) old.referenceViews + updatedSlot else old.referenceViews.map { if (it.id == viewId) updatedSlot else it }
                         }
+                        if (!authorized && old.viewsLocked) {
+                            require(!anyChanged) { "资产参考视图组已锁定，请先由用户解锁。" }
+                        }
+                        val nextViewsLocked = old.viewsLocked && !visualChanged
+                        if (visualChanged) {
+                            p = p.reopenNonQueuedReviewGroup(ReviewTarget.assetViews(old.id))
+                        }
+                        val candidateAsset = old.copy(referenceViews = nextViews, viewsLocked = nextViewsLocked)
                         val addedImage = !removeView && nextViews.firstOrNull { it.id == viewId }?.path != null
-                        val nextStatus = if (addedImage && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
-                        setAsset(old.copy(referenceViews = nextViews, status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                        val nextStatus = if (visualChanged) p.deriveAssetStatusAfterLockChange(candidateAsset)
+                        else if (addedImage && old.status in setOf(AssetStatus.DRAFT, AssetStatus.REDO)) AssetStatus.REVIEW else old.status
+                        setAsset(candidateAsset.copy(status = nextStatus, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "set_video_settings" -> {
                         check(p.policyChangedBy, p.policyChangedAt, "项目设置")
@@ -244,13 +354,23 @@ object ProductionEngine {
                         p = p.copy(defaultVideoChannelId = nextChannel, referenceInputMode = nextMode, policyChangedAt = if (p.policyChangedBy == ChangeSource.USER) p.policyChangedAt else rev)
                     }
                     "set_asset_status" -> {
-                        val old = asset(text(op, "asset_id")); checkAsset(old); require(old.status != AssetStatus.LOCKED) { "资产 ${old.id} 已锁定，请先由用户解锁。" }
+                        val old = asset(text(op, "asset_id")); checkAsset(old)
+                        if (!authorized) require(old.status != AssetStatus.LOCKED) { "资产 ${old.id} 已锁定，请先由用户解锁。" }
                         val status = listOf(AssetStatus.DRAFT, AssetStatus.REVIEW)[enumText(text(op, "status"), productionAssetStatuses, "status")]
-                        setAsset(old.copy(status = status, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                        val wasLocked = old.status == AssetStatus.LOCKED
+                        if (wasLocked) p = p.reopenAssetToReview(old.id)
+                        setAsset(old.copy(
+                            status = status,
+                            looks = if (wasLocked) old.looks.map { it.copy(locked = false) } else old.looks,
+                            viewsLocked = if (wasLocked) false else old.viewsLocked,
+                            changedBy = old.changedBy,
+                            changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev,
+                        ))
                     }
                     "set_stage" -> {
                         val stage = ProductionStage.entries[enumText(text(op, "stage"), productionStages, "stage")]
-                        val old = p.stages.first { it.stage == stage }; check(old.changedBy, old.changedAt, "阶段 $stage"); require(old.status != StageStatus.LOCKED) { "阶段已锁定，请先由用户解锁。" }
+                        val old = p.stages.first { it.stage == stage }; check(old.changedBy, old.changedAt, "阶段 $stage")
+                        if (!authorized) require(old.status != StageStatus.LOCKED) { "阶段已锁定，请先由用户解锁。" }
                         val status = listOf(StageStatus.NOT_STARTED, StageStatus.IN_PROGRESS, StageStatus.SKIPPED)[enumText(text(op, "status"), productionStageStatuses, "status")]
                         p = p.copy(stages = p.stages.map { if (it.stage == stage) it.copy(status = status, note = optional(op, "note", it.note), changedBy = it.changedBy, changedAt = if (it.changedBy == ChangeSource.USER) it.changedAt else rev) else it })
                     }
@@ -269,9 +389,34 @@ object ProductionEngine {
                         when (target) {
                             "season" -> { ids.forEach { id -> val s = p.seasons.firstOrNull { it.id == id } ?: throw IllegalArgumentException("季 $id 不存在。") ; s.episodes.forEach(::checkTree) }; p = p.copy(seasons = p.seasons.filterNot { it.id in ids }) }
                             "episode" -> { ids.forEach { checkTree(episode(it)) }; p = p.copy(seasons = p.seasons.map { it.copy(episodes = it.episodes.filterNot { e -> e.id in ids }) }) }
-                            "scene" -> { val ep = episode(text(op, "episode_id")); ids.forEach { id -> val sc = scene(ep, id); checkScene(sc); require(!sc.storyboardLocked) { "场 $id 已锁定，请先由用户解锁。" }; sc.shots.forEach { checkShot(it); require(it.status != ShotStatus.LOCKED) { "镜头 ${it.code} 已锁定，请先由用户解锁。" } } }; setEpisode(ep.copy(scenes = ep.scenes.filterNot { it.code in ids })) }
-                            "shot" -> { val ep = episode(text(op, "episode_id")); ids.forEach { id -> val item = shot(ep, id); checkShot(item); val sc = ep.scenes.first { it.shots.any { s -> s.code == id } }; checkScene(sc); require(!sc.storyboardLocked && item.status != ShotStatus.LOCKED) { "场或镜头已锁定，请先由用户解锁。" } }; setEpisode(ep.copy(scenes = ep.scenes.map { it.copy(shots = it.shots.filterNot { s -> s.code in ids }) })) }
-                            "asset" -> { ids.forEach { id -> val a = asset(id); checkAsset(a); require(a.status != AssetStatus.LOCKED) { "资产 $id 已锁定，请先由用户解锁。" } }; p = p.copy(assets = p.assets.filterNot { it.id in ids }) }
+                            "scene" -> {
+                                val ep = episode(text(op, "episode_id"))
+                                ids.forEach { id ->
+                                    val sc = scene(ep, id); checkScene(sc)
+                                    if (!authorized) require(!sc.storyboardLocked) { "场 $id 已锁定，请先由用户解锁。" }
+                                    sc.shots.forEach {
+                                        checkShot(it)
+                                        if (!authorized) require(it.status != ShotStatus.LOCKED) { "镜头 ${it.code} 已锁定，请先由用户解锁。" }
+                                    }
+                                }
+                                setEpisode(ep.copy(scenes = ep.scenes.filterNot { it.code in ids }))
+                            }
+                            "shot" -> {
+                                val ep = episode(text(op, "episode_id"))
+                                ids.forEach { id ->
+                                    val item = shot(ep, id); checkShot(item)
+                                    val sc = ep.scenes.first { it.shots.any { s -> s.code == id } }; checkScene(sc)
+                                    if (!authorized) require(!sc.storyboardLocked && item.status != ShotStatus.LOCKED) { "场或镜头已锁定，请先由用户解锁。" }
+                                }
+                                setEpisode(ep.copy(scenes = ep.scenes.map { it.copy(shots = it.shots.filterNot { s -> s.code in ids }) }))
+                            }
+                            "asset" -> {
+                                ids.forEach { id ->
+                                    val a = asset(id); checkAsset(a)
+                                    if (!authorized) require(a.status != AssetStatus.LOCKED) { "资产 $id 已锁定，请先由用户解锁。" }
+                                }
+                                p = p.copy(assets = p.assets.filterNot { it.id in ids })
+                            }
                             else -> throw IllegalArgumentException("target 仅支持 season、episode、scene、shot、asset。")
                         }
                     }

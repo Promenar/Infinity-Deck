@@ -128,8 +128,26 @@ internal fun ProductionShotDetail(
             contentInset = InfinitySpacing.Large,
             pagerState = pagerState,
         )
-        (error ?: localError)?.let { message -> InfinityStatusStrip(InfinityStatusKind.Error, message, onDismiss = { onDismissError(); localError = null }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-        notice?.let { InfinityStatusStrip(InfinityStatusKind.Info, it, onDismiss = { notice = null }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        val globalNotice = LocalInfinityNoticeController.current
+        val activeError = error ?: localError
+        LaunchedEffect(activeError, globalNotice) {
+            if (activeError != null && globalNotice != null) {
+                globalNotice.show(InfinityNoticeSeverity.ERROR, activeError)
+                if (error != null) onDismissError()
+                localError = null
+            }
+        }
+        LaunchedEffect(notice, globalNotice) {
+            val activeNotice = notice
+            if (activeNotice != null && globalNotice != null) {
+                globalNotice.show(InfinityNoticeSeverity.INFO, activeNotice)
+                notice = null
+            }
+        }
+        if (globalNotice == null) {
+            activeError?.let { message -> InfinityStatusStrip(InfinityStatusKind.Error, message, onDismiss = { onDismissError(); localError = null }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            notice?.let { InfinityStatusStrip(InfinityStatusKind.Info, it, onDismiss = { notice = null }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+        }
         HorizontalPager(
             state = pagerState,
             key = { detailTabs[it] },
@@ -358,15 +376,13 @@ internal fun ProductionShotDetail(
         null -> Unit
     }
     when (dialog) {
-        PlanningDialog.SCENE_REVIEW -> ProductionReviewSheet(
-            title = stringResource(R.string.production_panel_scene_number, location.scene.number),
-            subtitle = location.scene.heading,
+        PlanningDialog.SCENE_REVIEW -> ProductionUnifiedReviewDialog(
             production = production,
             target = ReviewTarget.scene(episodeId, location.scene.code),
-            busy = working,
-            onRun = onRun,
-            onSubmit = onSubmit,
+            label = listOf(stringResource(R.string.production_panel_scene_number, location.scene.number), location.scene.heading),
+            settled = location.scene.storyboardLocked,
             onDismiss = { dialog = null },
+            onSubmit = onSubmit,
         )
         PlanningDialog.RECOMPILE -> InfinityConfirmDialog(stringResource(R.string.p2_recompile), stringResource(R.string.p2_recompile_message), stringResource(R.string.p2_recompile), onConfirm = {
             dialog = null; execute { services.planner?.recompilePrompt(sessionId, episodeId, shot.code); refresh++ }

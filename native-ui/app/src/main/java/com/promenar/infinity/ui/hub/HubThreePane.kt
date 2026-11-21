@@ -322,6 +322,10 @@ internal fun HubThreePane(
 
     // 展开状态的系统返回先还原三列；会话列内部（检视器、子代理页）的返回在其后注册，优先处理。
     BackHandler(enabled = state.hubExpanded) { state.handleHubBack() }
+    com.promenar.infinity.ui.common.ReportInfinityNoticeHorizontalClearance(
+        startOffset = HubSessionStripWidth,
+        enabled = wideLayout && state.hubExpanded,
+    )
 
     HubThreePaneLayout(
         railWidth = host.railWidth,

@@ -86,6 +86,8 @@ fun InfinityConfirmDialog(
     icon: ImageVector? = null,
     /** 多段元数据正文：非空时取代 [message]。 */
     messageSegments: List<String>? = null,
+    /** 标题右侧附属徽章（如状态标签）。 */
+    titleTrailing: (@Composable () -> Unit)? = null,
     content: @Composable (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
@@ -117,6 +119,7 @@ fun InfinityConfirmDialog(
             cancelEnabled = cancelEnabled,
             messageSegments = messageSegments,
             icon = icon,
+            titleTrailing = titleTrailing,
             content = content,
         )
     }
@@ -154,6 +157,7 @@ internal fun InfinityConfirmDialogCard(
     /** 多段元数据正文（如“3 个文件 · 1.2 MB”）：非空时以 [InfinityMetaLine] 排版并取代 [message]。 */
     messageSegments: List<String>? = null,
     icon: ImageVector? = null,
+    titleTrailing: (@Composable () -> Unit)? = null,
     content: @Composable (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -187,7 +191,21 @@ internal fun InfinityConfirmDialogCard(
             }
 
             // 纯提示可以没有标题，此时正文直接在顶部。
-            if (title.isNotBlank()) {
+            if (title.isNotBlank() && titleTrailing != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = InfinityTypography.titleLarge.copy(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+                        color = scheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    titleTrailing()
+                }
+            } else if (title.isNotBlank()) {
                 Text(
                     text = title,
                     style = InfinityTypography.titleLarge.copy(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),

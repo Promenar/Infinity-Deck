@@ -38,7 +38,10 @@ import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
+import com.promenar.infinity.ui.common.InfinityPanePresentation
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
+import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
+import com.promenar.infinity.ui.common.reportInfinityNoticeHeaderBottom
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.infinityDomainColors
 
@@ -191,24 +194,41 @@ internal fun ProductionTopBar(
     metaAccent: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    // 有返回键为窄屏整屏面板；没有时在检视器页签里，与文件页页头同一规格：最小 64dp、四周 4dp，标题块左右再留 8dp。
+    // 无返回键或处于检视器宿主中时按检视器规范留白：根页顶部 14dp 呼吸间距 + 16dp 左基线对齐，次级页顶部 10dp；
+    // 窄屏整屏面板（有返回键且不在检视器内）保留 56dp 高度并向全站通知宿主张报顶部 Header 底沿偏移。
+    val inInspectorHost = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
     val inPane = onBack == null
     Row(
-        modifier.fillMaxWidth().then(
-            if (inPane) Modifier.heightIn(min = ProductionPaneHeaderMinHeight).padding(InfinitySpacing.XSmall)
-            else Modifier.heightIn(min = 56.dp).padding(start = 4.dp, end = 4.dp),
-        ),
+        modifier
+            .reportInfinityNoticeHeaderBottom(gap = 8.dp, enabled = !inInspectorHost)
+            .fillMaxWidth()
+            .then(
+                when {
+                    inPane -> Modifier
+                        .heightIn(min = ProductionPaneHeaderMinHeight)
+                        .padding(
+                            start = InfinitySpacing.Large,
+                            end = InfinitySpacing.XSmall,
+                            top = 14.dp,
+                            bottom = InfinitySpacing.XSmall,
+                        )
+                    inInspectorHost -> Modifier
+                        .heightIn(min = 58.dp)
+                        .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 2.dp)
+                    else -> Modifier
+                        .heightIn(min = 56.dp)
+                        .padding(start = 4.dp, end = 4.dp)
+                },
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
             InfinityBackButton(onClick = onBack)
             Spacer(Modifier.width(4.dp))
-        } else {
-            Spacer(Modifier.width(InfinitySpacing.Small))
         }
         InfinityPaneHeaderTitle(
             title = title,
-            modifier = Modifier.weight(1f).then(if (inPane) Modifier.padding(horizontal = InfinitySpacing.Small) else Modifier),
+            modifier = Modifier.weight(1f),
             meta = if (meta.isEmpty() && metaAccent == null) null else ({
                 Text(meta.joinToString(" · "), maxLines = 1, softWrap = false) // wrap-check: allow 共享页头信息行固定单行横滑
                 metaAccent?.let {

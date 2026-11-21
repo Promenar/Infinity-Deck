@@ -97,10 +97,10 @@ object ProductionUiTags {
     const val PROMPT_FIELD = "production_prompt_field"
     const val DIALOG_CONFIRM = "production_dialog_confirm"
     const val SEND = "production_send"
-    const val REVIEW_APPROVE = "production_review_approve"
-    const val REVIEW_REJECT = "production_review_reject"
-    const val REVIEW_SUGGEST = "production_review_suggest"
-    const val REVIEW_SHEET = "production_review_sheet"
+    const val REVIEW_ENTRY = "production_review_entry"
+    const val REVIEW_DIALOG = "production_review_dialog"
+    const val REVIEW_RETRACT = "production_review_retract"
+    const val SCRIPT_CARD = "production_script_card"
     const val TASK_CANCEL = "production_task_cancel"
 }
 

@@ -66,4 +66,39 @@
     <string name="comfy_template_approval_added">Added %1$s</string>
     <string name="comfy_template_approval_removed">Removed %1$s</string>
     <string name="comfy_template_approval_model">Model · %1$s</string>
+
+    <string name="production_review_entry">Review</string>
+    <string name="production_review_edit">Edit review</string>
+    <string name="production_review_save">Save</string>
+    <string name="production_review_approve_note">Approval note</string>
+    <string name="production_review_note_optional_approve">Approval note (optional)</string>
+    <string name="production_review_note_optional_reject">Rejection reason (optional)</string>
+    <string name="production_review_note_required_suggest">Suggestion (required)</string>
+    <string name="production_review_note_placeholder">Enter review note or revision feedback…</string>
+    <string name="production_review_retract_approve">Retract approval</string>
+    <string name="production_review_retract_reject">Retract rejection</string>
+    <string name="production_review_retract_suggest">Retract pending suggestions</string>
+    <string name="production_review_footer_staged">Staged for this round, editable anytime</string>
+    <string name="production_review_footer_pending">No review decision yet</string>
+    <string name="production_review_footer_suggest">Share improvement or revision feedback</string>
+
+    <string name="production_script_fullscreen">Full view</string>
+    <string name="production_script_expand_full">Expand</string>
+    <string name="production_script_collapse">Collapse</string>
+    <string name="production_script_char_count">%1$d chars</string>
+    <string name="production_script_loading">Loading script…</string>
+    <string name="production_script_unavailable">Preview unavailable locally. Open full view or locate in files.</string>
+
+    <string name="production_lock_approval_where">Production change</string>
+    <string name="production_lock_approval_tag">Locked items</string>
+    <string name="production_lock_approval_title">Modify locked items</string>
+    <string name="production_lock_approval_approve_btn">Allow changes</string>
+    <string name="production_lock_outcome_keep_locked">Stays locked</string>
+    <string name="production_lock_outcome_return_review">Returns to review</string>
+    <string name="production_lock_outcome_permanent_remove">Permanent removal</string>
+    <string name="production_lock_visual_revert_warning">Involves visual references or script files. Approved items will return to Pending Review in the panel for confirmation.</string>
+    <string name="production_lock_unlocked_summary_one">Also includes %1$d unlocked update: %2$s</string>
+    <string name="production_lock_unlocked_summary_more">Also includes %1$d unlocked updates: %2$s</string>
+    <string name="production_lock_diff_old_empty">None</string>
+    <string name="production_lock_diff_cleared">Cleared</string>
 </resources>

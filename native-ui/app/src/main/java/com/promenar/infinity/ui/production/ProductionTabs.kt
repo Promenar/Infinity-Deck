@@ -1,5 +1,8 @@
 package com.promenar.infinity.ui.production
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,8 +35,10 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.RateReview
+import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.UnfoldLess
+import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +55,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -78,6 +87,8 @@ import com.promenar.infinity.data.production.ShotMode
 import com.promenar.infinity.data.production.StageStatus
 import com.promenar.infinity.data.production.coverPreviewPath
 import com.promenar.infinity.data.production.effectiveReferenceInputMode
+import com.promenar.infinity.data.production.unsentSuggestions
+import com.promenar.infinity.data.production.verdictOf
 import com.promenar.infinity.domain.mediagen.CharacterReferenceMode
 import com.promenar.infinity.domain.mediagen.MediaChannel
 import com.promenar.infinity.domain.media.MediaResolution
@@ -91,12 +102,19 @@ import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
 import com.promenar.infinity.ui.common.MarkdownText
+import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
+import com.promenar.infinity.ui.media.MediaActionRunner
+import com.promenar.infinity.ui.media.WorkspaceMediaEnvironment
 import com.promenar.infinity.ui.media.rememberMediaActionRunner
 import com.promenar.infinity.ui.media.rememberWorkspaceMediaResolution
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.forReading
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -178,7 +196,93 @@ internal fun ProductionFileRow(
     }
 }
 
-/** 复用工作区文件解析与应用内文本/Markdown 预览弹层，支持单行和两段式剧本卡共用。 */
+@Composable
+private fun rememberWorkspaceTextLoaded(
+    environment: WorkspaceMediaEnvironment?,
+    available: MediaResolution.Available?,
+): Result<String>? {
+    val activeEnv = environment ?: return null
+    val activeRes = available ?: return null
+    val loaded by produceState<Result<String>?>(null, activeRes, activeEnv) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                activeEnv.resolver.open(activeRes).use { stream ->
+                    val buffer = ByteArray(MAX_PREVIEW_BYTES + 1)
+                    var read = 0
+                    while (read < buffer.size) {
+                        val n = stream.read(buffer, read, buffer.size - read)
+                        if (n <= 0) break
+                        read += n
+                    }
+                    val truncated = read > MAX_PREVIEW_BYTES
+                    val text = String(buffer, 0, minOf(read, MAX_PREVIEW_BYTES), Charsets.UTF_8)
+                    if (truncated) "$text\n\n..." else text
+                }
+            }
+        }
+    }
+    return loaded
+}
+
+@Composable
+private fun ProductionTextPreviewSheet(
+    path: String,
+    title: String,
+    subtitle: String?,
+    locateDir: String,
+    loaded: Result<String>?,
+    environment: WorkspaceMediaEnvironment,
+    available: MediaResolution.Available,
+    runner: MediaActionRunner?,
+    onDismiss: () -> Unit,
+) {
+    InfinityBottomSheet(show = true, onDismiss = onDismiss, title = title, scrollContent = true) {
+        Column(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Medium), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            subtitle?.takeIf(String::isNotBlank)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                environment.onLocate?.let { locate ->
+                    InfinityPillButton(
+                        text = stringResource(R.string.p2_open_in_files),
+                        onClick = { onDismiss(); locate(locateDir) },
+                        tone = InfinityPillTone.NEUTRAL,
+                        icon = Icons.Rounded.FolderOpen,
+                        compact = true,
+                    )
+                }
+                runner?.let { r ->
+                    InfinityPillButton(
+                        text = stringResource(R.string.p2_open_external),
+                        onClick = { onDismiss(); r.openWith(available) },
+                        tone = InfinityPillTone.NEUTRAL,
+                        icon = Icons.AutoMirrored.Rounded.OpenInNew,
+                        compact = true,
+                    )
+                }
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+            when (loaded) {
+                null -> Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
+                else -> loaded.fold(
+                    onSuccess = { text ->
+                        val lower = path.lowercase()
+                        if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+                            MarkdownText(markdown = text, isStreaming = false, showCursor = false, fontSize = 14)
+                        } else {
+                            Text(text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace))
+                        }
+                    },
+                    onFailure = {
+                        Text(stringResource(R.string.p2_file_read_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 复用工作区文件解析与应用内文本/Markdown 预览弹层。 */
 @Composable
 private fun ProductionFileRowHost(
     path: String,
@@ -203,68 +307,18 @@ private fun ProductionFileRowHost(
     }
     content(onOpen)
     if (previewOpen && available != null && environment != null) {
-        val loaded by produceState<Result<String>?>(null, available, environment) {
-            this.value = withContext(Dispatchers.IO) {
-                runCatching {
-                    environment.resolver.open(available).use { stream ->
-                        val buffer = ByteArray(MAX_PREVIEW_BYTES + 1)
-                        var read = 0
-                        while (read < buffer.size) {
-                            val n = stream.read(buffer, read, buffer.size - read)
-                            if (n <= 0) break
-                            read += n
-                        }
-                        val truncated = read > MAX_PREVIEW_BYTES
-                        val text = String(buffer, 0, minOf(read, MAX_PREVIEW_BYTES), Charsets.UTF_8)
-                        if (truncated) "$text\n\n..." else text
-                    }
-                }
-            }
-        }
-        InfinityBottomSheet(show = true, onDismiss = { previewOpen = false }, title = title, scrollContent = true) {
-            Column(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Medium), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                subtitle?.takeIf(String::isNotBlank)?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    environment.onLocate?.let { locate ->
-                        InfinityPillButton(
-                            text = stringResource(R.string.p2_open_in_files),
-                            onClick = { previewOpen = false; locate(locateDir) },
-                            tone = InfinityPillTone.NEUTRAL,
-                            icon = Icons.Rounded.FolderOpen,
-                            compact = true,
-                        )
-                    }
-                    runner?.let { r ->
-                        InfinityPillButton(
-                            text = stringResource(R.string.p2_open_external),
-                            onClick = { previewOpen = false; r.openWith(available) },
-                            tone = InfinityPillTone.NEUTRAL,
-                            icon = Icons.AutoMirrored.Rounded.OpenInNew,
-                            compact = true,
-                        )
-                    }
-                }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                when (val result = loaded) {
-                    null -> Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
-                    else -> result.fold(
-                        onSuccess = { text ->
-                            val lower = path.lowercase()
-                            if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
-                                MarkdownText(markdown = text, isStreaming = false, showCursor = false, fontSize = 14)
-                            } else {
-                                Text(text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace))
-                            }
-                        },
-                        onFailure = {
-                            Text(stringResource(R.string.p2_file_read_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                        },
-                    )
-                }
-            }
-        }
+        val loaded = rememberWorkspaceTextLoaded(environment, available)
+        ProductionTextPreviewSheet(
+            path = path,
+            title = title,
+            subtitle = subtitle,
+            locateDir = locateDir,
+            loaded = loaded,
+            environment = environment,
+            available = available,
+            runner = runner,
+            onDismiss = { previewOpen = false },
+        )
     }
 }
 
@@ -273,7 +327,6 @@ private fun ProductionFileRowHost(
 @Composable
 internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String? = { null }, onOpenEpisode: (String) -> Unit = {}) {
     val episodes = production.episodes()
-    var reviewing by remember { mutableStateOf<Episode?>(null) }
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
         production.logline?.takeIf(String::isNotBlank)?.let { logline ->
             item("logline") {
@@ -283,30 +336,33 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
             }
         }
         item("scripts") {
-            ProductionSection(if (production.logline.isNullOrBlank()) null else stringResource(R.string.production_panel_stage_script)) {
-                if (episodes.isEmpty()) ProductionMutedRow(stringResource(R.string.production_panel_no_script))
-                episodes.forEach { episode ->
-                    val chip = production.reviewChipSpec(ReviewTarget.script(episode.id), settled = episode.scriptLocked)
-                    val title = episodeDisplayName(production, episode).joinToString(" ")
-                    val path = episode.scriptPath
-                    if (path == null) ProductionRow(title, icon = Icons.Rounded.Description, subtitle = stringResource(R.string.production_panel_no_script), chevron = false)
-                    else ProductionFileRowHost(path = path, title = title, subtitle = path) { onOpen ->
-                        ScriptTwoTierRow(
-                            title = title,
-                            path = path,
-                            chip = chip,
-                            onOpen = onOpen,
-                            reviewAction = {
-                                InfinityPillButton(
-                                    text = stringResource(R.string.p2_review_action),
-                                    onClick = { reviewing = episode },
-                                    tone = InfinityPillTone.NEUTRAL,
-                                    icon = Icons.Rounded.RateReview,
-                                    enabled = !busy,
-                                    compact = true,
-                                )
-                            },
-                        )
+            if (episodes.isEmpty()) {
+                ProductionSection(if (production.logline.isNullOrBlank()) null else stringResource(R.string.production_panel_stage_script)) {
+                    ProductionMutedRow(stringResource(R.string.production_panel_no_script))
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (!production.logline.isNullOrBlank()) {
+                        ProductionSectionHeader(stringResource(R.string.production_panel_stage_script))
+                    }
+                    episodes.forEach { episode ->
+                        val title = episodeDisplayName(production, episode).joinToString(" ")
+                        val path = episode.scriptPath
+                        if (path == null) {
+                            BettboxListGroup {
+                                ProductionRow(title, icon = Icons.Rounded.Description, subtitle = stringResource(R.string.production_panel_no_script), chevron = false)
+                            }
+                        } else {
+                            ScriptInlineReadingCard(
+                                episode = episode,
+                                title = title,
+                                path = path,
+                                production = production,
+                                busy = busy,
+                                onRun = onRun,
+                                onSubmit = onSubmit,
+                            )
+                        }
                     }
                 }
             }
@@ -340,69 +396,212 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
             }
         }
     }
-    reviewing?.let { episode ->
-        ProductionReviewSheet(
-            title = episodeDisplayName(production, episode).joinToString(" "),
-            subtitle = episode.scriptPath,
-            production = production,
-            target = ReviewTarget.script(episode.id),
-            busy = busy,
-            onRun = onRun,
-            onSubmit = onSubmit,
-            onDismiss = { reviewing = null },
-            settled = episode.scriptLocked,
-        )
-    }
 }
 
-/** 剧本两段式卡片行：首行左标题 + 右唯一状态徽章，次行缩进路径 + 右审核按钮，互不挤压。 */
+/** 剧本内嵌阅读卡：内嵌可展开 Markdown 正文、全屏查看与统一单入口「审批 / 修改审批」闭环。 */
 @Composable
-private fun ScriptTwoTierRow(
+private fun ScriptInlineReadingCard(
+    episode: Episode,
     title: String,
     path: String,
-    chip: ProductionChipSpec?,
-    onOpen: (() -> Unit)?,
-    reviewAction: @Composable () -> Unit,
+    production: Production,
+    busy: Boolean,
+    onRun: (ProductionUserAction) -> Unit,
+    onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
     val scheme = MaterialTheme.colorScheme
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .then(if (onOpen != null) Modifier.clickable(role = Role.Button, onClick = onOpen) else Modifier)
-            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+    val chrome = LocalFrostedChromeMaterial.current
+    val dark = MaterialTheme.infinityDomainColors.isDark
+    val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+
+    val environment = LocalWorkspaceMedia.current
+    val mapped = environment?.let { rememberProductionPath(it, path) }
+    val readyPath = (mapped as? ProductionPathState.Ready)?.path
+    val resolution = if (environment != null && readyPath != null) rememberWorkspaceMediaResolution(environment, readyPath)?.resolution else null
+    val runner = environment?.let { rememberMediaActionRunner(it) }
+    val available = resolution as? MediaResolution.Available
+    val isText = isTextPreviewPath(path, available?.ref?.mimeType)
+    val locateDir = readyPath?.substringBeforeLast('/')?.ifBlank { "/" } ?: "/${path.trimStart('/').substringBeforeLast('/', "")}".ifBlank { "/" }
+    val loaded = rememberWorkspaceTextLoaded(environment, available.takeIf { isText })
+
+    var fullscreenOpen by remember(episode.id, path) { mutableStateOf(false) }
+    var expanded by rememberSaveable(episode.id, path) { mutableStateOf(false) }
+
+    val onFullscreen: (() -> Unit)? = when {
+        available != null && isText -> ({ fullscreenOpen = true })
+        available != null && runner != null -> ({ runner.openWith(available) })
+        environment?.onLocate != null -> ({ environment.onLocate.invoke(locateDir) })
+        else -> null
+    }
+
+    val target = ReviewTarget.script(episode.id)
+    val chip = production.reviewChipSpec(target, settled = episode.scriptLocked)
+    val hasSavedVerdict = production.verdictOf(target) != null || episode.scriptLocked || production.unsentSuggestions(target).isNotEmpty()
+    val readingBg = if (chrome != null) {
+        scheme.onSurface.copy(alpha = if (dark) 0.05f else 0.035f)
+    } else {
+        scheme.surfaceContainer
+    }
+    val fadeTarget = if (chrome != null && dark) com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer else scheme.surfaceContainerLow
+
+    BettboxListGroup(Modifier.testTag(ProductionUiTags.SCRIPT_CARD)) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(Icons.Rounded.Description, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = scheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Rounded.Description, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                chip?.let { ProductionStatusChip(it.text, it.tone) }
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = path,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (onFullscreen != null) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.production_script_fullscreen),
+                        onClick = onFullscreen,
+                        tone = InfinityPillTone.NEUTRAL,
+                        icon = Icons.Rounded.OpenInFull,
+                        compact = true,
+                    )
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = readingBg,
+                border = BorderStroke(0.5.dp, scheme.outlineVariant.copy(alpha = 0.40f)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .animateContentSize(
+                            animationSpec = if (animate) tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate) else snap(),
+                        ),
+                ) {
+                    val isWaitingPath = environment != null && isText && (mapped is ProductionPathState.Loading || (readyPath != null && resolution == null) || (available != null && loaded == null))
+                    val textBody = loaded?.getOrNull()
+                    when {
+                        textBody != null -> {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .then(if (expanded) Modifier else Modifier.heightIn(max = 220.dp).clipToBounds()),
+                            ) {
+                                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                                    MarkdownText(markdown = textBody, isStreaming = false, showCursor = false, fontSize = 14)
+                                }
+                                if (!expanded) {
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .fillMaxWidth()
+                                            .height(30.dp)
+                                            .background(Brush.verticalGradient(listOf(Color.Transparent, fadeTarget.copy(alpha = 0.78f)))),
+                                    )
+                                }
+                            }
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.production_script_char_count, textBody.length),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                InfinityPillButton(
+                                    text = stringResource(if (expanded) R.string.production_script_collapse else R.string.production_script_expand_full),
+                                    onClick = { expanded = !expanded },
+                                    tone = InfinityPillTone.NEUTRAL,
+                                    icon = if (expanded) Icons.Rounded.UnfoldLess else Icons.Rounded.UnfoldMore,
+                                    compact = true,
+                                )
+                            }
+                        }
+                        isWaitingPath -> {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                InfinityLoadingIndicator(modifier = Modifier.size(16.dp))
+                                Text(
+                                    text = stringResource(R.string.production_script_loading),
+                                    style = MaterialTheme.typography.bodySmall.forReading(),
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        else -> {
+                            Text(
+                                text = stringResource(R.string.production_script_unavailable),
+                                style = MaterialTheme.typography.bodySmall.forReading(),
+                                color = scheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                }
+            }
+            ProductionReviewNotes(production, target)
+            HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.45f))
+            ProductionReviewActions(
+                production = production,
+                target = target,
+                label = listOf(title, path),
+                busy = busy,
+                onRun = onRun,
+                onSubmit = onSubmit,
+                settled = episode.scriptLocked,
+                statusHint = stringResource(
+                    if (hasSavedVerdict) R.string.production_review_footer_staged else R.string.production_review_footer_pending,
+                ),
             )
-            chip?.let { ProductionStatusChip(it.text, it.tone) }
         }
-        Row(
-            Modifier.fillMaxWidth().padding(start = 30.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                path,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            reviewAction()
-        }
+    }
+
+    if (fullscreenOpen && available != null && environment != null) {
+        ProductionTextPreviewSheet(
+            path = path,
+            title = title,
+            subtitle = path,
+            locateDir = locateDir,
+            loaded = loaded,
+            environment = environment,
+            available = available,
+            runner = runner,
+            onDismiss = { fullscreenOpen = false },
+        )
     }
 }
 
@@ -421,7 +620,6 @@ internal fun ProductionStoryboardTab(
     channelOrder: List<String> = emptyList(),
     onSubmit: suspend (ProductionUserAction) -> String? = { null },
 ) {
-    var reviewing by remember { mutableStateOf<Scene?>(null) }
     val episodes = production.episodes()
     val episode = episodes.firstOrNull { it.id == episodeId } ?: episodes.firstOrNull()
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
@@ -433,23 +631,28 @@ internal fun ProductionStoryboardTab(
         }
         episode?.scenes?.forEach { scene ->
             item(key = "scene-${scene.code}") {
-                val chip = production.reviewChipSpec(ReviewTarget.scene(episode.id, scene.code), settled = scene.storyboardLocked)
+                val sceneTarget = ReviewTarget.scene(episode.id, scene.code)
+                val chip = production.reviewChipSpec(sceneTarget, settled = scene.storyboardLocked)
+                val sceneLabel = listOf(stringResource(R.string.production_panel_scene_number, scene.number), scene.heading)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ProductionSceneHeader(
                         scene = scene,
                         meta = listOf(stringResource(R.string.p2_scene_shots_duration, scene.shots.size, formatShotSeconds(scene.shots.sumOf { it.durationSeconds }))),
                         statusChip = chip,
                         action = if (scene.shots.isEmpty()) null else ({
-                            InfinityPillButton(
-                                text = stringResource(R.string.p2_review_action),
-                                onClick = { reviewing = scene },
-                                tone = InfinityPillTone.NEUTRAL,
-                                icon = Icons.Rounded.RateReview,
-                                enabled = !busy,
+                            ProductionReviewActions(
+                                production = production,
+                                target = sceneTarget,
+                                label = sceneLabel,
+                                busy = busy,
+                                onRun = onRun,
+                                onSubmit = onSubmit,
+                                settled = scene.storyboardLocked,
                                 compact = true,
                             )
                         }),
                     )
+                    ProductionReviewNotes(production, sceneTarget)
                     if (scene.shots.isEmpty()) {
                         BettboxListGroup {
                             ProductionRow(stringResource(R.string.p2_no_shots_split), titleColor = MaterialTheme.colorScheme.onSurfaceVariant, chip = ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL))
@@ -476,19 +679,6 @@ internal fun ProductionStoryboardTab(
                 }
             }
         }
-    }
-    reviewing?.let { scene ->
-        if (episode != null) ProductionReviewSheet(
-            title = stringResource(R.string.production_panel_scene_number, scene.number),
-            subtitle = scene.heading,
-            production = production,
-            target = ReviewTarget.scene(episode.id, scene.code),
-            busy = busy,
-            onRun = onRun,
-            onSubmit = onSubmit,
-            onDismiss = { reviewing = null },
-            settled = scene.storyboardLocked,
-        )
     }
 }
 
