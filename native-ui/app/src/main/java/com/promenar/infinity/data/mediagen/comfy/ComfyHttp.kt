@@ -24,6 +24,8 @@ class ComfyFailure(message: String, val retryable: Boolean = false) : IOExceptio
 
 interface ComfyHttp {
     suspend fun get(host: ComfyHost, path: String): JsonObject
+    /** 带有限总调用超时的只读请求，避免大响应在慢速中转上长期挂起。 */
+    suspend fun getBounded(host: ComfyHost, path: String, callTimeoutSeconds: Int): JsonObject = get(host, path)
     suspend fun post(host: ComfyHost, path: String, body: JsonObject): JsonObject
     suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, kind: InputKind = InputKind.IMAGE): String
     suspend fun download(host: ComfyHost, location: String, save: suspend (InputStream, String?) -> String): String
@@ -33,6 +35,8 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
     // 复用应用的 Tailnet 路由；禁止自动重试有副作用的请求与跨主机重定向。
     private val client = client.newBuilder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build()
     override suspend fun get(host: ComfyHost, path: String): JsonObject = json(host, Request.Builder().url(endpoint(host, path)).get())
+    override suspend fun getBounded(host: ComfyHost, path: String, callTimeoutSeconds: Int): JsonObject =
+        json(host, Request.Builder().url(endpoint(host, path)).get(), callTimeoutSeconds.coerceAtLeast(1))
     override suspend fun post(host: ComfyHost, path: String, body: JsonObject): JsonObject = try {
         json(host, Request.Builder().url(endpoint(host, path)).post(body.toString().toRequestBody("application/json".toMediaType())))
     } catch (e: ComfyFailure) {
@@ -78,16 +82,17 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
             }
         }
     }
-    private suspend fun json(host: ComfyHost, builder: Request.Builder): JsonObject = response(host, builder) { response ->
+    private suspend fun json(host: ComfyHost, builder: Request.Builder, callTimeoutSeconds: Int = 0): JsonObject =
+        response(host, builder, callTimeoutSeconds) { response ->
         val body = response.body ?: throw ComfyFailure("主机响应为空")
         val bytes = LimitedComfyStream(body.byteStream(), 16L * 1024 * 1024) { currentThreadActive() }.use { it.readBytes() }
         try { Json.parseToJsonElement(bytes.decodeToString()).jsonObject }
         catch (_: Exception) { throw ComfyFailure("ComfyUI 返回了无法解析的 JSON") }
     }
-    private suspend fun <T> response(host: ComfyHost, builder: Request.Builder, consume: suspend (Response) -> T): T = withContext(Dispatchers.IO) {
+    private suspend fun <T> response(host: ComfyHost, builder: Request.Builder, callTimeoutSeconds: Int = 0, consume: suspend (Response) -> T): T = withContext(Dispatchers.IO) {
         credentials.authorization(host)?.let { builder.header("Authorization", it) }
-        // 不设整次调用总时限：经 tailnet 中转的大响应只是慢；连续无数据达到主机超时才判失败。
-        val call = client.newBuilder().callTimeout(0, TimeUnit.SECONDS)
+        // 默认不设整次调用总时限：经 tailnet 中转的大响应只是慢；仅特定只读接口显式传入有限 callTimeoutSeconds。
+        val call = client.newBuilder().callTimeout(callTimeoutSeconds.coerceAtLeast(0).toLong(), TimeUnit.SECONDS)
             .writeTimeout(host.timeoutSeconds.toLong(), TimeUnit.SECONDS)
             .connectTimeout(minOf(host.timeoutSeconds, 30).toLong(), TimeUnit.SECONDS)
             .readTimeout(host.timeoutSeconds.toLong(), TimeUnit.SECONDS).build().newCall(builder.build())
@@ -122,15 +127,15 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
     }
 }
 /**
- * 只读取工作流实际用到的节点类型 schema（逐个 /object_info/<类型>，最多 4 个并发），
- * 慢速中转下不再拉取整份节点清单；主机缺少的类型返回空对象，由预检判为缺项。
+ * 只读取指定节点类型 schema（逐个 /object_info/<类型>，最多 4 个并发），
+ * 慢速中转下不再拉取整份节点清单；主机缺少的类型返回空对象，由预检或上层判为缺项。
  */
-internal suspend fun ComfyHttp.objectInfoFor(host: ComfyHost, workflow: JsonObject): JsonObject {
-    val types = workflow.values.mapNotNull { ((it as? JsonObject)?.get("class_type") as? JsonPrimitive)?.contentOrNull }
-        .filter { type -> type.isNotBlank() && type.length <= 200 && type.none { it < ' ' || it == '\u007f' } }.distinct()
+internal suspend fun ComfyHttp.objectInfoForTypes(host: ComfyHost, types: List<String>): JsonObject {
+    val clean = types.filter { type -> type.isNotBlank() && type.length <= 200 && type.none { it < ' ' || it == '\u007f' } }.distinct()
+    if (clean.isEmpty()) return JsonObject(emptyMap())
     val permits = kotlinx.coroutines.sync.Semaphore(4)
     val parts = coroutineScope {
-        types.map { type ->
+        clean.map { type ->
             async {
                 permits.withPermit {
                     get(host, "/object_info/" + java.net.URLEncoder.encode(type, Charsets.UTF_8.name()).replace("+", "%20"))[type]?.let { type to it }
@@ -139,6 +144,11 @@ internal suspend fun ComfyHttp.objectInfoFor(host: ComfyHost, workflow: JsonObje
         }.awaitAll()
     }
     return JsonObject(parts.filterNotNull().toMap())
+}
+
+internal suspend fun ComfyHttp.objectInfoFor(host: ComfyHost, workflow: JsonObject): JsonObject {
+    val types = workflow.values.mapNotNull { ((it as? JsonObject)?.get("class_type") as? JsonPrimitive)?.contentOrNull }
+    return objectInfoForTypes(host, types)
 }
 private fun currentThreadActive() { if (Thread.currentThread().isInterrupted) throw IOException("传输已中断") }
 private suspend fun Call.awaitComfyResponse(): Response = suspendCancellableCoroutine { continuation ->

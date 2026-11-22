@@ -9,8 +9,8 @@ import com.promenar.infinity.data.production.isActive
 import com.promenar.infinity.domain.mediagen.*
 import kotlinx.serialization.json.*
 
-/** 模板规格只读取显式声明的槽位；未声明的时长由锁定工作流决定。 */
-internal fun comfyPlanningSpecs(template: ComfyTemplate): GenerationSpecs {
+/** 模板规格只读取显式声明的槽位；若声明了 fps 则按镜头秒数对齐帧数约束，未声明时回退锁定工作流默认帧数。 */
+internal fun comfyPlanningSpecs(template: ComfyTemplate, shot: Shot? = null, framesOverride: Int? = null): GenerationSpecs {
     fun value(kind: SlotKind): Long? {
         val slots = template.slots.filter { it.kind == kind }
         if (slots.isEmpty()) return null
@@ -23,9 +23,22 @@ internal fun comfyPlanningSpecs(template: ComfyTemplate): GenerationSpecs {
         return values.singleOrNull() ?: values.first()
     }
     fun positive(kind: SlotKind): Int? = value(kind)?.also { require(it in 1..Int.MAX_VALUE.toLong()) }?.toInt()
-    val frames = positive(SlotKind.FRAMES)?.also { require(it >= template.frameBase && (it - template.frameBase) % template.frameStep == 0 && (template.maxFrames == null || it <= template.maxFrames)) }
+    val hasFramesSlot = template.slots.any { it.kind == SlotKind.FRAMES }
+    val frames = when {
+        framesOverride != null -> {
+            require(hasFramesSlot) { "模板未声明 FRAMES 槽位，不支持指定帧数" }
+            require(framesOverride >= template.frameBase && (framesOverride - template.frameBase) % template.frameStep == 0 &&
+                (template.maxFrames == null || framesOverride <= template.maxFrames)) {
+                "帧数必须满足 ${template.frameBase}+${template.frameStep}n 与上限 ${template.maxFrames ?: "不限"}"
+            }
+            framesOverride
+        }
+        shot != null && hasFramesSlot && template.fps != null -> template.snapFramesForDuration(shot.durationSeconds)
+        else -> positive(SlotKind.FRAMES)?.also { require(it >= template.frameBase && (it - template.frameBase) % template.frameStep == 0 && (template.maxFrames == null || it <= template.maxFrames)) }
+    }
     fun aligned(kind: SlotKind) = positive(kind)?.also { require(it <= Int.MAX_VALUE - 31) }?.let { ((it + 31) / 32) * 32 }
-    val specs = GenerationSpecs(width = aligned(SlotKind.WIDTH), height = aligned(SlotKind.HEIGHT), frames = frames, seed = value(SlotKind.SEED))
+    val durationExact = if (shot != null && template.slots.any { it.kind == SlotKind.DURATION }) shot.durationSeconds else null
+    val specs = GenerationSpecs(width = aligned(SlotKind.WIDTH), height = aligned(SlotKind.HEIGHT), frames = frames, seed = value(SlotKind.SEED), durationSecondsExact = durationExact)
     require((specs.width == null) == (specs.height == null))
     return specs
 }

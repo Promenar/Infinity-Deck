@@ -24,6 +24,8 @@ val ChineseShotPlanningMessages = ShotPlanningMessages { key, detail -> when (ke
     "missing_voice" -> "配音缺少角色参考语音：$detail"
     "workflow_timing" -> "时长由锁定工作流决定：$detail"
     "workflow_timing_frames" -> "时长由锁定工作流决定：$detail 帧"
+    "derived_frames" -> "按镜头时长换算：$detail 帧"
+    "override_frames" -> "已指定帧数：$detail 帧"
     "plan_changed" -> "镜头规划已变化，请先预览。"
     "candidate_capacity" -> "候选容量不足：$detail"
     "audio_failed" -> "部分配音任务未入队：$detail"
@@ -52,11 +54,21 @@ class DefaultShotGenerationPlanner(
     private data class Plan(val snapshot: ProductionSnapshot, val shot: Shot, val preview: ShotPlanPreview)
     private fun text(key: String, detail: String = "") = messages.text(key, detail)
 
-    override suspend fun preview(sessionId: String, episodeId: String, shotCode: String): ShotPlanPreview = withContext(ioDispatcher) {
-        plan(sessionId, episodeId, shotCode).preview
+    override suspend fun preview(sessionId: String, episodeId: String, shotCode: String): ShotPlanPreview =
+        preview(sessionId, episodeId, shotCode, null)
+
+    override suspend fun preview(sessionId: String, episodeId: String, shotCode: String, frames: Int?): ShotPlanPreview = withContext(ioDispatcher) {
+        plan(sessionId, episodeId, shotCode, framesOverride = frames).preview
     }
 
-    private suspend fun plan(sessionId: String, episodeId: String, shotCode: String, compile: Boolean = false, params: Map<String, kotlinx.serialization.json.JsonPrimitive> = emptyMap()): Plan {
+    private suspend fun plan(
+        sessionId: String,
+        episodeId: String,
+        shotCode: String,
+        compile: Boolean = false,
+        params: Map<String, kotlinx.serialization.json.JsonPrimitive> = emptyMap(),
+        framesOverride: Int? = null,
+    ): Plan {
         val snapshot = store.load(sessionId) ?: throw IllegalArgumentException(text("missing_project"))
         val p = snapshot.production
         val scene = p.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId }?.scenes?.firstOrNull { sc -> sc.shots.any { it.code == shotCode } }
@@ -93,7 +105,7 @@ class DefaultShotGenerationPlanner(
             packed += PlannedInput(null, title, detail, kind, role, path)
         }
         val explicit = when (shot.mode) {
-            ShotMode.FIRST_FRAME, ShotMode.FIRST_LAST -> shot.inputs.sortedBy { when (it.role) { InputRole.FIRST_FRAME -> 0; InputRole.LAST_FRAME -> 1; else -> 2 } }
+            ShotMode.FIRST_FRAME, ShotMode.LAST_FRAME, ShotMode.FIRST_LAST -> shot.inputs.sortedBy { when (it.role) { InputRole.FIRST_FRAME -> 0; InputRole.LAST_FRAME -> 1; else -> 2 } }
             else -> shot.inputs
         }
         explicit.forEach { item -> input(item.path, item.label ?: item.role.name.lowercase(), item.atSeconds?.let { "$it 秒" }.orEmpty(),
@@ -117,8 +129,12 @@ class DefaultShotGenerationPlanner(
                 val sheetPath = look.sheetPath?.takeIf(String::isNotBlank)
                 val selectedIds = appearance.referenceSlotIds
                 val selected = selectedIds.mapNotNull { id -> look.slots.find { it.id == id }.also { if (it == null) issues += text("missing_input", "${character.name}/$id") } }
-                val order = if (channel == null || inputMode == ReferenceInputMode.SHEET) ProductionRules.defaultSlotOrder else channel.capabilities.referenceOrder.map(::canonicalSlot)
-                val slots = selected.sortedWith(compareBy<ReferenceSlot> { slot -> order.indexOf(canonicalSlot(slot.id)).let { if (it < 0) Int.MAX_VALUE else it } }.thenBy { it.id })
+                val configuredOrder = if (channel == null || inputMode == ReferenceInputMode.SHEET) emptyList() else channel.capabilities.referenceOrder.map(::canonicalSlot)
+                val slots = selected.sortedWith(
+                    compareBy<ReferenceSlot> { slot -> configuredOrder.indexOf(canonicalSlot(slot.id)).let { if (it < 0) Int.MAX_VALUE else it } }
+                        .thenBy { slot -> ProductionRules.defaultSlotOrder.indexOf(canonicalSlot(slot.id)).let { if (it < 0) Int.MAX_VALUE else it } }
+                        .thenBy { it.id },
+                )
                 if (inputMode == ReferenceInputMode.SHEET) {
                     if (sheetPath != null) {
                         if (packed.none { it.path == sheetPath }) input(sheetPath, "${character.name} · ${look.name}", "多视图资产卡", expectedKind = InputKind.IMAGE)
@@ -200,15 +216,37 @@ class DefaultShotGenerationPlanner(
         }
         val format = channel?.capabilities?.promptFormat ?: PromptFormat.GENERIC
         val prompt = if (shot.promptUserEdited && !compile) shot.prompt else ShotPromptCompiler.compile(p, shot, accepted, format)
-        val specs = if (channel == null) GenerationSpecs() else try { specsFor(channel, shot) }
+        val template = channel?.let { templateFor(it) }
+        val baseSpecs = if (channel == null) GenerationSpecs() else try { specsFor(channel, shot) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { issues += text("invalid_plan", "specs"); GenerationSpecs() }
+        val specs = if (framesOverride != null) {
+            when {
+                channel == null || template == null || template.slots.none { it.kind == SlotKind.FRAMES } -> {
+                    issues += text("invalid_plan", "frames")
+                    baseSpecs
+                }
+                framesOverride < template.frameBase || (framesOverride - template.frameBase) % template.frameStep != 0 ||
+                    (template.maxFrames != null && framesOverride > template.maxFrames) -> {
+                    issues += text("invalid_plan", "frames (${template.frameBase}+${template.frameStep}n)")
+                    baseSpecs
+                }
+                else -> baseSpecs.copy(frames = framesOverride)
+            }
+        } else baseSpecs
         if (channel != null) {
-            if (channel.id.startsWith("comfy:")) warnings += specs.frames?.let { text("workflow_timing_frames", it.toString()) } ?: text("workflow_timing", labelOf(channel))
-            else if (shot.durationSeconds % 1.0 != 0.0) issues += text("invalid_plan", "durationSeconds")
+            if (channel.id.startsWith("comfy:")) {
+                val warning = when {
+                    framesOverride != null && specs.frames == framesOverride -> text("override_frames", specs.frames.toString())
+                    template?.fps != null && specs.frames != null -> text("derived_frames", specs.frames.toString())
+                    else -> specs.frames?.let { text("workflow_timing_frames", it.toString()) } ?: text("workflow_timing", labelOf(channel))
+                }
+                warnings += warning
+            } else if (shot.durationSeconds % 1.0 != 0.0) {
+                issues += text("invalid_plan", "durationSeconds")
+            }
         }
         val request = request(p, episodeId, shot, channel?.id.orEmpty(), prompt, accepted, sessionId, specs).let { planned ->
-            val template = channel?.let { templateFor(it) }
             require(params.isEmpty() || template != null) { "该通道不接受模板参数。" }
             planned.copy(params = template?.resolveParams(params) ?: emptyMap(), productionContext = template?.let { ProductionMediaContext(templateFingerprint = it.fingerprint()) })
         }
@@ -243,12 +281,13 @@ class DefaultShotGenerationPlanner(
             prompt, shot.promptUserEdited && !compile, format, null, issues.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n"), warnings, audioPlans, specs, params = request.params))
     }
 
-    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String): ShotGenerateResult = generate(sessionId, episodeId, shotCode, emptyMap())
-    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String, params: Map<String, kotlinx.serialization.json.JsonPrimitive>): ShotGenerateResult = withContext(ioDispatcher) {
+    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String): ShotGenerateResult = generate(sessionId, episodeId, shotCode, emptyMap(), null)
+    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String, params: Map<String, kotlinx.serialization.json.JsonPrimitive>): ShotGenerateResult = generate(sessionId, episodeId, shotCode, params, null)
+    override suspend fun generate(sessionId: String, episodeId: String, shotCode: String, params: Map<String, kotlinx.serialization.json.JsonPrimitive>, frames: Int?): ShotGenerateResult = withContext(ioDispatcher) {
         submissions.withLock {
             val submitted = mutableListOf<MediaTask>()
             try {
-                val plan = plan(sessionId, episodeId, shotCode, params = params)
+                val plan = plan(sessionId, episodeId, shotCode, params = params, framesOverride = frames)
                 plan.preview.blockedReason?.let { return@withLock ShotGenerateResult.Rejected(it) }
                 val channel = requireNotNull(plan.preview.channel)
                 val inputs = plan.preview.inputs.map { input -> if (input.compositeOf.isEmpty()) input else input.copy(path = compositor.materialize(sessionId, plan.snapshot.production.rootPath, input.compositeOf)) }

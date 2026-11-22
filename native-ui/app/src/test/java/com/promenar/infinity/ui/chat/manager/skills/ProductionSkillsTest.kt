@@ -141,9 +141,20 @@ class ProductionSkillsTest {
         val p = Production("p", "项目", ProductionKind.FILM, "p", createdAt = 1, updatedAt = 1)
         io.mockk.coEvery { repo.get("s") } returns ProductionSnapshot(p, 1, ManifestSync.InSync)
         var reads = 0
-        val skill = ProductionGetSkill(repo) { reads++; emptyList() }
+        var audits = 0
+        val events = mutableListOf<String>()
+        io.mockk.coEvery { repo.get("s") } answers { events += "get"; ProductionSnapshot(p, 1, ManifestSync.InSync) }
+        val skill = ProductionGetSkill(repo, { reads++; emptyList() }) { audits++; events += "audit" }
+        assertThat(skill.execute(buildJsonObject { put("scope", "overview") }, context).status).isEqualTo("success")
+        assertThat(audits).isEqualTo(0)
+        events.clear()
         assertThat(skill.execute(buildJsonObject { put("scope", "changes") }, context).status).isEqualTo("success")
-        assertThat(reads).isEqualTo(1)
+        assertThat(reads).isEqualTo(2)
+        assertThat(audits).isEqualTo(1)
+        assertThat(events).containsExactly("audit", "get").inOrder()
+        val resilient = ProductionGetSkill(repo, { emptyList() }) { error("scan failed") }
+        assertThat(resilient.execute(buildJsonObject { put("scope", "changes") }, context).status).isEqualTo("success")
+        assertThat(productionModes).contains("last_frame")
         assertThat(skill.description).contains("open_items")
         assertThat(ProductionUpdateSkill(repo).description).doesNotContain("set_budget")
     }

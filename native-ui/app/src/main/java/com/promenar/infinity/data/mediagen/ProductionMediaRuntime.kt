@@ -41,10 +41,7 @@ class ProductionMediaRuntime(private val app: InfinityApplication) {
     private suspend fun template(channel: MediaChannel) = if (channel.id.startsWith("comfy:")) app.comfyMedia.repository.templateByChannel(channel.id).template else null
     private suspend fun channelReady(id: String) = if (id.startsWith("comfy:")) templates().any { it.template.channelId == id && it.ready && it.template.role == TemplateRole.GENERATE && it.template.slots.filter { slot -> slot.kind == SlotKind.OUTPUT }.sumOf { slot -> slot.capacity } == 1 } else registry.channel(id) != null
     private suspend fun planningSpecs(channel: MediaChannel, shot: Shot): GenerationSpecs =
-        template(channel)?.let { t ->
-            val base = comfyPlanningSpecs(t)
-            if (t.slots.any { it.kind == SlotKind.DURATION }) base.copy(durationSecondsExact = shot.durationSeconds) else base
-        } ?: cloudPlanningSpecs(requireNotNull(models.find(channel.id)), shot)
+        template(channel)?.let { comfyPlanningSpecs(it, shot) } ?: cloudPlanningSpecs(requireNotNull(models.find(channel.id)), shot)
     val processing: ProductionProcessing by lazy { DefaultProductionProcessing(workStore, registry, queue, ::templates, ::planningSpecs, files::isImageOrVideo) }
     val chains by lazy { ShotChainCoordinator(workStore, registry, queue, planner, chainMediaOps,
         fingerprint = { id -> registry.channel(id)?.let { template(it)?.fingerprint() } }, ready = ::channelReady, specsFor = ::planningSpecs) }
@@ -56,8 +53,7 @@ class ProductionMediaRuntime(private val app: InfinityApplication) {
     val planner: ShotGenerationPlanner by lazy {
         DefaultShotGenerationPlanner(store, registry, queue, files, CachedCharacterCompositor(files),
             backendFor = { channel -> bindings.filter { it.backend.handles(channel) }.singleOrNull()?.backend },
-            specsFor = { channel, shot -> if (channel.id.startsWith("comfy:")) comfyPlanningSpecs(app.comfyMedia.repository.templateByChannel(channel.id).template)
-                else cloudPlanningSpecs(requireNotNull(models.find(channel.id)), shot) },
+            specsFor = ::planningSpecs,
             validateBackend = { channel, request ->
                 if (channel.id.startsWith("comfy:")) {
                     val state = app.comfyMedia.repository.templateByChannel(channel.id)

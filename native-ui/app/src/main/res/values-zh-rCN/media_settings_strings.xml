@@ -23,6 +23,7 @@
     <string name="media_settings_mode_text">文生</string>
     <string name="media_settings_mode_reference">参考</string>
     <string name="media_settings_mode_first">首帧</string>
+    <string name="media_settings_mode_last">仅尾帧</string>
     <string name="media_settings_mode_first_last">首尾帧</string>
     <string name="media_settings_mode_speech">语音</string>
     <string name="media_settings_mode_music">音乐</string>
@@ -172,6 +173,7 @@
     <string name="media_settings_diagnostic_27">节点 %1$s 缺少动态输入 %2$s</string>
     <string name="media_settings_diagnostic_28">节点 %1$s 动态类型 %2$s 需复核</string>
     <string name="media_settings_diagnostic_29">节点 %1$s</string>
+    <string name="media_settings_diagnostic_30">节点 %1$s 缺少动态选项 %2$s（请将裸键 %3$s 改为扁平键 %2$s）</string>
     <string name="media_settings_connection">连接</string>
     <string name="media_settings_host_actions">主机</string>
     <string name="media_settings_entry_subtitle">管理图像、视频与语音生成的默认通道与顺序</string>

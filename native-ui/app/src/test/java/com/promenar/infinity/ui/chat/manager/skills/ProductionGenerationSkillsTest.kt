@@ -64,4 +64,24 @@ class ProductionGenerationSkillsTest {
         assertEquals(1, result.getValue("overflow").jsonArray.size)
         assertEquals("超限", result.getValue("blocked_reason").jsonPrimitive.content)
     }
+    @Test fun `预览与生成支持可选frames覆盖且校验schema`() = runTest {
+        val planner = mockk<ShotGenerationPlanner>()
+        val previewSkill = ProductionPlanSkill { planner }
+        val generateSkill = ProductionGenerateSkill { planner }
+        val validator = com.promenar.infinity.domain.tool.ToolSchemaValidator()
+        listOf(previewSkill, generateSkill).forEach { tool ->
+            assertTrue(validator.validateDefinition(tool.parametersSchema) is com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid)
+        }
+        assertEquals("error", previewSkill.execute(args("""{"episode_id":"S1E01","shot_code":"SC01-01","frames":0}"""), context).status)
+        assertEquals("error", generateSkill.execute(args("""{"episode_id":"S1E01","shot_code":"SC01-01","frames":"107"}"""), context).status)
+        coEvery { planner.preview("s", "S1E01", "SC01-01", 107) } returns ShotPlanPreview(
+            null, true, "", ShotMode.TEXT, emptyList(), emptyList(), "p", false, PromptFormat.H3, null, null, emptyList(),
+            specs = GenerationSpecs(frames = 107),
+        )
+        coEvery { planner.generate("s", "S1E01", "SC01-01", emptyMap(), 107) } returns ShotGenerateResult.Submitted("task-107", false)
+        val previewOut = args(previewSkill.execute(args("""{"episode_id":"S1E01","shot_code":"SC01-01","frames":107}"""), context).content)
+        assertEquals(107, previewOut.getValue("specs").jsonObject.getValue("frames").jsonPrimitive.int)
+        val genOut = args(generateSkill.execute(args("""{"episode_id":"S1E01","shot_code":"SC01-01","frames":107}"""), context).content)
+        assertEquals("task-107", genOut.getValue("task_id").jsonPrimitive.content)
+    }
 }

@@ -78,4 +78,17 @@ class ProductionMediaPlanningTest {
         assertFalse(productionRequestAvailable(request, store))
     }
 
+    @Test fun `Comfy配置fps时按镜头时长对齐帧数并支持显式覆盖`() {
+        val h3 = ComfyTemplate("h3",
+            Json.parseToJsonElement("""{"1":{"class_type":"Generator","inputs":{"frames":124}}}""").jsonObject,
+            listOf(ComfySlot("1", "frames", SlotKind.FRAMES)),
+            frameBase = 5, frameStep = 17, maxFrames = 362, locked = true,
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)), hostId = "host", group = MediaGroup.VIDEO, fps = 24.0)
+        val shot = com.promenar.infinity.data.production.Shot("SC01-01", "镜头", durationSeconds = 4.5)
+        assertEquals(107, comfyPlanningSpecs(h3, shot).frames)
+        assertEquals(141, comfyPlanningSpecs(h3, shot.copy(durationSeconds = 5.88)).frames)
+        assertEquals(124, comfyPlanningSpecs(h3, shot, framesOverride = 124).frames)
+        assertThrows(IllegalArgumentException::class.java) { comfyPlanningSpecs(h3, shot, framesOverride = 125) }
+    }
+
 }

@@ -26,6 +26,7 @@ private val mediaDiagnosticRules = listOf(
     Regex("槽位 (.+)") to R.string.media_settings_diagnostic_15,
     Regex("上传目标与槽位 (.+) 连线不一致") to R.string.media_settings_diagnostic_16,
     Regex("上传输入 (.+)") to R.string.media_settings_diagnostic_17,
+    Regex("节点 (.+) 缺少动态选项 (.+)（检测到裸键 (.+)，请改用扁平键 .+）") to R.string.media_settings_diagnostic_30,
     Regex("节点 (.+) 缺少动态选项 (.+)") to R.string.media_settings_diagnostic_18,
     Regex("节点 (.+) 动态选项 (.+) 无法判定") to R.string.media_settings_diagnostic_19,
     Regex("节点 (.+) 动态输入 (.+) schema 无法判定") to R.string.media_settings_diagnostic_20,

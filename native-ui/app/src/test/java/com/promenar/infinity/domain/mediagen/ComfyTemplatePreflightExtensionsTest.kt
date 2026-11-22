@@ -71,6 +71,9 @@ class ComfyTemplatePreflightExtensionsTest {
         val selector = ComfyTemplate("selector", graph, listOf(ComfySlot("1", "mode", SlotKind.PARAM, param = "mode")),
             params = listOf(TemplateParam("mode", "模式", TemplateParamType.ENUM, JsonPrimitive("slow"), options = listOf("slow", "absent"))))
         assertTrue(preflightComfy(selector, info).missing.any { it.contains("params.mode.options") })
+        val v3Combo = Json.parseToJsonElement(info.toString().replace("""[["low","high"]]""", """["COMBO",{"options":["low","high"]}]""")).jsonObject
+        assertEquals(PreflightStatus.PASS, preflightComfy(t, v3Combo).status)
+        assertTrue(preflightComfy(badEnum, v3Combo).missing.any { it.contains("params.quality.options") })
     }
 
     @Test fun audioOutputsRequireAudioAndUnknownOutputTypesRequireReview() {

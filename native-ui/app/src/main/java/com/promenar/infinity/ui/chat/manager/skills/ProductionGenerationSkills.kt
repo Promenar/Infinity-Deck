@@ -10,20 +10,28 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.*
 
-private const val ShotArguments = """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"}},"required":["episode_id","shot_code"],"additionalProperties":false}"""
+private const val ShotPlanArguments = """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"},"frames":{"type":["integer","null"],"description":"可选。覆盖支持 FRAMES 槽位的 ComfyUI 模板帧数（须满足模板 frameBase+k*frameStep 与上限）"}},"required":["episode_id","shot_code"],"additionalProperties":false}"""
 
-class ProductionPlanSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_plan", "预览镜头的通道、实际输入顺序、提示词与阻断原因；提交前调用。", ShotArguments, ToolRisk.SAFE_READ) {
+class ProductionPlanSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_plan", "预览镜头的通道、实际输入顺序、提示词与阻断原因；支持可选 frames 覆盖支持 FRAMES 槽位的 ComfyUI 模板帧数；提交前调用。", ShotPlanArguments, ToolRisk.SAFE_READ) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
-        val (episode, shot) = shotArguments(args)
-        return shotPlanJson(planner().preview(context.sessionId, episode, shot))
+        arguments(args, setOf("episode_id", "shot_code"), setOf("episode_id", "shot_code", "frames"))
+        val episode = stringArgument(args, "episode_id"); val shot = stringArgument(args, "shot_code")
+        val frames = framesArgument(args)
+        return shotPlanJson(if (frames == null) planner().preview(context.sessionId, episode, shot) else planner().preview(context.sessionId, episode, shot, frames))
     }
 }
-class ProductionGenerateSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_generate", "按已预览的当前规划生成镜头及配音，返回任务 id 或拒绝原因；任务直接入队。", """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"},"params":{"type":"object"}},"required":["episode_id","shot_code"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
+class ProductionGenerateSkill(private val planner: () -> ShotGenerationPlanner) : ProductionGenerationTool("production_generate", "按已预览的当前规划生成镜头及配音，支持可选 params 与 frames 覆盖支持 FRAMES 槽位的 ComfyUI 模板帧数，返回任务 id 或拒绝原因；任务直接入队。", """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"},"params":{"type":"object"},"frames":{"type":["integer","null"],"description":"可选。覆盖支持 FRAMES 槽位的 ComfyUI 模板帧数（须满足模板 frameBase+k*frameStep 与上限）"}},"required":["episode_id","shot_code"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
-        arguments(args, setOf("episode_id", "shot_code"), setOf("episode_id", "shot_code", "params"))
+        arguments(args, setOf("episode_id", "shot_code"), setOf("episode_id", "shot_code", "params", "frames"))
         val episode = stringArgument(args, "episode_id"); val shot = stringArgument(args, "shot_code")
         val params = productionParams(args)
-        return when (val result = if (params.isEmpty()) planner().generate(context.sessionId, episode, shot) else planner().generate(context.sessionId, episode, shot, params)) {
+        val frames = framesArgument(args)
+        val result = when {
+            frames != null -> planner().generate(context.sessionId, episode, shot, params, frames)
+            params.isEmpty() -> planner().generate(context.sessionId, episode, shot)
+            else -> planner().generate(context.sessionId, episode, shot, params)
+        }
+        return when (result) {
             is ShotGenerateResult.Rejected -> buildJsonObject { put("status", "rejected"); put("reason", result.reason) }
             is ShotGenerateResult.Submitted -> buildJsonObject {
                 put("status", "submitted"); put("task_id", result.taskId)
@@ -79,7 +87,10 @@ abstract class ProductionGenerationTool(override val name: String, override val 
 }
 private fun arguments(args: JsonObject, required: Set<String>, allowed: Set<String>) = validateProductionToolKeys(args, required, allowed)
 private fun stringArgument(args: JsonObject, name: String) = (args[name] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() && it.length <= 300 } ?: throw IllegalArgumentException("$name 必须是 1～300 字的非空字符串。")
-private fun shotArguments(args: JsonObject): Pair<String, String> { arguments(args, setOf("episode_id", "shot_code"), setOf("episode_id", "shot_code")); return stringArgument(args, "episode_id") to stringArgument(args, "shot_code") }
+private fun framesArgument(args: JsonObject): Int? = if ("frames" !in args || args["frames"] == JsonNull) null else {
+    (args["frames"] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it > 0 }
+        ?: throw IllegalArgumentException("frames 必须是正整数。")
+}
 private fun moneyJson(money: Money?): JsonElement = money?.let { buildJsonObject { put("amount", it.amount.toPlainString()); put("currency", it.currency) } } ?: JsonNull
 internal fun shotPlanJson(plan: ShotPlanPreview): JsonObject = buildJsonObject {
     put("channel_id", plan.channel?.id?.let(::JsonPrimitive) ?: JsonNull); put("channel_label", plan.channelLabel); put("channel_is_default", plan.channelIsDefault)

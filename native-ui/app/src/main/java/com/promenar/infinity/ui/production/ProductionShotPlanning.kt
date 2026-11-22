@@ -658,6 +658,7 @@ private fun ReviewWarningBanner(warning: String, onReview: () -> Unit) {
 private fun GenerationMode.toShotMode(): ShotMode? = when (this) {
     GenerationMode.TEXT -> ShotMode.TEXT
     GenerationMode.FIRST_FRAME -> ShotMode.FIRST_FRAME
+    GenerationMode.LAST_FRAME -> ShotMode.LAST_FRAME
     GenerationMode.FIRST_LAST_FRAME -> ShotMode.FIRST_LAST
     GenerationMode.REFERENCE -> ShotMode.REFERENCE
     GenerationMode.SPEECH, GenerationMode.MUSIC -> null

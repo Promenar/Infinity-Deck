@@ -58,7 +58,49 @@ class ComfyTemplateContractTest {
         assertEquals(JsonArray(listOf(JsonPrimitive("2"), JsonPrimitive(0))), filled.getValue("1").jsonObject.getValue("inputs").jsonObject["ref_images.ref_image_0"])
         assertFalse(filled.getValue("1").jsonObject.getValue("inputs").jsonObject.containsKey("ref_images.ref_image_1"))
         assertEquals("input/a.png", filled.getValue("2").jsonObject.getValue("inputs").jsonObject.getValue("image").jsonPrimitive.content)
+        assertFalse(filled.containsKey("3"))
+        val sharedGraph = JsonObject(graph + ("4" to Json.parseToJsonElement("""{"class_type":"Preview","inputs":{"images":["3",0]}}""")))
+        val shared = fillComfyWorkflow(t.copy(workflow = sharedGraph), mapOf(SlotKind.REFERENCE_IMAGES to listOf("input/a.png")))
+        assertTrue(shared.containsKey("3"))
         val broken = t.copy(slots = listOf(t.slots.single().copy(uploadTargets = listOf(ComfyUploadTarget("3", "image"), ComfyUploadTarget("2", "image")))))
         assertThrows(IllegalArgumentException::class.java) { fillComfyWorkflow(broken, mapOf(SlotKind.REFERENCE_IMAGES to listOf("x"))) }
+    }
+
+    @Test fun snapFramesForDurationAlignsToGridAndPreservesFingerprintWhenNull() {
+        val h3 = ComfyTemplate("h3", Json.parseToJsonElement("""{"1":{"class_type":"Loader","inputs":{"frames":124}}}""").jsonObject,
+            listOf(ComfySlot("1", "frames", SlotKind.FRAMES)), frameBase = 5, frameStep = 17, maxFrames = 362, fps = 24.0)
+        assertEquals(107, h3.snapFramesForDuration(4.5))
+        assertEquals(124, h3.snapFramesForDuration(5.2))
+        assertEquals(141, h3.snapFramesForDuration(5.88))
+        assertEquals(362, h3.snapFramesForDuration(20.0))
+        assertNull(h3.copy(fps = null).snapFramesForDuration(5.0))
+        assertEquals(template.fingerprint(), template.copy(fps = null).fingerprint())
+        assertNotEquals(h3.fingerprint(), h3.copy(fps = 25.0).fingerprint())
+        assertThrows(IllegalArgumentException::class.java) { h3.copy(fps = 0.0) }
+        assertThrows(IllegalArgumentException::class.java) { h3.copy(fps = 241.0) }
+    }
+
+    @Test fun preflightSupportsComfyV3ComboModelsAndBareDynamicComboHint() {
+        val v3Info = Json.parseToJsonElement("""{
+            "Predictor":{"input":{"required":{"model":["COMBO",{"options":["veda_fp8.safetensors"]}]}}},
+            "SaveVideo":{"input":{"required":{"format":["COMFY_DYNAMICCOMBO_V3",{"options":[{"key":"auto","inputs":{"required":{"codec":["COMFY_DYNAMICCOMBO_V3",{"options":[{"key":"auto","inputs":{"required":{}}}]}]}}}]}]}}}
+        }""").jsonObject
+        val graph = Json.parseToJsonElement("""{
+            "1":{"class_type":"Predictor","inputs":{"model":"veda_fp8.safetensors"}},
+            "2":{"class_type":"SaveVideo","inputs":{"format":"auto","codec":"auto"}}
+        }""").jsonObject
+        val t = ComfyTemplate("v3", graph, emptyList(), models = listOf(ComfyModelSlot("1", "model")))
+        val bare = preflightComfy(t, v3Info)
+        assertEquals(PreflightStatus.MISSING, bare.status)
+        assertTrue(bare.missing.any { it == "节点 2 缺少动态选项 format.codec（检测到裸键 codec，请改用扁平键 format.codec）" })
+        assertFalse(bare.uncertain.any { it.contains("可选值") })
+
+        val fixedGraph = Json.parseToJsonElement("""{
+            "1":{"class_type":"Predictor","inputs":{"model":"veda_fp8.safetensors"}},
+            "2":{"class_type":"SaveVideo","inputs":{"format":"auto","format.codec":"auto"}}
+        }""").jsonObject
+        assertEquals(PreflightStatus.PASS, preflightComfy(t.copy(workflow = fixedGraph), v3Info).status)
+        val missingModel = Json.parseToJsonElement("""{"1":{"class_type":"Predictor","inputs":{"model":"missing.safetensors"}},"2":{"class_type":"SaveVideo","inputs":{"format":"auto","format.codec":"auto"}}}""").jsonObject
+        assertEquals(PreflightStatus.MISSING, preflightComfy(t.copy(workflow = missingModel), v3Info).status)
     }
 }

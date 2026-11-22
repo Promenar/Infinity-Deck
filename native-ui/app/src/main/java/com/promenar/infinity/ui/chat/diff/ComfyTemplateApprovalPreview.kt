@@ -112,6 +112,7 @@ object ComfyTemplatePreviewBuilder {
             "frameBase" to frameBase.toString(),
             "frameStep" to frameStep.toString(),
             "maxFrames" to maxFrames?.toString(),
+            "fps" to fps?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() },
             "slots" to slots.joinToString("\n") { slot ->
                 buildString {
                     append("${slot.kind.name}: ${slot.nodeId}.${slot.input} × ${slot.capacity}")

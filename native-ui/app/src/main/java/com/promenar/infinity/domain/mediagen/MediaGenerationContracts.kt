@@ -10,7 +10,7 @@ import kotlinx.serialization.encoding.Encoder
 
 /** 生成层使用的不透明标识由上游维护，不解析其内部结构。 */
 enum class MediaGroup { IMAGE, VIDEO, AUDIO }
-enum class GenerationMode { TEXT, REFERENCE, FIRST_FRAME, FIRST_LAST_FRAME, SPEECH, MUSIC }
+enum class GenerationMode { TEXT, REFERENCE, FIRST_FRAME, LAST_FRAME, FIRST_LAST_FRAME, SPEECH, MUSIC }
 enum class InputKind { IMAGE, VIDEO, AUDIO }
 enum class InputRole { REFERENCE, FIRST_FRAME, LAST_FRAME, REFERENCE_VOICE }
 enum class PromptFormat { H3, SEEDANCE, GENERIC }
@@ -102,6 +102,7 @@ fun validateRequest(channel: MediaChannel, request: MediaGenerationRequest): Req
         val validMode = when (request.mode) {
             GenerationMode.TEXT -> false
             GenerationMode.FIRST_FRAME -> input.role == InputRole.FIRST_FRAME
+            GenerationMode.LAST_FRAME -> input.role == InputRole.LAST_FRAME
             GenerationMode.FIRST_LAST_FRAME -> input.role == InputRole.FIRST_FRAME || input.role == InputRole.LAST_FRAME
             GenerationMode.REFERENCE -> input.role == InputRole.REFERENCE || input.role == InputRole.REFERENCE_VOICE
             GenerationMode.SPEECH -> input.role == InputRole.REFERENCE_VOICE
@@ -115,6 +116,7 @@ fun validateRequest(channel: MediaChannel, request: MediaGenerationRequest): Req
         val last = request.inputs.count { it.role == InputRole.LAST_FRAME }
         when (request.mode) {
             GenerationMode.FIRST_FRAME -> if (first != 1 || last != 0) add("firstFrameCount")
+            GenerationMode.LAST_FRAME -> if (first != 0 || last != 1) add("lastFrameCount")
             GenerationMode.FIRST_LAST_FRAME -> {
                 if (first != 1) add("firstFrameCount")
                 if (last != 1) add("lastFrameCount")

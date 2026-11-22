@@ -64,6 +64,7 @@
 
     <string name="production_panel_mode_text">Text</string>
     <string name="production_panel_mode_first_frame">First frame</string>
+    <string name="production_panel_mode_last_frame">Last frame</string>
     <string name="production_panel_mode_first_last">First and last frame</string>
     <string name="production_panel_mode_reference">Reference</string>
 

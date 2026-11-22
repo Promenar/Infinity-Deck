@@ -98,7 +98,8 @@ object ComfyConfigurationCodec {
     @Serializable private data class TemplateRecord(val id: String, val workflow: JsonObject, val slots: List<SlotRecord>,
         val frameBase: Int = 1, val frameStep: Int = 1, val locked: Boolean = false, val capabilities: CapabilitiesRecord,
         val models: List<ModelRecord> = emptyList(), val hostId: String, val group: String, val name: String = id, val maxFrames: Int? = null,
-        val role: String = "GENERATE", val operation: OperationRecord? = null, val params: List<ParamRecord> = emptyList())
+        val role: String = "GENERATE", val operation: OperationRecord? = null, val params: List<ParamRecord> = emptyList(),
+        val fps: Double? = null)
 
     fun encode(configuration: ComfyConfiguration): String {
         val raw = json.encodeToString(ConfigurationRecord(hosts = configuration.hosts,
@@ -132,7 +133,8 @@ object ComfyConfigurationCodec {
             it.uploadTargets.map { target -> UploadRecord(target.nodeId, target.input) }, it.outputKind?.name, it.param) }, t.frameBase, t.frameStep, t.locked,
             CapabilitiesRecord(c.modes.map { it.name }, c.nativeAudio, c.resolutions, c.minDurationSeconds, c.maxDurationSeconds, c.promptFormat.name, c.referenceOrder),
             t.models.map { ModelRecord(it.nodeId, it.input) }, t.hostId, t.group.name, t.name, t.maxFrames, t.role.name,
-            t.operation?.let { OperationRecord(it.label) }, t.params.map { ParamRecord(it.key, it.label, it.type.name, it.default, it.options, it.min, it.max, it.integer) })
+            t.operation?.let { OperationRecord(it.label) }, t.params.map { ParamRecord(it.key, it.label, it.type.name, it.default, it.options, it.min, it.max, it.integer) },
+            t.fps)
     }
     private fun template(r: TemplateRecord): ComfyTemplate = ComfyTemplate(r.id, r.workflow,
         r.slots.map { ComfySlot(it.nodeId, it.input, SlotKind.valueOf(it.kind), it.capacity,
@@ -150,7 +152,7 @@ object ComfyConfigurationCodec {
                     else message.replaceFirst("params.${p.key}.", "params[$index].")
                 throw IllegalArgumentException(indexed)
             }
-        })
+        }, r.fps)
         .let { it.copy(capabilities = it.channel().capabilities) }
 
     private inline fun <reified T : Enum<T>> enumValue(value: String, field: String): T =

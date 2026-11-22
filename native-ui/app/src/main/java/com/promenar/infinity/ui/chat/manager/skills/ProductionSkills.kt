@@ -14,13 +14,13 @@ import com.promenar.infinity.domain.mediagen.MediaTask
 
 class ProductionDefineSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_define", "定义或更新当前会话的制作项目。title 最多120字；kind 为 film 或 series；root_path 为项目目录，默认 productions/标题 slug；支持当前工作区的文件工具路径，保存为相对路径。logline 最多1000字，aspect_ratio 最多120字。更新时省略可选项可保留现值。", """{"type":"object","properties":{"title":{"type":"string"},"kind":{"type":"string","enum":["film","series"]},"root_path":{"type":"string"},"logline":{"type":"string"},"aspect_ratio":{"type":"string"}},"required":["title","kind"],"additionalProperties":false}""")
 class ProductionAttachSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_attach", "manifest_path 指向当前工作区的 production.json，例如 productions/demo/production.json。路径须与清单内 rootPath 对应。同 id 项目保留数据库内容并报告文件冲突。", """{"type":"object","properties":{"manifest_path":{"type":"string"}},"required":["manifest_path"],"additionalProperties":false}""")
-class ProductionGetSkill(repo: ProductionRepository, tasks: suspend () -> List<MediaTask> = { emptyList() }) : ProductionSkill(repo, "production_get", "读取制作项目修订号和清单同步状态。scope 为 overview、episode、shot、assets 或 changes；overview 包含阶段生成次数与达到6次的镜头、资产；shot 与 assets 包含各自生成次数；changes 返回 change_requests、最近3轮 review_rounds、open_items、runs、chains、unregistered_files；只有 changes 的 runs、chains、unregistered_files、open_items 使用 limit（1～50，默认10）与 offset（非负，默认0）分页。episode 需要 episode_id，shot 还需要 shot_code。内容过长会截断。", """{"type":"object","properties":{"scope":{"type":"string","enum":["overview","episode","shot","assets","changes"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"},"limit":{"type":"integer"},"offset":{"type":"integer"}},"required":["scope"],"additionalProperties":false}""", tasks)
+class ProductionGetSkill(repo: ProductionRepository, tasks: suspend () -> List<MediaTask> = { emptyList() }, auditFiles: (suspend (String) -> Unit)? = null) : ProductionSkill(repo, "production_get", "读取制作项目修订号和清单同步状态。scope 为 overview、episode、shot、assets 或 changes；overview 包含阶段生成次数与达到6次的镜头、资产；shot 与 assets 包含各自生成次数；changes 返回实时重扫后的 change_requests、最近3轮 review_rounds、open_items、runs、chains、unregistered_files；只有 changes 的 runs、chains、unregistered_files、open_items 使用 limit（1～50，默认10）与 offset（非负，默认0）分页。episode 需要 episode_id，shot 还需要 shot_code。内容过长会截断。", """{"type":"object","properties":{"scope":{"type":"string","enum":["overview","episode","shot","assets","changes"]},"episode_id":{"type":"string"},"shot_code":{"type":"string"},"limit":{"type":"integer"},"offset":{"type":"integer"}},"required":["scope"],"additionalProperties":false}""", tasks, auditFiles)
 class ProductionUpdateSkill(repo: ProductionRepository) : ProductionSkill(
     repo, "production_update", productionUpdateDescription, productionUpdateSchema,
 )
 class ProductionRemoveSkill(repo: ProductionRepository) : ProductionSkill(repo, "production_remove", "解除当前会话与制作项目的绑定，保留项目和文件。", """{"type":"object","properties":{},"additionalProperties":false}""")
 
-abstract class ProductionSkill(private val repo: ProductionRepository, override val name: String, override val description: String, override val parametersSchema: String, private val tasks: suspend () -> List<MediaTask> = { emptyList() }) : SkillDefinition {
+abstract class ProductionSkill(private val repo: ProductionRepository, override val name: String, override val description: String, override val parametersSchema: String, private val tasks: suspend () -> List<MediaTask> = { emptyList() }, private val auditFiles: (suspend (String) -> Unit)? = null) : SkillDefinition {
     override val id get() = name
     override val mcpServerId: String? = null
     override val risk get() = if (name == "production_get") ToolRisk.SAFE_READ else ToolRisk.SESSION_STATE
@@ -48,7 +48,15 @@ abstract class ProductionSkill(private val repo: ProductionRepository, override 
                 else repo.update(context.sessionId, owner, ops)
             }
             "production_remove" -> { keys(emptySet(), emptySet()); repo.unbind(context.sessionId); null }
-            else -> { keys(setOf("scope"), setOf("scope", "episode_id", "shot_code", "limit", "offset")); repo.get(context.sessionId) }
+            else -> {
+                keys(setOf("scope"), setOf("scope", "episode_id", "shot_code", "limit", "offset"))
+                if (text("scope") == "changes") {
+                    try { auditFiles?.invoke(context.sessionId) }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { }
+                }
+                repo.get(context.sessionId)
+            }
         }
         val body = if (name == "production_get") productionGetResult(result, text("scope"), optional("episode_id"), optional("shot_code"), tasks(),
             limit = if (text("scope") != "changes" || "limit" !in args) 10 else (args["limit"] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: throw IllegalArgumentException("limit 需要整数。"),
@@ -287,7 +295,7 @@ private val productionUpdateDescription = """
     set_video_settings 可选 default_video_channel_id、reference_input_mode（sheet 或 separate，至少提供一项，传 null 跟随通道默认）。
     set_experimental 与 set_preview_enabled 各必填布尔值 enabled。
     remove 必填 target（season、episode、scene、shot、asset）、非空且无重复的 ids 字符串数组。target 为 scene 或 shot 时还必填 episode_id。
-    mode 为 text、first_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。路径保存为工作区相对路径，可使用同一会话文件工具给出的工作区虚拟路径。
+    mode 为 text、first_frame、last_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。路径保存为工作区相对路径，可使用同一会话文件工具给出的工作区虚拟路径。
     ${productionNestedFields.filterKeys { it !in setOf("ids", "prop_asset_ids") }.entries.joinToString("\n    ") { (key, format) -> "$key 用 $format。" }}
     prop_asset_ids 为资产 ID 字符串数组。可选顶层字段 reason（最多 300 字）用于在本次批量操作涉及已锁定剧本、视觉资产、镜头或制作阶段时向用户说明修改原因，系统将弹出审批卡交由用户决定是否放行（涉及视觉参考图、剧本文件或增删重排镜头在批准后自动退回待审；锁定场允许的内容修改仍产生改动请求）。收到审核回合后逐条处理，用 agent_note、change_note 或资产 description 写明结果。用户改写的提示词受保护。
 """.trimIndent()

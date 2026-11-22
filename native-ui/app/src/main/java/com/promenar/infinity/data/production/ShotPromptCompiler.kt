@@ -37,6 +37,7 @@ object ShotPromptCompiler {
                 } else {
                     val alignment = when (shot.mode) {
                         ShotMode.FIRST_FRAME -> "图1（<Picture 1>）在 0.00 秒完整作为 [Shot 1] 首帧。\n\n"
+                        ShotMode.LAST_FRAME -> "图1（<Picture 1>）对应 ${String.format(Locale.ROOT, "%.2f", shot.durationSeconds)} 秒尾帧，镜头内容自然发展并准确落至该尾帧。\n\n"
                         ShotMode.FIRST_LAST -> "图1（<Picture 1>）对应 0.00 秒首帧，图2（<Picture 2>）对应 ${String.format(Locale.ROOT, "%.2f", shot.durationSeconds)} 秒尾帧，镜头连续发展至尾帧。\n\n"
                         else -> ""
                     }

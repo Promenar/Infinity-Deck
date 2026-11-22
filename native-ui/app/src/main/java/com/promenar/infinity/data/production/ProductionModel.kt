@@ -40,7 +40,7 @@ enum class AssetKind { @SerialName("character") CHARACTER, @SerialName("location
 
 /** 生成模式；与具体服务无关。 */
 @Serializable
-enum class ShotMode { @SerialName("text") TEXT, @SerialName("first_frame") FIRST_FRAME, @SerialName("first_last") FIRST_LAST, @SerialName("reference") REFERENCE }
+enum class ShotMode { @SerialName("text") TEXT, @SerialName("first_frame") FIRST_FRAME, @SerialName("last_frame") LAST_FRAME, @SerialName("first_last") FIRST_LAST, @SerialName("reference") REFERENCE }
 
 /** 项目级参考资产入参模式：多视图资产卡整图（如 Seedance）或分张单视图组（如 H3）。 */
 @Serializable

@@ -1925,6 +1925,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             queue = composerQueueStore,
             sessionExists = { withContext(Dispatchers.IO) { database.sessionDao().getById(it) != null } },
             applicationScope = generationScope,
+            auditFiles = { productionFileAudit.scan(it) },
         )
     }
 
@@ -2109,7 +2110,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.StateRemoveSkill(stateBoardRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionDefineSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionAttachSkill(productionRepository))
-            register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(productionRepository) { withContext(Dispatchers.IO) { com.promenar.infinity.data.mediagen.queue.RoomMediaTaskStore(database).all().map { it.task } } })
+            register(com.promenar.infinity.ui.chat.manager.skills.ProductionGetSkill(
+                productionRepository,
+                tasks = { withContext(Dispatchers.IO) { com.promenar.infinity.data.mediagen.queue.RoomMediaTaskStore(database).all().map { it.task } } },
+                auditFiles = { productionFileAudit.scan(it) },
+            ))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionUpdateSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionRemoveSkill(productionRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionCutSkill({ productionRepository.get(it) }, { productionCutRuntime.controller }))

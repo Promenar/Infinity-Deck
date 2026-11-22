@@ -3,6 +3,7 @@ package com.promenar.infinity.data.production
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.domain.mediagen.InputRole as MediaRole
 import kotlinx.coroutines.test.*
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -316,6 +317,83 @@ class ShotGenerationPlannerTest {
         val blockedPreview = planner().preview("s", "S1E01", "SC01-01")
         assertTrue(blockedPreview.blockedReason.orEmpty().contains("需要分张单视图"))
         assertTrue(planner().generate("s", "S1E01", "SC01-01") is ShotGenerateResult.Rejected)
+    }
+
+    @Test fun `referenceOrder未命中或为空时默认按front_side_back顺序打包`() = runTest {
+        edit { it.copy(appearances = listOf(ShotAppearance("lin", "coat", listOf("back", "side", "front")))) }
+        val pollutedOrder = planningChannel().let { ch ->
+            ch.copy(capabilities = ch.capabilities.copy(referenceOrder = listOf("ref_image_0", "ref_image_1", "ref_image_2")))
+        }
+        val emptyOrder = planningChannel().let { ch ->
+            ch.copy(capabilities = ch.capabilities.copy(referenceOrder = emptyList()))
+        }
+        listOf(pollutedOrder, emptyOrder).forEach { channel ->
+            val preview = planner(PlanningRegistry(channel)).preview("s", "S1E01", "SC01-01")
+            assertNull(preview.blockedReason)
+            assertEquals(listOf("ref/front.png", "ref/side.png", "ref/back.png", "ref/pier.png"), preview.inputs.map { it.path })
+        }
+    }
+
+    @Test fun `支持LAST_FRAME模式规划与H3模板fps换算及显式frames覆盖`() = runTest {
+        files.bytes["ref/last.png"] = byteArrayOf(21)
+        val l2vChannel = MediaChannel(
+            "comfy:h3_l2va",
+            MediaGroup.VIDEO,
+            MediaCapabilities(setOf(GenerationMode.LAST_FRAME), promptFormat = PromptFormat.H3),
+        )
+        val l2vTemplate = com.promenar.infinity.domain.mediagen.ComfyTemplate(
+            "h3_l2va",
+            kotlinx.serialization.json.Json.parseToJsonElement("""{"1":{"class_type":"Gen","inputs":{"prompt":"","last":"","frames":124}},"2":{"class_type":"Save","inputs":{}}}""").jsonObject,
+            listOf(
+                com.promenar.infinity.domain.mediagen.ComfySlot("1", "prompt", com.promenar.infinity.domain.mediagen.SlotKind.PROMPT),
+                com.promenar.infinity.domain.mediagen.ComfySlot("1", "last", com.promenar.infinity.domain.mediagen.SlotKind.LAST_FRAME),
+                com.promenar.infinity.domain.mediagen.ComfySlot("1", "frames", com.promenar.infinity.domain.mediagen.SlotKind.FRAMES),
+                com.promenar.infinity.domain.mediagen.ComfySlot("2", "videos", com.promenar.infinity.domain.mediagen.SlotKind.OUTPUT),
+            ),
+            frameBase = 5,
+            frameStep = 17,
+            locked = true,
+            capabilities = l2vChannel.capabilities,
+            hostId = "host",
+            group = MediaGroup.VIDEO,
+            maxFrames = 362,
+            fps = 24.0,
+        )
+        val l2vPlanner = DefaultShotGenerationPlanner(
+            store,
+            PlanningRegistry(l2vChannel),
+            queue,
+            files,
+            CachedCharacterCompositor(files, HorizontalImageCodec { it.first() }),
+            specsFor = { _, shot -> com.promenar.infinity.data.mediagen.comfyPlanningSpecs(l2vTemplate, shot) },
+            templateFor = { l2vTemplate },
+            ioDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        edit {
+            it.copy(
+                mode = ShotMode.LAST_FRAME,
+                durationSeconds = 4.5,
+                appearances = emptyList(),
+                locationAssetId = null,
+                inputs = listOf(ShotInput(InputRole.LAST_FRAME, "ref/last.png", label = "尾帧")),
+            )
+        }
+        val derived = l2vPlanner.preview("s", "S1E01", "SC01-01")
+        assertNull(derived.blockedReason)
+        assertEquals(107, derived.specs.frames)
+        assertTrue("按镜头时长换算：107 帧" in derived.warnings)
+        assertEquals(listOf(com.promenar.infinity.domain.mediagen.InputRole.LAST_FRAME), derived.inputs.map { it.role })
+
+        val overridden = l2vPlanner.preview("s", "S1E01", "SC01-01", 141)
+        assertNull(overridden.blockedReason)
+        assertEquals(141, overridden.specs.frames)
+        assertTrue("已指定帧数：141 帧" in overridden.warnings)
+
+        val invalidGrid = l2vPlanner.preview("s", "S1E01", "SC01-01", 142)
+        assertNotNull(invalidGrid.blockedReason)
+
+        edit { it.copy(inputs = listOf(ShotInput(InputRole.FIRST_FRAME, "ref/front.png"))) }
+        assertNotNull(l2vPlanner.preview("s", "S1E01", "SC01-01").blockedReason)
     }
 
 }

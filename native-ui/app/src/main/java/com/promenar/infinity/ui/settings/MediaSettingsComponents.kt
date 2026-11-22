@@ -147,9 +147,9 @@ internal fun ReferenceOrderList(order: List<String>, enabled: Boolean, onMoveUp:
 
 @Composable
 internal fun referenceSlotLabel(name: String): String = when (name) {
-    "front_full_body" -> stringResource(R.string.media_settings_front_full_body)
-    "side_full_body" -> stringResource(R.string.media_settings_side_full_body)
-    "back_full_body" -> stringResource(R.string.media_settings_back_full_body)
+    "front", "front_full_body" -> stringResource(R.string.media_settings_front_full_body)
+    "side", "side_full_body" -> stringResource(R.string.media_settings_side_full_body)
+    "back", "back_full_body" -> stringResource(R.string.media_settings_back_full_body)
     "face_close_up" -> stringResource(R.string.media_settings_face_close_up)
     else -> name
 }
@@ -164,7 +164,8 @@ internal fun mediaGroupIcon(group: MediaGroup): ImageVector = when (group) {
 @Composable
 internal fun generationModeLabel(mode: GenerationMode): String = stringResource(when (mode) {
     GenerationMode.TEXT -> R.string.media_settings_mode_text; GenerationMode.REFERENCE -> R.string.media_settings_mode_reference
-    GenerationMode.FIRST_FRAME -> R.string.media_settings_mode_first; GenerationMode.FIRST_LAST_FRAME -> R.string.media_settings_mode_first_last
+    GenerationMode.FIRST_FRAME -> R.string.media_settings_mode_first; GenerationMode.LAST_FRAME -> R.string.media_settings_mode_last
+    GenerationMode.FIRST_LAST_FRAME -> R.string.media_settings_mode_first_last
     GenerationMode.SPEECH -> R.string.media_settings_mode_speech; GenerationMode.MUSIC -> R.string.media_settings_mode_music
 })
 @Composable

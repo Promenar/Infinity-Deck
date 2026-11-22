@@ -6,12 +6,14 @@ import com.promenar.infinity.domain.mediagen.MediaTask
 import com.promenar.infinity.ui.chat.PanelSendResult
 import com.promenar.infinity.utils.InfinityLogger
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** 会话把带来源标记的面板消息写入或撤回时的回调。 */
 interface PanelMessageListener {
@@ -42,6 +44,7 @@ class ProductionReviewDispatcher(
     private val sessionExists: suspend (String) -> Boolean,
     private val applicationScope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
+    private val auditFiles: (suspend (String) -> Unit)? = null,
 ) : PanelMessageListener {
     private val mutex = Mutex()
     private val recoveredDeliveries = ConcurrentHashMap<PanelMessageOrigin, String>()
@@ -51,6 +54,9 @@ class ProductionReviewDispatcher(
 
     /** 面板“发送”：合成本轮消息、标记已排队、交给会话；会话不接收时回退为未发送。 */
     suspend fun send(sessionId: String, send: suspend (text: String, origin: PanelMessageOrigin) -> PanelSendResult): ReviewDispatch = withContext(NonCancellable) { mutex.withLock {
+        try { withTimeoutOrNull(3_000L) { auditFiles?.invoke(sessionId) } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { }
         repeat(3) { attempt ->
             val snapshot = repository.get(sessionId) ?: return@withLock ReviewDispatch(ReviewDispatchResult.UNAVAILABLE)
             val p = snapshot.production

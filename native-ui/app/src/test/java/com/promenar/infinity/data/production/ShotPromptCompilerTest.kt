@@ -22,6 +22,13 @@ class ShotPromptCompilerTest {
         assertTrue(prompt.indexOf("integrated_multimodal_description:") < prompt.indexOf("overall_soundscape:"))
         assertTrue(prompt.endsWith("non_diegetic_music:\n无"))
     }
+    @Test fun `H3仅尾帧声明落点时间并包含三段结构`() {
+        val prompt = ShotPromptCompiler.compile(production, shot.copy(mode = ShotMode.LAST_FRAME), listOf(inputs.first()), PromptFormat.H3)
+        assertTrue(prompt.contains("5.00 秒尾帧"))
+        assertFalse(prompt.contains("0.00 秒首帧"))
+        assertTrue(prompt.indexOf("integrated_multimodal_description:") < prompt.indexOf("overall_soundscape:"))
+        assertTrue(prompt.endsWith("non_diegetic_music:\n无"))
+    }
     @Test fun `Seedance自然语言引用图号并保留分镜事实`() {
         val prompt = ShotPromptCompiler.compile(production, shot, inputs, PromptFormat.SEEDANCE)
         assertTrue(prompt.startsWith("图1：林晚")); assertTrue(prompt.contains("图2：码头")); assertTrue(prompt.contains("缓慢推近"))

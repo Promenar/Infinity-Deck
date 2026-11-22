@@ -122,6 +122,9 @@ class MediaSettingsPresentationTest {
 
     @Test fun diagnosticsPreserveTechnicalArgumentsAndUnknownDetails() {
         assertEquals(listOf("12", "refs.image_0"), mediaDiagnostic("节点 12 动态输入 refs.image_0 需要有效节点连线")!!.arguments)
+        val bare = mediaDiagnostic("节点 20 缺少动态选项 format.codec（检测到裸键 codec，请改用扁平键 format.codec）")!!
+        assertEquals(com.promenar.infinity.R.string.media_settings_diagnostic_30, bare.labelRes)
+        assertEquals(listOf("20", "format.codec", "codec"), bare.arguments)
         assertEquals(listOf("type.ckpt: model.safetensors"), mediaDiagnostic("模型 type.ckpt: model.safetensors")!!.arguments)
         assertNotNull(mediaDiagnostic("无法读取主机节点信息，请检查连接与鉴权后重新预检"))
         assertNull(mediaDiagnostic("Custom node diagnostic"))

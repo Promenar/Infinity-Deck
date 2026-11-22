@@ -155,6 +155,57 @@ class ComfySkillsTest {
         assertTrue(f.http.calls.last().first.endsWith("/object_info/Node1"))
         assertTrue(filtered.toString().length < 16000)
     }
+
+    @Test fun probeRequiresNodeTypeOrNodeTypesAndBatchProbesV3ComboNodes() = runTest {
+        val f = ComfyFixture(); f.repository.saveHost(f.host)
+        f.http.info = Json.parseToJsonElement("""{
+            "VedaSparse":{"input":{"required":{"predictor":["COMBO",{"options":["veda_preview.safetensors"]}]}}},
+            "Save":{"input":{"required":{}},"output_node":true,"output":["VIDEO"]}
+        }""").jsonObject
+        val probe = ComfyProbeSkill(f.repository)
+        assertEquals("error", probe.execute(buildJsonObject { put("host_id", "host") }, context).status)
+        assertEquals("error", probe.execute(buildJsonObject {
+            put("host_id", "host"); put("node_type", "Save"); put("node_types", JsonArray(listOf(JsonPrimitive("VedaSparse"))))
+        }, context).status)
+        val batch = probe.execute(buildJsonObject {
+            put("host_id", "host")
+            put("node_types", JsonArray(listOf(JsonPrimitive("VedaSparse"), JsonPrimitive("AbsentNode"))))
+        }, context)
+        assertNotEquals("error", batch.status)
+        val body = Json.parseToJsonElement(batch.content).jsonObject
+        assertEquals(1, body["matched_count"]!!.jsonPrimitive.int)
+        assertEquals(listOf("AbsentNode"), body["missing_types"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val nodeOptions = body["nodes"]!!.jsonArray.single().jsonObject["file_or_enum_options"]!!.jsonObject
+        assertEquals("veda_preview.safetensors", nodeOptions["predictor"]!!.jsonObject["values"]!!.jsonArray.single().jsonPrimitive.content)
+        val validator = com.promenar.infinity.domain.tool.ToolSchemaValidator()
+        assertTrue(validator.validate(probe.parametersSchema, buildJsonObject {
+            put("host_id", "host"); put("node_types", JsonArray(listOf(JsonPrimitive("Save"))))
+        }) is com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid)
+    }
+
+    @Test fun defineTemplateAcceptsFpsAndLastFrameRequiresLastFrameSlot() = runTest {
+        val f = ComfyFixture(); f.repository.saveHost(f.host)
+        val base = Json.parseToJsonElement("""{
+            "id":"h3_l2va","name":"H3 L2VA","hostId":"host","group":"VIDEO","frameBase":5,"frameStep":17,"maxFrames":362,"fps":24,
+            "workflow":{"1":{"class_type":"Test","inputs":{"prompt":"","last":"","frames":124}},"2":{"class_type":"Save","inputs":{}}},
+            "slots":[{"nodeId":"1","input":"prompt","kind":"PROMPT"},{"nodeId":"1","input":"frames","kind":"FRAMES"},{"nodeId":"2","input":"videos","kind":"OUTPUT","outputKind":"VIDEO"}],
+            "capabilities":{"modes":["LAST_FRAME"],"nativeAudio":true,"promptFormat":"H3"}
+        }""").jsonObject
+        f.http.info = Json.parseToJsonElement("""{"Test":{"input":{"required":{"prompt":["STRING"],"last":["STRING"],"frames":["INT"]}}},"Save":{"input":{"required":{}},"output_node":true,"output":["VIDEO"]}}""").jsonObject
+        val define = ComfyDefineTemplateSkill(f.repository)
+        assertEquals("error", define.execute(buildJsonObject { put("template", base) }, context).status)
+        val withLastSlot = JsonObject(base + ("slots" to Json.parseToJsonElement("""[
+            {"nodeId":"1","input":"prompt","kind":"PROMPT"},
+            {"nodeId":"1","input":"last","kind":"LAST_FRAME"},
+            {"nodeId":"1","input":"frames","kind":"FRAMES"},
+            {"nodeId":"2","input":"videos","kind":"OUTPUT","outputKind":"VIDEO"}
+        ]""")))
+        val ok = define.execute(buildJsonObject { put("template", withLastSlot) }, context)
+        assertNotEquals("error", ok.status)
+        val resp = Json.parseToJsonElement(ok.content).jsonObject
+        assertEquals(24.0, resp["fps"]!!.jsonPrimitive.double, 0.001)
+        assertTrue(resp["modes"]!!.jsonArray.any { it.jsonPrimitive.content == "LAST_FRAME" })
+    }
     @Test fun schemasAreValidJsonAndMalformedTemplateGivesReadableError() = runTest {
         val f = ComfyFixture()
         comfyTools(f.repository).forEach { assertTrue(Json.parseToJsonElement(it.parametersSchema) is JsonObject) }

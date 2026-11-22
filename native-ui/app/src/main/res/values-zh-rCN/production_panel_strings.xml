@@ -61,6 +61,7 @@
 
     <string name="production_panel_mode_text">文生</string>
     <string name="production_panel_mode_first_frame">首帧</string>
+    <string name="production_panel_mode_last_frame">仅尾帧</string>
     <string name="production_panel_mode_first_last">首尾帧</string>
     <string name="production_panel_mode_reference">参考</string>
 

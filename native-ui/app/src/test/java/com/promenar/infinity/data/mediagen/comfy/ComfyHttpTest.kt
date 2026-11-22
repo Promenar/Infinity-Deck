@@ -90,6 +90,8 @@ class ComfyHttpTest {
         assertEquals(0L, callTimeout)
         assertEquals(45_000, readTimeout)
         assertEquals(30_000, connectTimeout)
+        OkHttpComfyHttp(client, ComfyCredentials(f.secrets)).getBounded(host, "/object_info", 20)
+        assertEquals(java.util.concurrent.TimeUnit.SECONDS.toNanos(20), callTimeout)
     }
     @Test fun promptTransportTimeoutRequiresCheckingHostBeforeRetry() = runTest {
         val f = ComfyFixture()

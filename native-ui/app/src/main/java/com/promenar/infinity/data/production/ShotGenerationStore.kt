@@ -131,11 +131,13 @@ class ShotTaskCompletionRegistrar(private val queue: MediaGenerationQueue, priva
 internal fun ShotMode.toGenerationMode(): GenerationMode = when (this) {
     ShotMode.TEXT -> GenerationMode.TEXT
     ShotMode.FIRST_FRAME -> GenerationMode.FIRST_FRAME
+    ShotMode.LAST_FRAME -> GenerationMode.LAST_FRAME
     ShotMode.FIRST_LAST -> GenerationMode.FIRST_LAST_FRAME
     ShotMode.REFERENCE -> GenerationMode.REFERENCE
 }
 private fun GenerationMode.toShotMode(): ShotMode = when (this) {
     GenerationMode.FIRST_FRAME -> ShotMode.FIRST_FRAME
+    GenerationMode.LAST_FRAME -> ShotMode.LAST_FRAME
     GenerationMode.FIRST_LAST_FRAME -> ShotMode.FIRST_LAST
     GenerationMode.REFERENCE -> ShotMode.REFERENCE
     else -> ShotMode.TEXT

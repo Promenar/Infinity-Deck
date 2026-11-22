@@ -111,7 +111,7 @@ class ComfyRepository(
         }
         if (GenerationMode.REFERENCE in caps.modes) require(caps.maxImages > 0 || caps.maxAudio > 0 || caps.maxVideos > 0) { "参考模式需要参考槽位" }
         if (GenerationMode.FIRST_FRAME in caps.modes || GenerationMode.FIRST_LAST_FRAME in caps.modes) require(template.slots.any { it.kind == SlotKind.FIRST_FRAME }) { "首帧模式需要首帧槽位" }
-        if (GenerationMode.FIRST_LAST_FRAME in caps.modes) require(template.slots.any { it.kind == SlotKind.LAST_FRAME }) { "首尾帧模式需要尾帧槽位" }
+        if (GenerationMode.LAST_FRAME in caps.modes || GenerationMode.FIRST_LAST_FRAME in caps.modes) require(template.slots.any { it.kind == SlotKind.LAST_FRAME }) { "尾帧或首尾帧模式需要尾帧槽位" }
         require(caps.referenceOrder.size <= caps.maxImages && caps.referenceOrder.all { it.isNotBlank() }) { "参考位顺序超过容量或含空名称" }
     }
     /** 连接检测只读轻量的 /system_stats；完整节点清单留给预检与探测。 */
@@ -123,15 +123,40 @@ class ComfyRepository(
         val host = host(hostId)
         require(nodeType == null || (nodeType.isNotBlank() && nodeType.length <= 200 && nodeType.none { it < ' ' || it == '\u007f' })) { "node_type 格式无效" }
         val encodedType = nodeType?.let { java.net.URLEncoder.encode(it, Charsets.UTF_8.name()).replace("+", "%20") }
-        val info = http.get(host, if (encodedType == null) "/object_info" else "/object_info/$encodedType")
+        val info = if (encodedType == null) {
+            try {
+                http.getBounded(host, "/object_info", minOf(host.timeoutSeconds, 20))
+            } catch (e: ComfyFailure) {
+                if (e.retryable) throw ComfyFailure("${e.message}；全量节点清单过大或中转较慢，请改传 node_type 或 node_types 分批探测", true)
+                throw e
+            }
+        } else {
+            http.get(host, "/object_info/$encodedType")
+        }
         return summarizeComfyHost(info, nodeType)
+    }
+
+    suspend fun probeNodes(hostId: String, nodeTypes: List<String>): JsonObject {
+        val host = host(hostId)
+        require(nodeTypes.size in 1..30) { "node_types 需要 1～30 个节点类型" }
+        val valid = nodeTypes.map { type ->
+            require(type.isNotBlank() && type.length <= 200 && type.none { it < ' ' || it == '\u007f' }) { "node_types 包含无效节点类型" }
+            type
+        }.distinct()
+        val info = http.objectInfoForTypes(host, valid)
+        val summary = summarizeComfyHostByFilters(info, valid.toSet())
+        val missingTypes = valid.filter { it !in info }
+        return JsonObject(summary + ("missing_types" to JsonArray(missingTypes.map(::JsonPrimitive))))
     }
 }
 internal fun fingerprint(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
 
 /** 枚举选项是模型发现候选；只有模板 models 声明参与模型预检。 */
-fun summarizeComfyHost(info: JsonObject, filter: String? = null): JsonObject {
-    val selected = info.entries.filter { filter == null || it.key == filter }.sortedBy { it.key }
+fun summarizeComfyHost(info: JsonObject, filter: String? = null): JsonObject =
+    summarizeComfyHostByFilters(info, filter?.let(::setOf))
+
+private fun summarizeComfyHostByFilters(info: JsonObject, filters: Set<String>?): JsonObject {
+    val selected = info.entries.filter { filters == null || it.key in filters }.sortedBy { it.key }
     var remaining = 16000
     val nodes = mutableListOf<JsonElement>()
     for ((type, raw) in selected.take(60)) {
@@ -140,10 +165,10 @@ fun summarizeComfyHost(info: JsonObject, filter: String? = null): JsonObject {
         val enums = buildJsonObject {
             listOf("required", "optional").forEach { section ->
                 (fields?.get(section) as? JsonObject).orEmpty().entries.take(40).forEach { (name, descriptor) ->
-                    val options = (descriptor as? JsonArray)?.firstOrNull() as? JsonArray ?: return@forEach
+                    val options = extractComfyComboOptions(descriptor as? JsonArray) ?: return@forEach
                     put(name.take(120), buildJsonObject {
                         put("count", options.size)
-                        put("values", JsonArray(options.take(12).map { JsonPrimitive((it as? JsonPrimitive)?.contentOrNull.orEmpty().take(120)) }))
+                        put("values", JsonArray(options.take(12).map { JsonPrimitive(it.take(120)) }))
                         put("truncated", options.size > 12)
                     })
                 }
@@ -152,7 +177,7 @@ fun summarizeComfyHost(info: JsonObject, filter: String? = null): JsonObject {
         val node = buildJsonObject {
             put("type", type.take(200)); put("output_node", (definition["output_node"] as? JsonPrimitive)?.booleanOrNull ?: false)
             put("file_or_enum_options", enums)
-            if (filter != null) {
+            if (filters != null) {
                 val schema = trimComfySchema(fields ?: JsonObject(emptyMap()))
                 put("input_schema", schema); put("schema_truncated", schema != fields)
                 put("outputs", trimComfySchema(definition["output"] ?: JsonArray(emptyList())))

@@ -42,10 +42,16 @@ class ProductionReviewDeliveryTest {
         }
     }
 
-    private fun dispatcher(repo: Repository, queue: FileComposerQueueStore, scope: CoroutineScope, exists: () -> Boolean = { true }) =
+    private fun dispatcher(
+        repo: Repository,
+        queue: FileComposerQueueStore,
+        scope: CoroutineScope,
+        auditFiles: (suspend (String) -> Unit)? = null,
+        exists: () -> Boolean = { true },
+    ) =
         ProductionReviewDispatcher(repo, { emptyList() }, object : ReviewMessageStrings {
             override fun text(key: String, vararg args: Any) = "$key ${args.joinToString()}"
-        }, queue, { exists() }, scope, { 50 })
+        }, queue, { exists() }, scope, { 50 }, auditFiles = auditFiles)
 
     @Test fun `没有意见返回空且已有排队时保留两组意见`() = runTest {
         val repo = Repository()
@@ -217,5 +223,31 @@ class ProductionReviewDeliveryTest {
         repo.snapshot = null
         dispatcher.delivered("missing", origin)
         dispatcher.withdrawn("missing", origin)
+    }
+
+    @Test fun `发送审核前触发未登记文件重扫且失败时不阻断发送`() = runTest {
+        val repo = Repository().apply {
+            add()
+            snapshot = snapshot!!.copy(production = snapshot!!.production.copy(unregisteredFiles = listOf("p/orphan.png")))
+        }
+        val queue = FileComposerQueueStore(directory.toFile(), { null }, StandardTestDispatcher(testScheduler))
+        val events = mutableListOf<String>()
+        val dispatcher = dispatcher(repo, queue, this, auditFiles = { sessionId ->
+            events += "audit:$sessionId"
+            repo.snapshot = repo.snapshot!!.copy(production = repo.snapshot!!.production.copy(unregisteredFiles = emptyList()))
+        })
+        var captured = ""
+        val dispatched = dispatcher.send("s") { text, _ ->
+            events += "send"
+            captured = text
+            PanelSendResult.STARTED
+        }
+        assertThat(dispatched.result).isEqualTo(ReviewDispatchResult.STARTED)
+        assertThat(events).containsExactly("audit:s", "send").inOrder()
+        assertThat(captured).doesNotContain("orphan.png")
+
+        val failingRepo = Repository().apply { add() }
+        val resilient = dispatcher(failingRepo, queue, this, auditFiles = { error("scan failed") })
+        assertThat(resilient.send("s") { _, _ -> PanelSendResult.STARTED }.result).isEqualTo(ReviewDispatchResult.STARTED)
     }
 }

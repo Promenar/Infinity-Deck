@@ -109,10 +109,12 @@ data class ComfyTemplate(
     val role: TemplateRole = TemplateRole.GENERATE,
     val operation: TemplateOperation? = null,
     val params: List<TemplateParam> = emptyList(),
+    val fps: Double? = null,
 ) {
     init {
         require(id.matches(Regex("[A-Za-z0-9_-]{1,128}"))) { "模板 id 只支持字母、数字、下划线和连字符" }
         require(frameBase > 0 && frameStep > 0 && (maxFrames == null || maxFrames >= frameBase)) { "frameBase/frameStep/maxFrames: 帧数约束无效" }
+        require(fps == null || (fps.isFinite() && fps > 0.0 && fps <= 240.0)) { "fps: 帧率需要 0～240 之间的有限正数" }
         require(name.isNotBlank() && name.length <= 120) { "name: 模板名称需要 1～120 字符" }
         require(role != TemplateRole.DERIVE || operation != null) { "operation: DERIVE 必须声明操作" }
         require(role != TemplateRole.GENERATE || operation == null) { "operation: GENERATE 不能声明操作" }
@@ -147,6 +149,15 @@ data class ComfyTemplate(
         require(replacement.id == id) { "模板 id 不可修改" }
         return replacement.copy(locked = true)
     }
+
+    /** 根据模板帧率与合法帧数网格，把镜头目标秒数对齐到最近合法帧数；未声明 fps 时返回 null。 */
+    fun snapFramesForDuration(durationSeconds: Double): Int? {
+        val rate = fps ?: return null
+        if (!durationSeconds.isFinite() || durationSeconds <= 0.0 || !rate.isFinite() || rate <= 0.0) return null
+        val stepIndex = kotlin.math.round((durationSeconds * rate - frameBase) / frameStep.toDouble()).toLong().coerceAtLeast(0L)
+        val clampedIndex = maxFrames?.let { limit -> minOf(stepIndex, ((limit - frameBase) / frameStep).toLong().coerceAtLeast(0L)) } ?: stepIndex
+        return (frameBase.toLong() + clampedIndex * frameStep.toLong()).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
 }
 
 enum class PreflightStatus { PASS, MISSING, REVIEW }
@@ -176,6 +187,7 @@ fun ComfyTemplate.fingerprint(): String {
         put("capabilities", capabilities?.let { Json.encodeToJsonElement(MediaCapabilities.serializer(), it.copy(modes = it.modes.sortedBy { mode -> mode.name }.toSet())) } ?: JsonNull)
         put("group", group.name); put("role", role.name); put("operation", operation?.let { buildJsonObject { put("label", it.label) } } ?: JsonNull)
         put("params", JsonArray(params.map { Json.encodeToJsonElement(TemplateParam.serializer(), it) }))
+        fps?.let { put("fps", it) }
     }
     fun sorted(element: JsonElement): JsonElement = when (element) {
         is JsonObject -> JsonObject(element.toSortedMap().mapValues { sorted(it.value) })
@@ -196,6 +208,7 @@ fun fillComfyWorkflow(template: ComfyTemplate, values: Map<SlotKind, List<String
         require(values[kind].orEmpty().size <= template.slots.filter { it.kind == kind }.sumOf { it.capacity }) { "$kind 输入超出模板容量" }
     }
     val offsets = mutableMapOf<SlotKind, Int>()
+    val unusedUploadNodeIds = mutableSetOf<String>()
     fun inputs(id: String): MutableMap<String, JsonElement> = ((nodes[id] as? JsonObject)?.get("inputs") as? JsonObject)?.toMutableMap()
         ?: throw IllegalArgumentException("缺少节点输入 $id")
     fun write(id: String, data: Map<String, JsonElement>) {
@@ -219,8 +232,9 @@ fun fillComfyWorkflow(template: ComfyTemplate, values: Map<SlotKind, List<String
             require(key in data) { "缺少槽位 ${slot.nodeId}.$key" }
             val raw = supplied.getOrNull(index)
             if (raw == null) {
-                // 未使用的可选参考必须移除，不能把空字符串送入图片连线。
+                // 未使用的可选参考必须移除，不能把空字符串送入图片连线；对应的孤立上传节点在下方一并裁剪。
                 data.remove(key)
+                if (slot.uploadTargets.isNotEmpty()) unusedUploadNodeIds += slot.uploadTargets[index].nodeId
                 return@forEachIndexed
             }
             if (slot.uploadTargets.isNotEmpty()) {
@@ -259,7 +273,41 @@ fun fillComfyWorkflow(template: ComfyTemplate, values: Map<SlotKind, List<String
         }
         write(slot.nodeId, data)
     }
+    if (unusedUploadNodeIds.isNotEmpty()) {
+        val outputNodeIds = template.slots.filter { it.kind == SlotKind.OUTPUT }.map { it.nodeId }.toSet()
+        fun referencedNodeIds(): Set<String> = buildSet {
+            nodes.forEach { (nodeId, element) ->
+                val nodeInputs = (element as? JsonObject)?.get("inputs") as? JsonObject ?: return@forEach
+                nodeInputs.values.forEach { inputValue ->
+                    val link = inputValue as? JsonArray ?: return@forEach
+                    val sourceId = (link.getOrNull(0) as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@forEach
+                    val outIndex = (link.getOrNull(1) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: return@forEach
+                    if (link.size == 2 && outIndex >= 0 && sourceId != nodeId) add(sourceId)
+                }
+            }
+        }
+        while (true) {
+            val referenced = referencedNodeIds()
+            val removable = unusedUploadNodeIds.filter { it in nodes && it !in outputNodeIds && it !in referenced }
+            if (removable.isEmpty()) break
+            removable.forEach { nodes.remove(it) }
+        }
+    }
     return JsonObject(nodes)
+}
+
+/** 统一解析 ComfyUI V1 列表 `[[...], {}]`、V3 `["COMBO", {"options": [...]}]` 及 `COMFY_DYNAMICCOMBO_V3` 枚举候选。 */
+internal fun extractComfyComboOptions(spec: JsonArray?): List<String>? {
+    val first = spec?.firstOrNull() ?: return null
+    if (first is JsonArray) return first.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+    val kind = (first as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
+    val settings = spec.getOrNull(1) as? JsonObject ?: return null
+    val options = settings["options"] as? JsonArray ?: return null
+    return when (kind) {
+        "COMBO" -> options.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+        "COMFY_DYNAMICCOMBO_V3" -> options.mapNotNull { ((it as? JsonObject)?.get("key") as? JsonPrimitive)?.contentOrNull }
+        else -> null
+    }
 }
 
 fun preflightComfy(template: ComfyTemplate, objectInfo: JsonObject): PreflightResult {
@@ -309,14 +357,11 @@ fun preflightComfy(template: ComfyTemplate, objectInfo: JsonObject): PreflightRe
         val node = template.workflow[model.nodeId] as? JsonObject
         val type = (node?.get("class_type") as? JsonPrimitive)?.contentOrNull
         if (node == null) { missing += "模型槽位节点 ${model.nodeId}"; return@forEach }
-        val selected = ((node?.get("inputs") as? JsonObject)?.get(model.input) as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val selected = ((node["inputs"] as? JsonObject)?.get(model.input) as? JsonPrimitive)?.takeIf { it.isString }?.content
         if (selected == null) { uncertain += "模型 ${model.nodeId}.${model.input} 不是文件名"; return@forEach }
-        val definition = type?.let { objectInfo[it] as? JsonObject }
-        val declared = definition?.get("input") as? JsonObject
-        val descriptor = listOf("required", "optional").firstNotNullOfOrNull { (declared?.get(it) as? JsonObject)?.get(model.input) } as? JsonArray
-        val options = descriptor?.firstOrNull() as? JsonArray
+        val options = extractComfyComboOptions(descriptor(model.nodeId, model.input))
         if (options == null) uncertain += "模型 ${model.nodeId}.${model.input} 的可选值无法判定"
-        else if (options.none { (it as? JsonPrimitive)?.contentOrNull == selected }) missing += "模型 $type.${model.input}: $selected"
+        else if (selected !in options) missing += "模型 $type.${model.input}: $selected"
     }
     template.slots.forEach { slot ->
         val node = template.workflow[slot.nodeId] as? JsonObject
@@ -358,13 +403,9 @@ fun preflightComfy(template: ComfyTemplate, objectInfo: JsonObject): PreflightRe
             if (param == null) missing += "slots.param: 未声明参数 ${slot.param}"
             else {
                 val spec = descriptor(slot.nodeId, slot.input)
-                val options = spec?.firstOrNull() as? JsonArray ?: if ((spec?.firstOrNull() as? JsonPrimitive)?.contentOrNull == "COMFY_DYNAMICCOMBO_V3") {
-                    ((spec?.getOrNull(1) as? JsonObject)?.get("options") as? JsonArray)?.let { choices ->
-                        JsonArray(choices.mapNotNull { (it as? JsonObject)?.get("key") })
-                    }
-                } else null
+                val options = extractComfyComboOptions(spec)
                 if (param.type == TemplateParamType.ENUM && options != null) {
-                    val invalid = param.options.filter { option -> options.none { (it as? JsonPrimitive)?.takeIf { it.isString }?.content == option } }
+                    val invalid = param.options.filter { it !in options }
                     if (invalid.isNotEmpty()) missing += "params.${param.key}.options: 主机不支持 ${invalid.joinToString("、")}"
                 }
                 if (param.type == TemplateParamType.NUMBER) {
@@ -401,7 +442,13 @@ fun validateComfyDynamicInputs(graph: JsonObject, objectInfo: JsonObject, missin
                             val selected = (inputs[key] as? JsonPrimitive)?.contentOrNull
                             val option = (settings?.get("options") as? JsonArray)?.mapNotNull { it as? JsonObject }
                                 ?.firstOrNull { (it["key"] as? JsonPrimitive)?.contentOrNull == selected }
-                            if (selected == null && section == "required") missing += "节点 $id 缺少动态选项 $key"
+                            if (selected == null && section == "required") {
+                                missing += if (parent.isNotEmpty() && field in inputs) {
+                                    "节点 $id 缺少动态选项 $key（检测到裸键 $field，请改用扁平键 $key）"
+                                } else {
+                                    "节点 $id 缺少动态选项 $key"
+                                }
+                            }
                             if (selected != null || inputs.keys.any { it.startsWith("$key.") }) {
                                 val child = option?.get("inputs") as? JsonObject
                                 if (child == null) uncertain += "节点 $id 动态选项 $key 无法判定" else inspect(child, key)

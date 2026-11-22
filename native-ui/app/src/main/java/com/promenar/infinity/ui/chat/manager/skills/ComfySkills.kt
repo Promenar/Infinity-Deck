@@ -18,13 +18,14 @@ fun comfyTools(repository: ComfyRepository): List<SkillDefinition> = listOf(
     ComfyProbeSkill(repository), ComfyDefineTemplateSkill(repository), ComfyListTemplatesSkill(repository),
 )
 class ComfyProbeSkill(repository: ComfyRepository) : ComfySkill(repository, "comfy_probe",
-    "探测已配置的 ComfyUI 主机，返回节点与模型候选摘要。可按 node_type 过滤，长结果截断。",
-    """{"type":"object","properties":{"host_id":{"type":"string"},"node_type":{"type":"string"}},"required":["host_id"],"additionalProperties":false}""")
+    "探测已配置的 ComfyUI 主机，返回节点与模型候选摘要。必须传入 node_type 或 node_types（1～30 个节点类型，二者选其一）按节点分片探测；不支持无过滤拉取全量 /object_info。",
+    """{"type":"object","properties":{"host_id":{"type":"string"},"node_type":{"type":"string","description":"单个精确节点类名，与 node_types 二选一"},"node_types":{"type":"array","items":{"type":"string"},"description":"1～30 个精确节点类名，4 并发分片读取，与 node_type 二选一"}},"required":["host_id"],"additionalProperties":false}""")
 class ComfyListTemplatesSkill(repository: ComfyRepository) : ComfySkill(repository, "comfy_templates",
     "列出已配置主机和 ComfyUI 模板、通道 id、锁定状态、预检结果。recheck=true 重新预检指定模板。",
     """{"type":"object","properties":{"template_id":{"type":"string"},"recheck":{"type":"boolean"}},"additionalProperties":false}""")
 class ComfyDefineTemplateSkill(repository: ComfyRepository) : ComfySkill(repository, "comfy_define_template",
     """创建或按同一 id 更新 API Format 工作流模板。每次变更须经用户审批，保存后保持锁定并重新预检。模型文件由 models 显式声明。
+        支持可选 fps（视频输出帧率，如 24），声明后制作规划按镜头秒数自动换算并对齐 frameBase+k*frameStep 帧数；ComfyUI V3 动态组合子选项（如 SaveVideo 的 format.codec）在 API Format 中须使用父键.子键扁平键。
         生成模板使用 role=GENERATE，图像或视频按 group 与 capabilities 声明；配乐使用 role=GENERATE、group=AUDIO、MUSIC 模式、DURATION 秒数槽位与 AUDIO 产出。
         派生处理使用 role=DERIVE、operation.label 与一个 INPUT_VIDEO 来源槽位，可不声明 PROMPT。媒体连线必须给出 uploadTargets，节点类型和输入名先用 comfy_probe 核验。
         任意模板可用 params 声明最多 6 个 ENUM/NUMBER/BOOLEAN 参数，每项以唯一 key 对应一个 PARAM 槽位的 param。default 必须满足选项、范围与整数约束，提交请求时可按 key 覆盖 params。
@@ -40,8 +41,20 @@ abstract class ComfySkill(private val repository: ComfyRepository, override val 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = try {
         val content = when (name) {
             "comfy_probe" -> {
-                keys(args, setOf("host_id"), setOf("host_id", "node_type"))
-                repository.probe(text(args, "host_id"), optional(args, "node_type"))
+                keys(args, setOf("host_id"), setOf("host_id", "node_type", "node_types"))
+                val hostId = text(args, "host_id")
+                val nodeType = optional(args, "node_type")
+                val nodeTypes = if ("node_types" !in args || args["node_types"] == JsonNull) null else {
+                    val array = args["node_types"] as? JsonArray ?: throw ComfyFailure("node_types 必须是字符串数组")
+                    array.map {
+                        (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.takeIf { s -> s.isNotBlank() }
+                            ?: throw ComfyFailure("node_types 的每项必须是非空字符串")
+                    }
+                }
+                if ((nodeType == null) == (nodeTypes == null)) {
+                    throw ComfyFailure("comfy_probe 必须提供 node_type 或 node_types（1～30 个节点名，二者选其一）；为避免慢速中转挂起，不支持无过滤全量探测")
+                }
+                if (nodeType != null) repository.probe(hostId, nodeType) else repository.probeNodes(hostId, requireNotNull(nodeTypes))
             }
             "comfy_define_template" -> {
                 keys(args, setOf("template"), setOf("template"))
@@ -113,6 +126,7 @@ private fun renderState(state: ComfyTemplateState): JsonObject = buildJsonObject
     put("max_videos", channel.capabilities.maxVideos); put("role", state.template.role.name)
     state.template.operation?.let { put("operation", buildJsonObject { put("label", it.label) }) }
     put("params", JsonArray(state.template.params.map { Json.encodeToJsonElement(TemplateParam.serializer(), it) }))
+    state.template.fps?.let { put("fps", it) }
     put("modes", JsonArray(channel.capabilities.modes.map { JsonPrimitive(it.name) }))
 }
 private const val COMFY_TEMPLATE_SCHEMA = """{
@@ -130,6 +144,7 @@ private const val COMFY_TEMPLATE_SCHEMA = """{
     "min":{"type":["number","null"]},"max":{"type":["number","null"]},"integer":{"type":"boolean","description":"NUMBER 专用，是否要求整数"}
    }}},
    "frameBase":{"type":"integer","description":"正整数"},"frameStep":{"type":"integer","description":"正整数"},"maxFrames":{"type":["integer","null"],"description":"正整数"},
+   "fps":{"type":["number","null"],"description":"视频模板输出帧率（如 24），声明后制作规划按镜头秒数自动换算并对齐 frameBase+k*frameStep 帧数"},
    "slots":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["nodeId","input","kind"],"properties":{
     "nodeId":{"type":"string"},"input":{"type":"string","description":"精确输入键；动态键使用组名.成员数字后缀；OUTPUT 填历史输出字段 images/gifs/videos/audio"},
     "kind":{"type":"string","enum":["PROMPT","REFERENCE_IMAGES","FIRST_FRAME","LAST_FRAME","REFERENCE_AUDIO","INPUT_VIDEO","PARAM","DURATION","WIDTH","HEIGHT","FRAMES","SEED","OUTPUT"]},
@@ -139,10 +154,10 @@ private const val COMFY_TEMPLATE_SCHEMA = """{
    }}},
    "models":{"type":"array","description":"显式声明需检查文件可选值的输入","items":{"type":"object","additionalProperties":false,"required":["nodeId","input"],"properties":{"nodeId":{"type":"string"},"input":{"type":"string"}}}},
    "capabilities":{"type":"object","additionalProperties":false,"required":["modes"],"properties":{
-    "modes":{"type":"array","items":{"type":"string","enum":["TEXT","REFERENCE","FIRST_FRAME","FIRST_LAST_FRAME","SPEECH","MUSIC"]}},
+    "modes":{"type":"array","items":{"type":"string","enum":["TEXT","REFERENCE","FIRST_FRAME","LAST_FRAME","FIRST_LAST_FRAME","SPEECH","MUSIC"]}},
     "nativeAudio":{"type":"boolean"},"resolutions":{"type":"array","items":{"type":"string"}},
     "minDurationSeconds":{"type":["integer","null"]},"maxDurationSeconds":{"type":["integer","null"]},"promptFormat":{"type":"string","enum":["GENERIC","H3","SEEDANCE"]},
-    "referenceOrder":{"type":"array","items":{"type":"string"},"description":"分张参考位顺序；参考容量由槽位计算"}
+    "referenceOrder":{"type":"array","items":{"type":"string"},"description":"角色分张参考视角语义顺序（如 [\"front\",\"side\",\"back\"] 或 [\"front_full_body\",\"side_full_body\",\"back_full_body\"]），勿填 ComfyUI 输入键名；留空按默认 front→side→back。参考容量由槽位计算"}
    }}
   }
  }}}

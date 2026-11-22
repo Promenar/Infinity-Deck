@@ -23,6 +23,7 @@
     <string name="media_settings_mode_text">Text</string>
     <string name="media_settings_mode_reference">Reference</string>
     <string name="media_settings_mode_first">First frame</string>
+    <string name="media_settings_mode_last">Last frame</string>
     <string name="media_settings_mode_first_last">First / last frames</string>
     <string name="media_settings_mode_speech">Speech</string>
     <string name="media_settings_mode_music">Music</string>
@@ -172,6 +173,7 @@
     <string name="media_settings_diagnostic_27">Node %1$s · missing dynamic input %2$s</string>
     <string name="media_settings_diagnostic_28">Node %1$s · dynamic type %2$s requires review</string>
     <string name="media_settings_diagnostic_29">Node %1$s</string>
+    <string name="media_settings_diagnostic_30">Node %1$s · missing dynamic option %2$s (rename bare key %3$s to %2$s)</string>
     <string name="media_settings_connection">Connection</string>
     <string name="media_settings_host_actions">Host</string>
     <string name="media_settings_entry_subtitle">Manage default channels and order for image, video, and speech generation</string>

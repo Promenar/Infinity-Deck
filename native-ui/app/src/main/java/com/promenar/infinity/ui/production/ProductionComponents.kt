@@ -290,6 +290,7 @@ internal fun ShotMode.label(): String = stringResource(
     when (this) {
         ShotMode.TEXT -> R.string.production_panel_mode_text
         ShotMode.FIRST_FRAME -> R.string.production_panel_mode_first_frame
+        ShotMode.LAST_FRAME -> R.string.production_panel_mode_last_frame
         ShotMode.FIRST_LAST -> R.string.production_panel_mode_first_last
         ShotMode.REFERENCE -> R.string.production_panel_mode_reference
     },

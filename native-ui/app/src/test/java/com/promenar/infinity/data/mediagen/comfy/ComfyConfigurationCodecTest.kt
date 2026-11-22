@@ -31,11 +31,12 @@ class ComfyConfigurationCodecTest {
             slots = listOf(ComfySlot("1", "video", SlotKind.INPUT_VIDEO, uploadTargets = listOf(ComfyUploadTarget("3", "file"))),
                 ComfySlot("1", "steps", SlotKind.PARAM, param = "steps"), ComfySlot("2", "videos", SlotKind.OUTPUT, outputKind = InputKind.VIDEO)),
             params = listOf(TemplateParam("steps", "步数", TemplateParamType.NUMBER, JsonPrimitive(10), min = 1.0, max = 30.0, integer = true)))
-        val template = base.copy(capabilities = base.channel().capabilities)
+        val template = base.copy(capabilities = base.channel().capabilities, fps = 24.0)
         val configuration = ComfyConfiguration(listOf(f.host), listOf(ComfyTemplateState(template)))
         val encoded = ComfyConfigurationCodec.encode(configuration)
         assertEquals(2, Json.parseToJsonElement(encoded).jsonObject["version"]!!.jsonPrimitive.int)
         assertEquals(configuration, ComfyConfigurationCodec.decode(encoded))
+        assertEquals(24.0, ComfyConfigurationCodec.decode(encoded).templates.single().template.fps)
         assertEquals(template, ComfyConfigurationCodec.decodeTemplate(ComfyConfigurationCodec.encodeTemplate(template)))
         assertTrue(ComfyConfigurationCodec.encodeTemplate(template)["params"]!!.jsonArray.single().jsonObject["default"]!!.jsonPrimitive.intOrNull == 10)
     }
