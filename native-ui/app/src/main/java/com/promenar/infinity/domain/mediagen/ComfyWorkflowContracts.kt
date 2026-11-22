@@ -336,7 +336,7 @@ data class StatefulChainSpec(
     val stageFlag: String = "--stage",
     val previousWorkflowFlag: String = "--previous-workflow",
     val latentDirFlag: String = "--latent-dir",
-    val branchIdFlag: String = "--branch-id",
+    val branchIdFlag: String = "",
     val dryRunFlag: String = "--dry-run",
 ) {
     init {

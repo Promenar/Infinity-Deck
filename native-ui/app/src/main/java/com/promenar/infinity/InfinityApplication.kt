@@ -2140,6 +2140,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 executionEngine = comfyMedia.executionEngine,
                 submitterRunner = comfyMedia.submitterRunner,
                 jobs = backgroundJobs,
+                readWorkspaceFile = ::readComfyWorkspaceFile,
             ).forEach(::register)
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))
@@ -3562,6 +3563,40 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     val workspaceMediaStore: com.promenar.infinity.domain.media.WorkspaceMediaStore by lazy {
         workspaceMediaResolver as com.promenar.infinity.domain.media.WorkspaceMediaStore
     }
+
+    /** 为 `comfy_save_submitter` 按会话工作区虚拟路径读取提交器脚本及配套模块（上限 4 MiB）。 */
+    private suspend fun readComfyWorkspaceFile(sessionId: String, path: String): ByteArray? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val trimmed = path.trim()
+            if (trimmed.isEmpty()) return@withContext null
+            require("://" !in trimmed) { "$trimmed：不接受外部 URI，请使用工作区文件路径" }
+            val direct = workspaceMediaResolver.resolve(sessionId, trimmed)
+            val resolved = if (direct is com.promenar.infinity.domain.media.MediaResolution.Available) {
+                direct
+            } else if (!trimmed.startsWith('/')) {
+                val mapped = runCatching { workspaceMediaResolver.productionPath(sessionId, trimmed) }
+                    .getOrNull()?.takeIf { it != trimmed }
+                if (mapped != null) workspaceMediaResolver.resolve(sessionId, mapped) else direct
+            } else {
+                direct
+            }
+            val available = resolved as? com.promenar.infinity.domain.media.MediaResolution.Available
+                ?: return@withContext null
+            val maxBytes = 4 * 1024 * 1024
+            val buffer = ByteArray(16 * 1024)
+            val out = java.io.ByteArrayOutputStream()
+            var total = 0
+            workspaceMediaResolver.open(available).use { input ->
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    require(total <= maxBytes) { "工作区脚本或配套文件超过 4 MiB 读取上限：$trimmed" }
+                    out.write(buffer, 0, read)
+                }
+            }
+            out.toByteArray()
+        }
 
     /** 媒体下载与内置 git 一样使用 tailnet 分流；逐跳策略和流量上限由下载器控制。 */
     val workspaceMediaDownloader: com.promenar.infinity.data.media.download.WorkspaceMediaDownloader by lazy {

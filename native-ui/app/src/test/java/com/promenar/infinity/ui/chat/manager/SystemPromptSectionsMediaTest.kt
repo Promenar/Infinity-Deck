@@ -87,4 +87,11 @@ class SystemPromptSectionsMediaTest {
         assertThat(SystemPromptSections.toolGuidance(setOf("artifact_publish"), true)).doesNotContain("artifact_publish")
     }
 
+    @Test fun `媒体引用明确禁止转成相对路径或放进Markdown表格并指引ComfyUI提交器契约`() {
+        val prompt = SystemPromptSections.toolGuidance(setOf("read_file", "comfy_run_workflow"), false)
+        assertThat(prompt).contains("never rewrite them into `../` relative paths")
+        assertThat(prompt).contains("never put `![...](path)` inside a Markdown table cell")
+        assertThat(prompt).contains("references/comfyui-submitters.md")
+    }
+
 }

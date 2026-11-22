@@ -1,6 +1,8 @@
 package com.promenar.infinity.ui.renderer
 
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -86,5 +88,42 @@ class TableWidgetTest {
         assertThat(cleaned.text).isEqualTo("支持 tool_call 原文\uFFFD")
         val bold = cleaned.spanStyles.single()
         assertThat(cleaned.text.substring(bold.start, bold.end)).isEqualTo("tool_call")
+    }
+
+    @Test
+    fun `table cell converts workspace and remote images to clickable links and blocks unsafe schemes`() {
+        val markdown = """
+            | 段 1 | 远程 | 拦截 |
+            |---|---|---|
+            | ![红苹果](/workspace/media/2026-11-22/apple.png) | ![](https://example.com/pic.png) | ![非法](file:///etc/passwd) |
+        """.trimIndent()
+        val tableNode = MarkdownParser(GFMFlavourDescriptor())
+            .buildMarkdownTreeFromString(markdown)
+            .children
+            .single { it.type == GFMElementTypes.TABLE }
+        val table = parseMarkdownTable(markdown, tableNode)!!
+        val rowNodes = table.rowNodes.single()
+
+        fun renderCell(col: Int) = buildTableCellAnnotatedString(
+            source = table.source,
+            node = rowNodes[col],
+            fallback = table.rows.single()[col],
+        ) { src, nodes ->
+            AnnotatedString(nodes.joinToString("") { src.substring(it.startOffset, it.endOffset) })
+        }
+
+        val c0 = renderCell(0)
+        assertThat(c0.text).isEqualTo("红苹果")
+        val link0 = c0.getLinkAnnotations(0, c0.length).single().item as LinkAnnotation.Url
+        assertThat(link0.url).isEqualTo("/workspace/media/2026-11-22/apple.png")
+
+        val c1 = renderCell(1)
+        assertThat(c1.text).isEqualTo("pic.png")
+        val link1 = c1.getLinkAnnotations(0, c1.length).single().item as LinkAnnotation.Url
+        assertThat(link1.url).isEqualTo("https://example.com/pic.png")
+
+        val c2 = renderCell(2)
+        assertThat(c2.text).isEqualTo("非法")
+        assertThat(c2.getLinkAnnotations(0, c2.length)).isEmpty()
     }
 }

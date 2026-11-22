@@ -19,11 +19,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -32,9 +37,14 @@ import com.mikepenz.markdown.annotator.AnnotatorSettings
 import com.mikepenz.markdown.annotator.annotatorSettings
 import com.mikepenz.markdown.annotator.buildMarkdownAnnotatedString
 import com.mikepenz.markdown.compose.components.MarkdownComponentModel
+import com.mikepenz.markdown.utils.getUnescapedTextInNode
+import com.promenar.infinity.ui.media.MarkdownImageTarget
+import com.promenar.infinity.ui.media.classifyMarkdownImageTarget
 import com.promenar.infinity.ui.theme.InfinityShapes
 import com.promenar.infinity.ui.theme.InfinityTypography
+import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.ast.findChildOfType
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 
@@ -100,6 +110,7 @@ internal class TableMeasurer(
     private val density: Density,
     val headerStyle: TextStyle,
     val bodyStyle: TextStyle,
+    private val linkStyles: TextLinkStyles? = null,
 ) {
     fun layout(table: ParsedTable): TableLayout {
         val header = table.headerCells.indices.map { column ->
@@ -123,22 +134,103 @@ internal class TableMeasurer(
         return TableLayout(header, rows, widths)
     }
 
-    private fun cellText(table: ParsedTable, node: ASTNode?, fallback: String): AnnotatedString {
-        if (node == null || table.source.isEmpty()) return AnnotatedString(fallback)
-        val built = buildAnnotatedString { buildMarkdownAnnotatedString(table.source, node.children, settings) }
-            .withoutInlineContentPlaceholders()
-        val start = built.text.indexOfFirst { !it.isWhitespace() }
-        if (start < 0) return AnnotatedString("")
-        val end = built.text.indexOfLast { !it.isWhitespace() } + 1
-        return built.subSequence(start, end)
+    private fun cellText(table: ParsedTable, node: ASTNode?, fallback: String): AnnotatedString =
+        buildTableCellAnnotatedString(
+            source = table.source,
+            node = node,
+            fallback = fallback,
+            linkStyles = linkStyles,
+        ) { src, nodes ->
+            buildAnnotatedString { buildMarkdownAnnotatedString(src, nodes, settings) }
+        }
+}
+
+/** 将 GFM 表格单元格 AST 转为样式文本，并把单元格内的图片语法转为可点击链接或纯文本降级。 */
+internal fun buildTableCellAnnotatedString(
+    source: String,
+    node: ASTNode?,
+    fallback: String,
+    linkStyles: TextLinkStyles? = null,
+    renderInline: (String, List<ASTNode>) -> AnnotatedString,
+): AnnotatedString {
+    if (node == null || source.isEmpty()) return AnnotatedString(fallback)
+    val built = buildAnnotatedString {
+        appendCellChildren(this, source, node.children, linkStyles, renderInline)
+    }.withoutInlineContentPlaceholders()
+    val start = built.text.indexOfFirst { !it.isWhitespace() }
+    if (start < 0) return AnnotatedString("")
+    val end = built.text.indexOfLast { !it.isWhitespace() } + 1
+    return built.subSequence(start, end)
+}
+
+private fun appendCellChildren(
+    builder: AnnotatedString.Builder,
+    source: String,
+    children: List<ASTNode>,
+    linkStyles: TextLinkStyles?,
+    renderInline: (String, List<ASTNode>) -> AnnotatedString,
+) {
+    val buffered = mutableListOf<ASTNode>()
+    fun flushBuffered() {
+        if (buffered.isEmpty()) return
+        builder.append(renderInline(source, buffered.toList()).withoutInlineContentPlaceholders())
+        buffered.clear()
+    }
+    for (child in children) {
+        if (child.type == MarkdownElementTypes.IMAGE) {
+            flushBuffered()
+            appendTableImageFallback(builder, source, child, linkStyles)
+        } else if (child.containsMarkdownImage()) {
+            flushBuffered()
+            appendCellChildren(builder, source, child.children, linkStyles, renderInline)
+        } else {
+            buffered += child
+        }
+    }
+    flushBuffered()
+}
+
+private fun appendTableImageFallback(
+    builder: AnnotatedString.Builder,
+    source: String,
+    imageNode: ASTNode,
+    linkStyles: TextLinkStyles?,
+) {
+    val link = imageNode.findChildOfType(MarkdownElementTypes.INLINE_LINK)
+    val rawDest = link?.findChildOfType(MarkdownElementTypes.LINK_DESTINATION)?.getUnescapedTextInNode(source)
+    val alt = link?.findChildOfType(MarkdownElementTypes.LINK_TEXT)
+        ?.getUnescapedTextInNode(source)
+        ?.removePrefix("[")
+        ?.removeSuffix("]")
+        ?.trim()
+    val destination = when (val target = rawDest?.let { classifyMarkdownImageTarget(it, emptyList()) }) {
+        is MarkdownImageTarget.Remote -> target.url
+        is MarkdownImageTarget.Workspace -> target.path
+        is MarkdownImageTarget.LegacyGenerated -> target.path
+        MarkdownImageTarget.Blocked, null -> null
+    }
+    val label = alt?.takeIf(String::isNotBlank)
+        ?: destination?.substringAfterLast('/')?.takeIf(String::isNotBlank)
+        ?: "图片"
+    if (destination != null) {
+        builder.withLink(LinkAnnotation.Url(url = destination, styles = linkStyles)) { append(label) }
+    } else {
+        builder.append(label)
     }
 }
+
+private fun ASTNode.containsMarkdownImage(): Boolean =
+    type == MarkdownElementTypes.IMAGE || children.any { it.containsMarkdownImage() }
 
 @Composable
 internal fun rememberTableMeasurer(fontSize: Int): TableMeasurer {
     val settings = annotatorSettings()
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val linkColor = MaterialTheme.colorScheme.primary
+    val linkStyles = remember(linkColor) {
+        TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
+    }
     val headerStyle = InfinityTypography.labelMedium.copy(
         fontWeight = FontWeight.Medium,
         color = MaterialTheme.colorScheme.onSurface,
@@ -150,8 +242,8 @@ internal fun rememberTableMeasurer(fontSize: Int): TableMeasurer {
         fontSize = fontSize.sp,
         lineHeight = (fontSize * 1.4).sp,
     )
-    return remember(settings, textMeasurer, density, headerStyle, bodyStyle) {
-        TableMeasurer(settings, textMeasurer, density, headerStyle, bodyStyle)
+    return remember(settings, textMeasurer, density, headerStyle, bodyStyle, linkStyles) {
+        TableMeasurer(settings, textMeasurer, density, headerStyle, bodyStyle, linkStyles)
     }
 }
 

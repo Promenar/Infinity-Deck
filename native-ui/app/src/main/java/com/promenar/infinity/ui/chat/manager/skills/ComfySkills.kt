@@ -130,7 +130,7 @@ class ComfySaveSubmitterSkill(
 ) : ComfySkill(
     repository,
     "comfy_save_submitter",
-    "新增或更新 ComfyUI 主机下的 Python 3.14 提交器脚本（如 submit_qwen21.py / submit_h3_motion.py）及配套 JSON/Python 模块文件。须经用户一次性审批；保存后默认执行干跑自检。",
+    "新增或更新 ComfyUI 主机下的 Python 3.14 提交器脚本（如 submit_qwen21.py / submit_h3_motion.py）及配套 JSON/Python 模块文件。须经用户一次性审批；保存后默认执行干跑自检。编写自定义 PAYLOAD_JSON 脚本前请用 read_skill_file(name=\"infinity-deck\", path=\"references/comfyui-submitters.md\") 读取完整输入 --payload 与输出 result_path 契约。",
     COMFY_SAVE_SUBMITTER_SCHEMA,
     submitterRunner = submitterRunner,
     readWorkspaceFile = readWorkspaceFile,
@@ -942,7 +942,7 @@ private const val COMFY_SAVE_SUBMITTER_SCHEMA = """{
   "display_name":{"type":"string"},
   "description":{"type":"string"},
   "source_kind":{"type":"string","enum":["DESKTOP_IMPORT","SKILL_SYNC","BUILTIN_GENERIC","AGENT_AUTHORED"]},
-  "protocol":{"type":"string","enum":["PAYLOAD_JSON","CLI_ARGS"]},
+  "protocol":{"type":"string","enum":["PAYLOAD_JSON","CLI_ARGS"],"description":"PAYLOAD_JSON 以 --payload <json> 传参（dry_run/stage/branch_id/branch_policy/segment_index/parent_node_id/output_dir/result_path/host_proxy_url/inputs/inherited_state）并读取 result_path（prompt_id/outputs[{path,kind}]/continuation_state）；CLI_ARGS 按工作流参数与 --help 干跑；完整契约见 infinity-deck/references/comfyui-submitters.md"},
   "source_text":{"type":"string","description":"提交器 Python 源码正文；与 source_path 二选一"},
   "source_path":{"type":"string","description":"当前工作区内的脚本路径；与 source_text 二选一"},
   "support_files":{"type":"object","description":"同脚本一起隔离存放的配套 JSON/Python 模块，键为相对路径、值为 UTF-8 文本"},

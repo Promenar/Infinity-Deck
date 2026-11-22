@@ -52,6 +52,9 @@ data class SubmitterRunRequest(
     val stagedFilesByPath: Map<String, File> = emptyMap(),
     val stage: String = "single",
     val branchId: String = "main",
+    val branchPolicy: StatefulBranchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
+    val parentNodeId: String? = null,
+    val segmentIndex: Int = 1,
     val inheritedState: JsonObject = JsonObject(emptyMap()),
     val previousWorkflowFile: File? = null,
     val dryRun: Boolean = false,
@@ -211,6 +214,9 @@ class ComfySubmitterRunner(
                     put("dry_run", request.dryRun)
                     put("stage", request.stage)
                     put("branch_id", request.branchId)
+                    put("branch_policy", request.branchPolicy.name)
+                    put("segment_index", request.segmentIndex)
+                    request.parentNodeId?.let { put("parent_node_id", it) }
                     put("output_dir", outputDir.path)
                     put("result_path", resultFile.path)
                     request.proxyBaseUrl?.let { put("host_proxy_url", it) }
@@ -311,9 +317,9 @@ class ComfySubmitterRunner(
             val resultJson = readResultJson(resultFile, receiptFile, stdoutLines)
             val outputs = collectOutputs(resultJson, outputDir)
             val promptId = (resultJson?.get("prompt_id") as? JsonPrimitive)?.contentOrNull
-            val continuation = buildContinuationState(resultJson, receiptFile, snapshotEmitFile, outputDir, request)
+            val continuation = buildContinuationState(resultJson, receiptFile, snapshotEmitFile, outputDir, runDir, request)
             val slotKey = (resultJson?.get("overwrites_slot_key") as? JsonPrimitive)?.contentOrNull
-                ?: deriveDefaultSlotKey(continuation)
+                ?: deriveDefaultSlotKey(continuation, request)
 
             if (exitCode != 0) {
                 val errDetail = stderrBuf.toString().trim().takeLast(600).ifBlank { stdoutBuf.toString().trim().takeLast(400) }
@@ -393,6 +399,10 @@ class ComfySubmitterRunner(
             if (inheritedLatentDir != null && "latent_dir" !in explicitKeys && chainSpec.latentDirFlag.isNotBlank()) {
                 args += chainSpec.latentDirFlag
                 args += inheritedLatentDir
+            }
+            if (request.branchId.isNotBlank() && "branch_id" !in explicitKeys && chainSpec.branchIdFlag.isNotBlank()) {
+                args += chainSpec.branchIdFlag
+                args += request.branchId
             }
         }
 
@@ -561,6 +571,7 @@ class ComfySubmitterRunner(
         receiptFile: File,
         snapshotEmitFile: File,
         outputDir: File,
+        runDir: File,
         request: SubmitterRunRequest,
     ): JsonObject {
         val explicit = (resultJson?.get("continuation_state") as? JsonObject)?.toMutableMap() ?: linkedMapOf()
@@ -574,6 +585,15 @@ class ComfySubmitterRunner(
         request.resolvedInputs["height"]?.let { explicit["height"] = it }
         request.resolvedInputs["family"]?.let { explicit["family"] = it }
         request.resolvedInputs["context_length"]?.let { explicit["context_length"] = it }
+
+        // 防御一过性沙箱目录泄漏进 latent_dir；ISOLATED_DIR 下同时隔离服务端相对默认目录。
+        val rawLatentDir = (explicit["latent_dir"] as? JsonPrimitive)?.contentOrNull
+        if (rawLatentDir != null && isEphemeralRunPath(rawLatentDir, runDir)) {
+            val inherited = (request.inheritedState["latent_dir"] as? JsonPrimitive)?.contentOrNull
+                ?.takeUnless { isEphemeralRunPath(it, runDir) }
+            val fallbackDir = inherited ?: "comfy_chain/${request.workflow?.workflowId ?: "chain"}/${request.branchId.ifBlank { "main" }}"
+            explicit["latent_dir"] = JsonPrimitive(fallbackDir)
+        }
 
         // 若 receipt 或 workflow 产物中包含 API workflow 快照，持久化进 continuationState 以便后续中段接续 --previous-workflow。
         val workflowObj = (resultJson?.get("workflow") as? JsonObject)
@@ -595,17 +615,44 @@ class ComfySubmitterRunner(
         (resultJson?.get("motion_segment") as? JsonObject)?.forEach { (k, v) ->
             explicit.putIfAbsent(k, v)
         }
-        if (receiptFile.isFile && "clip_index" !in explicit) {
-            val nextIdx = (request.inheritedState["parent_segment_index"] as? JsonPrimitive)?.intOrNull?.plus(1) ?: 1
-            explicit["clip_index"] = JsonPrimitive(nextIdx)
+        val isStatefulChain = request.workflow?.executionMode == WorkflowExecutionMode.STATEFUL_CHAIN
+        if ((receiptFile.isFile || isStatefulChain) && "clip_index" !in explicit) {
+            explicit["clip_index"] = JsonPrimitive(request.segmentIndex)
         }
         return JsonObject(explicit)
     }
 
-    private fun deriveDefaultSlotKey(continuation: JsonObject): String? {
+    private fun isEphemeralRunPath(raw: String, runDir: File): Boolean {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return true
+        val runPath = runDir.path
+        val runCanonical = runCatching { runDir.canonicalPath }.getOrNull()
+        val scratchParent = runDir.parentFile
+        val scratchPath = scratchParent?.path
+        val scratchCanonical = scratchParent?.let { runCatching { it.canonicalPath }.getOrNull() }
+        val candidates = listOfNotNull(runPath, runCanonical, scratchPath, scratchCanonical)
+        val rawCanonical = runCatching { File(trimmed).canonicalPath }.getOrNull()
+        return candidates.any { prefix ->
+            trimmed == prefix || trimmed.startsWith("$prefix/") ||
+                (rawCanonical != null && (rawCanonical == prefix || rawCanonical.startsWith("$prefix/")))
+        }
+    }
+
+    private fun deriveDefaultSlotKey(
+        continuation: JsonObject,
+        request: SubmitterRunRequest,
+    ): String? {
         val latentDir = (continuation["latent_dir"] as? JsonPrimitive)?.contentOrNull ?: return null
         val clipIndex = (continuation["clip_index"] as? JsonPrimitive)?.intOrNull ?: return null
-        return "$latentDir::clip_$clipIndex"
+        return if (
+            request.branchPolicy == StatefulBranchPolicy.ISOLATED_DIR &&
+            request.branchId.isNotBlank() &&
+            request.branchId != "main"
+        ) {
+            "$latentDir::${request.branchId}::clip_$clipIndex"
+        } else {
+            "$latentDir::clip_$clipIndex"
+        }
     }
 
     private data class SimpleCmdOut(val exitCode: Int, val stdout: String, val stderr: String) {

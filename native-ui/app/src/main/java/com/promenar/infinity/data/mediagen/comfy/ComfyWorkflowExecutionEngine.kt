@@ -143,6 +143,7 @@ class ComfyWorkflowExecutionEngine(
                 ?: StatefulBranchPolicy.ISOLATED_DIR
             val branchId = if (resolvedParentId == null) "main"
             else "b_${resolvedParentId.takeLast(6)}_${UUID.randomUUID().toString().take(4)}"
+            val segIdx = if (resolvedParentId == null) 1 else (existingChain?.node(resolvedParentId)?.segmentIndex ?: 0) + 1
 
             val submitterId = workflow.submitterScriptId
             val customOutputDir = request.outputDir?.takeIf { it.isNotBlank() }?.let(::productionPath)
@@ -161,6 +162,9 @@ class ComfyWorkflowExecutionEngine(
                             stagedFilesByPath = stagedFiles,
                             stage = resolvedStage,
                             branchId = branchId,
+                            branchPolicy = branchPolicyEffective,
+                            parentNodeId = resolvedParentId,
+                            segmentIndex = segIdx,
                             inheritedState = inheritedState,
                             previousWorkflowFile = previousWorkflowFile,
                             dryRun = false,
@@ -206,7 +210,6 @@ class ComfyWorkflowExecutionEngine(
                         )
                     }
                     val chainIdNonNull = requireNotNull(resolvedChainId)
-                    val segIdx = if (resolvedParentId == null) 1 else (existingChain?.node(resolvedParentId)?.segmentIndex ?: 0) + 1
                     val attemptLabel = StatefulChainDag.nextAttemptLabel(
                         existingNodes = existingChain?.nodes.orEmpty(),
                         parentNodeId = resolvedParentId,

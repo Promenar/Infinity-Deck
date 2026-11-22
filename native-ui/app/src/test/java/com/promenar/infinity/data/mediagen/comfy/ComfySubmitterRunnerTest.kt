@@ -184,4 +184,175 @@ class ComfySubmitterRunnerTest {
             temp.deleteRecursively()
         }
     }
+
+    @Test fun isolatesSlotKeysAcrossBranchesSanitizesEphemeralLatentDirAndHonorsBranchIdFlag() = runBlocking {
+        assumeTrue(systemPythonAvailable())
+        val temp = Files.createTempDirectory("runner-chain-iso").toFile()
+        try {
+            val fileStore = FileComfySubmitterFileStore(File(temp, "submitters"))
+            val scratch = File(temp, "scratch")
+            val payloadCode = """
+                import argparse, json
+                from pathlib import Path
+
+                def main():
+                    p = argparse.ArgumentParser()
+                    p.add_argument("--payload", required=True)
+                    args = p.parse_args()
+                    payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+                    if payload.get("dry_run"):
+                        print(json.dumps({"dry_run": "ok"}))
+                        return
+                    assert payload["branch_policy"] in ("ISOLATED_DIR", "IN_PLACE_OVERWRITE")
+                    assert payload["segment_index"] == 2
+                    assert payload["parent_node_id"] == "seg_01_v1"
+                    out_dir = Path(payload["output_dir"])
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    out_img = out_dir / "frame.png"
+                    out_img.write_bytes(b"PNG")
+                    Path(payload["result_path"]).write_text(json.dumps({
+                        "prompt_id": "pid-chain",
+                        "outputs": [{"path": str(out_img), "kind": "IMAGE"}],
+                        "continuation_state": {
+                            "latent_dir": str(out_dir),
+                        },
+                    }), encoding="utf-8")
+
+                if __name__ == "__main__":
+                    main()
+            """.trimIndent()
+            val payloadSha = fileStore.saveFiles("main", "chain_iso", "submit_iso.py", payloadCode)
+            val payloadSub = ComfySubmitterScript(
+                scriptId = "chain_iso",
+                hostId = "main",
+                fileName = "submit_iso.py",
+                sourceKind = SubmitterSourceKind.AGENT_AUTHORED,
+                protocol = SubmitterInvocationProtocol.PAYLOAD_JSON,
+                sha256 = payloadSha,
+            )
+            val wfIso = ComfyWorkflow(
+                workflowId = "chain_wf",
+                hostId = "main",
+                name = "Chain",
+                submitterScriptId = "chain_iso",
+                executionMode = WorkflowExecutionMode.STATEFUL_CHAIN,
+                chainSpec = StatefulChainSpec(),
+            )
+            val runner = ComfySubmitterRunner(fileStore, scratch, ::testLaunch)
+            val b1 = runner.execute(
+                SubmitterRunRequest(
+                    submitter = payloadSub,
+                    workflow = wfIso,
+                    proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    stage = "next",
+                    branchId = "b__01_v1_aaaa",
+                    branchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
+                    parentNodeId = "seg_01_v1",
+                    segmentIndex = 2,
+                ),
+            )
+            val b2 = runner.execute(
+                SubmitterRunRequest(
+                    submitter = payloadSub,
+                    workflow = wfIso,
+                    proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    stage = "next",
+                    branchId = "b__01_v1_bbbb",
+                    branchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
+                    parentNodeId = "seg_01_v1",
+                    segmentIndex = 2,
+                ),
+            )
+            val ld1 = (b1.continuationState["latent_dir"] as JsonPrimitive).content
+            val ld2 = (b2.continuationState["latent_dir"] as JsonPrimitive).content
+            assertFalse("ephemeral scratch dir must be sanitized: $ld1", ld1.contains("scratch"))
+            assertFalse("ephemeral scratch dir must be sanitized: $ld2", ld2.contains("scratch"))
+            assertNotEquals(b1.serverLatentSlotKey, b2.serverLatentSlotKey)
+            assertTrue(b1.serverLatentSlotKey!!.contains("::b__01_v1_aaaa::clip_2"))
+            assertTrue(b2.serverLatentSlotKey!!.contains("::b__01_v1_bbbb::clip_2"))
+            ComfySubmitterRunner.cleanupRunDirectory(b1.continuationState)
+            ComfySubmitterRunner.cleanupRunDirectory(b2.continuationState)
+
+            // IN_PLACE_OVERWRITE shares slot key under the same inherited latent_dir.
+            val ov1 = runner.execute(
+                SubmitterRunRequest(
+                    submitter = payloadSub,
+                    workflow = wfIso,
+                    proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    stage = "next",
+                    branchId = "b__01_v1_aaaa",
+                    branchPolicy = StatefulBranchPolicy.IN_PLACE_OVERWRITE,
+                    parentNodeId = "seg_01_v1",
+                    segmentIndex = 2,
+                    inheritedState = buildJsonObject { put("latent_dir", "shared_shot") },
+                ),
+            )
+            val ov2 = runner.execute(
+                SubmitterRunRequest(
+                    submitter = payloadSub,
+                    workflow = wfIso,
+                    proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    stage = "next",
+                    branchId = "b__01_v1_bbbb",
+                    branchPolicy = StatefulBranchPolicy.IN_PLACE_OVERWRITE,
+                    parentNodeId = "seg_01_v1",
+                    segmentIndex = 2,
+                    inheritedState = buildJsonObject { put("latent_dir", "shared_shot") },
+                ),
+            )
+            assertEquals("shared_shot::clip_2", ov1.serverLatentSlotKey)
+            assertEquals(ov1.serverLatentSlotKey, ov2.serverLatentSlotKey)
+            ComfySubmitterRunner.cleanupRunDirectory(ov1.continuationState)
+            ComfySubmitterRunner.cleanupRunDirectory(ov2.continuationState)
+
+            // CLI_ARGS passes branchIdFlag only when non-blank.
+            val cliCode = """
+                import argparse
+                from pathlib import Path
+
+                p = argparse.ArgumentParser()
+                p.add_argument("--host", required=True)
+                p.add_argument("--output-dir", required=True)
+                p.add_argument("--stage")
+                p.add_argument("--latent-dir")
+                p.add_argument("--branch-id", default=None)
+                args = p.parse_args()
+                out = Path(args.output_dir) / "cli.png"
+                out.write_bytes(args.branch_id.encode() if args.branch_id else b"NO_BRANCH")
+            """.trimIndent()
+            val cliSha = fileStore.saveFiles("main", "cli_branch", "submit_cb.py", cliCode)
+            val cliSub = ComfySubmitterScript(
+                scriptId = "cli_branch",
+                hostId = "main",
+                fileName = "submit_cb.py",
+                sourceKind = SubmitterSourceKind.DESKTOP_IMPORT,
+                protocol = SubmitterInvocationProtocol.CLI_ARGS,
+                sha256 = cliSha,
+            )
+            val wfWithFlag = ComfyWorkflow(
+                workflowId = "cli_wf",
+                hostId = "main",
+                name = "CLI Chain",
+                submitterScriptId = "cli_branch",
+                executionMode = WorkflowExecutionMode.STATEFUL_CHAIN,
+                receiptFlag = null,
+                chainSpec = StatefulChainSpec(branchIdFlag = "--branch-id"),
+            )
+            val cliRes = runner.execute(
+                SubmitterRunRequest(
+                    submitter = cliSub,
+                    workflow = wfWithFlag,
+                    proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    stage = "next",
+                    branchId = "b__01_v1_xyz",
+                    segmentIndex = 2,
+                    inheritedState = buildJsonObject { put("latent_dir", "shot_cli") },
+                ),
+            )
+            assertEquals("b__01_v1_xyz", cliRes.outputs.single().file.readText())
+            ComfySubmitterRunner.cleanupRunDirectory(cliRes.continuationState)
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
 }

@@ -321,4 +321,49 @@ class ComfySkillsTest {
         assertNotEquals("error", okTip.status)
         assertEquals("n2a", chains.get(context.sessionId, "chain_1")!!.activeTipNodeId)
     }
+
+    @Test fun comfySaveSubmitterSupportsSourcePathAndSupportPathsWhenReaderWired() = runTest {
+        val f = ComfyFixture()
+        f.repository.saveHost(f.host)
+        val workspaceFiles = mapOf(
+            "/workspace/.work/comfy/submit_chain.py" to "print('main')\n".toByteArray(),
+            "/workspace/.work/comfy/helper.py" to "VALUE = 1\n".toByteArray(),
+        )
+        val wiredTools = comfyTools(
+            repository = f.repository,
+            readWorkspaceFile = { _, path -> workspaceFiles[path] },
+        )
+        val wiredSave = wiredTools.single { it.name == "comfy_save_submitter" }
+        val okRes = wiredSave.execute(
+            buildJsonObject {
+                put("host_id", f.host.id)
+                put("script_id", "chain_from_path")
+                put("file_name", "submit_chain.py")
+                put("protocol", "PAYLOAD_JSON")
+                put("source_path", "/workspace/.work/comfy/submit_chain.py")
+                putJsonArray("support_paths") { add("/workspace/.work/comfy/helper.py") }
+                put("run_dry_run", false)
+            },
+            context,
+        )
+        assertNotEquals("error", okRes.status)
+        val storedEntry = f.repository.submitterFiles.readEntryText(f.host.id, "chain_from_path", "submit_chain.py")
+        val storedHelper = f.repository.submitterFiles.readSupportFile(f.host.id, "chain_from_path", "helper.py")?.toString(Charsets.UTF_8)
+        assertEquals("print('main')\n", storedEntry)
+        assertEquals("VALUE = 1\n", storedHelper)
+
+        val unwiredSave = comfyTools(f.repository).single { it.name == "comfy_save_submitter" }
+        val errRes = unwiredSave.execute(
+            buildJsonObject {
+                put("host_id", f.host.id)
+                put("script_id", "chain_unwired")
+                put("file_name", "submit_chain.py")
+                put("source_path", "/workspace/.work/comfy/submit_chain.py")
+                put("run_dry_run", false)
+            },
+            context,
+        )
+        assertEquals("error", errRes.status)
+        assertTrue(errRes.content.contains("source_path"))
+    }
 }

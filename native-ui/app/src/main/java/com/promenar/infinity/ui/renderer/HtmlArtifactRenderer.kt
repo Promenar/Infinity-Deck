@@ -63,7 +63,8 @@ internal fun isLikelyRenderableHtml(code: String): Boolean {
     // 典型的 HTML 标记
     val renderableTags = setOf(
         "html", "body", "div", "iframe", "canvas", "table", "form",
-        "h1", "h2", "h3", "style", "section", "article", "p", "a"
+        "h1", "h2", "h3", "style", "section", "article", "p", "a",
+        "video", "audio", "img", "figure",
     )
     val hasTag = renderableTags.any { tag ->
         trimmed.contains("<$tag", ignoreCase = true) || trimmed.contains("</$tag", ignoreCase = true)

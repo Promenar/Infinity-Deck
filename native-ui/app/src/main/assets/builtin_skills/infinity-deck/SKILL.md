@@ -83,7 +83,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 
 MCP 工具由用户连接的服务器动态提供，名称不是固定内置清单的一部分：风险为 SCHEDULE、ACCESS_GRANT 或 AGENT_CONFIG 的工具需逐次审批，其它按实际工具名、参数目标和会话权限规则判定；连接不代表可以越过外部服务权限。自定义数据库/脚本 Skill 当前没有隔离执行器，不向模型暴露执行。`request_secret` 和 `show_secret` 免工具执行审批，但其保密卡需要用户输入或查看；不要让用户把秘密贴进聊天。`capture_secret` 是命令参数机制，不是独立模型工具。
 
-ComfyUI 主机与云端默认媒体模型相互独立：主机地址与鉴权凭据由用户在“设置 → ComfyUI”界面配置；即使用户在默认模型页将云端默认图像/视频模型留空，也可直接通过 ComfyUI 工作流生成。`comfy_list_hosts`、`comfy_probe`、`comfy_list_submitters`、`comfy_list_workflows`、`comfy_preflight_workflow`、`comfy_get_chain_state` 及旧接口 `comfy_templates` 均免执行审批。`comfy_save_submitter`、`comfy_delete_submitter`、`comfy_save_workflow`、`comfy_delete_workflow` 与 `comfy_define_template` 属于配置变更，每次均需用户审批且不可限时免批；提交器 `.py` 脚本仅在内部受控 Python 3.14 运行目录执行，且仅接收本机回环代理地址，零接触主机密钥与令牌。`comfy_run_workflow` 按两级门禁执行：日常仅传 `content_inputs` 时免工作流固定参数审批（支持单次执行与 `stateful_chain` 多段接续/任意有效中段重跑/分叉）；当传入 `fixed_overrides` 且值偏离工作流固定基线时，系统弹出精确 Diff 卡片请求一次性批准，批准仅对本次运行生效且绝不修改保存的工作流基线。`comfy_set_chain_tip` 免审批，用于切换有状态链当前末端节点。
+ComfyUI 主机与云端默认媒体模型相互独立：在“设置 → ComfyUI”配置；云端默认图像/视频模型留空时亦可调用 ComfyUI 工作流。`comfy_list_hosts`、`comfy_probe`、`comfy_list_submitters`、`comfy_list_workflows`、`comfy_preflight_workflow`、`comfy_get_chain_state` 与 `comfy_templates` 免审批。`comfy_save_submitter`、`comfy_delete_submitter`、`comfy_save_workflow`、`comfy_delete_workflow` 与 `comfy_define_template` 属配置变更，每次均需审批且不可限时免批；提交器仅在受控 Python 3.14 运行，仅见回环代理地址、零接触密钥。`comfy_run_workflow` 日常传 `content_inputs` 时免固定参数审批；传入 `fixed_overrides` 时弹出 Diff 卡请求一次性批准，绝不修改基线。`comfy_set_chain_tip` 免审批切换末端。自编或调试提交器前先读 `references/comfyui-submitters.md`。
 
 ### 仅用户可操作的配置
 
@@ -111,6 +111,7 @@ SSH 主机配置存在 `ssh_host_save`、`ssh_host_delete`、`ssh_host_install_k
 细节按需用 `read_skill_file` 读取，`name` 传 `infinity-deck`，`path` 传下列相对路径：
 
 - `references/background-processes.md`：后台任务的启动参数、状态与日志、存活条件、定时任务、`infinity-wake`、SSH 远端长期服务。
+- `references/comfyui-submitters.md`：ComfyUI Python 3.14 提交器 `PAYLOAD_JSON`/`CLI_ARGS` 与有状态链契约。
 - `references/command-execution.md`：各命令工具的分工与环境差异（起始目录、身份、终端、时限、输出上限）、结果字段、错误码与下一步。
 - `references/production-previs.md`：离线 3D 白模分镜预演（`production_previs`）的坐标系、DSL 结构、机位/走位与构图/深度/视频导出说明。
 

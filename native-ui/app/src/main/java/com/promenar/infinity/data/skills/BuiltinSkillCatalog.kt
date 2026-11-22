@@ -105,6 +105,7 @@ class BuiltinSkillCatalog(
         /** 随 APK 打包的附带文件白名单（相对技能目录，按字典序）；新增文件须同时登记在这里。 */
         val REFERENCE_FILES = listOf(
             "references/background-processes.md",
+            "references/comfyui-submitters.md",
             "references/command-execution.md",
             "references/production-previs.md",
             "references/production.md",
