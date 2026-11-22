@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.71.3-beta] - 2026-11-22
+
+- **修复代码块长行横向宿主撑破 HTML 卡片视口及独立 `<video>` 首帧预览与高度收敛（[MarkdownText.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/MarkdownText.kt)、[WorkspaceHtmlWebView.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/WorkspaceHtmlWebView.kt)、[RichContentWebView.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/RichContentWebView.kt)）**：
+  - 将 `CODE_FENCE` / `CODE_BLOCK` 的 `WideContentHost` 从整张 `ReadingCodeBlock` 外层下沉至 `codeContent` 内部包裹 `ReadingHighlightedCode`，确保长行代码只在代码正文区横向滚动，避免操作栏按钮与下方 `HtmlArtifactCard` 被宽文本拉出屏幕右缘并引发 `<video>` 等比异常放大。
+  - 在 `ensureHtmlArtifactDocument` 中为 `<video>` 样式增加 `max-height: 560px; object-fit: contain`，补充仅在缺失 `preload` 与 `poster` 时触发的 `metadata` 预加载与首帧轻跳预览脚本，并在 `RichContentWebView.onPageFinished` 追加 `900 ms` 延迟测高以容纳媒体元数据就绪后的尺寸收敛。
+
 ## [0.71.2-beta] - 2026-11-22
 
 - **打通 ComfyUI 提交器工作区导入、链式分支隔离、参考文档与媒体内嵌展示五项实测缺陷（[InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt)、[ComfySubmitterRunner.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/comfy/ComfySubmitterRunner.kt)、[TableWidget.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/TableWidget.kt)、[HtmlArtifactRenderer.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/HtmlArtifactRenderer.kt)）**：

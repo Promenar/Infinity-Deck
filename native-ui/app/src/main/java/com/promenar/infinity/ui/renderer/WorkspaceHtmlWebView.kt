@@ -53,6 +53,11 @@ internal fun ensureHtmlArtifactDocument(html: String): String {
     ) {
         return html
     }
+    val videoPreviewScript = if (trimmed.contains("<video", ignoreCase = true)) {
+        "<script>(function(){function seekPreview(v){if(!v.poster&&v.currentTime===0&&isFinite(v.duration)&&v.duration>0){try{v.currentTime=Math.min(0.05,v.duration/4);}catch(_){}}}document.querySelectorAll('video').forEach(function(v){if(!v.hasAttribute('preload'))v.preload='metadata';if(v.readyState>=1){seekPreview(v);}else{v.addEventListener('loadedmetadata',function onM(){v.removeEventListener('loadedmetadata',onM);seekPreview(v);});}});})();</script>"
+    } else {
+        ""
+    }
     return """
         <!DOCTYPE html>
         <html>
@@ -62,11 +67,11 @@ internal fun ensureHtmlArtifactDocument(html: String): String {
             <style>
                 html, body { margin: 0; padding: 6px; box-sizing: border-box; height: auto !important; overflow: hidden; }
                 img, video, svg, canvas { max-width: 100%; height: auto; display: block; border-radius: 8px; }
-                video { width: 100%; min-height: 180px; background: #000; }
+                video { width: 100%; max-height: 560px; min-height: 180px; background: #000; object-fit: contain; }
                 audio { width: 100%; display: block; }
             </style>
         </head>
-        <body>$html</body>
+        <body>$html$videoPreviewScript</body>
         </html>
     """.trimIndent()
 }

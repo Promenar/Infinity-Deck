@@ -185,6 +185,7 @@ fun RichContentWebView(
                     measure()
                     view?.postDelayed({ measure() }, 100)
                     view?.postDelayed({ measure() }, 400)
+                    view?.postDelayed({ measure() }, 900)
                 }
             }
         }.also { onWebViewCreated?.invoke(it) }

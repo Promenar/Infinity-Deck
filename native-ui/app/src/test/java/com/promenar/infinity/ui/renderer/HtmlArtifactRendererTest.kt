@@ -16,10 +16,18 @@ class HtmlArtifactRendererTest {
     @Test
     fun `ensureHtmlArtifactDocument wraps media fragments without escaping while keeping full documents untouched`() {
         val videoFragment = """<video controls playsinline src="https://workspace-media.infinity.invalid/workspace/media/demo.mp4"></video>"""
-        val wrapped = ensureHtmlArtifactDocument(videoFragment)
-        assertThat(wrapped).startsWith("<!DOCTYPE html>")
-        assertThat(wrapped).contains("<body>$videoFragment</body>")
-        assertThat(wrapped).doesNotContain("&lt;video")
+        val wrappedVideo = ensureHtmlArtifactDocument(videoFragment)
+        assertThat(wrappedVideo).startsWith("<!DOCTYPE html>")
+        assertThat(wrappedVideo).contains("<body>$videoFragment")
+        assertThat(wrappedVideo).contains("max-height: 560px; min-height: 180px; background: #000; object-fit: contain;")
+        assertThat(wrappedVideo).contains("preload='metadata'")
+        assertThat(wrappedVideo).contains("loadedmetadata")
+        assertThat(wrappedVideo).doesNotContain("&lt;video")
+
+        val imageFragment = """<figure><img src="https://workspace-media.infinity.invalid/workspace/media/a.png"></figure>"""
+        val wrappedImage = ensureHtmlArtifactDocument(imageFragment)
+        assertThat(wrappedImage).contains("<body>$imageFragment</body>")
+        assertThat(wrappedImage).doesNotContain("loadedmetadata")
 
         val fullDoc = "<!DOCTYPE html><html><head></head><body><p>ok</p></body></html>"
         assertThat(ensureHtmlArtifactDocument(fullDoc)).isEqualTo(fullDoc)

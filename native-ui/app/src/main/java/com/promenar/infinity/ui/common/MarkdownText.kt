@@ -1466,29 +1466,29 @@ private fun MarkdownSafe(
                                 node = node,
                                 style = LocalMarkdownTypography.current.code,
                             ) { code, language, style ->
-                                WideContentHost(
-                                    text = code,
-                                    textStyle = style,
-                                    horizontalChrome = 32.dp,
+                                ReadingCodeBlock(
+                                    code = code,
+                                    language = language,
+                                    fontSize = fontSize,
+                                    onCodeChange = if (currentOnContentChange.value != null) {
+                                        { newCode ->
+                                            currentOnContentChange.value?.invoke(
+                                                replaceCodeInMarkdown(
+                                                    currentMarkdown.value,
+                                                    language,
+                                                    code,
+                                                    newCode,
+                                                ),
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
                                 ) {
-                                    ReadingCodeBlock(
-                                        code = code,
-                                        language = language,
-                                        fontSize = fontSize,
-                                        onCodeChange = if (currentOnContentChange.value != null) {
-                                            { newCode ->
-                                                currentOnContentChange.value?.invoke(
-                                                    replaceCodeInMarkdown(
-                                                        currentMarkdown.value,
-                                                        language,
-                                                        code,
-                                                        newCode,
-                                                    ),
-                                                )
-                                            }
-                                        } else {
-                                            null
-                                        },
+                                    WideContentHost(
+                                        text = code,
+                                        textStyle = style,
+                                        horizontalChrome = 4.dp,
                                     ) {
                                         ReadingHighlightedCode(
                                             code = code,
@@ -1506,29 +1506,29 @@ private fun MarkdownSafe(
                                 node = node,
                                 style = LocalMarkdownTypography.current.code,
                             ) { code, language, style ->
-                                WideContentHost(
-                                    text = code,
-                                    textStyle = style,
-                                    horizontalChrome = 32.dp,
+                                ReadingCodeBlock(
+                                    code = code,
+                                    language = language,
+                                    fontSize = fontSize,
+                                    onCodeChange = if (currentOnContentChange.value != null) {
+                                        { newCode ->
+                                            currentOnContentChange.value?.invoke(
+                                                replaceCodeInMarkdown(
+                                                    currentMarkdown.value,
+                                                    language,
+                                                    code,
+                                                    newCode,
+                                                ),
+                                            )
+                                        }
+                                    } else {
+                                        null
+                                    },
                                 ) {
-                                    ReadingCodeBlock(
-                                        code = code,
-                                        language = language,
-                                        fontSize = fontSize,
-                                        onCodeChange = if (currentOnContentChange.value != null) {
-                                            { newCode ->
-                                                currentOnContentChange.value?.invoke(
-                                                    replaceCodeInMarkdown(
-                                                        currentMarkdown.value,
-                                                        language,
-                                                        code,
-                                                        newCode,
-                                                    ),
-                                                )
-                                            }
-                                        } else {
-                                            null
-                                        },
+                                    WideContentHost(
+                                        text = code,
+                                        textStyle = style,
+                                        horizontalChrome = 4.dp,
                                     ) {
                                         ReadingHighlightedCode(
                                             code = code,
