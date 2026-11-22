@@ -97,4 +97,42 @@ class ModelDownloaderTest {
             assertTrue(downloader.download("https://example.invalid/model", "fixture.bin").isFailure)
         } finally { directory.deleteRecursively() }
     }
+
+    @Test fun staleOrCorruptDestinationIsDeletedAndRedownloadedInSingleAttempt() = runBlocking {
+        val directory = Files.createTempDirectory("download-stale-dest-").toFile()
+        val freshBytes = "updated-campplus-model-payload".toByteArray()
+        val sameSizeCorruptBytes = "corrupt-campplus-model-payload".toByteArray()
+        assertEquals(freshBytes.size, sameSizeCorruptBytes.size)
+        var calls = 0
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            calls++
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(freshBytes.toResponseBody()).build()
+        }.build()
+        try {
+            val downloader = ModelDownloader(directory, client)
+            val staleTarget = File(directory, "campplus.onnx")
+            staleTarget.writeBytes("legacy-length-mismatch".toByteArray())
+            val first = downloader.downloadFile(
+                url = "https://example.invalid/campplus.onnx",
+                fileName = "campplus.onnx",
+                directory = directory,
+                expectedSha256 = hash(freshBytes),
+                expectedBytes = freshBytes.size.toLong(),
+            ).getOrThrow()
+            assertArrayEquals(freshBytes, first.readBytes())
+            assertEquals(1, calls)
+
+            staleTarget.writeBytes(sameSizeCorruptBytes)
+            val second = downloader.downloadFile(
+                url = "https://example.invalid/campplus.onnx",
+                fileName = "campplus.onnx",
+                directory = directory,
+                expectedSha256 = hash(freshBytes),
+                expectedBytes = freshBytes.size.toLong(),
+            ).getOrThrow()
+            assertArrayEquals(freshBytes, second.readBytes())
+            assertEquals(2, calls)
+        } finally { directory.deleteRecursively() }
+    }
 }

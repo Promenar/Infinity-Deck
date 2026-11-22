@@ -102,8 +102,14 @@ class ModelDownloader internal constructor(
                 }
             }
             if (destination.exists()) {
-                try { verify(destination) } catch (e: ModelDownloadIntegrityException) { destination.delete(); throw e }
-                return@withContext Result.success(destination)
+                val valid = try {
+                    verify(destination)
+                    true
+                } catch (e: ModelDownloadIntegrityException) {
+                    if (!destination.delete()) throw e
+                    false
+                }
+                if (valid) return@withContext Result.success(destination)
             }
             if (expectedBytes != null && partial.length() > expectedBytes) partial.delete()
             var start = partial.length()
@@ -147,7 +153,7 @@ class ModelDownloader internal constructor(
             }
             verify(partial)
             checkActive()
-            java.nio.file.Files.move(partial.toPath(), destination.toPath())
+            java.nio.file.Files.move(partial.toPath(), destination.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             Result.success(destination)
         } catch (e: Exception) {
             if (e is ModelDownloadIntegrityException) tempFile?.delete()

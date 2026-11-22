@@ -213,7 +213,7 @@ internal class RecordingAsrModelManager(
     companion object { const val STORAGE_MARGIN_BYTES = 64L * 1024 * 1024 }
 }
 
-private suspend fun copyVerifiedFile(
+internal suspend fun copyVerifiedFile(
     input: InputStream,
     target: File,
     expected: RecordingAsrFile,
@@ -239,7 +239,7 @@ private suspend fun copyVerifiedFile(
     }
 }
 
-private fun isAsrStorageFailure(error: Throwable): Boolean = generateSequence(error) { it.cause }.any {
+internal fun isAsrStorageFailure(error: Throwable): Boolean = generateSequence(error) { it.cause }.any {
     it.message?.contains("ENOSPC", ignoreCase = true) == true ||
         it is android.system.ErrnoException && it.errno == android.system.OsConstants.ENOSPC
 }
@@ -254,7 +254,7 @@ internal data class RecordingRefinePackage(
     companion object {
         val CURRENT = RecordingRefinePackage(
             version = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
-            baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/main/",
+            baseUrl = "https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09/resolve/355f4d4884d8afd08aef04b9007a8556d7b463b2/",
             files = listOf(
                 RecordingAsrFile(
                     name = "model.int8.onnx",

@@ -1,5 +1,8 @@
 <resources>
     <string name="recording_speaker_download_failed">Speaker model download or verification failed</string>
+    <string name="recording_speaker_network">Could not download the voiceprint model. Check your connection and try again.</string>
+    <string name="recording_speaker_integrity">The voiceprint model failed verification. Please download it again.</string>
+    <string name="recording_speaker_storage">Not enough storage to download and install the voiceprint model.</string>
     <string name="recording_speaker_model">Voiceprint model</string>
     <string name="recording_speaker_analysis">Analyzing speakers</string>
     <string name="recording_speaker_analysis_failed">Speaker analysis failed</string>
