@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.70.4-beta`（versionCode `196`）。自上一公开版 `v0.61.2-beta` 以来累计交付离线 `three.js` 3D 白模分镜预演与 Beauty/Depth 抽帧及硬件 MP4 导出、全视觉参考资产双模与已锁定项 AI 改写审批、全站黑曜石熏黑毛玻璃与「环境光」省电实底及根级悬浮通知胶囊、全站 46 项常驻控件与布局稳定性改造、多图滑切查看器（1×–5× 与 90° 旋转）、录音富格式整理（表格 / Mermaid / ECharts / LaTeX / 1440px+ PNG·PDF 导出）、已发送消息编辑重生成及 `2 MiB` 滚动诊断与单会话轨迹导出，并在真机复验与发行预检后修复本地模型列表首帧闪现与空态重叠及 DEX 敏感路径正则误报。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
+- **当前版本**：`v0.70.5-beta`（versionCode `197`），在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上修复 ComfyUI 帧率对齐、V3 `COMBO` 与嵌套动态参数诊断、`comfy_probe` 分片探测、端到端 `LAST_FRAME`（L2VA）支持、参考位默认顺序回退、孤立上传节点裁剪与变更实时重扫共 8 项制作缺陷，并完成声纹（`campplus.onnx`）与 SenseVoice 模型不可变 Hugging Face commit 主源锁定及校验重试恢复。`v0.70.4-beta` 累计交付离线 `three.js` 3D 白模分镜预演与 Beauty/Depth 抽帧及硬件 MP4 导出、全视觉参考资产双模与已锁定项 AI 改写审批、全站黑曜石熏黑毛玻璃与「环境光」省电实底及根级悬浮通知胶囊、全站 46 项常驻控件与布局稳定性改造、多图滑切查看器（1×–5× 与 90° 旋转）、录音富格式整理（表格 / Mermaid / ECharts / LaTeX / 1440px+ PNG·PDF 导出）、已发送消息编辑重生成及 `2 MiB` 滚动诊断与单会话轨迹导出。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
 
 ### 从源码构建
 

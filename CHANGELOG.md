@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.70.5-beta] - 2026-11-22
+
 - **修复声纹模型下载校验永久失败并锁定不可变官方模型源（[RecordingSpeakerModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingSpeakerModel.kt)、[RecordingAsrModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingAsrModel.kt)、[ModelDownloader.kt](native-ui/app/src/main/java/com/promenar/infinity/data/local/inference/ModelDownloader.kt)、[recording_speaker_strings.xml](native-ui/app/src/main/res/values-zh-rCN/recording_speaker_strings.xml)）**：
   - 将 `campplus.onnx` 预期大小与 SHA-256 同步至上游最新导出（`28_281_139` B / `e6af4d4c...`），将声纹与 SenseVoice-Small 主源锁定为官方 Hugging Face 仓库 40 位不可变 commit，并为声纹模型保留 GitHub Release `.tar.bz2` / ONNX 自动回退（隔离 `.download/` 缓存与遗留文件清理）及老版 `28_281_138` B 已安装文件平滑兼容。
   - 修复 `ModelDownloader.downloadFile` 对校验失效的既有目标文件先删除后重抛异常导致用户需二次点击才能重下的问题，补全 `REPLACE_EXISTING` 覆盖提交，并增加声纹网络/校验/存储空间三类双语错误细分与 `InfinityLogger` 诊断日志。
