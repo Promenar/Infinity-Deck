@@ -19,9 +19,9 @@ import com.promenar.infinity.ui.theme.InfinityTheme
 import com.promenar.infinity.ui.theme.InfinityThemeMode
 import com.promenar.infinity.ui.theme.InfinityThemePreferences
 
-// 会话流里的状态行：同一格式“[动画] 名称 m:ss … [标签] [操作]”，单行固定高度。
-// 自上而下：等待模型、满 30 秒无响应、重试退避、重试后重新连接、重新连接后仍无响应、限流退避、准备工具调用、等待审批、等待回答。
-// 只有“无响应”用警示色标签并带停止按钮，其余一律中性。
+// 会话流里的状态行：同一格式“[动画] 名称 m:ss … [标签]”，单行固定高度。
+// 自上而下：等待模型 0:12、等待模型 0:48（超过 30 秒仍保持中性计时）、重试退避、重试后重新连接、重试后持续等待（保持重试标签）、限流退避、准备工具调用、等待审批、等待回答。
+// 全部状态保持中性色调，停止操作统一由输入框既有停止按钮承载。
 @PreviewTest
 @Preview(name = "状态行 深中411", widthDp = 411, heightDp = 400, locale = "zh-rCN")
 @Composable
@@ -44,15 +44,14 @@ private fun LiveStatusRows(mode: InfinityThemeMode) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             CompositionLocalProvider(LocalLiveStepNow provides NOW) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    LiveWaitingRow(waiting, onStopGeneration = {})
-                    LiveWaitingRow(waiting.copy(startedAt = NOW - 48_000), onStopGeneration = {})
-                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(3, GenerationFailureCode.NETWORK, 4_000, 500)), onStopGeneration = {})
-                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(3, GenerationFailureCode.NETWORK, 4_000, 7_000)), onStopGeneration = {})
-                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(7, GenerationFailureCode.SERVER, 4_000, 35_000)), onStopGeneration = {})
-                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(2, GenerationFailureCode.RATE_LIMIT, 20_000, 2_000)), onStopGeneration = {})
+                    LiveWaitingRow(waiting)
+                    LiveWaitingRow(waiting.copy(startedAt = NOW - 48_000))
+                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(3, GenerationFailureCode.NETWORK, 4_000, 500)))
+                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(3, GenerationFailureCode.NETWORK, 4_000, 7_000)))
+                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(7, GenerationFailureCode.SERVER, 4_000, 35_000)))
+                    LiveWaitingRow(waiting.copy(startedAt = NOW - 96_000, retry = retry(2, GenerationFailureCode.RATE_LIMIT, 20_000, 2_000)))
                     LiveWaitingRow(
                         waiting.copy(kind = LiveStepKind.PREPARING_TOOL, motionPhase = GenerationMotionPhase.STREAM, startedAt = NOW - 3_000),
-                        onStopGeneration = {},
                     )
                     LiveWaitBadge(LiveStep(LiveStepKind.APPROVAL, GenerationMotionPhase.APPROVAL, startedAt = NOW - 23_000))
                     LiveWaitBadge(LiveStep(LiveStepKind.QUESTION, GenerationMotionPhase.APPROVAL, startedAt = NOW - 65_000))

@@ -42,6 +42,9 @@ class LinuxSessionFileSkill(
             SessionRunMode.BUILTIN -> original.execute(args, context)
             null -> ToolResult("linux_files_error", "请先确定当前会话的运行模式", "error")
             SessionRunMode.LINUX -> try {
+                linuxSkillPathHint(args)?.let { hint ->
+                    return@withContext ToolResult("linux_skills_path_hint", hint, "error")
+                }
                 val target = linuxFiles.executionTarget(context.sessionId, original.toProtocolTool(), args)
                     ?: throw ExternalFolderException("INVALID_PATH", "无法确定 Linux 文件工具目标")
                 if ((context.isApprovalBoundExecution || context.approvedExecutionTarget != null) && context.approvedExecutionTarget != target) {
@@ -66,5 +69,22 @@ class LinuxSessionFileSkill(
                 workspaceTraversalFailure(original.id, failure)
             }
         }
+    }
+
+    private fun linuxSkillPathHint(args: JsonObject): String? {
+        for (key in listOf("path", "parentPath", "newParentPath")) {
+            val raw = (args[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim() ?: continue
+            if (raw.contains("\$INFINITY_SKILLS") || raw.contains("\${INFINITY_SKILLS}") ||
+                raw.contains("\$NEXARA_SKILLS") || raw.contains("\${NEXARA_SKILLS}")
+            ) {
+                return "文件工具不解析 Shell 环境变量（例如 \$INFINITY_SKILLS）。请改用挂载绝对路径 /mnt/skills/<技能名>/<相对路径>，或使用 read_skill_file(name=\"<技能名>\", path=\"<相对路径>\") 读取。"
+            }
+            if (raw == "/skills" || raw.startsWith("/skills/")) {
+                val rel = raw.removePrefix("/skills").trimStart('/')
+                val suggested = if (rel.isEmpty()) "/mnt/skills/<技能名>" else "/mnt/skills/$rel"
+                return "Linux 会话模式下用户级技能挂载于 /mnt/skills/ 而非 /skills/：请改用 $suggested，或使用 read_skill_file 读取技能文件。"
+            }
+        }
+        return null
     }
 }

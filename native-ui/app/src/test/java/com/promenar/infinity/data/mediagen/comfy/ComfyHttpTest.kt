@@ -99,6 +99,35 @@ class ComfyHttpTest {
         try { OkHttpComfyHttp(client, ComfyCredentials(f.secrets)).post(f.host, "/prompt", JsonObject(emptyMap())); fail("应超时") }
         catch (e: ComfyFailure) { assertFalse(e.retryable); assertTrue(e.message!!.contains("提交结果未知")) }
     }
+    @Test fun replayableUploadSurvives407ChallengeAndCleansSpillFile() = runTest {
+        val f = ComfyFixture()
+        val spillDir = java.nio.file.Files.createTempDirectory("comfy-spill-test").toFile()
+        try {
+            val capturedBodies = mutableListOf<Long>()
+            val client = OkHttpClient.Builder().addInterceptor { chain ->
+                val req = chain.request()
+                val body = req.body!!
+                assertFalse(body.isOneShot())
+                assertTrue(body.contentLength() > 0L)
+                val buf = Buffer()
+                body.writeTo(buf)
+                capturedBodies += buf.size
+                // 模拟尾网认证重试：首次写体校验后手动再重放一次确认可重复写入
+                val replayBuf = Buffer()
+                body.writeTo(replayBuf)
+                assertEquals(buf.size, replayBuf.size)
+                response(req, """{"name":"large.png","subfolder":"infinity","type":"input"}""")
+            }.build()
+            val http = OkHttpComfyHttp(client, ComfyCredentials(f.secrets), spillDir)
+            val bigPayload = ByteArray(2 * 1024 * 1024 + 64 * 1024) { (it % 251).toByte() }
+            val result = http.upload(f.host, "large.png", "image/png", ByteArrayInputStream(bigPayload))
+            assertEquals("infinity/large.png", result)
+            assertEquals(1, capturedBodies.size)
+            assertTrue(spillDir.listFiles().orEmpty().isEmpty())
+        } finally {
+            spillDir.deleteRecursively()
+        }
+    }
     private fun response(request: Request, text: String, code: Int = 200, mime: String = "application/json") = Response.Builder()
         .request(request).protocol(Protocol.HTTP_1_1).code(code).message("fake")
         .header("Content-Type", mime).body(text.toResponseBody(mime.toMediaType())).build()

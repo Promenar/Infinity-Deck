@@ -175,6 +175,46 @@ class TailnetProxiesTest {
     }
 
     @Test
+    fun `明文 HTTP 经预认证拦截器首跳直通支持 isOneShot 上传且不泄漏给其它代理`() {
+        val proxy = FakeProxy().also(proxies::add)
+        val source = FakeSource(proxy.endpoint)
+        val client = OkHttpClient.Builder()
+            .proxySelector(TailnetProxySelector(source, fallback = { listOf(Proxy.NO_PROXY) }))
+            .proxyAuthenticator(TailnetProxyAuthenticator(source))
+            .addNetworkInterceptor(TailnetPreemptiveProxyAuthInterceptor(source))
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .build()
+        val oneShotBody = object : okhttp3.RequestBody() {
+            override fun contentType() = null
+            override fun isOneShot() = true
+            override fun writeTo(sink: okio.BufferedSink) {
+                sink.writeUtf8("stream-payload")
+            }
+        }
+        client.newCall(Request.Builder().url("http://nas.tail1.ts.net:8080/upload").post(oneShotBody).build())
+            .execute().use { response ->
+                assertThat(response.code).isEqualTo(200)
+            }
+        // 首跳即注入 Proxy-Authorization，不存在先 407 再重试的往返。
+        assertThat(proxy.requests).hasSize(1)
+        assertThat(proxy.requests.single().second).isEqualTo(Credentials.basic(user, password))
+
+        // 非本机代理绝不收到 Tailnet 代理凭据。
+        val other = FakeProxy().also(proxies::add)
+        val elsewhere = FakeSource(TailnetProxyEndpoint(40003, user, password))
+        val systemClient = OkHttpClient.Builder()
+            .proxySelector(TailnetProxySelector(elsewhere, fallback = { listOf(Proxy(Proxy.Type.HTTP, InetSocketAddress(other.server.inetAddress, other.server.localPort))) }))
+            .proxyAuthenticator(TailnetProxyAuthenticator(elsewhere))
+            .addNetworkInterceptor(TailnetPreemptiveProxyAuthInterceptor(elsewhere))
+            .build()
+        systemClient.newCall(Request.Builder().url("http://public.example.org/test").build()).execute().use { response ->
+            assertThat(response.code).isEqualTo(407)
+        }
+        assertThat(other.requests.map { it.second }.toSet()).containsExactly(null)
+    }
+
+    @Test
     fun `端口必须有效`() {
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { TailnetProxyEndpoint(0, user, password) }
         org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { TailnetProxyEndpoint(65536, user, password) }

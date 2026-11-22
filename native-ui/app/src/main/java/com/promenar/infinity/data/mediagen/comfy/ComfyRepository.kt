@@ -304,18 +304,22 @@ class ComfyRepository(
                     if (nodeId != null) {
                         val node = raw[nodeId] as? JsonObject
                         if (node == null) missing += "字段 ${field.key} 引用节点 $nodeId 不存在"
-                        else if (inputKey != null && (node["inputs"] as? JsonObject)?.containsKey(inputKey) != true) {
+                        else if (inputKey != null && field.dynamicInputPrefix == null && (node["inputs"] as? JsonObject)?.containsKey(inputKey) != true) {
                             uncertain += "字段 ${field.key} 输入 $nodeId.$inputKey 未在原始图 inputs 中显式列出"
                         }
                     }
-                    val upId = field.uploadNodeId
-                    val upInput = field.uploadInputKey
-                    if (upId != null) {
-                        val node = raw[upId] as? JsonObject
-                        if (node == null) missing += "字段 ${field.key} 上传节点 $upId 不存在"
-                        else if (upInput != null && (node["inputs"] as? JsonObject)?.containsKey(upInput) != true) {
-                            missing += "上传输入 $upId.$upInput"
+                    field.effectiveUploadTargets().forEach { target ->
+                        val node = raw[target.nodeId] as? JsonObject
+                        if (node == null) missing += "字段 ${field.key} 上传节点 ${target.nodeId} 不存在"
+                        else if ((node["inputs"] as? JsonObject)?.containsKey(target.input) != true) {
+                            missing += "上传输入 ${target.nodeId}.${target.input}"
                         }
+                    }
+                    if (field.valueType == FieldValueType.FILE_LIST &&
+                        field.dynamicInputPrefix == null &&
+                        field.effectiveUploadTargets().size <= 1
+                    ) {
+                        uncertain += "多文件字段 ${field.key} 未声明多目标 uploadTargets 或 dynamicInputPrefix（传入多项时将被拒绝）"
                     }
                 }
                 validateComfyDynamicInputs(raw, info, missing, uncertain)

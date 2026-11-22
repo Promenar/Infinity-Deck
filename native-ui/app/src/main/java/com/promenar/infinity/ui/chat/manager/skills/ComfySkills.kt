@@ -18,6 +18,13 @@ import kotlinx.serialization.json.*
 import java.io.File
 import java.util.UUID
 
+/** 从已启用技能包按包内相对目录树原样导入提交器及配套文件的解析结果。 */
+data class SubmitterImportedBundle(
+    val entryFileName: String,
+    val sourceText: String,
+    val supportFiles: Map<String, ByteArray> = emptyMap(),
+)
+
 /**
  * ComfyUI 独立兼容层向智能体暴露的全部工具：
  * - 只读查询/预检/链路状态为 `SAFE_READ`；
@@ -33,16 +40,17 @@ fun comfyTools(
     submitterRunner: ComfySubmitterRunner? = null,
     jobs: BackgroundJobManager? = null,
     readWorkspaceFile: (suspend (sessionId: String, path: String) -> ByteArray?)? = null,
+    importSkillSubmitter: (suspend (sessionId: String, skillName: String, entryPath: String, includePaths: List<String>) -> SubmitterImportedBundle)? = null,
 ): List<SkillDefinition> = listOf(
     ComfyProbeSkill(repository),
     ComfyListTemplatesSkill(repository),
     ComfyDefineTemplateSkill(repository),
-    ComfyListHostsSkill(repository),
+    ComfyListHostsSkill(repository, submitterRunner),
     ComfyListSubmittersSkill(repository, submitterRunner),
     ComfyListWorkflowsSkill(repository),
     ComfyPreflightWorkflowSkill(repository, submitterRunner),
     ComfyGetChainStateSkill(chainStore),
-    ComfySaveSubmitterSkill(repository, submitterRunner, readWorkspaceFile),
+    ComfySaveSubmitterSkill(repository, submitterRunner, readWorkspaceFile, importSkillSubmitter),
     ComfyDeleteSubmitterSkill(repository),
     ComfySaveWorkflowSkill(repository),
     ComfyDeleteWorkflowSkill(repository),
@@ -77,11 +85,15 @@ class ComfyDefineTemplateSkill(repository: ComfyRepository) : ComfySkill(
     COMFY_TEMPLATE_SCHEMA,
 )
 
-class ComfyListHostsSkill(repository: ComfyRepository) : ComfySkill(
+class ComfyListHostsSkill(
+    repository: ComfyRepository,
+    submitterRunner: ComfySubmitterRunner? = null,
+) : ComfySkill(
     repository,
     "comfy_list_hosts",
     "列出所有已在设置中配置的 ComfyUI 主机、网络地址、鉴权方式与凭据配置状态（不回显任何密钥），以及关联提交器脚本与工作流数量。",
     """{"type":"object","properties":{},"additionalProperties":false}""",
+    submitterRunner = submitterRunner,
 )
 
 class ComfyListSubmittersSkill(
@@ -98,8 +110,8 @@ class ComfyListSubmittersSkill(
 class ComfyListWorkflowsSkill(repository: ComfyRepository) : ComfySkill(
     repository,
     "comfy_list_workflows",
-    "列出 ComfyUI 工作流及其全部 CONTENT（内容字段）与 FIXED（固定字段）完整声明、执行模式（single / stateful_chain）、绑定的提交器与预检结果。传入 workflow_id 与 recheck=true 可触发重新预检。",
-    """{"type":"object","properties":{"host_id":{"type":"string"},"workflow_id":{"type":"string"},"media_category":{"type":"string","enum":["IMAGE","VIDEO","AUDIO","POST_PROCESS"]},"recheck":{"type":"boolean"}},"additionalProperties":false}""",
+    "列出 ComfyUI 工作流。默认列表中仅返回轻量摘要；传入 workflow_id 或 detail=true 时返回全部 CONTENT/FIXED 完整声明、chain_spec 与预检详情。传入 workflow_id 与 recheck=true 可触发重新预检。",
+    """{"type":"object","properties":{"host_id":{"type":"string"},"workflow_id":{"type":"string"},"media_category":{"type":"string","enum":["IMAGE","VIDEO","AUDIO","POST_PROCESS"]},"detail":{"type":"boolean","description":"为 true 或指定 workflow_id 时返回完整字段定义，列表默认返回轻量摘要"},"recheck":{"type":"boolean"}},"additionalProperties":false}""",
 )
 
 class ComfyPreflightWorkflowSkill(
@@ -127,13 +139,15 @@ class ComfySaveSubmitterSkill(
     repository: ComfyRepository,
     submitterRunner: ComfySubmitterRunner? = null,
     readWorkspaceFile: (suspend (sessionId: String, path: String) -> ByteArray?)? = null,
+    importSkillSubmitter: (suspend (sessionId: String, skillName: String, entryPath: String, includePaths: List<String>) -> SubmitterImportedBundle)? = null,
 ) : ComfySkill(
     repository,
     "comfy_save_submitter",
-    "新增或更新 ComfyUI 主机下的 Python 3.14 提交器脚本（如 submit_qwen21.py / submit_h3_motion.py）及配套 JSON/Python 模块文件。须经用户一次性审批；保存后默认执行干跑自检。编写自定义 PAYLOAD_JSON 脚本前请用 read_skill_file(name=\"infinity-deck\", path=\"references/comfyui-submitters.md\") 读取完整输入 --payload 与输出 result_path 契约。",
+    "新增或更新 ComfyUI 主机下的 Python 3.14 提交器脚本（如 submit_qwen21.py / submit_h3_motion.py）及配套 JSON/Python 模块文件。支持 via skill_import 直接从已启用技能包按原始目录层级零改写导入，无需人工抄录。须经用户一次性审批；保存后默认执行干跑自检。编写自定义 PAYLOAD_JSON 脚本前请用 read_skill_file(name=\"infinity-deck\", path=\"references/comfyui-submitters.md\") 读取契约。",
     COMFY_SAVE_SUBMITTER_SCHEMA,
     submitterRunner = submitterRunner,
     readWorkspaceFile = readWorkspaceFile,
+    importSkillSubmitter = importSkillSubmitter,
 )
 
 class ComfyDeleteSubmitterSkill(repository: ComfyRepository) : ComfySkill(
@@ -190,6 +204,7 @@ abstract class ComfySkill(
     private val submitterRunner: ComfySubmitterRunner? = null,
     private val jobs: BackgroundJobManager? = null,
     private val readWorkspaceFile: (suspend (sessionId: String, path: String) -> ByteArray?)? = null,
+    private val importSkillSubmitter: (suspend (sessionId: String, skillName: String, entryPath: String, includePaths: List<String>) -> SubmitterImportedBundle)? = null,
 ) : SkillDefinition {
     override val id get() = name
     override val mcpServerId: String? = null
@@ -341,7 +356,7 @@ abstract class ComfySkill(
     }
 
     private suspend fun executeListWorkflows(repo: ComfyRepository, args: JsonObject): JsonObject {
-        keys(args, emptySet(), setOf("host_id", "workflow_id", "media_category", "recheck"))
+        keys(args, emptySet(), setOf("host_id", "workflow_id", "media_category", "detail", "recheck"))
         val hostId = optional(args, "host_id")
         val workflowId = optional(args, "workflow_id")
         val categoryRaw = optional(args, "media_category")
@@ -349,6 +364,7 @@ abstract class ComfySkill(
             ComfyMediaCategory.entries.firstOrNull { c -> c.name == it }
                 ?: throw IllegalArgumentException("media_category 无效：$it")
         }
+        val detail = optionalBoolean(args, "detail", defaultValue = false)
         val recheck = optionalBoolean(args, "recheck", defaultValue = false)
         require(!recheck || workflowId != null) { "recheck=true 需要指定 workflow_id" }
         if (recheck && workflowId != null) {
@@ -360,9 +376,11 @@ abstract class ComfySkill(
                 (categoryFilter == null || state.workflow.mediaCategory == categoryFilter)
         }
         require(workflowId == null || filtered.isNotEmpty()) { "工作流不存在：$workflowId" }
-        val rendered = boundedWorkflowStates(filtered, submittersByKey)
+        val fullDetail = detail || workflowId != null
+        val rendered = boundedWorkflowStates(filtered, submittersByKey, fullDetail = fullDetail)
         return buildJsonObject {
             put("count", filtered.size)
+            put("detail", fullDetail)
             put("hosts", JsonArray(repo.hosts().map { h -> buildJsonObject { put("id", h.id); put("name", h.name) } }))
             put("workflows", JsonArray(rendered))
             put("truncated", filtered.size > rendered.size)
@@ -430,10 +448,10 @@ abstract class ComfySkill(
     ): JsonObject {
         keys(
             args,
-            setOf("host_id", "script_id", "file_name"),
+            setOf("host_id", "script_id"),
             setOf(
                 "host_id", "script_id", "file_name", "display_name", "description",
-                "source_kind", "protocol", "source_text", "source_path",
+                "source_kind", "protocol", "source_text", "source_path", "skill_import",
                 "support_files", "support_paths", "run_dry_run", "reason",
             ),
         )
@@ -443,36 +461,60 @@ abstract class ComfySkill(
         }
         val hostId = text(args, "host_id")
         val scriptId = text(args, "script_id")
-        val fileName = text(args, "file_name")
+        val skillImportObj = args["skill_import"] as? JsonObject
+        val directSource = optionalRawString(args, "source_text")
+        val sourcePath = optional(args, "source_path")
+
+        val suppliedSources = listOfNotNull(
+            directSource?.let { "source_text" },
+            sourcePath?.let { "source_path" },
+            skillImportObj?.let { "skill_import" },
+        )
+        if (suppliedSources.size != 1) {
+            throw IllegalArgumentException("请在 source_text、source_path 与 skill_import 三者中恰选其一")
+        }
+
+        val importedBundle = skillImportObj?.let { imp ->
+            val importer = importSkillSubmitter
+                ?: throw ComfyFailure("当前运行环境未接入技能包直接导入；请改用 source_text 或 source_path")
+            val skillName = text(imp, "skill_name")
+            val entryPath = text(imp, "entry_path")
+            val includePaths = (imp["include_paths"] as? JsonArray).orEmpty().map { elem ->
+                (elem as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalArgumentException("skill_import.include_paths 条目必须是非空字符串")
+            }
+            importer(context.sessionId, skillName, entryPath, includePaths)
+        }
+
+        val fileName = optional(args, "file_name") ?: importedBundle?.entryFileName
+            ?: throw ComfyFailure("file_name 必须是非空字符串（使用 skill_import 时可省略以沿用 entry_path）")
         val displayName = optional(args, "display_name") ?: fileName
         val description = optional(args, "description") ?: ""
         val sourceKind = optional(args, "source_kind")?.let { raw ->
             SubmitterSourceKind.entries.firstOrNull { it.name == raw }
                 ?: throw IllegalArgumentException("source_kind 无效：$raw")
-        } ?: SubmitterSourceKind.AGENT_AUTHORED
+        } ?: if (importedBundle != null) SubmitterSourceKind.SKILL_SYNC else SubmitterSourceKind.AGENT_AUTHORED
         val protocol = optional(args, "protocol")?.let { raw ->
             SubmitterInvocationProtocol.entries.firstOrNull { it.name == raw }
                 ?: throw IllegalArgumentException("protocol 无效：$raw")
         } ?: SubmitterInvocationProtocol.PAYLOAD_JSON
 
-        val directSource = optionalRawString(args, "source_text")
-        val sourcePath = optional(args, "source_path")
-        if ((directSource == null) == (sourcePath == null)) {
-            throw IllegalArgumentException("请提供 source_text（直接源码文本）或 source_path（工作区相对路径），二者选其一")
-        }
-        val sourceText = directSource ?: run {
+        val sourceText = importedBundle?.sourceText ?: directSource ?: run {
             val reader = readWorkspaceFile
                 ?: throw ComfyFailure("当前无法直接按 source_path 读取脚本；请先用 read_file 读取脚本内容后通过 source_text 提交")
             val bytes = reader(context.sessionId, requireNotNull(sourcePath))
-                ?: throw ComfyFailure("工作区中未找到脚本文件：$sourcePath")
+                ?: throw ComfyFailure("未找到脚本文件：$sourcePath")
             bytes.toString(Charsets.UTF_8)
         }
         require(sourceText.isNotBlank()) { "提交器脚本内容不能为空" }
         require(sourceText.toByteArray(Charsets.UTF_8).size <= 512 * 1024) { "提交器主脚本不能超过 512 KiB" }
 
         val supportBytes = linkedMapOf<String, ByteArray>()
+        importedBundle?.supportFiles?.forEach { (rel, bytes) ->
+            if (rel != fileName) supportBytes[rel] = bytes
+        }
         (args["support_files"] as? JsonObject)?.let { obj ->
-            require(obj.size <= 24) { "配套文件数量不能超过 24 个" }
+            require(supportBytes.size + obj.size <= 128) { "配套文件数量不能超过 128 个" }
             obj.forEach { (relPath, v) ->
                 val txt = (v as? JsonPrimitive)?.takeIf { it.isString }?.content
                     ?: throw IllegalArgumentException("support_files[$relPath] 必须是字符串")
@@ -482,28 +524,43 @@ abstract class ComfySkill(
         (args["support_paths"] as? JsonArray)?.let { arr ->
             val reader = readWorkspaceFile
                 ?: throw ComfyFailure("当前无法直接按 support_paths 读取文件；请通过 support_files 传入文件名与文件内容")
-            require(supportBytes.size + arr.size <= 24) { "配套文件数量不能超过 24 个" }
+            require(supportBytes.size + arr.size <= 128) { "配套文件数量不能超过 128 个" }
+            val sourceNormalized = sourcePath?.trim()?.replace('\\', '/')?.trimEnd('/')
+            val sourceBasePrefix = sourceNormalized?.let { norm ->
+                if (norm.endsWith("/$fileName")) norm.removeSuffix("/$fileName")
+                else norm.substringBeforeLast('/', "")
+            }?.takeIf { it.isNotEmpty() }
+
+            fun deriveRelPath(path: String): String {
+                val pNorm = path.trim().replace('\\', '/')
+                if (sourceBasePrefix != null && pNorm.startsWith("$sourceBasePrefix/")) {
+                    val candidate = pNorm.removePrefix("$sourceBasePrefix/").trimStart('/')
+                    if (candidate.isNotEmpty() && candidate != fileName) return candidate
+                }
+                return pNorm.substringAfterLast('/')
+            }
+
             arr.forEach { item ->
                 when (item) {
                     is JsonPrimitive -> {
                         val path = item.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
                             ?: throw IllegalArgumentException("support_paths 条目不能为空")
-                        val rel = path.substringAfterLast('/')
+                        val rel = deriveRelPath(path)
                         supportBytes[rel] = reader(context.sessionId, path)
-                            ?: throw ComfyFailure("工作区中未找到配套文件：$path")
+                            ?: throw ComfyFailure("未找到配套文件：$path")
                     }
                     is JsonObject -> {
                         val path = text(item, "path")
-                        val rel = optional(item, "relative_name") ?: path.substringAfterLast('/')
+                        val rel = optional(item, "relative_name") ?: deriveRelPath(path)
                         supportBytes[rel] = reader(context.sessionId, path)
-                            ?: throw ComfyFailure("工作区中未找到配套文件：$path")
+                            ?: throw ComfyFailure("未找到配套文件：$path")
                     }
                     else -> throw IllegalArgumentException("support_paths 元素必须为路径字符串或 {path, relative_name}")
                 }
             }
         }
         val totalSupportBytes = supportBytes.values.sumOf { it.size }
-        require(totalSupportBytes <= 2 * 1024 * 1024) { "配套模块总大小不能超过 2 MiB" }
+        require(totalSupportBytes <= 8 * 1024 * 1024) { "配套模块总大小不能超过 8 MiB" }
 
         var saved = repo.saveSubmitter(
             hostId = hostId,
@@ -826,16 +883,49 @@ private fun renderTemplateState(state: ComfyTemplateState): JsonObject = buildJs
 private fun boundedWorkflowStates(
     states: List<ComfyWorkflowState>,
     submittersByKey: Map<Pair<String, String>, ComfySubmitterScript>,
+    fullDetail: Boolean = true,
 ): List<JsonElement> {
     val result = mutableListOf<JsonElement>()
     var bytes = 0
     for (state in states.take(100)) {
-        val rendered = renderWorkflowState(state, submittersByKey)
+        val rendered = if (fullDetail) {
+            renderWorkflowState(state, submittersByKey)
+        } else {
+            renderWorkflowSummary(state, submittersByKey)
+        }
         bytes += rendered.toString().toByteArray().size
         if (bytes > 32 * 1024) break
         result += rendered
     }
     return result
+}
+
+private fun renderWorkflowSummary(
+    state: ComfyWorkflowState,
+    submittersByKey: Map<Pair<String, String>, ComfySubmitterScript>,
+): JsonObject {
+    val wf = state.workflow
+    val submitter = wf.submitterScriptId?.let { submittersByKey[wf.hostId to it] }
+    return buildJsonObject {
+        put("workflow_id", wf.workflowId)
+        put("channel_id", wf.channelId)
+        put("host_id", wf.hostId)
+        put("name", wf.name)
+        if (wf.description.isNotBlank()) put("description", wf.description.take(160))
+        put("media_category", wf.mediaCategory.name)
+        put("execution_mode", wf.executionMode.name)
+        wf.submitterScriptId?.let { put("submitter_script_id", it) }
+        submitter?.let {
+            put("submitter_file", it.fileName)
+            put("submitter_protocol", it.protocol.name)
+            put("submitter_dry_run_status", it.lastDryRunStatus.name)
+        }
+        put("has_raw_workflow_json", wf.rawWorkflowJson != null)
+        put("preflight_status", state.preflight.status.name)
+        put("content_field_keys", JsonArray(wf.contentFields().map { JsonPrimitive(it.key) }))
+        put("fixed_field_keys", JsonArray(wf.fixedFields().map { JsonPrimitive(it.key) }))
+        put("modes", JsonArray(wf.capabilities.modes.map { JsonPrimitive(it.name) }))
+    }
 }
 
 private fun renderWorkflowState(
@@ -933,20 +1023,25 @@ private fun renderChainRecord(record: StatefulChainRecord): JsonObject = buildJs
 
 private const val COMFY_SAVE_SUBMITTER_SCHEMA = """{
  "type":"object",
- "required":["host_id","script_id","file_name"],
+ "required":["host_id","script_id"],
  "additionalProperties":false,
  "properties":{
   "host_id":{"type":"string","description":"目标 ComfyUI 主机 id"},
   "script_id":{"type":"string","description":"脚本唯一 id，允许字母、数字、下划线、连字符"},
-  "file_name":{"type":"string","description":"相对 .py 文件名，例如 submit_qwen21.py"},
+  "file_name":{"type":"string","description":"相对 .py 入口路径，例如 submit_qwen21.py 或 scripts/submit_h3.py；使用 skill_import 时可省略，默认沿用 entry_path"},
   "display_name":{"type":"string"},
   "description":{"type":"string"},
   "source_kind":{"type":"string","enum":["DESKTOP_IMPORT","SKILL_SYNC","BUILTIN_GENERIC","AGENT_AUTHORED"]},
-  "protocol":{"type":"string","enum":["PAYLOAD_JSON","CLI_ARGS"],"description":"PAYLOAD_JSON 以 --payload <json> 传参（dry_run/stage/branch_id/branch_policy/segment_index/parent_node_id/output_dir/result_path/host_proxy_url/inputs/inherited_state）并读取 result_path（prompt_id/outputs[{path,kind}]/continuation_state）；CLI_ARGS 按工作流参数与 --help 干跑；完整契约见 infinity-deck/references/comfyui-submitters.md"},
-  "source_text":{"type":"string","description":"提交器 Python 源码正文；与 source_path 二选一"},
-  "source_path":{"type":"string","description":"当前工作区内的脚本路径；与 source_text 二选一"},
+  "protocol":{"type":"string","enum":["PAYLOAD_JSON","CLI_ARGS"],"description":"PAYLOAD_JSON 以 --payload <json> 传参（dry_run/stage/branch_id/branch_policy/segment_index/parent_node_id/read_latent_dir/write_latent_dir/latent_dir/output_dir/result_path/host_proxy_url/inputs/inherited_state）并读取 result_path（prompt_id/outputs[{path,kind}]/continuation_state）；CLI_ARGS 按工作流参数与 --help 干跑；完整契约见 infinity-deck/references/comfyui-submitters.md"},
+  "skill_import":{"type":"object","additionalProperties":false,"required":["skill_name","entry_path"],"description":"从已启用的用户/项目技能包按包内相对路径原样零改写导入（自动保留 scripts/ 与 assets/ 等相对目录并跳过 __pycache__/.pyc），无需手抄。与 source_text/source_path 三选一","properties":{
+   "skill_name":{"type":"string","description":"已启用技能名，如 comfyui-generation"},
+   "entry_path":{"type":"string","description":"技能包内主脚本相对路径，如 scripts/submit_h3.py"},
+   "include_paths":{"type":"array","items":{"type":"string"},"description":"可选，附带文件或目录前缀列表；省略时自动导入主脚本同目录模块及 assets/"}
+  }},
+  "source_text":{"type":"string","description":"提交器 Python 源码正文；与 source_path、skill_import 三选一"},
+  "source_path":{"type":"string","description":"当前工作区路径或 /skills/<name>/...、/mnt/skills/<name>/... 用户技能路径；与 source_text、skill_import 三选一"},
   "support_files":{"type":"object","description":"同脚本一起隔离存放的配套 JSON/Python 模块，键为相对路径、值为 UTF-8 文本"},
-  "support_paths":{"type":"array","items":{"type":["string","object"]},"description":"可选，从工作区读取的配套文件列表"},
+  "support_paths":{"type":"array","items":{"type":["string","object"]},"description":"可选，从工作区或已启用技能路径读取的配套文件列表；同根子目录自动保留相对路径"},
   "run_dry_run":{"type":"boolean","description":"保存后是否在内置 Python 3.14 中干跑校验，默认 true"},
   "reason":{"type":"string","description":"变更原因，最多 300 字"}
  }
@@ -985,8 +1080,11 @@ private const val COMFY_SAVE_WORKFLOW_SCHEMA = """{
       "outputDirFlag":{"type":"string"},
       "stageFlag":{"type":"string"},
       "previousWorkflowFlag":{"type":"string"},
-      "latentDirFlag":{"type":"string"},
-      "branchIdFlag":{"type":"string"},
+      "latentDirFlag":{"type":"string","description":"单目录 CLI 标志（默认 --latent-dir）；首段与续段均由宿主自动注入"},
+      "branchIdFlag":{"type":"string","description":"可选，脚本原生支持时传入分支 ID 的 CLI 标志"},
+      "segmentIndexFlag":{"type":"string","description":"可选，段号 CLI 标志（如 --clip-index），首段与续段均由宿主自动注入"},
+      "readLatentDirFlag":{"type":"string","description":"可选，分离只读父段潜空间目录标志；与 writeLatentDirFlag 配对实现 CLI 真物理分支隔离"},
+      "writeLatentDirFlag":{"type":"string","description":"可选，分离写入本段潜空间目录标志；与 readLatentDirFlag 配对实现 CLI 真物理分支隔离"},
       "dryRunFlag":{"type":"string"}
      }
     },
@@ -1014,7 +1112,11 @@ private const val COMFY_SAVE_WORKFLOW_SCHEMA = """{
        "nodeId":{"type":["string","null"]},
        "inputKey":{"type":["string","null"]},
        "uploadNodeId":{"type":["string","null"]},
-       "uploadInputKey":{"type":["string","null"]}
+       "uploadInputKey":{"type":["string","null"]},
+       "uploadTargets":{"type":"array","description":"内置 JSON 多静态上传目标列表（如 [{nodeId,input}]）；FILE_LIST 按序对应各上传节点，未用可选节点自动裁剪","items":{"type":"object","additionalProperties":false,"required":["nodeId","input"],"properties":{"nodeId":{"type":"string"},"input":{"type":"string"}}}},
+       "dynamicInputPrefix":{"type":["string","null"],"description":"内置 JSON 动态多槽位输入前缀（如 ref_images.ref_image_），配合 nodeId 按传参数量自动建 LoadImage/LoadAudio/LoadVideo 并连线"},
+       "dynamicStartIndex":{"type":"integer","description":"动态多槽位起始后缀序号，默认 0"},
+       "uploadNodeClassType":{"type":["string","null"],"description":"可选，动态新建上传节点的 class_type（默认按媒体类型选 LoadImage/LoadAudio/LoadVideo）"}
       }
      }
     },
@@ -1040,7 +1142,7 @@ private const val COMFY_SAVE_WORKFLOW_SCHEMA = """{
     "hostFlag":{"type":"string"},
     "outputDirFlag":{"type":"string"},
     "dryRunFlag":{"type":"string"},
-    "receiptFlag":{"type":["string","null"]},
+    "receiptFlag":{"type":["string","null"],"description":"CLI 回执文件路径标志（默认 --receipt）；若脚本本身不支持 --receipt，请显式传入 null 或空字符串，宿主会自动解析 stdout 末行 JSON 并扫描 --output-dir 目录回收全部产物"},
     "fps":{"type":["number","null"]},
     "frameBase":{"type":"integer"},
     "frameStep":{"type":"integer"},

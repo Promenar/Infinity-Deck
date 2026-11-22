@@ -33,7 +33,9 @@ object AgentHttpRouting {
         var url = endpoint.uri.toString()
         var hostHeader: String? = null
         if (endpoint.target == NetworkTargetClass.TAILNET) {
-            builder.proxy(AgentTailnetProxy.requireProxy(routing)).proxyAuthenticator(routing.proxyAuthenticator)
+            builder.proxy(AgentTailnetProxy.requireProxy(routing))
+                .proxyAuthenticator(routing.proxyAuthenticator)
+                .addNetworkInterceptor(routing.proxyAuthInterceptor)
             val address = endpoint.addresses.firstOrNull { TailnetHosts.isTailnetAddress(it.address) }
             if (address != null) {
                 // 普通域名经系统 DNS 归入 tailnet 时，CONNECT 必须发送固定 IP，避免代理再次按普通域名直连。

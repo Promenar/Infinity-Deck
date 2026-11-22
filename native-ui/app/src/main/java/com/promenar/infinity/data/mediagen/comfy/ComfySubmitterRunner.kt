@@ -55,6 +55,8 @@ data class SubmitterRunRequest(
     val branchPolicy: StatefulBranchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
     val parentNodeId: String? = null,
     val segmentIndex: Int = 1,
+    val readLatentDir: String? = null,
+    val writeLatentDir: String? = null,
     val inheritedState: JsonObject = JsonObject(emptyMap()),
     val previousWorkflowFile: File? = null,
     val dryRun: Boolean = false,
@@ -217,6 +219,11 @@ class ComfySubmitterRunner(
                     put("branch_policy", request.branchPolicy.name)
                     put("segment_index", request.segmentIndex)
                     request.parentNodeId?.let { put("parent_node_id", it) }
+                    request.readLatentDir?.let { put("read_latent_dir", it) }
+                    request.writeLatentDir?.let {
+                        put("write_latent_dir", it)
+                        put("latent_dir", it)
+                    }
                     put("output_dir", outputDir.path)
                     put("result_path", resultFile.path)
                     request.proxyBaseUrl?.let { put("host_proxy_url", it) }
@@ -265,16 +272,14 @@ class ComfySubmitterRunner(
             throw ComfyFailure("无法启动受控 Python 3.14 提交器进程：${e.message?.take(200)}")
         }
 
-        val stdoutBuf = StringBuilder()
-        val stderrBuf = StringBuilder()
+        val stdoutBuf = HeadTailBuffer(headLimit = 8_192, tailLimit = 24_576)
+        val stderrBuf = HeadTailBuffer(headLimit = 8_192, tailLimit = 24_576)
         val timedOut = AtomicBoolean(false)
         val stopOnCancel = currentCoroutineContext()[Job]?.invokeOnCompletion { process.destroyForcibly() }
         val stderrDrain = thread(name = "comfy-py-stderr", isDaemon = true) {
             runCatching {
                 process.errorStream.bufferedReader(Charsets.UTF_8).forEachLine { line ->
-                    synchronized(stderrBuf) {
-                        if (stderrBuf.length < 32_000) stderrBuf.appendLine(line)
-                    }
+                    stderrBuf.appendLine(line)
                 }
             }
         }
@@ -292,9 +297,8 @@ class ComfySubmitterRunner(
                     val reader = process.inputStream.bufferedReader(Charsets.UTF_8)
                     while (true) {
                         val line = reader.readLine() ?: break
-                        synchronized(stdoutBuf) {
-                            if (stdoutBuf.length < 48_000) stdoutBuf.appendLine(line)
-                        }
+                        stdoutBuf.appendLine(line)
+                        if (stdoutLines.size >= 400) stdoutLines.removeAt(0)
                         stdoutLines += line
                         parseProgressLine(line)?.let { (pct, msg) ->
                             request.onProgress(pct, msg)
@@ -322,7 +326,13 @@ class ComfySubmitterRunner(
                 ?: deriveDefaultSlotKey(continuation, request)
 
             if (exitCode != 0) {
-                val errDetail = stderrBuf.toString().trim().takeLast(600).ifBlank { stdoutBuf.toString().trim().takeLast(400) }
+                val errDetail = ComfyErrorDiagnostics.summarizeSubprocessFailure(
+                    exitCode = exitCode,
+                    stderrHead = stderrBuf.headText(),
+                    stderrTail = stderrBuf.tailText(),
+                    stdoutHead = stdoutBuf.headText(),
+                    stdoutTail = stdoutBuf.tailText(),
+                )
                 throw ComfyFailure("ComfyUI 提交器执行失败（退出码 $exitCode）：$errDetail")
             }
 
@@ -338,8 +348,8 @@ class ComfySubmitterRunner(
                 serverLatentSlotKey = slotKey,
                 summary = (resultJson?.get("summary") as? JsonPrimitive)?.contentOrNull
                     ?: "提交器执行成功，产出 ${outputs.size} 个媒体文件",
-                stdoutTail = stdoutBuf.toString().takeLast(4000),
-                stderrTail = stderrBuf.toString().takeLast(2000),
+                stdoutTail = stdoutBuf.tailText().takeLast(4000),
+                stderrTail = stderrBuf.tailText().takeLast(2000),
                 latencyMs = latency,
             )
         } finally {
@@ -383,9 +393,11 @@ class ComfySubmitterRunner(
             args += workflow.dryRunFlag
         }
 
-        // 有状态链继承锁定上下文注入（仅当工作流声明 CLI 标志且调用端未在字段里重复给出时补充）
+        // 有状态链继承锁定上下文注入（首段与续接段统一托管 latent_dir 与段号；分离读写目录优先于单目录标志）
         val chainSpec = workflow.chainSpec
-        val explicitKeys = request.resolvedInputs.keys
+        val explicitKeys = workflow.fields.mapNotNullTo(mutableSetOf()) { f ->
+            f.key.takeIf { key -> request.resolvedInputs[key].let { it != null && it !is JsonNull } }
+        }
         if (workflow.executionMode == WorkflowExecutionMode.STATEFUL_CHAIN && chainSpec != null) {
             if (request.stage in setOf("first", "next") && "stage" !in explicitKeys && chainSpec.stageFlag.isNotBlank()) {
                 args += chainSpec.stageFlag
@@ -396,9 +408,30 @@ class ComfySubmitterRunner(
                 args += request.previousWorkflowFile.path
             }
             val inheritedLatentDir = (request.inheritedState["latent_dir"] as? JsonPrimitive)?.contentOrNull
-            if (inheritedLatentDir != null && "latent_dir" !in explicitKeys && chainSpec.latentDirFlag.isNotBlank()) {
-                args += chainSpec.latentDirFlag
-                args += inheritedLatentDir
+            val effectiveReadDir = request.readLatentDir?.takeIf { it.isNotBlank() } ?: inheritedLatentDir
+            val effectiveWriteDir = request.writeLatentDir?.takeIf { it.isNotBlank() } ?: inheritedLatentDir
+            if (chainSpec.readLatentDirFlag.isNotBlank() && chainSpec.writeLatentDirFlag.isNotBlank()) {
+                effectiveReadDir?.let {
+                    args += chainSpec.readLatentDirFlag
+                    args += it
+                }
+                effectiveWriteDir?.let {
+                    args += chainSpec.writeLatentDirFlag
+                    args += it
+                }
+            } else {
+                val singleDir = effectiveWriteDir ?: effectiveReadDir
+                if (singleDir != null && "latent_dir" !in explicitKeys && chainSpec.latentDirFlag.isNotBlank()) {
+                    args += chainSpec.latentDirFlag
+                    args += singleDir
+                }
+            }
+            if (chainSpec.segmentIndexFlag.isNotBlank() &&
+                "clip_index" !in explicitKeys &&
+                "segment_index" !in explicitKeys
+            ) {
+                args += chainSpec.segmentIndexFlag
+                args += request.segmentIndex.toString()
             }
             if (request.branchId.isNotBlank() && "branch_id" !in explicitKeys && chainSpec.branchIdFlag.isNotBlank()) {
                 args += chainSpec.branchIdFlag
@@ -500,6 +533,7 @@ class ComfySubmitterRunner(
         )
         return buildMap {
             putAll(launch.environment)
+            put("PYTHONDONTWRITEBYTECODE", "1")
             put("PYTHONPATH", pythonPathParts.joinToString(File.pathSeparator))
             put("HOME", homeDir.path)
             put("TMPDIR", tmpDir.path)
@@ -575,6 +609,7 @@ class ComfySubmitterRunner(
         request: SubmitterRunRequest,
     ): JsonObject {
         val explicit = (resultJson?.get("continuation_state") as? JsonObject)?.toMutableMap() ?: linkedMapOf()
+        request.writeLatentDir?.takeIf { it.isNotBlank() }?.let { explicit.putIfAbsent("latent_dir", JsonPrimitive(it)) }
         request.inheritedState["latent_dir"]?.let { explicit.putIfAbsent("latent_dir", it) }
         request.inheritedState["width"]?.let { explicit.putIfAbsent("width", it) }
         request.inheritedState["height"]?.let { explicit.putIfAbsent("height", it) }
@@ -586,12 +621,13 @@ class ComfySubmitterRunner(
         request.resolvedInputs["family"]?.let { explicit["family"] = it }
         request.resolvedInputs["context_length"]?.let { explicit["context_length"] = it }
 
-        // 防御一过性沙箱目录泄漏进 latent_dir；ISOLATED_DIR 下同时隔离服务端相对默认目录。
+        // 防御一过性沙箱目录泄漏进 latent_dir；回退使用宿主托管目录或语义分支目录。
         val rawLatentDir = (explicit["latent_dir"] as? JsonPrimitive)?.contentOrNull
         if (rawLatentDir != null && isEphemeralRunPath(rawLatentDir, runDir)) {
+            val managedWriteDir = request.writeLatentDir?.takeUnless { isEphemeralRunPath(it, runDir) }
             val inherited = (request.inheritedState["latent_dir"] as? JsonPrimitive)?.contentOrNull
                 ?.takeUnless { isEphemeralRunPath(it, runDir) }
-            val fallbackDir = inherited ?: "comfy_chain/${request.workflow?.workflowId ?: "chain"}/${request.branchId.ifBlank { "main" }}"
+            val fallbackDir = managedWriteDir ?: inherited ?: "comfy_chain/${request.workflow?.workflowId ?: "chain"}/${request.branchId.ifBlank { "main" }}"
             explicit["latent_dir"] = JsonPrimitive(fallbackDir)
         }
 
@@ -640,23 +676,17 @@ class ComfySubmitterRunner(
 
     private fun deriveDefaultSlotKey(
         continuation: JsonObject,
-        request: SubmitterRunRequest,
+        @Suppress("UNUSED_PARAMETER") request: SubmitterRunRequest,
     ): String? {
         val latentDir = (continuation["latent_dir"] as? JsonPrimitive)?.contentOrNull ?: return null
         val clipIndex = (continuation["clip_index"] as? JsonPrimitive)?.intOrNull ?: return null
-        return if (
-            request.branchPolicy == StatefulBranchPolicy.ISOLATED_DIR &&
-            request.branchId.isNotBlank() &&
-            request.branchId != "main"
-        ) {
-            "$latentDir::${request.branchId}::clip_$clipIndex"
-        } else {
-            "$latentDir::clip_$clipIndex"
-        }
+        return "$latentDir::clip_$clipIndex"
     }
 
     private data class SimpleCmdOut(val exitCode: Int, val stdout: String, val stderr: String) {
-        fun combinedError(): String = stderr.trim().ifBlank { stdout.trim() }.takeLast(400)
+        fun combinedError(): String = ComfyErrorDiagnostics.redactSensitive(
+            stderr.trim().ifBlank { stdout.trim() }.takeLast(600),
+        )
     }
 
     private fun runSimpleCommand(

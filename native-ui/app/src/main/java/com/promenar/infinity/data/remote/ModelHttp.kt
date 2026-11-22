@@ -44,6 +44,7 @@ object ModelHttp {
             config {
                 proxySelector(DelegatingProxySelector { routing.proxySelector })
                 proxyAuthenticator { route, response -> routing.proxyAuthenticator.authenticate(route, response) }
+                addNetworkInterceptor { chain -> routing.proxyAuthInterceptor.intercept(chain) }
             }
         }
     }

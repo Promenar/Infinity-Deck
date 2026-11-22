@@ -234,8 +234,6 @@ fun PipelineBubble(
     failureActions: GenerationFailureActions? = null,
     /** 本组当前唯一的进行中元素；会话页按生成阶段判定后只传给最后一组，预览按消息内容推断。 */
     liveStep: LiveStep? = previewLiveStep(group, isGenerating, streamingContent),
-    /** 等待模型超过 30 秒时的“停止生成”；为 null 时不显示按钮。 */
-    onStopGeneration: (() -> Unit)? = null,
     ragContent: @Composable () -> Unit = {},
 ) {
     if (group.isNotice) {
@@ -423,7 +421,6 @@ fun PipelineBubble(
             visible = isGenerating && !hasPendingApproval &&
                 liveStep?.kind != LiveStepKind.APPROVAL && liveStep?.kind != LiveStepKind.QUESTION,
             liveStep = liveStep,
-            onStopGeneration = onStopGeneration,
         )
         if (!isGenerating) CanvasInvocationCards(
             allSteps.filterIsInstance<PipelineStep.ToolExec>().flatMap { it.steps },
@@ -2569,7 +2566,7 @@ private enum class LiveTailContent { NONE, CONTENT_DOTS, WAITING }
  * 高度固定不随阶段出现、消失，内容之间淡入淡出；生成结束时整行以收起动画离开。
  */
 @Composable
-private fun LiveTailSlot(visible: Boolean, liveStep: LiveStep?, onStopGeneration: (() -> Unit)?) {
+private fun LiveTailSlot(visible: Boolean, liveStep: LiveStep?) {
     val kind = when {
         liveStep == null -> LiveTailContent.NONE
         liveStep.kind == LiveStepKind.CONTENT -> LiveTailContent.CONTENT_DOTS
@@ -2590,7 +2587,7 @@ private fun LiveTailSlot(visible: Boolean, liveStep: LiveStep?, onStopGeneration
         ) { (content, step) ->
             when (content) {
                 LiveTailContent.CONTENT_DOTS -> GenerationIndicator(step?.motionPhase ?: com.promenar.infinity.ui.common.motion.GenerationMotionPhase.STREAM)
-                LiveTailContent.WAITING -> if (step != null) LiveWaitingRow(step, onStopGeneration)
+                LiveTailContent.WAITING -> if (step != null) LiveWaitingRow(step)
                 LiveTailContent.NONE -> Spacer(Modifier.fillMaxWidth())
             }
         }

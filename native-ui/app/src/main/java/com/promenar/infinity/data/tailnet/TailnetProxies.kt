@@ -3,6 +3,7 @@ package com.promenar.infinity.data.tailnet
 import com.jcraft.jsch.ProxySOCKS5
 import okhttp3.Authenticator
 import okhttp3.Credentials
+import okhttp3.Interceptor
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
@@ -83,6 +84,34 @@ class TailnetProxyAuthenticator internal constructor(
         val credential = Credentials.basic(endpoint.user, endpoint.password, Charsets.UTF_8)
         if (response.request.header(PROXY_AUTHORIZATION) == credential) return null
         return response.request.newBuilder().header(PROXY_AUTHORIZATION, credential).build()
+    }
+
+    private companion object {
+        const val PROXY_AUTHORIZATION = "Proxy-Authorization"
+    }
+}
+
+/**
+ * 必须作为 OkHttp `addNetworkInterceptor` 装配：仅在真实路由命中本机 tailnet 明文 HTTP 代理且请求尚未携带
+ * `Proxy-Authorization` 时，在首跳直接注入本次启动的 Basic 凭据。
+ * 这避免了所有明文 HTTP 请求先空发请求体再因 407 重试（以及 `isOneShot()` 流式上传在 407 挑战时直接失败），
+ * 同时因严格校验 `route.proxy` 地址端口与 `!req.url.isHttps` 而绝不向外部代理或 HTTPS 源站泄漏凭据。
+ */
+class TailnetPreemptiveProxyAuthInterceptor internal constructor(
+    private val source: TailnetEndpointSource,
+) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (request.url.isHttps || request.header(PROXY_AUTHORIZATION) != null) {
+            return chain.proceed(request)
+        }
+        val endpoint = source.currentEndpoint() ?: return chain.proceed(request)
+        val proxy = chain.connection()?.route()?.proxy ?: return chain.proceed(request)
+        if (proxy.type() != Proxy.Type.HTTP || !TailnetProxyAddress.matches(proxy.address(), endpoint)) {
+            return chain.proceed(request)
+        }
+        val credential = Credentials.basic(endpoint.user, endpoint.password, Charsets.UTF_8)
+        return chain.proceed(request.newBuilder().header(PROXY_AUTHORIZATION, credential).build())
     }
 
     private companion object {

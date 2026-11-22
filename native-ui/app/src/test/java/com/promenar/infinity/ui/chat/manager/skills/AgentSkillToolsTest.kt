@@ -168,6 +168,45 @@ class AgentSkillToolsTest {
         assertThat(tool.execute(skillArgs("skill_path" to "/.agents/skills/demo/SKILL.md", "path" to "references/guide.md"), context).content).isEqualTo("Guide for PROJECT")
     }
 
+    @Test fun `read_skill_file 支持按 start_line 与 end_line 分段读取并校验边界`() = runTest {
+        install()
+        File(userRoot, "demo/scripts/demo.py").writeText((1..10).joinToString("\n") { "line-$it" })
+        val tool = ReadSkillFileTool(catalog, resolveWorkspace)
+        val validator = com.promenar.infinity.domain.tool.ToolSchemaValidator()
+        assertThat(validator.validateDefinition(tool.parametersSchema))
+            .isInstanceOf(com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid::class.java)
+        val sliced = tool.execute(
+            kotlinx.serialization.json.buildJsonObject {
+                put("name", kotlinx.serialization.json.JsonPrimitive("demo"))
+                put("path", kotlinx.serialization.json.JsonPrimitive("scripts/demo.py"))
+                put("start_line", kotlinx.serialization.json.JsonPrimitive(3))
+                put("end_line", kotlinx.serialization.json.JsonPrimitive(5))
+            },
+            context,
+        )
+        assertThat(sliced.status).isEqualTo("success")
+        assertThat(sliced.content).isEqualTo("[scripts/demo.py: lines 3-5/10]\nline-3\nline-4\nline-5")
+        val oob = tool.execute(
+            kotlinx.serialization.json.buildJsonObject {
+                put("name", kotlinx.serialization.json.JsonPrimitive("demo"))
+                put("path", kotlinx.serialization.json.JsonPrimitive("scripts/demo.py"))
+                put("start_line", kotlinx.serialization.json.JsonPrimitive(20))
+            },
+            context,
+        )
+        assertThat(oob.status).isEqualTo("error")
+        val reversed = tool.execute(
+            kotlinx.serialization.json.buildJsonObject {
+                put("name", kotlinx.serialization.json.JsonPrimitive("demo"))
+                put("path", kotlinx.serialization.json.JsonPrimitive("scripts/demo.py"))
+                put("start_line", kotlinx.serialization.json.JsonPrimitive(5))
+                put("end_line", kotlinx.serialization.json.JsonPrimitive(2))
+            },
+            context,
+        )
+        assertThat(reversed.status).isEqualTo("error")
+    }
+
     @Test fun `读取文件沿用目录安全规则且不回退其它工作区`() = runTest {
         install()
         install(scope = SkillScope.PROJECT)

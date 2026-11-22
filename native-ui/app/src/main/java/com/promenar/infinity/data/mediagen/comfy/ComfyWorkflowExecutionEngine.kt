@@ -79,7 +79,13 @@ class ComfyWorkflowExecutionEngine(
         if (isChain) {
             val retryId = request.retryNodeId
             if (!retryId.isNullOrBlank()) {
-                val targetChainId = requireNotNull(request.chainId) { "指定 retry_node_id 时必须提供 chain_id" }
+                val targetChainId = resolvedChainId ?: resolveSingleActiveChainId(
+                    sessionId = request.sessionId,
+                    workflowId = workflow.workflowId,
+                    shotRef = request.shotRef,
+                    requiredNodeId = retryId,
+                )
+                resolvedChainId = targetChainId
                 existingChain = chainStore.get(request.sessionId, targetChainId)
                     ?: throw ComfyFailure("有状态链不存在：$targetChainId")
                 val targetNode = existingChain.node(retryId)
@@ -93,10 +99,16 @@ class ComfyWorkflowExecutionEngine(
                 }
             } else {
                 if (resolvedStage == "single") {
-                    resolvedStage = if (resolvedChainId.isNullOrBlank()) "first" else "next"
+                    resolvedStage = if (resolvedChainId.isNullOrBlank() && resolvedParentId.isNullOrBlank()) "first" else "next"
                 }
                 if (resolvedStage == "next") {
-                    val targetChainId = requireNotNull(resolvedChainId) { "续接阶段 stage=next 需要提供 chain_id" }
+                    val targetChainId = resolvedChainId ?: resolveSingleActiveChainId(
+                        sessionId = request.sessionId,
+                        workflowId = workflow.workflowId,
+                        shotRef = request.shotRef,
+                        requiredNodeId = resolvedParentId,
+                    )
+                    resolvedChainId = targetChainId
                     existingChain = chainStore.get(request.sessionId, targetChainId)
                         ?: throw ComfyFailure("有状态链不存在：$targetChainId")
                     resolvedParentId = resolvedParentId ?: existingChain.activeTipNodeId
@@ -112,7 +124,7 @@ class ComfyWorkflowExecutionEngine(
                 // 防参数漂移：对于被锁定的上下文键，宿主直接锁定继承自父节点的值（除非此次已通过审批显式 fixedOverrides 覆盖）。
                 val lockedKeys = workflow.chainSpec?.lockedInheritedKeys.orEmpty()
                 lockedKeys.forEach { key ->
-                    if (key !in request.fixedOverrides) {
+                    if (key !in request.fixedOverrides && workflow.field(key) != null) {
                         inheritedState[key]?.let { inheritedVal ->
                             if (key !in request.contentInputs) {
                                 mergedInputs[key] = inheritedVal
@@ -138,19 +150,69 @@ class ComfyWorkflowExecutionEngine(
                 }
             }
 
-            val branchPolicyEffective = request.branchPolicy
+            val submitterId = workflow.submitterScriptId
+            val submitter = submitterId?.let { id ->
+                repository.submitter(host.id, id)
+                    ?: throw ComfyFailure("工作流绑定的提交器脚本不存在：$id")
+            }
+
+            val parentNode = if (resolvedParentId != null) existingChain?.node(resolvedParentId) else null
+            val isBranching = resolvedParentId != null && (
+                !request.retryNodeId.isNullOrBlank() ||
+                    existingChain?.nodes.orEmpty().any {
+                        it.parentNodeId == resolvedParentId && it.stateValidity == ChainNodeValidity.ACTIVE
+                    }
+                )
+            val branchId = when {
+                resolvedParentId == null -> "main"
+                !isBranching -> parentNode?.branchId?.ifBlank { "main" } ?: "main"
+                else -> "b_${resolvedParentId.takeLast(6)}_${UUID.randomUUID().toString().take(4)}"
+            }
+            val segIdx = if (resolvedParentId == null) 1 else (parentNode?.segmentIndex ?: 0) + 1
+
+            val requestedPolicy = request.branchPolicy
                 ?: workflow.chainSpec?.defaultBranchPolicy
                 ?: StatefulBranchPolicy.ISOLATED_DIR
-            val branchId = if (resolvedParentId == null) "main"
-            else "b_${resolvedParentId.takeLast(6)}_${UUID.randomUUID().toString().take(4)}"
-            val segIdx = if (resolvedParentId == null) 1 else (existingChain?.node(resolvedParentId)?.segmentIndex ?: 0) + 1
+            val supportsIsolation = workflow.chainSpec?.supportsPhysicalBranchIsolation(submitter?.protocol) == true
 
-            val submitterId = workflow.submitterScriptId
+            val explicitLatentDir = (mergedInputs["latent_dir"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+            val inheritedLatentDir = (inheritedState["latent_dir"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+            val defaultChainMainDir = resolvedChainId?.let { "comfy_chain/${workflow.workflowId}/$it/main" }
+
+            var branchPolicyEffective = requestedPolicy
+            var downgradedFromIsolation = false
+            val readLatentDir: String?
+            val writeLatentDir: String?
+            if (!isChain) {
+                readLatentDir = null
+                writeLatentDir = null
+            } else if (resolvedStage == "first" || resolvedParentId == null) {
+                val baseDir = explicitLatentDir ?: defaultChainMainDir
+                readLatentDir = baseDir
+                writeLatentDir = baseDir
+            } else {
+                val parentDir = inheritedLatentDir ?: defaultChainMainDir ?: "comfy_chain/${workflow.workflowId}/main"
+                val overrideDir = if ("latent_dir" in request.fixedOverrides) explicitLatentDir else null
+                readLatentDir = parentDir
+                if (overrideDir != null) {
+                    writeLatentDir = overrideDir
+                } else if (isBranching) {
+                    if (requestedPolicy == StatefulBranchPolicy.ISOLATED_DIR && supportsIsolation) {
+                        branchPolicyEffective = StatefulBranchPolicy.ISOLATED_DIR
+                        writeLatentDir = "comfy_chain/${workflow.workflowId}/${resolvedChainId}/$branchId"
+                    } else {
+                        branchPolicyEffective = StatefulBranchPolicy.IN_PLACE_OVERWRITE
+                        downgradedFromIsolation = requestedPolicy == StatefulBranchPolicy.ISOLATED_DIR
+                        writeLatentDir = parentDir
+                    }
+                } else {
+                    writeLatentDir = parentDir
+                }
+            }
+
             val customOutputDir = request.outputDir?.takeIf { it.isNotBlank() }?.let(::productionPath)
 
-            if (submitterId != null) {
-                val submitter = repository.submitter(host.id, submitterId)
-                    ?: throw ComfyFailure("工作流绑定的提交器脚本不存在：$submitterId")
+            if (submitter != null) {
                 var cleanContinuation = JsonObject(emptyMap())
                 val execResult = ComfyLocalAuthProxy.open(host, credentials, proxyClient, proxyTempDir).use { proxy ->
                     runner.execute(
@@ -165,6 +227,8 @@ class ComfyWorkflowExecutionEngine(
                             branchPolicy = branchPolicyEffective,
                             parentNodeId = resolvedParentId,
                             segmentIndex = segIdx,
+                            readLatentDir = readLatentDir,
+                            writeLatentDir = writeLatentDir,
                             inheritedState = inheritedState,
                             previousWorkflowFile = previousWorkflowFile,
                             dryRun = false,
@@ -251,12 +315,15 @@ class ComfyWorkflowExecutionEngine(
                         newNode = appended,
                     )
                     chainStore.save(appendResult.record)
+                    val downgradeNotice = if (downgradedFromIsolation) {
+                        "（当前提交器不支持物理分支隔离，分叉已按 IN_PLACE_OVERWRITE 写入原目录并将被覆盖节点标为失效）"
+                    } else ""
                     return@withContext ComfyWorkflowExecutionResult(
                         workflow = workflow,
                         host = host,
                         savedMedia = savedRefs,
                         promptId = execResult.promptId,
-                        summary = execResult.summary,
+                        summary = execResult.summary + downgradeNotice,
                         appliedFixedDiffs = fixedDiffs,
                         chainRecord = appendResult.record,
                         appendedNode = appendResult.appendedNode,
@@ -305,29 +372,172 @@ class ComfyWorkflowExecutionEngine(
             nodes[nodeId] = JsonObject(node)
         }
 
-        // 先上传所有媒体文件，再回填上传节点输入。
+        fun removeNodeInputIfMatches(nodeId: String, inputKey: String?, targetUploadNodeId: String? = null) {
+            val node = (nodes[nodeId] as? JsonObject)?.toMutableMap() ?: return
+            val inputs = (node["inputs"] as? JsonObject)?.toMutableMap() ?: return
+            if (inputKey != null) {
+                val link = inputs[inputKey] as? JsonArray
+                val linkedSource = (link?.getOrNull(0) as? JsonPrimitive)?.contentOrNull
+                if (targetUploadNodeId == null || linkedSource == targetUploadNodeId) {
+                    inputs.remove(inputKey)
+                }
+            }
+            if (targetUploadNodeId != null) {
+                val keysToDrop = inputs.entries.filter { (_, v) ->
+                    val arr = v as? JsonArray
+                    (arr?.getOrNull(0) as? JsonPrimitive)?.contentOrNull == targetUploadNodeId
+                }.map { it.key }
+                keysToDrop.forEach { inputs.remove(it) }
+            }
+            node["inputs"] = JsonObject(inputs)
+            nodes[nodeId] = JsonObject(node)
+        }
+
+        fun extractMediaPaths(value: JsonElement?): List<String> = when (value) {
+            null, is JsonNull -> emptyList()
+            is JsonPrimitive -> if (value.isString && value.content.isNotBlank()) listOf(value.content) else emptyList()
+            is JsonArray -> value.mapNotNull { elem ->
+                when (elem) {
+                    is JsonPrimitive -> elem.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+                    is JsonObject -> (elem["path"] as? JsonPrimitive)?.contentOrNull
+                        ?: (elem["image_path"] as? JsonPrimitive)?.contentOrNull
+                        ?: (elem["file"] as? JsonPrimitive)?.contentOrNull
+                    else -> null
+                }
+            }
+            else -> emptyList()
+        }
+
+        fun inferMediaKind(field: WorkflowFieldSpec, fileName: String): InputKind = when (field.valueType) {
+            FieldValueType.VIDEO_FILE -> InputKind.VIDEO
+            FieldValueType.AUDIO_FILE -> InputKind.AUDIO
+            FieldValueType.IMAGE_FILE -> InputKind.IMAGE
+            else -> ComfySubmitterRunner.classifyMediaFile(fileName, null)?.first ?: when (workflow.mediaCategory) {
+                ComfyMediaCategory.AUDIO -> InputKind.AUDIO
+                else -> InputKind.IMAGE
+            }
+        }
+
+        suspend fun uploadStagedMedia(field: WorkflowFieldSpec, relPath: String): Pair<String, InputKind> {
+            val staged = stagedFiles[relPath] ?: throw ComfyFailure("未找到暂存输入文件：$relPath")
+            val inputKind = inferMediaKind(field, staged.name)
+            val mime = ComfySubmitterRunner.classifyMediaFile(staged.name, inputKind)?.second ?: "application/octet-stream"
+            val remoteName = staged.inputStream().use { stream ->
+                http.upload(host, "in_${UUID.randomUUID().toString().take(8)}_${staged.name}", mime, stream, inputKind)
+            }
+            return remoteName to inputKind
+        }
+
+        val unusedUploadNodeIds = mutableSetOf<String>()
+        var nextNumericNodeId = (nodes.keys.mapNotNull { it.toIntOrNull() }.maxOrNull() ?: 0) + 1
+
+        // 先上传所有媒体文件，再回填静态多目标 / 动态前缀槽位或单节点输入，并回收未用上传节点。
         for (field in workflow.fields) {
-            val value = mergedInputs[field.key] ?: continue
-            if (value is JsonNull) continue
-            val targetNode = field.uploadNodeId ?: field.nodeId ?: continue
-            val targetInput = field.uploadInputKey ?: field.inputKey ?: continue
+            val value = mergedInputs[field.key]
             if (field.valueType.isMediaFileType) {
-                val relPath = (value as? JsonPrimitive)?.contentOrNull
-                    ?: ((value as? JsonArray)?.firstOrNull() as? JsonPrimitive)?.contentOrNull
-                    ?: continue
-                val staged = stagedFiles[relPath] ?: throw ComfyFailure("未找到暂存输入文件：$relPath")
-                val inputKind = when (field.valueType) {
-                    FieldValueType.VIDEO_FILE -> InputKind.VIDEO
-                    FieldValueType.AUDIO_FILE -> InputKind.AUDIO
-                    else -> InputKind.IMAGE
+                val paths = extractMediaPaths(value)
+                val dynamicPrefix = field.dynamicInputPrefix
+                val staticTargets = field.effectiveUploadTargets()
+                when {
+                    dynamicPrefix != null && field.nodeId != null -> {
+                        val targetNode = (nodes[field.nodeId] as? JsonObject)?.toMutableMap()
+                            ?: throw ComfyFailure("工作流缺少节点 ${field.nodeId}")
+                        val inputs = (targetNode["inputs"] as? JsonObject)?.toMutableMap()
+                            ?: throw ComfyFailure("节点 ${field.nodeId} 缺少 inputs 对象")
+                        val dynamicRegex = Regex("^${Regex.escape(dynamicPrefix)}\\d+$")
+                        val oldKeys = inputs.keys.filter { it == field.inputKey || dynamicRegex.matches(it) }
+                        oldKeys.forEach { oldKey ->
+                            val linkedId = (inputs.remove(oldKey) as? JsonArray)?.getOrNull(0)?.let {
+                                (it as? JsonPrimitive)?.contentOrNull
+                            }
+                            if (!linkedId.isNullOrBlank() && linkedId != field.nodeId) unusedUploadNodeIds += linkedId
+                        }
+                        paths.forEachIndexed { idx, relPath ->
+                            val (remoteName, kind) = uploadStagedMedia(field, relPath)
+                            val newId = (nextNumericNodeId++).toString()
+                            val loadClass = field.uploadNodeClassType ?: when (kind) {
+                                InputKind.IMAGE -> "LoadImage"
+                                InputKind.AUDIO -> "LoadAudio"
+                                InputKind.VIDEO -> "LoadVideo"
+                            }
+                            val uploadKey = field.uploadInputKey ?: when {
+                                loadClass == "LoadImage" || kind == InputKind.IMAGE -> "image"
+                                loadClass == "LoadAudio" || kind == InputKind.AUDIO -> "audio"
+                                else -> "file"
+                            }
+                            nodes[newId] = buildJsonObject {
+                                put("class_type", loadClass)
+                                putJsonObject("inputs") { put(uploadKey, remoteName) }
+                            }
+                            inputs["$dynamicPrefix${field.dynamicStartIndex + idx}"] = buildJsonArray {
+                                add(newId)
+                                add(0)
+                            }
+                        }
+                        targetNode["inputs"] = JsonObject(inputs)
+                        nodes[field.nodeId] = JsonObject(targetNode)
+                    }
+                    staticTargets.isNotEmpty() -> {
+                        if (paths.size > staticTargets.size) {
+                            throw ComfyFailure(
+                                "字段 ${field.key} 传入了 ${paths.size} 个媒体文件，但工作流仅声明了 ${staticTargets.size} 个上传目标；" +
+                                    "请补齐 uploadTargets 或配置 dynamicInputPrefix，禁止静默丢弃输入文件",
+                            )
+                        }
+                        paths.forEachIndexed { idx, relPath ->
+                            val (remoteName, _) = uploadStagedMedia(field, relPath)
+                            val target = staticTargets[idx]
+                            mutateNodeInput(target.nodeId, target.input, JsonPrimitive(remoteName))
+                        }
+                        // 未用到的可选上传节点移除父节点连线并纳入裁剪池（避免遗留占位图被 ComfyUI 执行）。
+                        if (field.nodeId != null && (paths.isNotEmpty() || (field.mutability == FieldMutability.CONTENT && !field.required))) {
+                            for (idx in paths.size until staticTargets.size) {
+                                val unusedTarget = staticTargets[idx]
+                                removeNodeInputIfMatches(field.nodeId, field.inputKey?.takeIf { staticTargets.size == 1 }, unusedTarget.nodeId)
+                                unusedUploadNodeIds += unusedTarget.nodeId
+                            }
+                        }
+                    }
+                    else -> {
+                        val targetNode = field.nodeId ?: continue
+                        val targetInput = field.inputKey ?: continue
+                        if (paths.size > 1) {
+                            throw ComfyFailure(
+                                "字段 ${field.key} 传入了 ${paths.size} 个媒体文件，但仅绑定单个节点输入 $targetNode.$targetInput；" +
+                                    "请声明多目标 uploadTargets 或 dynamicInputPrefix",
+                            )
+                        }
+                        val firstPath = paths.firstOrNull() ?: continue
+                        val (remoteName, _) = uploadStagedMedia(field, firstPath)
+                        mutateNodeInput(targetNode, targetInput, JsonPrimitive(remoteName))
+                    }
                 }
-                val mime = ComfySubmitterRunner.classifyMediaFile(staged.name, inputKind)?.second ?: "application/octet-stream"
-                val remoteName = staged.inputStream().use { stream ->
-                    http.upload(host, "in_${UUID.randomUUID().toString().take(8)}_${staged.name}", mime, stream, inputKind)
-                }
-                mutateNodeInput(targetNode, targetInput, JsonPrimitive(remoteName))
             } else {
+                if (value == null || value is JsonNull) continue
+                val targetNode = field.nodeId ?: continue
+                val targetInput = field.inputKey ?: continue
                 mutateNodeInput(targetNode, targetInput, value)
+            }
+        }
+
+        if (unusedUploadNodeIds.isNotEmpty()) {
+            val protectedOutputs = workflow.outputNodeIds.toSet()
+            fun referencedNodeIds(): Set<String> = buildSet {
+                nodes.forEach { (nodeId, element) ->
+                    val nodeInputs = (element as? JsonObject)?.get("inputs") as? JsonObject ?: return@forEach
+                    nodeInputs.values.forEach { inputValue ->
+                        val link = inputValue as? JsonArray ?: return@forEach
+                        val sourceId = (link.getOrNull(0) as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@forEach
+                        val outIndex = (link.getOrNull(1) as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull ?: return@forEach
+                        if (link.size == 2 && outIndex >= 0 && sourceId != nodeId) add(sourceId)
+                    }
+                }
+            }
+            while (true) {
+                val referenced = referencedNodeIds()
+                val removable = unusedUploadNodeIds.filter { it in nodes && it !in protectedOutputs && it !in referenced }
+                if (removable.isEmpty()) break
+                removable.forEach { nodes.remove(it) }
             }
         }
 
@@ -340,7 +550,11 @@ class ComfyWorkflowExecutionEngine(
         if ((submitResp["error"] != null && submitResp["error"] != JsonNull) ||
             (submitResp["node_errors"] as? JsonObject)?.isNotEmpty() == true
         ) {
-            throw ComfyFailure("ComfyUI 拒绝工作流，请核对节点与参数")
+            val detail = ComfyErrorDiagnostics.summarizePromptRejection(submitResp)
+            throw ComfyFailure(
+                if (detail.isNullOrBlank()) "ComfyUI 拒绝工作流，请核对节点与参数"
+                else "ComfyUI 拒绝工作流：$detail",
+            )
         }
         val promptId = (submitResp["prompt_id"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
             ?: throw ComfyFailure("ComfyUI 提交响应缺少 prompt_id")
@@ -364,7 +578,7 @@ class ComfyWorkflowExecutionEngine(
         var remoteOutputs: List<RemoteOutput>? = null
         while (clock() < deadline) {
             val history = http.get(host, "/history/$promptId")
-            when (val status = parseComfyHistory(history, promptId, outputSlots)) {
+            when (val status = parseComfyHistory(history, promptId, outputSlots, includeDiagnostics = true)) {
                 is RemoteStatus.Succeeded -> {
                     remoteOutputs = status.outputs
                     break
@@ -409,6 +623,33 @@ class ComfyWorkflowExecutionEngine(
             summary = "已生成 ${savedRefs.size} 个媒体文件",
             appliedFixedDiffs = fixedDiffs,
         )
+    }
+
+    private suspend fun resolveSingleActiveChainId(
+        sessionId: String,
+        workflowId: String,
+        shotRef: String?,
+        requiredNodeId: String?,
+    ): String {
+        val candidates = chainStore.listSession(sessionId, workflowId = workflowId, shotRef = shotRef)
+            .filter { chain ->
+                val active = chain.activeNodes()
+                active.isNotEmpty() && (requiredNodeId == null || active.any { it.nodeId == requiredNodeId })
+            }
+        return when {
+            candidates.size == 1 -> candidates.single().chainId
+            candidates.isEmpty() -> throw ComfyFailure(
+                if (requiredNodeId != null) {
+                    "当前会话未找到包含活跃节点 $requiredNodeId 的工作流 $workflowId 有状态链，请确认 chain_id"
+                } else {
+                    "当前会话尚无工作流 $workflowId 的活跃有状态链，请先传 stage=first 启动首段"
+                },
+            )
+            else -> throw ComfyFailure(
+                "当前会话存在 ${candidates.size} 条工作流 $workflowId 活跃链，请显式传入 chain_id：" +
+                    candidates.joinToString("；") { "${it.chainId}(tip=${it.activeTipNodeId})" },
+            )
+        }
     }
 
     private fun resolveAndValidateFields(

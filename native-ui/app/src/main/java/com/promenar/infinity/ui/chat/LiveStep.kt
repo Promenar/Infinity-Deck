@@ -18,7 +18,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -40,7 +39,6 @@ import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.generation.GenerationPhase
 import com.promenar.infinity.domain.generation.GenerationRetry
 import com.promenar.infinity.ui.common.GenerationDots
-import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.motion.GenerationMotion
 import com.promenar.infinity.ui.common.motion.GenerationMotionPhase
 import com.promenar.infinity.ui.common.motion.LocalGenerationMotion
@@ -70,9 +68,6 @@ enum class LiveStepKind {
     /** 请求已发出尚未收到输出，或工具结束后模型的下一轮尚未开始输出：流末尾一行“等待模型响应”。 */
     WAITING_MODEL,
 }
-
-/** 同一次连接超过这个时长仍无输出时，状态行行尾换成“无响应”标签并给出停止入口。 */
-internal const val LiveStepStallThresholdMs = 30_000L
 
 /**
  * 等待模型期间的自动重试：[retry] 为本次重试，[scheduledAt] 为界面收到重试的墙钟毫秒。
@@ -119,19 +114,11 @@ data class LiveStep(
     /** 从计时起点到 [nowMs] 的整秒数；没有起点时为 null，时钟回拨时不为负。 */
     internal fun elapsedSeconds(nowMs: Long): Long? = startedAt?.let { (nowMs - it).coerceAtLeast(0) / 1_000 }
 
-    /** 重试退避尚未结束：这段时间在等重试，不算模型无响应。 */
+    /** 重试退避尚未结束：这段时间正在倒计时等待下一次重连。 */
     internal fun isBackingOff(nowMs: Long): Boolean = retry != null && nowMs < retry.reconnectAt
 
     /** 状态行计时起点：重试后从重新连接起算，否则为 [startedAt]。 */
     internal val clockStart: Long? get() = retry?.reconnectAt ?: startedAt
-
-    /** 同一次连接已超过 [LiveStepStallThresholdMs] 仍无输出。“等待模型响应”与尚未落库的工具准备态均会升级，退避期间不算。 */
-    internal fun isStalled(nowMs: Long): Boolean {
-        val start = clockStart ?: return false
-        return (kind == LiveStepKind.WAITING_MODEL || kind == LiveStepKind.PREPARING_TOOL) &&
-            !isBackingOff(nowMs) &&
-            nowMs - start >= LiveStepStallThresholdMs
-    }
 
     /** [nowMs] 时刻的状态行：名称或重试倒计时、计时、行尾标签与动画阶段。 */
     internal fun statusLine(nowMs: Long): LiveStatusLine {
@@ -146,16 +133,11 @@ data class LiveStep(
                 motionPhase = GenerationMotionPhase.RETRY,
             )
         }
-        val badge = when {
-            isStalled(nowMs) -> LiveStatusBadge.Stalled
-            pending != null -> LiveStatusBadge.Retry(pending.retry.attempt, pending.retry.maxAttempts)
-            else -> null
-        }
         return LiveStatusLine(
             labelRes = labelRes,
             countdown = null,
             clockSeconds = clockStart?.let { (nowMs - it).coerceAtLeast(0) / 1_000 },
-            badge = badge,
+            badge = pending?.let { LiveStatusBadge.Retry(it.retry.attempt, it.retry.maxAttempts) },
             motionPhase = motionPhase,
         )
     }
@@ -165,15 +147,13 @@ data class LiveStep(
 internal sealed interface LiveStatusBadge {
     /** 自动重试的第几次与上限，中性色。 */
     data class Retry(val attempt: Int, val maxAttempts: Int) : LiveStatusBadge
-    /** 同一次连接超时无输出，警示色，并配停止按钮。 */
-    data object Stalled : LiveStatusBadge
 }
 
 /** 重试退避中的名称：原因与剩余整秒数。 */
 internal data class LiveRetryCountdown(@StringRes val reasonRes: Int, val seconds: Int)
 
 /**
- * 一行状态的全部内容，格式统一为 `[动画] 名称 m:ss … [标签] [操作]`：
+ * 一行状态的全部内容，格式统一为 `[动画] 名称 m:ss … [标签]`：
  * 名称为 [labelRes]，退避中改为 [countdown] 且不显示计时；[clockSeconds] 为 m:ss 计时的整秒数。
  */
 internal data class LiveStatusLine(
@@ -182,9 +162,7 @@ internal data class LiveStatusLine(
     val clockSeconds: Long?,
     val badge: LiveStatusBadge?,
     val motionPhase: GenerationMotionPhase,
-) {
-    val stalled: Boolean get() = badge == LiveStatusBadge.Stalled
-}
+)
 
 /** 重试原因的文字：限流、服务异常，其余按网络波动。 */
 @StringRes
@@ -269,7 +247,7 @@ internal fun resolveLiveStep(messages: List<Message>, signals: LiveTurnSignals):
     }
 }
 
-/** 尚未落库成执行步骤的未决 toolCalls；此时渲染 PREPARING_TOOL（并沿用 waiting 计时以便卡死 30s 触发无响应）。 */
+/** 尚未落库成执行步骤的未决 toolCalls；此时渲染 PREPARING_TOOL 并沿用 waiting 计时。 */
 private fun preparingToolStep(finalAssistant: Message?, waiting: LiveStep): LiveStep? {
     val final = finalAssistant ?: return null
     val recorded = final.executionSteps.orEmpty().mapNotNullTo(HashSet()) { it.toolCallId }
@@ -338,9 +316,7 @@ internal fun liveClockText(seconds: Long): String = "%d:%02d".format(java.util.L
 // ─────────────────────────────────────────────────────────────────
 
 private const val LIVE_STEP_WAITING_ROW_TAG = "CHAT_LIVE_STEP_WAITING"
-private const val LIVE_STEP_STALLED_TAG = "CHAT_LIVE_STEP_STALLED"
 private const val LIVE_STEP_RETRY_TAG = "CHAT_LIVE_STEP_RETRY"
-private const val LIVE_STEP_STOP_TAG = "CHAT_LIVE_STEP_STOP"
 private const val LIVE_STEP_ELAPSED_TAG = "CHAT_LIVE_STEP_ELAPSED"
 private const val LIVE_STEP_WAIT_BADGE_TAG = "CHAT_LIVE_STEP_WAIT_BADGE"
 
@@ -428,11 +404,11 @@ internal fun LiveToolTicker(step: LiveStep) {
 }
 
 /**
- * 一行状态：`[动画] 名称 m:ss … [标签] [操作]`，固定单行、最小高度与工具行一致，升级时不增高。
- * 名称与计时同为中性色；只有“无响应”标签用警示色，并在行尾给出 [onStop]（只停止本轮，不重跑已执行的工具）。
+ * 一行状态：`[动画] 名称 m:ss … [标签]`，固定单行、最小高度与工具行一致。
+ * 名称、计时与重试标签统一保持中性色；停止生成由输入框既有停止按钮承载。
  */
 @Composable
-internal fun LiveStatusRow(line: LiveStatusLine, onStop: (() -> Unit)?, modifier: Modifier = Modifier) {
+internal fun LiveStatusRow(line: LiveStatusLine, modifier: Modifier = Modifier) {
     val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
     Row(
         modifier = modifier.fillMaxWidth().heightIn(min = CompactStepRowHeight),
@@ -467,54 +443,32 @@ internal fun LiveStatusRow(line: LiveStatusLine, onStop: (() -> Unit)?, modifier
             }
         }
         line.badge?.let { badge ->
+            val retryText = when (badge) {
+                is LiveStatusBadge.Retry -> stringResource(R.string.live_step_retry_badge, badge.attempt, badge.maxAttempts)
+            }
             ProductionStatusChip(
-                text = when (badge) {
-                    is LiveStatusBadge.Retry -> stringResource(R.string.live_step_retry_badge, badge.attempt, badge.maxAttempts)
-                    LiveStatusBadge.Stalled -> stringResource(R.string.live_step_stalled_badge)
-                },
-                tone = if (badge == LiveStatusBadge.Stalled) ProductionTone.WARNING else ProductionTone.NEUTRAL,
-                // 每次重试与升级为无响应时读屏播报一次；倒计时与计时不播报。
+                text = retryText,
+                tone = ProductionTone.NEUTRAL,
+                // 每次重试时读屏播报一次；倒计时与计时不播报。
                 modifier = Modifier
                     .padding(start = 8.dp)
                     .semantics { liveRegion = LiveRegionMode.Polite }
-                    .testTag(if (badge == LiveStatusBadge.Stalled) LIVE_STEP_STALLED_TAG else LIVE_STEP_RETRY_TAG),
-            )
-        }
-        if (line.stalled && onStop != null) {
-            InfinityPillButton(
-                text = stringResource(R.string.live_step_stop_short),
-                onClick = onStop,
-                compact = true,
-                modifier = Modifier
-                    .padding(start = 8.dp)
-                    .overflowVertically(CompactStepRowHeight)
-                    .testTag(LIVE_STEP_STOP_TAG),
+                    .testTag(LIVE_STEP_RETRY_TAG),
             )
         }
     }
 }
 
 /**
- * 按钮的 48dp 触控区上下溢出到行外，行高仍按 [rowHeight] 计：状态升级出现按钮时整行不增高。
- * 可见的胶囊（32dp）落在行内。
- */
-private fun Modifier.overflowVertically(rowHeight: Dp): Modifier = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints.copy(minHeight = 0))
-    val limit = rowHeight.roundToPx()
-    val height = minOf(placeable.height, limit)
-    layout(placeable.width, height) { placeable.place(0, (height - placeable.height) / 2) }
-}
-
-/**
- * 流末尾的状态行：“等待模型响应”“正在准备工具调用”，以及等待期间的自动重试与无响应升级。
+ * 流末尾的状态行：“等待模型响应”“正在准备工具调用”，以及等待期间的自动重试状态。
  * 计时每秒刷新，只重组这一行；锚点为本次连接的起点，退避期间倒计时同样按整秒刷新。
  */
 @Composable
-internal fun LiveWaitingRow(step: LiveStep, onStopGeneration: (() -> Unit)?, modifier: Modifier = Modifier) {
+internal fun LiveWaitingRow(step: LiveStep, modifier: Modifier = Modifier) {
     val anchor = step.clockStart
     val now = anchor?.let { rememberLiveNow(it).value }
     val line = if (now != null) step.statusLine(now) else step.statusLine(0L).copy(clockSeconds = null)
-    LiveStatusRow(line, onStopGeneration, modifier.testTag(LIVE_STEP_WAITING_ROW_TAG))
+    LiveStatusRow(line, modifier.testTag(LIVE_STEP_WAITING_ROW_TAG))
 }
 
 /**
@@ -527,7 +481,6 @@ internal fun LiveWaitBadge(step: LiveStep, modifier: Modifier = Modifier) {
     val now = startedAt?.let { rememberLiveNow(it).value }
     LiveStatusRow(
         line = step.statusLine(now ?: 0L).let { if (now == null) it.copy(clockSeconds = null) else it },
-        onStop = null,
         modifier = modifier
             .padding(bottom = 4.dp)
             .clearAndSetSemantics {}

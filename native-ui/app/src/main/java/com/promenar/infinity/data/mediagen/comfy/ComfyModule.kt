@@ -20,7 +20,7 @@ class ComfyModule(
     packagedPython: PackagedPython? = null,
 ) {
     private val credentials = ComfyCredentials(secrets)
-    private val http = OkHttpComfyHttp(client, credentials)
+    private val http = OkHttpComfyHttp(client, credentials, File(appCacheDir, "comfy_upload_spill"))
     val submitterFiles: ComfySubmitterFileStore = FileComfySubmitterFileStore(File(appFilesDir, "comfy_submitters"))
     val chainStore: StatefulChainStore = FileStatefulChainStore(File(appFilesDir, "comfy_chains"))
     val repository = ComfyRepository(

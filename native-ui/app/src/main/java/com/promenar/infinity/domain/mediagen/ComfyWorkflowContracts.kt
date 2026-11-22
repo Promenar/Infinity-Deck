@@ -112,6 +112,10 @@ data class WorkflowFieldSpec(
     val inputKey: String? = null,
     val uploadNodeId: String? = null,
     val uploadInputKey: String? = null,
+    val uploadTargets: List<ComfyUploadTarget> = emptyList(),
+    val dynamicInputPrefix: String? = null,
+    val dynamicStartIndex: Int = 0,
+    val uploadNodeClassType: String? = null,
 ) {
     init {
         require(key.matches(Regex("[a-zA-Z][a-zA-Z0-9_.-]{0,63}"))) {
@@ -128,6 +132,17 @@ data class WorkflowFieldSpec(
         require(min == null || min.isFinite()) { "field.$key.min: 需要有限数值" }
         require(max == null || max.isFinite()) { "field.$key.max: 需要有限数值" }
         require(min == null || max == null || min <= max) { "field.$key.min/max: 范围顺序无效" }
+        require(dynamicStartIndex >= 0) { "field.$key.dynamicStartIndex: 不能为负数" }
+        dynamicInputPrefix?.let { prefix ->
+            require(prefix.isNotBlank() && prefix.none { it <= ' ' || it == '\u007f' }) {
+                "field.$key.dynamicInputPrefix: 动态前缀不能为空或包含空白字符"
+            }
+        }
+        uploadNodeClassType?.let { ct ->
+            require(ct.isNotBlank() && ct.none { it < ' ' || it == '\u007f' }) {
+                "field.$key.uploadNodeClassType: 上传节点类名无效"
+            }
+        }
         cliFlag?.let { flag ->
             require(flag.isNotBlank() && flag.none { it <= ' ' || it == '\u007f' }) {
                 "field.$key.cliFlag: 命令行标志不能包含空白或控制字符"
@@ -136,6 +151,14 @@ data class WorkflowFieldSpec(
         if (defaultValue != null && defaultValue != JsonNull) {
             validateValue(defaultValue, isDefaultCheck = true)
         }
+    }
+
+    /** 统一解析静态上传目标清单：优先使用 [uploadTargets]，兼容单目标 [uploadNodeId]/[uploadInputKey]。 */
+    fun effectiveUploadTargets(): List<ComfyUploadTarget> = when {
+        uploadTargets.isNotEmpty() -> uploadTargets
+        !uploadNodeId.isNullOrBlank() && !uploadInputKey.isNullOrBlank() ->
+            listOf(ComfyUploadTarget(uploadNodeId, uploadInputKey))
+        else -> emptyList()
     }
 
     fun validateValue(value: JsonElement?, isDefaultCheck: Boolean = false) {
@@ -337,11 +360,23 @@ data class StatefulChainSpec(
     val previousWorkflowFlag: String = "--previous-workflow",
     val latentDirFlag: String = "--latent-dir",
     val branchIdFlag: String = "",
+    val segmentIndexFlag: String = "",
+    val readLatentDirFlag: String = "",
+    val writeLatentDirFlag: String = "",
     val dryRunFlag: String = "--dry-run",
 ) {
     init {
         require(stages.isNotEmpty() && stages.all { it.isNotBlank() }) { "chainSpec.stages 不能为空" }
     }
+
+    /** 仅当脚本协议或独立读写目录/分支标志真实支持物理分支隔离时返回 true。 */
+    fun supportsPhysicalBranchIsolation(protocol: SubmitterInvocationProtocol?): Boolean =
+        supportsIsolatedBranchDir && (
+            protocol == SubmitterInvocationProtocol.PAYLOAD_JSON ||
+                (readLatentDirFlag.isNotBlank() && writeLatentDirFlag.isNotBlank()) ||
+                writeLatentDirFlag.isNotBlank() ||
+                branchIdFlag.isNotBlank()
+            )
 }
 
 @Serializable
@@ -456,6 +491,7 @@ data class ComfyWorkflow(
                                 inputKey = slot.input,
                                 uploadNodeId = slot.uploadTargets.firstOrNull()?.nodeId,
                                 uploadInputKey = slot.uploadTargets.firstOrNull()?.input,
+                                uploadTargets = slot.uploadTargets,
                             ),
                         )
                         SlotKind.FIRST_FRAME -> add(
@@ -469,6 +505,7 @@ data class ComfyWorkflow(
                                 inputKey = slot.input,
                                 uploadNodeId = slot.uploadTargets.firstOrNull()?.nodeId,
                                 uploadInputKey = slot.uploadTargets.firstOrNull()?.input,
+                                uploadTargets = slot.uploadTargets,
                             ),
                         )
                         SlotKind.LAST_FRAME -> add(
@@ -482,6 +519,7 @@ data class ComfyWorkflow(
                                 inputKey = slot.input,
                                 uploadNodeId = slot.uploadTargets.firstOrNull()?.nodeId,
                                 uploadInputKey = slot.uploadTargets.firstOrNull()?.input,
+                                uploadTargets = slot.uploadTargets,
                             ),
                         )
                         SlotKind.REFERENCE_AUDIO -> add(
@@ -495,6 +533,7 @@ data class ComfyWorkflow(
                                 inputKey = slot.input,
                                 uploadNodeId = slot.uploadTargets.firstOrNull()?.nodeId,
                                 uploadInputKey = slot.uploadTargets.firstOrNull()?.input,
+                                uploadTargets = slot.uploadTargets,
                             ),
                         )
                         SlotKind.INPUT_VIDEO -> add(
@@ -509,6 +548,7 @@ data class ComfyWorkflow(
                                 inputKey = slot.input,
                                 uploadNodeId = slot.uploadTargets.firstOrNull()?.nodeId,
                                 uploadInputKey = slot.uploadTargets.firstOrNull()?.input,
+                                uploadTargets = slot.uploadTargets,
                             ),
                         )
                         SlotKind.DURATION -> add(

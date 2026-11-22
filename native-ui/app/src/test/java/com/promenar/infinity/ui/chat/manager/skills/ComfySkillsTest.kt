@@ -366,4 +366,147 @@ class ComfySkillsTest {
         assertEquals("error", errRes.status)
         assertTrue(errRes.content.contains("source_path"))
     }
+
+    @Test fun skillImportPreservesDirectoryLayoutListHostsReportsPythonAndWorkflowsDefaultSummary() = runTest {
+        val f = ComfyFixture()
+        f.repository.saveHost(f.host)
+        val temp = java.nio.file.Files.createTempDirectory("comfy-skill-import").toFile()
+        try {
+            val fileStore = FileComfySubmitterFileStore(java.io.File(temp, "submitters"))
+            val runner = ComfySubmitterRunner(
+                submitterFiles = fileStore,
+                scratchRoot = java.io.File(temp, "scratch"),
+                launchProvider = {
+                    SubmitterPythonLaunch(
+                        commandPrefix = listOf("python3"),
+                        environment = emptyMap(),
+                    )
+                },
+            )
+            val bundle = SubmitterImportedBundle(
+                entryFileName = "scripts/submit_h3.py",
+                sourceText = "print('h3')\n",
+                supportFiles = mapOf(
+                    "scripts/submit_workflow.py" to "def sub(): pass\n".toByteArray(),
+                    "assets/minimax-h3/workflows/i2va.json" to """{"1":{"class_type":"Save"}}""".toByteArray(),
+                ),
+            )
+            val tools = comfyTools(
+                repository = f.repository,
+                submitterRunner = runner,
+                readWorkspaceFile = { _, path ->
+                    when (path) {
+                        "/mnt/skills/demo/scripts/entry.py" -> "print('x')\n".toByteArray()
+                        "/mnt/skills/demo/assets/wf.json" -> "{}".toByteArray()
+                        else -> null
+                    }
+                },
+                importSkillSubmitter = { _, skill, entry, includes ->
+                    assertEquals("comfyui-generation", skill)
+                    assertEquals("scripts/submit_h3.py", entry)
+                    assertEquals(listOf("scripts", "assets/minimax-h3/workflows"), includes)
+                    bundle
+                },
+            )
+
+            // 1. comfy_list_hosts 返回真实 python_available
+            val hostsRes = tools.single { it.name == "comfy_list_hosts" }.execute(JsonObject(emptyMap()), context)
+            val hostsJson = Json.parseToJsonElement(hostsRes.content).jsonObject
+            assertTrue(hostsJson["python_available"]!!.jsonPrimitive.boolean)
+
+            // 2. skill_import 零改写导入并保留子目录层级（可省略 file_name）
+            val saveSub = tools.single { it.name == "comfy_save_submitter" }
+            val importedRes = saveSub.execute(
+                buildJsonObject {
+                    put("host_id", f.host.id)
+                    put("script_id", "h3_imported")
+                    put("protocol", "CLI_ARGS")
+                    putJsonObject("skill_import") {
+                        put("skill_name", "comfyui-generation")
+                        put("entry_path", "scripts/submit_h3.py")
+                        putJsonArray("include_paths") {
+                            add("scripts")
+                            add("assets/minimax-h3/workflows")
+                        }
+                    }
+                    put("run_dry_run", false)
+                },
+                context,
+            )
+            assertNotEquals(importedRes.content, "error", importedRes.status)
+            val subObj = Json.parseToJsonElement(importedRes.content).jsonObject["submitter"]!!.jsonObject
+            assertEquals("scripts/submit_h3.py", subObj["file_name"]!!.jsonPrimitive.content)
+            assertEquals("SKILL_SYNC", subObj["source_kind"]!!.jsonPrimitive.content)
+            val supList = subObj["support_files"]!!.jsonArray.map { it.jsonPrimitive.content }
+            assertTrue(supList.contains("assets/minimax-h3/workflows/i2va.json"))
+            assertTrue(supList.contains("scripts/submit_workflow.py"))
+
+            // 3. support_paths 同前缀自动保留子目录 assets/wf.json
+            val pathRes = saveSub.execute(
+                buildJsonObject {
+                    put("host_id", f.host.id)
+                    put("script_id", "demo_paths")
+                    put("file_name", "scripts/entry.py")
+                    put("source_path", "/mnt/skills/demo/scripts/entry.py")
+                    putJsonArray("support_paths") { add("/mnt/skills/demo/assets/wf.json") }
+                    put("run_dry_run", false)
+                },
+                context,
+            )
+            assertNotEquals(pathRes.content, "error", pathRes.status)
+            assertEquals(
+                listOf("assets/wf.json"),
+                Json.parseToJsonElement(pathRes.content).jsonObject["submitter"]!!.jsonObject["support_files"]!!.jsonArray.map { it.jsonPrimitive.content },
+            )
+
+            // 4. 保存工作流验证 receiptFlag=null 及 list 摘要模式 vs detail=true 完整模式
+            val saveWf = tools.single { it.name == "comfy_save_workflow" }
+            val wfRes = saveWf.execute(
+                buildJsonObject {
+                    putJsonObject("workflow") {
+                        put("workflowId", "wf_music_summary")
+                        put("hostId", f.host.id)
+                        put("name", "Music3")
+                        put("mediaCategory", "AUDIO")
+                        put("submitterScriptId", "h3_imported")
+                        put("receiptFlag", JsonNull)
+                        putJsonArray("fields") {
+                            addJsonObject {
+                                put("key", "prompt")
+                                put("label", "提示词")
+                                put("mutability", "CONTENT")
+                                put("valueType", "TEXT")
+                            }
+                            addJsonObject {
+                                put("key", "duration")
+                                put("label", "时长")
+                                put("mutability", "FIXED")
+                                put("valueType", "INT")
+                                put("defaultValue", 20)
+                            }
+                        }
+                        putJsonObject("capabilities") { putJsonArray("modes") { add("MUSIC") } }
+                    }
+                    put("run_preflight", false)
+                },
+                context,
+            )
+            assertNotEquals(wfRes.content, "error", wfRes.status)
+
+            val listTool = tools.single { it.name == "comfy_list_workflows" }
+            val summaryJson = Json.parseToJsonElement(listTool.execute(JsonObject(emptyMap()), context).content).jsonObject
+            assertFalse(summaryJson["detail"]!!.jsonPrimitive.boolean)
+            val summaryItem = summaryJson["workflows"]!!.jsonArray.single().jsonObject
+            assertFalse("content_fields" in summaryItem)
+            assertEquals(listOf("prompt"), summaryItem["content_field_keys"]!!.jsonArray.map { it.jsonPrimitive.content })
+
+            val detailJson = Json.parseToJsonElement(listTool.execute(buildJsonObject { put("detail", true) }, context).content).jsonObject
+            assertTrue(detailJson["detail"]!!.jsonPrimitive.boolean)
+            val detailItem = detailJson["workflows"]!!.jsonArray.single().jsonObject
+            assertTrue("content_fields" in detailItem)
+            assertTrue("fixed_fields" in detailItem)
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
 }

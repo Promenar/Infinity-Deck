@@ -58,6 +58,7 @@ data class TemplateParam(
 }
 
 /** 连线槽位对应的上传文件输入；显式指定，避免根据节点名猜测。 */
+@Serializable
 data class ComfyUploadTarget(val nodeId: String, val input: String) {
     init { require(nodeId.isNotBlank() && input.isNotBlank()) { "上传目标需要节点和输入名" } }
 }

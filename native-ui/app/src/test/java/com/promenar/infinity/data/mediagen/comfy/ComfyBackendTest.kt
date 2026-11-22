@@ -221,6 +221,25 @@ class ComfyBackendTest {
         assertEquals(listOf("preview_frame.png", "anim_clip.webp"), imgNames)
     }
 
+    @Test fun detailedHistoryDiagnosticsExtractsNodeErrorAndRedactsSecrets() {
+        val slots = listOf(ComfySlot("2", "images", SlotKind.OUTPUT))
+        val history = Json.parseToJsonElement(
+            """{"x":{"status":{"completed":false,"status_str":"error","messages":[["execution_error",{
+                "node_id":"4",
+                "node_type":"FlashVSRNodeAdv",
+                "exception_type":"TypeError",
+                "exception_message":"'NoneType' object is not callable Authorization: Bearer top-secret-xyz",
+                "current_inputs":{"frames":["huge tensor"]},
+                "traceback":["File \"nodes.py\", line 400\n","File \"wan_video_dit.py\", line 285, in flash_attention\n"]
+            }]]}}}""",
+        ).jsonObject
+        val failed = parseComfyHistory(history, "x", slots, includeDiagnostics = true) as RemoteStatus.Failed
+        assertTrue(failed.message, failed.message.contains("节点 #4 (FlashVSRNodeAdv)"))
+        assertTrue(failed.message, failed.message.contains("TypeError"))
+        assertTrue(failed.message, failed.message.contains("wan_video_dit.py"))
+        assertFalse(failed.message, failed.message.contains("top-secret-xyz"))
+    }
+
     private fun success(id: String) = Json.parseToJsonElement("""{"$id":{"status":{"completed":true,"status_str":"success"},"outputs":{"2":{"images":[{"filename":"out.png","subfolder":"test","type":"output"}]}}}}""").jsonObject
     private suspend fun expectFailure(action: suspend () -> Unit) {
         try { action(); fail("应拒绝无效输入") } catch (_: IllegalArgumentException) { }

@@ -8,8 +8,11 @@ import kotlinx.serialization.json.*
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import okio.BufferedSink
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.IOException
@@ -31,7 +34,11 @@ interface ComfyHttp {
     suspend fun download(host: ComfyHost, location: String, save: suspend (InputStream, String?) -> String): String
 }
 
-class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCredentials) : ComfyHttp {
+class OkHttpComfyHttp(
+    client: OkHttpClient,
+    private val credentials: ComfyCredentials,
+    private val tempDir: File = File(System.getProperty("java.io.tmpdir"), "comfy_upload_spill"),
+) : ComfyHttp {
     // 复用应用的 Tailnet 路由；禁止自动重试有副作用的请求与跨主机重定向。
     private val client = client.newBuilder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build()
     override suspend fun get(host: ComfyHost, path: String): JsonObject = json(host, Request.Builder().url(endpoint(host, path)).get())
@@ -46,30 +53,57 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
     override suspend fun upload(host: ComfyHost, filename: String, mimeType: String, source: InputStream, kind: InputKind): String {
         val audio = kind == InputKind.AUDIO
         require(filename.matches(Regex("[A-Za-z0-9_.-]{1,200}"))) { "上传文件名无效" }
-        val payload = object : RequestBody() {
-            override fun contentType() = mimeType.toMediaType()
-            override fun isOneShot() = true
-            override fun writeTo(sink: BufferedSink) {
-                val buffer = ByteArray(64 * 1024)
-                var total = 0L
+        val mediaType = mimeType.toMediaType()
+        // 可重放上传体（<=2 MiB 驻留内存，更大媒体暂存 cache spill 文件并在 finally 清理）：
+        // 避免 HTTP 407 代理挑战/重启凭据轮换时因 isOneShot()=true 直接失败，并提供精确 Content-Length。
+        var spillFile: File? = null
+        val payload = try {
+            val memory = ByteArrayOutputStream()
+            var spillOut: FileOutputStream? = null
+            val buffer = ByteArray(64 * 1024)
+            var total = 0L
+            try {
                 while (true) {
                     val count = source.read(buffer)
                     if (count < 0) break
                     total += count
                     if (total > MAX_WORKSPACE_MEDIA_BYTES) throw ComfyFailure("输入媒体超过工作区媒体大小上限")
-                    sink.write(buffer, 0, count)
+                    if (spillOut != null) {
+                        spillOut.write(buffer, 0, count)
+                    } else if (memory.size() + count <= IN_MEMORY_UPLOAD_LIMIT) {
+                        memory.write(buffer, 0, count)
+                    } else {
+                        tempDir.mkdirs()
+                        val temp = File.createTempFile("comfy_up_", ".tmp", tempDir)
+                        spillFile = temp
+                        spillOut = FileOutputStream(temp).apply {
+                            write(memory.toByteArray())
+                            write(buffer, 0, count)
+                        }
+                        memory.reset()
+                    }
                 }
+            } finally {
+                runCatching { spillOut?.close() }
             }
+            spillFile?.asRequestBody(mediaType) ?: memory.toByteArray().toRequestBody(mediaType)
+        } catch (t: Throwable) {
+            spillFile?.delete()
+            throw t
         }
-        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart(if (audio) host.audioUploadField else "image", filename, payload)
-            .addFormDataPart("type", "input").addFormDataPart("overwrite", "false")
-            .addFormDataPart("subfolder", "infinity").build()
-        val response = json(host, Request.Builder().url(endpoint(host, if (audio) host.audioUploadPath else "/upload/image")).post(body))
-        val name = (response["name"] as? JsonPrimitive)?.contentOrNull ?: throw ComfyFailure("主机上传响应缺少文件名")
-        val folder = (response["subfolder"] as? JsonPrimitive)?.contentOrNull.orEmpty()
-        if (!safeComfyFile(name, false) || !safeComfyFile(folder, true)) throw ComfyFailure("主机上传响应的文件路径无效")
-        return listOf(folder, name).filter { it.isNotEmpty() }.joinToString("/")
+        return try {
+            val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart(if (audio) host.audioUploadField else "image", filename, payload)
+                .addFormDataPart("type", "input").addFormDataPart("overwrite", "false")
+                .addFormDataPart("subfolder", "infinity").build()
+            val response = json(host, Request.Builder().url(endpoint(host, if (audio) host.audioUploadPath else "/upload/image")).post(body))
+            val name = (response["name"] as? JsonPrimitive)?.contentOrNull ?: throw ComfyFailure("主机上传响应缺少文件名")
+            val folder = (response["subfolder"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+            if (!safeComfyFile(name, false) || !safeComfyFile(folder, true)) throw ComfyFailure("主机上传响应的文件路径无效")
+            listOf(folder, name).filter { it.isNotEmpty() }.joinToString("/")
+        } finally {
+            spillFile?.delete()
+        }
     }
     override suspend fun download(host: ComfyHost, location: String, save: suspend (InputStream, String?) -> String): String {
         validateComfyView(location)
@@ -124,6 +158,10 @@ class OkHttpComfyHttp(client: OkHttpClient, private val credentials: ComfyCreden
     private fun endpoint(host: ComfyHost, path: String): HttpUrl {
         require(path.startsWith('/') && !path.startsWith("//") && !path.contains('\\')) { "ComfyUI 接口路径无效" }
         return (host.endpoint + path).toHttpUrl()
+    }
+
+    private companion object {
+        const val IN_MEMORY_UPLOAD_LIMIT = 2 * 1024 * 1024
     }
 }
 /**

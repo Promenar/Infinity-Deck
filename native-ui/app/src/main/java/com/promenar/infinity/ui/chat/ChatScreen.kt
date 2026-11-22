@@ -1279,8 +1279,6 @@ fun ChatScreenContent(
                                 null
                             },
                             liveStep = if (group === lastAssistantGroup) liveStep else null,
-                            // 等待模型过久时只停止本轮；不自动重跑，避免重复执行本轮已经跑过的工具。
-                            onStopGeneration = actions.onStop,
                         )
                     }
                     secretsByGroup[idx]?.let { secrets ->

@@ -16,6 +16,9 @@ interface TailnetRouting {
     /** OkHttp/Ktor：tailnet 目标走本机 HTTP CONNECT 代理，其它 DIRECT。 */
     val proxySelector: java.net.ProxySelector
     val proxyAuthenticator: okhttp3.Authenticator
+    /** 明文 HTTP 经本机 tailnet 代理首跳预认证网络拦截器；未接入时直通。 */
+    val proxyAuthInterceptor: okhttp3.Interceptor
+        get() = okhttp3.Interceptor { chain -> chain.proceed(chain.request()) }
     /** Agent 工具仅使用当前内置代理；未就绪返回 null，不触发启动或系统代理回退。 */
     fun agentProxy(): Proxy? = null
     /** JSch：tailnet 主机返回 SOCKS5 代理（带凭据），其它 null。 */

@@ -222,12 +222,22 @@ internal fun queueContains(queue: JsonObject, name: String, promptId: String): B
 private val COMFY_PURE_VIDEO_EXTENSIONS = setOf("mp4", "webm", "mov", "mkv", "avi")
 private val COMFY_VIDEO_EXTENSIONS = COMFY_PURE_VIDEO_EXTENSIONS + "gif"
 
-fun parseComfyHistory(history: JsonObject, promptId: String, slots: List<ComfySlot>): RemoteStatus {
+fun parseComfyHistory(
+    history: JsonObject,
+    promptId: String,
+    slots: List<ComfySlot>,
+    includeDiagnostics: Boolean = false,
+): RemoteStatus {
     val entry = history[promptId] as? JsonObject ?: return RemoteStatus.Running()
     val status = entry["status"] as? JsonObject
     val messages = status?.get("messages") as? JsonArray
     val failed = messages.orEmpty().mapNotNull { it as? JsonArray }.any { (it.firstOrNull() as? JsonPrimitive)?.contentOrNull in setOf("execution_error", "execution_interrupted") }
-    if (failed || (status?.get("status_str") as? JsonPrimitive)?.contentOrNull == "error") return RemoteStatus.Failed("ComfyUI 执行失败，请检查节点、模型、输入与主机资源")
+    if (failed || (status?.get("status_str") as? JsonPrimitive)?.contentOrNull == "error") {
+        val base = "ComfyUI 执行失败，请检查节点、模型、输入与主机资源"
+        if (!includeDiagnostics) return RemoteStatus.Failed(base)
+        val detail = ComfyErrorDiagnostics.summarizeHistoryError(history, promptId)
+        return RemoteStatus.Failed(if (detail.isNullOrBlank()) base else "$base：$detail")
+    }
     if ((status?.get("completed") as? JsonPrimitive)?.booleanOrNull != true) return RemoteStatus.Running()
     val outputs = entry["outputs"] as? JsonObject ?: return RemoteStatus.Failed("ComfyUI 任务完成但缺少产物")
     val files = slots.flatMap { slot ->

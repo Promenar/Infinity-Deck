@@ -268,8 +268,8 @@ class ComfySubmitterRunnerTest {
             assertFalse("ephemeral scratch dir must be sanitized: $ld1", ld1.contains("scratch"))
             assertFalse("ephemeral scratch dir must be sanitized: $ld2", ld2.contains("scratch"))
             assertNotEquals(b1.serverLatentSlotKey, b2.serverLatentSlotKey)
-            assertTrue(b1.serverLatentSlotKey!!.contains("::b__01_v1_aaaa::clip_2"))
-            assertTrue(b2.serverLatentSlotKey!!.contains("::b__01_v1_bbbb::clip_2"))
+            assertEquals("comfy_chain/chain_wf/b__01_v1_aaaa::clip_2", b1.serverLatentSlotKey)
+            assertEquals("comfy_chain/chain_wf/b__01_v1_bbbb::clip_2", b2.serverLatentSlotKey)
             ComfySubmitterRunner.cleanupRunDirectory(b1.continuationState)
             ComfySubmitterRunner.cleanupRunDirectory(b2.continuationState)
 
@@ -351,6 +351,122 @@ class ComfySubmitterRunnerTest {
             )
             assertEquals("b__01_v1_xyz", cliRes.outputs.single().file.readText())
             ComfySubmitterRunner.cleanupRunDirectory(cliRes.continuationState)
+
+            // 验证首段自动注入 --latent-dir 与 segmentIndexFlag (--clip-index)，以及双读写分离标志
+            val dualCode = """
+                import argparse, json
+                from pathlib import Path
+
+                p = argparse.ArgumentParser()
+                p.add_argument("--host", required=True)
+                p.add_argument("--output-dir", required=True)
+                p.add_argument("--stage")
+                p.add_argument("--clip-index", type=int)
+                p.add_argument("--latent-dir", default=None)
+                p.add_argument("--read-latent-dir", default=None)
+                p.add_argument("--write-latent-dir", default=None)
+                args = p.parse_args()
+                out = Path(args.output_dir) / "dual.png"
+                out.write_text(json.dumps({
+                    "stage": args.stage,
+                    "clip_index": args.clip_index,
+                    "latent_dir": args.latent_dir,
+                    "read_latent_dir": args.read_latent_dir,
+                    "write_latent_dir": args.write_latent_dir,
+                }), encoding="utf-8")
+            """.trimIndent()
+            val dualSha = fileStore.saveFiles("main", "cli_dual", "submit_dual.py", dualCode)
+            val dualSub = ComfySubmitterScript(
+                scriptId = "cli_dual",
+                hostId = "main",
+                fileName = "submit_dual.py",
+                sourceKind = SubmitterSourceKind.DESKTOP_IMPORT,
+                protocol = SubmitterInvocationProtocol.CLI_ARGS,
+                sha256 = dualSha,
+            )
+            val wfSingleDirFirst = ComfyWorkflow(
+                workflowId = "wf_single_first",
+                hostId = "main",
+                name = "SingleDir",
+                submitterScriptId = "cli_dual",
+                executionMode = WorkflowExecutionMode.STATEFUL_CHAIN,
+                receiptFlag = null,
+                chainSpec = StatefulChainSpec(segmentIndexFlag = "--clip-index"),
+            )
+            val firstRes = runner.execute(
+                SubmitterRunRequest(
+                    submitter = dualSub,
+                    workflow = wfSingleDirFirst,
+                    proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    stage = "first",
+                    segmentIndex = 1,
+                    readLatentDir = "comfy_chain/wf_single_first/c1/main",
+                    writeLatentDir = "comfy_chain/wf_single_first/c1/main",
+                ),
+            )
+            val firstJson = Json.parseToJsonElement(firstRes.outputs.single().file.readText()).jsonObject
+            assertEquals("first", firstJson["stage"]!!.jsonPrimitive.content)
+            assertEquals(1, firstJson["clip_index"]!!.jsonPrimitive.int)
+            assertEquals("comfy_chain/wf_single_first/c1/main", firstJson["latent_dir"]!!.jsonPrimitive.content)
+            ComfySubmitterRunner.cleanupRunDirectory(firstRes.continuationState)
+
+            val wfDualDir = wfSingleDirFirst.copy(
+                workflowId = "wf_dual",
+                chainSpec = StatefulChainSpec(
+                    segmentIndexFlag = "--clip-index",
+                    readLatentDirFlag = "--read-latent-dir",
+                    writeLatentDirFlag = "--write-latent-dir",
+                ),
+            )
+            val dualRes = runner.execute(
+                SubmitterRunRequest(
+                    submitter = dualSub,
+                    workflow = wfDualDir,
+                    proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    stage = "next",
+                    segmentIndex = 2,
+                    readLatentDir = "comfy_chain/wf_dual/c1/main",
+                    writeLatentDir = "comfy_chain/wf_dual/c1/b_01",
+                ),
+            )
+            val dualJson = Json.parseToJsonElement(dualRes.outputs.single().file.readText()).jsonObject
+            assertTrue(dualJson["latent_dir"] is JsonNull)
+            assertEquals("comfy_chain/wf_dual/c1/main", dualJson["read_latent_dir"]!!.jsonPrimitive.content)
+            assertEquals("comfy_chain/wf_dual/c1/b_01", dualJson["write_latent_dir"]!!.jsonPrimitive.content)
+            ComfySubmitterRunner.cleanupRunDirectory(dualRes.continuationState)
+
+            // 验证超过 32KB 的巨型 stderr（含 current_inputs 张量输出）仍保留尾部真正节点异常
+            val floodCode = """
+                import sys
+                sys.stderr.write("HEADER_BOOT\n")
+                sys.stderr.write("'current_inputs': {'frames': tensor([[" + ", ".join(["0.111"] * 12000) + "]])}\n")
+                sys.stderr.write("{'node_id': '4', 'node_type': 'FlashVSRNodeAdv', 'exception_type': 'TypeError', 'exception_message': \"'NoneType' object is not callable\"}\n")
+                sys.exit(1)
+            """.trimIndent()
+            val floodSha = fileStore.saveFiles("main", "cli_flood", "submit_flood.py", floodCode)
+            val floodSub = ComfySubmitterScript(
+                scriptId = "cli_flood",
+                hostId = "main",
+                fileName = "submit_flood.py",
+                protocol = SubmitterInvocationProtocol.CLI_ARGS,
+                sha256 = floodSha,
+            )
+            val floodWf = ComfyWorkflow(workflowId = "wf_flood", hostId = "main", name = "Flood", submitterScriptId = "cli_flood")
+            val failEx = try {
+                runner.execute(
+                    SubmitterRunRequest(
+                        submitter = floodSub,
+                        workflow = floodWf,
+                        proxyBaseUrl = "http://127.0.0.1:4444/p/t",
+                    ),
+                )
+                null
+            } catch (e: ComfyFailure) {
+                e
+            }
+            assertNotNull(failEx)
+            assertTrue(failEx!!.message, failEx.message!!.contains("FlashVSRNodeAdv"))
+            assertTrue(failEx.message, failEx.message!!.contains("TypeError"))
         } finally {
             temp.deleteRecursively()
         }

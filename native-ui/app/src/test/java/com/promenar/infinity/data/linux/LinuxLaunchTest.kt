@@ -101,11 +101,22 @@ class LinuxLaunchTest {
         assertEquals("/root/custom", launch.environment["HOME"])
         assertEquals("custom", launch.environment["HTTPS_PROXY"])
         assertEquals("1", launch.environment["PIP_BREAK_SYSTEM_PACKAGES"])
+        assertEquals("1", launch.environment["PYTHONDONTWRITEBYTECODE"])
+        assertEquals("/tmp/pycache", launch.environment["PYTHONPYCACHEPREFIX"])
         assertEquals("C.UTF-8", launch.environment["LANG"])
-        assertEquals(setOf("PROOT_LOADER", "PROOT_TMP_DIR", "HOME", "PATH", "LANG", "TERM", "TZ", "PIP_BREAK_SYSTEM_PACKAGES", "SHELL", "HTTPS_PROXY"), launch.environment.keys)
+        assertEquals(
+            setOf(
+                "PROOT_LOADER", "PROOT_TMP_DIR", "HOME", "PATH", "LANG", "TERM", "TZ",
+                "PIP_BREAK_SYSTEM_PACKAGES", "PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX", "SHELL", "HTTPS_PROXY",
+            ),
+            launch.environment.keys,
+        )
         assertFalse(launch.environment.containsKey("INFINITY_WORKSPACE"))
         assertEquals(listOf("-w", "/root", "/bin/sh", "-l"), launch.arguments.takeLast(4))
         assertEquals("/bin/sh", launch.environment["SHELL"])
+
+        val overridden = builder().build(LinuxLaunchSpec(emptyList(), environment = mapOf("PYTHONDONTWRITEBYTECODE" to "0"))).environment
+        assertEquals("0", overridden["PYTHONDONTWRITEBYTECODE"])
     }
 
     @Test fun `有bash时选择登录bash且支持容器内工作目录`() {

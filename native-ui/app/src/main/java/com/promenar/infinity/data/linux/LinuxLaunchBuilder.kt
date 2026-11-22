@@ -72,6 +72,10 @@ class LinuxLaunchBuilder(
             "PROOT_LOADER" to proot.loader.path, "PROOT_TMP_DIR" to tmp.path,
             "HOME" to "/root", "PATH" to "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "LANG" to "C.UTF-8", "TERM" to "xterm-256color", "PIP_BREAK_SYSTEM_PACKAGES" to "1",
+            // 防止 Linux 会话内运行技能 Python 脚本时向受监控的 /mnt/skills 写入 __pycache__/*.pyc，
+            // 导致误触发“改动了运行时关键数据”或脏文件；不影响经授权对 /mnt/skills 的显式管理。
+            "PYTHONDONTWRITEBYTECODE" to "1",
+            "PYTHONPYCACHEPREFIX" to "/tmp/pycache",
             "TZ" to LinuxLaunchTimezone.posix(ZoneId.systemDefault().rules, Instant.now()),
             // 与默认登录 shell 一致；脚本和编辑器据此启动子 shell。
             "SHELL" to shell,

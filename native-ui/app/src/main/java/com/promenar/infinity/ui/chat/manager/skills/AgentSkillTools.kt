@@ -21,7 +21,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 /** 每次操作重新扫描会话工作区，不复用其它会话的项目技能或旧启用状态。 */
 private class SkillToolAccess(
@@ -105,24 +108,60 @@ class ReadSkillFileTool(
     private val access = SkillToolAccess(catalog, workspaceResolver)
     override val id = "read_skill_file"
     override val name = "read_skill_file"
-    override val description = "读取已启用技能的文本文件。可传 name 与相对 path，或直接传完整虚拟文件 path；同名时用 skill_path 指定技能目录或 SKILL.md。"
+    override val description = "读取已启用技能的文本文件。可传 name 与相对 path，或直接传完整虚拟文件 path；同名时用 skill_path 指定技能目录或 SKILL.md。支持可选 start_line / end_line 按 1-based 行范围分段读取大文件。"
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SAFE_READ
-    override val parametersSchema = """{"type":"object","properties":{"name":{"type":"string","description":"技能名称"},"skill_path":{"type":"string","description":"技能目录或 SKILL.md 的虚拟路径，用于搭配相对 path"},"path":{"type":"string","description":"技能内相对文件路径，或完整虚拟文件路径，例如 /.agents/skills/demo/references/guide.md"}},"required":["path"]}"""
+    override val parametersSchema = """{"type":"object","properties":{"name":{"type":"string","description":"技能名称"},"skill_path":{"type":"string","description":"技能目录或 SKILL.md 的虚拟路径，用于搭配相对 path"},"path":{"type":"string","description":"技能内相对文件路径，或完整虚拟文件路径，例如 /.agents/skills/demo/references/guide.md"},"start_line":{"type":"integer","description":"可选起始行号（1-based，含）"},"end_line":{"type":"integer","description":"可选结束行号（1-based，含）"}},"required":["path"]}"""
 
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult = withContext(Dispatchers.IO) {
         skillToolResult(id) {
             val snapshot = access.scan(context.sessionId)
             val path = args.stringArgument("path").orEmpty()
             val skillPath = args.stringArgument("skill_path")
+            val startLine = optionalIntArgument(args, "start_line")
+            val endLine = optionalIntArgument(args, "end_line")
+            if (startLine != null && startLine < 1) {
+                throw AgentSkillFormatException("start_line 必须 >= 1")
+            }
+            if (endLine != null && endLine < 1) {
+                throw AgentSkillFormatException("end_line 必须 >= 1")
+            }
+            if (startLine != null && endLine != null && endLine < startLine) {
+                throw AgentSkillFormatException("end_line ($endLine) 不能小于 start_line ($startLine)")
+            }
             val absoluteSkill = if (path.startsWith('/')) snapshot.skills.firstOrNull { path.startsWith("${it.virtualDir}/") } else null
             val skill = access.select(snapshot, args.stringArgument("name"), skillPath ?: absoluteSkill?.virtualDir)
             if (path.startsWith('/') && absoluteSkill?.id != skill.id) {
                 throw AgentSkillFormatException("文件路径不属于所选技能。")
             }
             val relative = if (absoluteSkill != null) path.removePrefix("${skill.virtualDir}/") else path
-            access.catalog.readFile(skill, relative)
+            val fullText = access.catalog.readFile(skill, relative)
+            if (startLine == null && endLine == null) {
+                fullText
+            } else {
+                sliceByLineRange(relative, fullText, startLine, endLine)
+            }
         }
+    }
+
+    private fun optionalIntArgument(args: JsonObject, key: String): Int? {
+        val raw = args[key] ?: return null
+        if (raw == JsonNull) return null
+        val prim = raw as? JsonPrimitive ?: throw AgentSkillFormatException("$key 必须是整数")
+        if (prim.isString) throw AgentSkillFormatException("$key 必须是整数")
+        return prim.intOrNull ?: throw AgentSkillFormatException("$key 必须是有效整数")
+    }
+
+    private fun sliceByLineRange(relative: String, fullText: String, startLine: Int?, endLine: Int?): String {
+        val lines = fullText.split('\n').map { it.removeSuffix("\r") }
+        val total = lines.size
+        val start = startLine ?: 1
+        if (start > total) {
+            throw AgentSkillFormatException("$relative 共 $total 行，start_line=$start 超出文件行数范围")
+        }
+        val end = (endLine ?: total).coerceAtMost(total)
+        val body = lines.subList(start - 1, end).joinToString("\n")
+        return "[$relative: lines $start-$end/$total]\n$body"
     }
 }
 

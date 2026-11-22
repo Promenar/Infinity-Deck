@@ -1972,6 +1972,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 config {
                     proxySelector(tailnetManager.proxySelector)
                     proxyAuthenticator(tailnetManager.proxyAuthenticator)
+                    addNetworkInterceptor(tailnetManager.proxyAuthInterceptor)
                 }
             }
         }
@@ -2141,6 +2142,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 submitterRunner = comfyMedia.submitterRunner,
                 jobs = backgroundJobs,
                 readWorkspaceFile = ::readComfyWorkspaceFile,
+                importSkillSubmitter = ::importComfySkillSubmitter,
             ).forEach(::register)
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))
@@ -3564,12 +3566,35 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         workspaceMediaResolver as com.promenar.infinity.domain.media.WorkspaceMediaStore
     }
 
-    /** 为 `comfy_save_submitter` 按会话工作区虚拟路径读取提交器脚本及配套模块（上限 4 MiB）。 */
+    /** 为 `comfy_save_submitter` 按会话工作区虚拟路径或已启用用户技能路径读取提交器脚本及配套模块（上限 4 MiB）。 */
     private suspend fun readComfyWorkspaceFile(sessionId: String, path: String): ByteArray? =
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val trimmed = path.trim()
             if (trimmed.isEmpty()) return@withContext null
             require("://" !in trimmed) { "$trimmed：不接受外部 URI，请使用工作区文件路径" }
+            val skillSubPath = when {
+                trimmed.startsWith("/mnt/skills/") -> trimmed.removePrefix("/mnt/skills/")
+                trimmed.startsWith("/skills/") -> trimmed.removePrefix("/skills/")
+                else -> null
+            }
+            if (skillSubPath != null) {
+                val skillName = skillSubPath.substringBefore('/').takeIf { it.isNotBlank() } ?: return@withContext null
+                val relRaw = skillSubPath.substringAfter('/', "")
+                if (relRaw.isBlank()) return@withContext null
+                val rel = com.promenar.infinity.data.skills.AgentSkillStore.normalizeRelativePath(relRaw)
+                val userSkill = skillCatalog.scan(null).user.firstOrNull { it.name == skillName }
+                    ?: return@withContext null
+                require(userSkill.status == com.promenar.infinity.data.skills.SkillStatus.ENABLED) {
+                    "用户技能 $skillName 未启用（${userSkill.status}），无法作为提交器源码读取"
+                }
+                if (rel != com.promenar.infinity.data.skills.AgentSkillStore.SKILL_FILE && rel !in userSkill.files) {
+                    return@withContext null
+                }
+                val skillRoot = java.io.File(skillCatalog.userRoot, skillName).canonicalFile
+                val targetFile = safeComfySkillChild(skillRoot, rel) ?: return@withContext null
+                require(targetFile.length() <= 4L * 1024 * 1024) { "技能文件超过 4 MiB 读取上限：$trimmed" }
+                return@withContext targetFile.readBytes()
+            }
             val direct = workspaceMediaResolver.resolve(sessionId, trimmed)
             val resolved = if (direct is com.promenar.infinity.domain.media.MediaResolution.Available) {
                 direct
@@ -3598,6 +3623,113 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             out.toByteArray()
         }
 
+    /** 直接从已启用用户/项目技能包按包内相对路径零改写导入提交器与配套目录。 */
+    private suspend fun importComfySkillSubmitter(
+        sessionId: String,
+        skillName: String,
+        entryPath: String,
+        includePaths: List<String>,
+    ): com.promenar.infinity.ui.chat.manager.skills.SubmitterImportedBundle =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val cleanSkill = skillName.trim()
+            val workspaceDir = sessionWorkspaceResolver.resolve(sessionId) as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory
+            val skillWorkspace = workspaceDir?.let { com.promenar.infinity.data.skills.SkillWorkspace(it.workspace.id, it.root) }
+            val candidates = skillCatalog.scan(skillWorkspace).skills
+                .filter { it.name == cleanSkill && it.scope != com.promenar.infinity.data.skills.SkillScope.BUILTIN }
+            if (candidates.isEmpty()) {
+                throw com.promenar.infinity.data.mediagen.comfy.ComfyFailure("未找到用户或项目技能：$cleanSkill")
+            }
+            val enabled = candidates.filter { it.status == com.promenar.infinity.data.skills.SkillStatus.ENABLED }
+            if (enabled.isEmpty()) {
+                val statuses = candidates.joinToString("、") { "${it.virtualDir}(${it.status})" }
+                throw com.promenar.infinity.data.mediagen.comfy.ComfyFailure("技能 $cleanSkill 尚未启用或待信任：$statuses")
+            }
+            if (enabled.size > 1) {
+                throw com.promenar.infinity.data.mediagen.comfy.ComfyFailure("存在多个同名已启用技能 $cleanSkill（用户级与项目级），请确认")
+            }
+            val skill = enabled.single()
+            val skillRoot = when (skill.scope) {
+                com.promenar.infinity.data.skills.SkillScope.USER -> java.io.File(skillCatalog.userRoot, skill.name)
+                com.promenar.infinity.data.skills.SkillScope.PROJECT -> java.io.File(requireNotNull(workspaceDir).root, ".agents/skills/${skill.name}")
+                com.promenar.infinity.data.skills.SkillScope.BUILTIN -> throw IllegalStateException()
+            }.canonicalFile
+            val normalizedEntry = try {
+                com.promenar.infinity.data.skills.AgentSkillStore.normalizeRelativePath(entryPath.trim().trimStart('/'))
+            } catch (_: Exception) {
+                throw IllegalArgumentException("skill_import.entry_path 无效：$entryPath")
+            }
+            require(normalizedEntry.endsWith(".py")) { "skill_import.entry_path 必须是 .py 脚本：$normalizedEntry" }
+            if (normalizedEntry !in skill.files) {
+                throw com.promenar.infinity.data.mediagen.comfy.ComfyFailure("技能 ${skill.name} 中不存在入口脚本：$normalizedEntry")
+            }
+            fun isPythonOrSystemCache(rel: String): Boolean =
+                rel.split('/').any { it == "__pycache__" || it == ".git" } ||
+                    rel.endsWith(".pyc") || rel.substringAfterLast('/') == ".DS_Store"
+            fun isDefaultSupportFile(rel: String): Boolean {
+                if (isPythonOrSystemCache(rel)) return false
+                val baseName = rel.substringAfterLast('/')
+                if (baseName.startsWith("skill-icon.")) return false
+                val topDir = rel.substringBefore('/', "")
+                if (topDir in setOf("agents", "eval", "references") || rel == "SKILL.md") return false
+                val entryDir = normalizedEntry.substringBeforeLast('/', "").takeIf { it.isNotEmpty() }
+                return (entryDir != null && rel.startsWith("$entryDir/")) ||
+                    rel.startsWith("assets/") ||
+                    (entryDir == null && '/' !in rel)
+            }
+            val selected = if (includePaths.isEmpty()) {
+                skill.files.filter { it != normalizedEntry && isDefaultSupportFile(it) }
+            } else {
+                val chosen = linkedSetOf<String>()
+                includePaths.forEach { rawPat ->
+                    val cleanedPat = rawPat.trim().trim('/').takeIf { it.isNotEmpty() }
+                        ?: throw IllegalArgumentException("skill_import.include_paths 不能包含空路径")
+                    val pat = com.promenar.infinity.data.skills.AgentSkillStore.normalizeRelativePath(cleanedPat)
+                    val matched = skill.files.filter { rel ->
+                        rel != normalizedEntry && !isPythonOrSystemCache(rel) && (rel == pat || rel.startsWith("$pat/"))
+                    }
+                    if (matched.isEmpty()) {
+                        throw com.promenar.infinity.data.mediagen.comfy.ComfyFailure("技能 ${skill.name} 中未找到 include_paths：$rawPat")
+                    }
+                    chosen += matched
+                }
+                chosen.toList()
+            }
+            require(selected.size <= 128) { "技能包导入的配套文件超过 128 个，请用 include_paths 缩小范围" }
+            val entryFile = safeComfySkillChild(skillRoot, normalizedEntry)
+                ?: throw com.promenar.infinity.data.mediagen.comfy.ComfyFailure("入口脚本不可读或存在符号链接：$normalizedEntry")
+            require(entryFile.length() <= 512L * 1024) { "提交器主脚本超过 512 KiB 上限：$normalizedEntry" }
+            val entryText = entryFile.readBytes().toString(Charsets.UTF_8)
+            val supportMap = linkedMapOf<String, ByteArray>()
+            var totalSupport = 0L
+            for (rel in selected.sorted()) {
+                val f = safeComfySkillChild(skillRoot, rel)
+                    ?: throw com.promenar.infinity.data.mediagen.comfy.ComfyFailure("配套文件不可读或存在符号链接：$rel")
+                val size = f.length()
+                totalSupport += size
+                require(totalSupport <= 8L * 1024 * 1024) { "技能包导入的配套文件总大小超过 8 MiB，请用 include_paths 指定子目录" }
+                supportMap[rel] = f.readBytes()
+            }
+            com.promenar.infinity.ui.chat.manager.skills.SubmitterImportedBundle(
+                entryFileName = normalizedEntry,
+                sourceText = entryText,
+                supportFiles = supportMap,
+            )
+        }
+
+    private fun safeComfySkillChild(skillRoot: java.io.File, relativePath: String): java.io.File? {
+        if (java.nio.file.Files.isSymbolicLink(skillRoot.toPath())) return null
+        val rootCanonical = skillRoot.canonicalFile
+        var current = rootCanonical.toPath()
+        for (segment in relativePath.split('/')) {
+            current = current.resolve(segment)
+            if (java.nio.file.Files.isSymbolicLink(current)) return null
+        }
+        val file = current.toFile().canonicalFile
+        val rootPrefix = rootCanonical.path.trimEnd(java.io.File.separatorChar) + java.io.File.separatorChar
+        if (!file.path.startsWith(rootPrefix) || !file.isFile) return null
+        return file
+    }
+
     /** 媒体下载与内置 git 一样使用 tailnet 分流；逐跳策略和流量上限由下载器控制。 */
     val workspaceMediaDownloader: com.promenar.infinity.data.media.download.WorkspaceMediaDownloader by lazy {
         com.promenar.infinity.data.media.download.WorkspaceMediaDownloader(
@@ -3614,6 +3746,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         okhttp3.OkHttpClient.Builder()
             .proxySelector(tailnetManager.proxySelector)
             .proxyAuthenticator(tailnetManager.proxyAuthenticator)
+            .addNetworkInterceptor(tailnetManager.proxyAuthInterceptor)
             .build()
     }
 

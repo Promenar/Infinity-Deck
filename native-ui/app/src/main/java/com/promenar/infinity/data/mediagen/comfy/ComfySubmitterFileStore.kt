@@ -40,7 +40,7 @@ class FileComfySubmitterFileStore(private val rootDir: File) : ComfySubmitterFil
         val mainBytes = sourceText.toByteArray(Charsets.UTF_8)
         require(mainBytes.size <= MAX_SCRIPT_BYTES) { "主提交脚本超过大小上限（512 KiB）" }
         val totalSupportBytes = supportFiles.values.sumOf { it.size.toLong() }
-        require(supportFiles.size <= 64 && totalSupportBytes <= MAX_SUPPORT_BUNDLE_BYTES) {
+        require(supportFiles.size <= 128 && totalSupportBytes <= MAX_SUPPORT_BUNDLE_BYTES) {
             "配套文件过多或超过总大小上限（16 MiB）"
         }
         supportFiles.keys.forEach { rel ->
