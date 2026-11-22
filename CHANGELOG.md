@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.71.1-beta] - 2026-11-22
+
+- **修复 ComfyUI 主机工作流列表行标题与元数据被挤压隐藏并补齐截图基线覆盖（[ComfySettingsScreens.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfySettingsScreens.kt)、[MediaSettingsScreenshotTest.kt](native-ui/app/src/screenshotTest/kotlin/com/promenar/infinity/ui/settings/MediaSettingsScreenshotTest.kt)）**：
+  - 将 `ComfyHostScreenContent` 工作流行尾部 `Column` 内嵌带 `fillMaxWidth()` 的 `InfinityTagScrollRow` 替换为紧凑 `Row`，消除尾部区域撑满整行并将中间 `Modifier.weight(1f)` 标题与标签列挤压至 `0px` 的真机布局缺陷。
+  - 为 `MediaSettingsScreenshotTest.kt` 的 `previewSnapshot` 补充真实 `ComfySubmitterScript` 与 `ComfyWorkflowState` 样本，使 `comfyHostSettingsPreview` 覆盖非空工作流行渲染基线。
+
 ## [0.71.0-beta] - 2026-11-22
 
 - **分离云端媒体模型与 ComfyUI 兼容层架构并上线万能工作流提交器框架（[ProviderListScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderListScreen.kt)、[DefaultModelsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/DefaultModelsScreen.kt)、[ComfySettingsScreens.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfySettingsScreens.kt)、[ComfyWorkflowEditorScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfyWorkflowEditorScreen.kt)）**：

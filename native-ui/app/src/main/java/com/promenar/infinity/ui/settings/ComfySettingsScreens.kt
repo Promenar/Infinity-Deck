@@ -505,7 +505,10 @@ internal fun ComfyHostScreenContent(
                                         }
                                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             PreflightChip(wfState.preflight)
-                                            InfinityTagScrollRow(spacing = 4.dp) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
                                                 IconButton(onClick = { onPreflightWorkflow(wf.workflowId) }, modifier = Modifier.size(32.dp)) {
                                                     Icon(Icons.Rounded.Refresh, stringResource(R.string.media_settings_recheck), Modifier.size(16.dp))
                                                 }

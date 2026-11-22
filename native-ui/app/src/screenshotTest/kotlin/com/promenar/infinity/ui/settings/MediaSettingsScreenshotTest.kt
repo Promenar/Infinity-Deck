@@ -61,6 +61,28 @@ private val previewModel = ModelInfo("Seedance 2.5", "seedance", "", true, "vide
 private val previewImage = ModelInfo("Image model", "image", "", true, "image", providerName = "OpenAI", providerId = "openai")
 private val previewAudio = ModelInfo("Speech 2.6", "speech", "", true, "audio", providerName = "MiniMax", providerId = "minimax",
     mediaSettings = MediaModelSettings(MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.SPEECH))))
+private val previewSubmitter = ComfySubmitterScript(
+    scriptId = "submit_h3",
+    hostId = "main",
+    fileName = "submit_h3.py",
+    displayName = "submit_h3.py",
+    sha256 = "0".repeat(64),
+    lastDryRunStatus = SubmitterDryRunStatus.PASSED,
+)
+private val previewWorkflow = ComfyWorkflow(
+    workflowId = "h3_ref",
+    hostId = "main",
+    name = "H3 Reference",
+    mediaCategory = ComfyMediaCategory.VIDEO,
+    submitterScriptId = "submit_h3",
+    executionMode = WorkflowExecutionMode.STATEFUL_CHAIN,
+    chainSpec = StatefulChainSpec(),
+    fields = listOf(
+        WorkflowFieldSpec(key = "prompt", label = "提示词", mutability = FieldMutability.CONTENT, valueType = FieldValueType.TEXT),
+        WorkflowFieldSpec(key = "steps", label = "步数", mutability = FieldMutability.FIXED, valueType = FieldValueType.INT, defaultValue = JsonPrimitive(20)),
+    ),
+    capabilities = previewCaps,
+)
 private val previewSnapshot = MediaSettingsSnapshot(
     channels = listOf(previewImage.toMediaChannel()!!, previewModel.toMediaChannel()!!, previewTemplate.channel(), previewAudio.toMediaChannel()!!),
     models = listOf(previewImage, previewModel, previewAudio), hosts = listOf(previewHost),
@@ -68,6 +90,9 @@ private val previewSnapshot = MediaSettingsSnapshot(
         ComfyTemplateState(previewTemplate.copy(id = "wan", name = "Wan 2.2"), PreflightResult(PreflightStatus.MISSING, listOf("Node A", "Model B"))),
         ComfyTemplateState(previewTemplate.copy(id = "music", name = "Music 3", group = MediaGroup.AUDIO), PreflightResult(PreflightStatus.REVIEW))),
     credentialHosts = setOf("main"), preflightTimes = mapOf("h3" to 1_794_480_000_000L),
+    submitters = listOf(previewSubmitter),
+    workflows = listOf(ComfyWorkflowState(previewWorkflow, PreflightResult(PreflightStatus.PASS))),
+    pythonAvailable = true,
 )
 private val previewState = MediaSettingsUiState(previewSnapshot, loaded = true, connections = mapOf("main" to ComfyConnection.ONLINE))
 
