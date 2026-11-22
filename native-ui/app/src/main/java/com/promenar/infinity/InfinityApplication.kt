@@ -1408,6 +1408,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgeAccessPlanner, knowledgeTurns = knowledgeTurns,
             chatCitationRecorder = com.promenar.infinity.data.library.ask.ChatCitationRecorder(roomKnowledgeCitationRepository),
             cleanupGate = sessionExecutionGate,
+            comfyRepository = comfyMedia.repository,
         )
     }
     val generationCoordinator: com.promenar.infinity.domain.generation.GenerationCoordinator by lazy {
@@ -1946,8 +1947,14 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
 
     val comfyMedia by lazy {
         com.promenar.infinity.data.mediagen.comfy.ComfyModule(
-            getSharedPreferences("infinity_settings", MODE_PRIVATE), secretStore, gitRemoteHttpClient,
-            workspaceMediaResolver, workspaceMediaStore,
+            preferences = getSharedPreferences("infinity_settings", MODE_PRIVATE),
+            secrets = secretStore,
+            client = gitRemoteHttpClient,
+            resolver = workspaceMediaResolver,
+            store = workspaceMediaStore,
+            appFilesDir = filesDir,
+            appCacheDir = cacheDir,
+            packagedPython = com.promenar.infinity.data.exec.PackagedPython.from(this),
         )
     }
 
@@ -2127,7 +2134,13 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionExtendSkill { productionMediaRuntime.chains })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionRunSkill { productionMediaRuntime.runs })
             register(com.promenar.infinity.ui.chat.manager.skills.ProductionGenerationTasksSkill({ productionMediaRuntime.store }, { mediaGenerationQueue }))
-            com.promenar.infinity.ui.chat.manager.skills.comfyTools(comfyMedia.repository).forEach(::register)
+            com.promenar.infinity.ui.chat.manager.skills.comfyTools(
+                repository = comfyMedia.repository,
+                chainStore = comfyMedia.chainStore,
+                executionEngine = comfyMedia.executionEngine,
+                submitterRunner = comfyMedia.submitterRunner,
+                jobs = backgroundJobs,
+            ).forEach(::register)
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasUpdateSkill(canvasStore))

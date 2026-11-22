@@ -210,6 +210,7 @@ internal class DefaultChatGenerationRuntime(
     private val productionRepository: com.promenar.infinity.data.repository.ProductionRepository? = null,
     /** 回合结束时扫描制作项目的未登记文件；在应用作用域异步执行，失败不影响本轮结果。 */
     private val productionTurnEnd: (suspend (String) -> Unit)? = null,
+    private val comfyRepository: com.promenar.infinity.data.mediagen.comfy.ComfyRepository? = null,
 ) : ChatGenerationRuntime {
     private var interactionMode = com.promenar.infinity.domain.generation.GenerationInteractionMode.INTERACTIVE
     private val compactionTurnState = ContextCompactionTurnState()
@@ -1293,6 +1294,14 @@ internal class DefaultChatGenerationRuntime(
                 ops?.let {
                     productionRepository?.preflightLockApproval(session.id, assistantMessageId(request), it, reason)
                         ?.authorizationTarget
+                }
+            } else if (call.name == "comfy_run_workflow") {
+                val args = (com.promenar.infinity.domain.tool.ToolArgumentsValidator().validate(call.arguments) as? com.promenar.infinity.domain.tool.ToolArgumentsValidation.Valid)?.arguments
+                args?.let { validArgs ->
+                    comfyRepository?.let { repo ->
+                        com.promenar.infinity.data.mediagen.comfy.ComfyFixedOverrideApprovalPlanner
+                            .analyze(repo, validArgs)?.authorizationTarget
+                    }
                 }
             } else branchService?.invoke()?.approvalTarget(session, call.name, call.arguments) ?: resolveSessionToolTarget(session, it, call.arguments, workspaceRepository, externalFolders, sshRuntime?.hostStore, sshRuntime?.let { runtime -> runtime::sessionHost }, linuxFiles) }
         }

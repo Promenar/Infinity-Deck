@@ -50,7 +50,12 @@ data class ComfyTemplateState(
     /** 最近一次向主机读取节点信息完成预检的时间（毫秒）；界面与智能体触发的预检都会记录。 */
     val checkedAt: Long? = null,
 )
-data class ComfyConfiguration(val hosts: List<ComfyHost> = emptyList(), val templates: List<ComfyTemplateState> = emptyList())
+data class ComfyConfiguration(
+    val hosts: List<ComfyHost> = emptyList(),
+    val templates: List<ComfyTemplateState> = emptyList(),
+    val submitters: List<ComfySubmitterScript> = emptyList(),
+    val workflows: List<ComfyWorkflowState> = emptyList(),
+)
 
 /** 注册表包仅依赖此接口；返回全部模板通道，包含待预检的条目。 */
 interface ComfyTemplateChannelSource {
@@ -84,7 +89,20 @@ class PreferenceComfyConfigurationStorage(private val preferences: SharedPrefere
 /** 使用独立持久化记录，保持共享生成契约签名不变。 */
 object ComfyConfigurationCodec {
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = false }
-    @Serializable private data class ConfigurationRecord(val version: Int = 2, val hosts: List<ComfyHost>, val templates: List<TemplateStateRecord>)
+    @Serializable private data class ConfigurationRecord(
+        val version: Int = 3,
+        val hosts: List<ComfyHost>,
+        val templates: List<TemplateStateRecord>,
+        val submitters: List<ComfySubmitterScript> = emptyList(),
+        val workflows: List<WorkflowStateRecord> = emptyList(),
+    )
+    @Serializable private data class WorkflowStateRecord(
+        val workflow: ComfyWorkflow,
+        val status: String = PreflightStatus.REVIEW.name,
+        val missing: List<String> = emptyList(),
+        val uncertain: List<String> = emptyList(),
+        val checkedAt: Long? = null,
+    )
     @Serializable private data class TemplateStateRecord(val template: TemplateRecord, val status: String, val missing: List<String>, val uncertain: List<String>, val passedFingerprint: String?, val checkedAt: Long? = null)
     @Serializable private data class UploadRecord(val nodeId: String, val input: String)
     @Serializable private data class SlotRecord(val nodeId: String, val input: String, val kind: String, val capacity: Int = 1,
@@ -102,21 +120,57 @@ object ComfyConfigurationCodec {
         val fps: Double? = null)
 
     fun encode(configuration: ComfyConfiguration): String {
-        val raw = json.encodeToString(ConfigurationRecord(hosts = configuration.hosts,
+        val hasV3 = configuration.submitters.isNotEmpty() || configuration.workflows.isNotEmpty()
+        val version = if (hasV3) 3 else 2
+        val raw = json.encodeToString(ConfigurationRecord(
+            version = version,
+            hosts = configuration.hosts,
             templates = configuration.templates.map { state -> TemplateStateRecord(record(state.template), state.preflight.status.name,
-                state.preflight.missing, state.preflight.uncertain, state.passedFingerprint, state.checkedAt) }))
+                state.preflight.missing, state.preflight.uncertain, state.passedFingerprint, state.checkedAt) },
+            submitters = configuration.submitters,
+            workflows = configuration.workflows.map { state ->
+                WorkflowStateRecord(
+                    workflow = state.workflow,
+                    status = state.preflight.status.name,
+                    missing = state.preflight.missing,
+                    uncertain = state.preflight.uncertain,
+                    checkedAt = state.checkedAt,
+                )
+            },
+        ))
         require(raw.toByteArray().size <= 8 * 1024 * 1024) { "ComfyUI 配置超过 8 MiB" }
         return raw
     }
     fun decode(raw: String): ComfyConfiguration {
         require(raw.length <= 8 * 1024 * 1024 && raw.toByteArray().size <= 8 * 1024 * 1024) { "ComfyUI 配置超过 8 MiB" }
         val value = json.decodeFromString<ConfigurationRecord>(raw)
-        require(value.version in 1..2) { "ComfyUI 配置版本不受支持" }
-        val result = ComfyConfiguration(value.hosts, value.templates.map { ComfyTemplateState(template(it.template),
-            PreflightResult(PreflightStatus.valueOf(it.status), it.missing, it.uncertain), it.passedFingerprint, it.checkedAt?.takeIf { at -> at > 0 }) })
-        require(result.hosts.size <= 100 && result.templates.size <= 500 && result.hosts.distinctBy { it.id }.size == result.hosts.size &&
-            result.templates.distinctBy { it.template.id }.size == result.templates.size) { "主机或模板数量无效，或 id 重复" }
-        require(result.templates.all { state -> result.hosts.any { it.id == state.template.hostId } }) { "模板引用的主机不存在" }
+        require(value.version in 1..3) { "ComfyUI 配置版本不受支持" }
+        val result = ComfyConfiguration(
+            hosts = value.hosts,
+            templates = value.templates.map { ComfyTemplateState(template(it.template),
+                PreflightResult(PreflightStatus.valueOf(it.status), it.missing, it.uncertain), it.passedFingerprint, it.checkedAt?.takeIf { at -> at > 0 }) },
+            submitters = value.submitters,
+            workflows = value.workflows.map { state ->
+                ComfyWorkflowState(
+                    workflow = state.workflow,
+                    preflight = PreflightResult(PreflightStatus.valueOf(state.status), state.missing, state.uncertain),
+                    checkedAt = state.checkedAt?.takeIf { at -> at > 0 },
+                )
+            },
+        )
+        val hostIds = result.hosts.mapTo(mutableSetOf()) { it.id }
+        require(result.hosts.size <= 100 && result.templates.size <= 500 && result.workflows.size <= 500 &&
+            result.submitters.size <= 200 && result.hosts.distinctBy { it.id }.size == result.hosts.size &&
+            result.templates.distinctBy { it.template.id }.size == result.templates.size &&
+            result.workflows.distinctBy { it.workflow.workflowId }.size == result.workflows.size &&
+            result.submitters.distinctBy { it.hostId to it.scriptId }.size == result.submitters.size) {
+            "主机、工作流或提交器数量无效，或 id 重复"
+        }
+        require(result.templates.all { it.template.hostId in hostIds } &&
+            result.workflows.all { it.workflow.hostId in hostIds } &&
+            result.submitters.all { it.hostId in hostIds }) {
+            "工作流或提交器引用的主机不存在"
+        }
         return result
     }
     fun encodeTemplate(template: ComfyTemplate): JsonObject = json.encodeToJsonElement(record(template)).jsonObject

@@ -16,7 +16,7 @@ import com.promenar.infinity.navigation.InfinityPageNavHost
 import com.promenar.infinity.navigation.SettingsNavigator
 
 /** 媒体设置这组目的地的路由首段。 */
-private val MediaSettingsRouteBases = setOf("media_models", "media_model", "comfy_host", "comfy_host_form", "comfy_template")
+private val MediaSettingsRouteBases = setOf("media_models", "media_model", "comfy_hub", "comfy_host", "comfy_host_form", "comfy_template", "comfy_workflow_editor")
 
 /** [route] 是否属于媒体设置这组目的地（媒体模型、模型详情、主机、主机表单、模板）。 */
 internal fun isMediaSettingsRoute(route: String): Boolean =

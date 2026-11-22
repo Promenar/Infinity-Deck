@@ -66,8 +66,10 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -187,9 +189,15 @@ class GenerationApplicationRemoteTest {
 
     @After
     fun tearDown() {
-        applicationScope.cancel()
-        clients.forEach(HttpClient::close)
-        engine.close()
+        runBlocking {
+            applicationScope.coroutineContext[Job]?.cancelAndJoin()
+            clients.forEach { client ->
+                client.close()
+                client.coroutineContext[Job]?.join()
+            }
+            engine.close()
+            engine.coroutineContext[Job]?.join()
+        }
         database.close()
         unmockkObject(ModelHttp, ProviderManager.Companion)
         Dispatchers.resetMain()

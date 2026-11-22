@@ -39,7 +39,7 @@
 
 - 季 `S[0-9]+`（S1），集 `S[0-9]+E[0-9]{2,}`（S1E01，须属该季），场 `SC[0-9]+`（SC01），镜头 `SC[0-9]+-[0-9]+`（SC01-01，须属该场）。资产 `[a-z][a-z0-9-]*`，最多 48 字符。number 为正整数，duration_seconds 为有限正数，position 从 0 起算。
 - status 取值按操作区分。镜头用 todo、generating、review，资产用 draft、review，阶段用 not_started、in_progress、skipped。stage 为 script、visual_dev、storyboard、animatic、generation、sound、edit。
-- kind 为 character、location、prop、style、sound。mode 为 text、first_frame、last_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。remove 的 target 为 season、episode、scene、shot、asset，ids 是按目标格式填写的非空无重复字符串数组。enabled 与 remove 为布尔值。ComfyUI 视频模板声明 `fps` 后，`production_plan` / `production_generate` 会按镜头 `duration_seconds` 自动对齐 `frameBase+k*frameStep` 帧数，也支持传可选 `frames` 显式覆盖。
+- kind 为 character、location、prop、style、sound。mode 为 text、first_frame、last_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。remove 的 target 为 season、episode、scene、shot、asset，ids 是按目标格式填写的非空无重复字符串数组。enabled 与 remove 为布尔值。ComfyUI 视频工作流声明 `fps` 后，`production_plan` / `production_generate` 会按镜头 `duration_seconds` 自动对齐 `frameBase+k*frameStep` 帧数，也支持传可选 `frames` 显式覆盖。
 - **双模参考资产与版本分工红线**：
   - `versions`（`add_asset_version`）：仅用于同一定妆或原画的**纵向迭代替换**（`v1 → v2` 在面板中互斥审批，同时只生效一版）或**单图多视图整卡主图**；**禁止**用 `v1/v2/v3` 存放同一套造型的正/侧/背，也**禁止**因拆分三视图而另外新建重复角色资产。
   - **角色双模（`looks` / `upsert_look` / `set_look_slot`）**：同一造型同时支持单图多视图整卡（`sheet_path`/`sheet_note`，适合 Seedance 等直接接收整卡的模型）和分张单视图组（`slots` 里的 `front`/`side`/`back` 及自定义位，适合 H3 等分张多参模型）；支持二选一登记或双模并存，提交后即可由用户在造型区独立批准定稿。
@@ -91,15 +91,15 @@
 
 ## 生成、派生、尾帧衔接与外部编排
 
-制作面板负责审核、建议、批准与取消；智能体通过制作工具执行工作。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生模板及参数表。请求不可用时按错误返回的可用项调整规划。
+制作面板负责审核、建议、批准、取消以及可选快捷重试；智能体通过制作工具与 ComfyUI 工作流工具独立完成全流程编排。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生工作流及参数表。对于 ComfyUI 兼容层的工作流、Python 3.14 提交器与有状态链（`stateful_chain`，如 Motion Context 多段接续），可直接用 `comfy_list_workflows`、`comfy_run_workflow`、`comfy_get_chain_state` 与 `comfy_set_chain_tip` 编排，包括从任意 `ACTIVE` 中段传入 `parent_node_id` 发起分支或传入 `retry_node_id` 重跑任意中间段，无需依赖用户手工点击面板按钮。请求不可用时按错误返回的可用项调整规划。
 
-- `production_plan` 预览当前镜头输入和通道；`production_generate(episode_id, shot_code, params?)` 提交一次生成。`params` 为模板参数 key 对应的字符串、数值或布尔值对象，省略时取模板缺省值。
-- `production_derive(episode_id, shot_code, take_id, operation_id, params?)` 把候选视频交给 DERIVE 模板；`operation_id` 是模板 id。结果作为新候选登记，并保存直接来源、操作、实际参数、模板指纹和文件实际规格；派生候选可作为新的来源。
-- `production_score(asset_id, template_id?, prompt?, duration_seconds?, versions?)` 生成声音资产版本。模板须为 AUDIO/GENERATE、支持 MUSIC 且声明 DURATION、SEED 与音频输出；版本数缺省 4，各版本种子不同。省略时长时取项目最新剪辑版本的成片时长。已批准资产保留当前版本，新版本进入版本列表待审。
-- `production_extend(action, episode_id, shot_code, ...)` 管理尾帧衔接链。`start` 可带 `start_take_id`、`segments`（默认 3，含起点段，最多 8）、`segment_seconds`（时长槽位可控的模板或通道）、`segment_prompts`（与段数相同）。起点候选直接作为段 0；后段只以上一段尾帧为首帧。`status`、`retry`、`cancel` 需要 `chain_id`；重试保留成功段并重做失败段及后段。应用在拼接时裁掉每个后续段开头一帧，成片登记为一个候选。
-- `production_generation_tasks` 查询媒体任务。以上生成提交直接入队；模板定义和变更沿用 `comfy_define_template` 的审批机制。
+- `production_plan` 预览当前镜头输入和通道；`production_generate(episode_id, shot_code, params?)` 提交一次生成。`params` 为工作流参数 key 对应的字符串、数值或布尔值对象，省略时取工作流缺省值。
+- `production_derive(episode_id, shot_code, take_id, operation_id, params?)` 把候选视频交给 DERIVE 工作流；`operation_id` 是工作流 id。结果作为新候选登记，并保存直接来源、操作、实际参数、工作流指纹和文件实际规格；派生候选可作为新的来源。
+- `production_score(asset_id, template_id?, prompt?, duration_seconds?, versions?)` 生成声音资产版本。工作流须为 AUDIO/GENERATE、支持 MUSIC 且声明 DURATION、SEED 与音频输出；版本数缺省 4，各版本种子不同。省略时长时取项目最新剪辑版本的成片时长。已批准资产保留当前版本，新版本进入版本列表待审。
+- `production_extend(action, episode_id, shot_code, ...)` 管理尾帧衔接链。`start` 可带 `start_take_id`、`segments`（默认 3，含起点段，最多 8）、`segment_seconds`（时长槽位可控的工作流或通道）、`segment_prompts`（与段数相同）。起点候选直接作为段 0；后段只以上一段尾帧为首帧。`status`、`retry`、`cancel` 需要 `chain_id`；重试保留成功段并重做失败段及后段。应用在拼接时裁掉每个后续段开头一帧，成片登记为一个候选。
+- `production_generation_tasks` 查询媒体任务。以上生成提交直接入队；ComfyUI 工作流与提交器变更走 `comfy_save_workflow` / `comfy_save_submitter`（或传统 `comfy_define_template`）审批机制，`comfy_run_workflow` 中的 `fixed_overrides` 若偏离基线则触发单次 Diff 审批。
 
-一次模板提交与按序尾帧串联由应用执行。依赖工作流内部状态、多阶段控制或远端脚本的编排，由智能体通过已授权的 SSH/命令路线执行，并通过 `production_run` 登记进度和来源：
+一次工作流提交与按序尾帧串联由应用执行。有状态多段链式提交使用 `comfy_run_workflow(workflow_id, stage="first"|"next", ...)` 与 `comfy_get_chain_state`；其它需要通过已授权 SSH/命令路线执行的远端脚本编排，可通过 `production_run` 登记进度和来源：
 
 1. `start` 提供 `label`、可选正整数 `steps`，目标为 `episode_id` 与 `shot_code`，或单独 `asset_id`；保存返回的 `run_id`。
 2. `progress` 提供 `run_id`、`completed_steps` 与一句 `message`；完成步数不能倒退或超过总步数。

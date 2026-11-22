@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.skills.store
 
+import androidx.lifecycle.viewModelScope
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.skills.FileSkillCatalog
 import com.promenar.infinity.data.skills.InMemoryPreferences
@@ -12,6 +13,8 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -54,6 +57,8 @@ class SkillStoreViewModelTest {
         assertThat(vm.item("$OFFICIAL_SKILL_CATALOG_URL#alpha").value?.entry?.name).isEqualTo("alpha")
         vm.setCategory(null); vm.setFilter(StoreFilter.INSTALLED)
         assertThat(vm.state.value.installedCount).isEqualTo(1)
+        vm.viewModelScope.coroutineContext[Job]?.cancelAndJoin()
         client.close()
+        client.coroutineContext[Job]?.join()
     }
 }

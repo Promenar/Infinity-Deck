@@ -104,12 +104,18 @@ class ProviderManager private constructor(
     private val _providerModels = MutableStateFlow<List<ModelInfo>>(emptyList())
     val providerModels: StateFlow<List<ModelInfo>> = _providerModels.asStateFlow()
 
-    // ── StateFlow: 4 个预设模型 ──────────────────────────────────────
+    // ── StateFlow: 预设默认模型 ──────────────────────────────────────
     private val _summaryModelId = MutableStateFlow("")
     val summaryModelId: StateFlow<String> = _summaryModelId.asStateFlow()
 
     private val _imageModelId = MutableStateFlow("")
     val imageModelId: StateFlow<String> = _imageModelId.asStateFlow()
+
+    private val _videoModelId = MutableStateFlow("")
+    val videoModelId: StateFlow<String> = _videoModelId.asStateFlow()
+
+    private val _audioModelId = MutableStateFlow("")
+    val audioModelId: StateFlow<String> = _audioModelId.asStateFlow()
 
     private val _embeddingModelId = MutableStateFlow("")
     val embeddingModelId: StateFlow<String> = _embeddingModelId.asStateFlow()
@@ -122,7 +128,11 @@ class ProviderManager private constructor(
     val currentModelSummary: StateFlow<String> = _currentModelSummary.asStateFlow()
 
     private val mediaDefaultListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "preset_image_model") _imageModelId.value = settingsPrefs.getString(key, "").orEmpty()
+        when (key) {
+            "preset_image_model" -> _imageModelId.value = settingsPrefs.getString(key, "").orEmpty()
+            "preset_video_model" -> _videoModelId.value = settingsPrefs.getString(key, "").orEmpty()
+            "preset_audio_model" -> _audioModelId.value = settingsPrefs.getString(key, "").orEmpty()
+        }
     }.also(settingsPrefs::registerOnSharedPreferenceChangeListener)
 
     // ── 初始化 ───────────────────────────────────────────────────────
@@ -447,6 +457,8 @@ class ProviderManager private constructor(
     private fun clearPresetReferences(removedModelIds: Set<String>) {
         if (_summaryModelId.value in removedModelIds) setPresetModel("summary", "")
         if (_imageModelId.value in removedModelIds) setPresetModel("image", "")
+        if (_videoModelId.value in removedModelIds) setPresetModel("video", "")
+        if (_audioModelId.value in removedModelIds) setPresetModel("audio", "")
         if (_embeddingModelId.value in removedModelIds) setPresetModel("embedding", "")
         if (_rerankModelId.value in removedModelIds) setPresetModel("rerank", "")
         if (settingsPrefs.getString("default_model", null) in removedModelIds) {
@@ -1265,6 +1277,8 @@ class ProviderManager private constructor(
     fun loadPresetModels() {
         _summaryModelId.value = settingsPrefs.getString("preset_summary_model", "") ?: ""
         _imageModelId.value = settingsPrefs.getString("preset_image_model", "") ?: ""
+        _videoModelId.value = settingsPrefs.getString("preset_video_model", "") ?: ""
+        _audioModelId.value = settingsPrefs.getString("preset_audio_model", "") ?: ""
         _embeddingModelId.value = settingsPrefs.getString("preset_embedding_model", "") ?: ""
         _rerankModelId.value = settingsPrefs.getString("preset_rerank_model", "") ?: ""
         _currentModelSummary.value = _summaryModelId.value.ifBlank {
@@ -1291,6 +1305,26 @@ class ProviderManager private constructor(
                     }
                 }
                 "preset_image_model"
+            }
+            "video" -> {
+                _videoModelId.value = modelId
+                if (modelId.isNotBlank()) {
+                    val group = com.promenar.infinity.domain.mediagen.MediaGroup.VIDEO
+                    if ("cloud:$modelId" in mediaChannelOrders.orders.value[group].orEmpty()) {
+                        mediaChannelOrders.reorder(group, listOf("cloud:$modelId"))
+                    }
+                }
+                "preset_video_model"
+            }
+            "audio" -> {
+                _audioModelId.value = modelId
+                if (modelId.isNotBlank()) {
+                    val group = com.promenar.infinity.domain.mediagen.MediaGroup.AUDIO
+                    if ("cloud:$modelId" in mediaChannelOrders.orders.value[group].orEmpty()) {
+                        mediaChannelOrders.reorder(group, listOf("cloud:$modelId"))
+                    }
+                }
+                "preset_audio_model"
             }
             "embedding" -> {
                 _embeddingModelId.value = modelId

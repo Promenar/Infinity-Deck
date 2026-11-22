@@ -35,9 +35,13 @@ fun rememberProductionPanelServices(
                 requireNotNull(runtime).registry.observeChannels(),
                 providers.providerModels,
                 app.comfyMedia.repository.observeTemplates(),
-            ) { channels, models, templates ->
+                app.comfyMedia.repository.observeEffectiveWorkflows(),
+                app.comfyMedia.repository.observeHosts(),
+            ) { channels, models, templates, workflows, hosts ->
+                val hostNames = hosts.associate { it.id to it.name }
                 val names = models.associate { "cloud:${it.id}" to listOf(it.name, it.providerName) } +
-                    templates.associate { it.template.channelId to listOf(it.template.name) }
+                    templates.associate { it.template.channelId to listOfNotNull(it.template.name, hostNames[it.template.hostId]) } +
+                    workflows.associate { it.workflow.channelId to listOfNotNull(it.workflow.name, hostNames[it.workflow.hostId]) }
                 channels.associate { it.id to (names[it.id] ?: listOf(it.id)) } + names
             }.collect { value = it }
         }
@@ -68,6 +72,9 @@ fun rememberProductionPanelServices(
             },
             pendingRegistrations = pending,
             previsStore = app.productionPrevisStore,
+            comfyRepository = app.comfyMedia.repository,
+            comfyChainStore = app.comfyMedia.chainStore,
+            comfyExecutionEngine = app.comfyMedia.executionEngine,
         )
     }
 }

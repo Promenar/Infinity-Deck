@@ -198,6 +198,29 @@ class ComfyBackendTest {
         assertThrows(IllegalArgumentException::class.java) { validateComfyView("https://other.test/private") }
         assertThrows(IllegalArgumentException::class.java) { validateComfyView("/view?filename=..%2Fx&type=output") }
     }
+    @Test fun historyRecognizesSaveVideoMp4UnderImagesKeyAndExcludesStaticPreview() {
+        val history = Json.parseToJsonElement(
+            """{"sv":{"status":{"completed":true,"status_str":"success"},"outputs":{"9":{
+                "images":[
+                    {"filename":"ComfyUI_00001_.mp4","subfolder":"video","type":"output"},
+                    {"filename":"preview_frame.png","subfolder":"video","type":"output"},
+                    {"filename":"anim_clip.webp","subfolder":"video","type":"output"}
+                ],
+                "animated":[true, false, true]
+            }}}}""",
+        ).jsonObject
+        val status = parseComfyHistory(history, "sv", listOf(ComfySlot("9", "images", SlotKind.OUTPUT, outputKind = InputKind.VIDEO)))
+            as RemoteStatus.Succeeded
+        val names = status.outputs.map { ("http://comfy.invalid" + it.location).toHttpUrl().queryParameter("filename") }
+        assertEquals(listOf("ComfyUI_00001_.mp4", "anim_clip.webp"), names)
+        assertTrue(status.outputs.all { it.kind == InputKind.VIDEO })
+
+        val imageOnly = parseComfyHistory(history, "sv", listOf(ComfySlot("9", "images", SlotKind.OUTPUT, outputKind = InputKind.IMAGE)))
+            as RemoteStatus.Succeeded
+        val imgNames = imageOnly.outputs.map { ("http://comfy.invalid" + it.location).toHttpUrl().queryParameter("filename") }
+        assertEquals(listOf("preview_frame.png", "anim_clip.webp"), imgNames)
+    }
+
     private fun success(id: String) = Json.parseToJsonElement("""{"$id":{"status":{"completed":true,"status_str":"success"},"outputs":{"2":{"images":[{"filename":"out.png","subfolder":"test","type":"output"}]}}}}""").jsonObject
     private suspend fun expectFailure(action: suspend () -> Unit) {
         try { action(); fail("应拒绝无效输入") } catch (_: IllegalArgumentException) { }

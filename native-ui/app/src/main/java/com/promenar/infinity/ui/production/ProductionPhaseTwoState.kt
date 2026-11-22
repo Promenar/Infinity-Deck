@@ -27,6 +27,9 @@ data class ProductionPanelServices(
     val auditFiles: (suspend () -> Unit)? = null,
     val channelLabelSegments: (String) -> List<String> = { listOf(channelLabel(it)) },
     val previsStore: ProductionPrevisStore? = null,
+    val comfyRepository: com.promenar.infinity.data.mediagen.comfy.ComfyRepository? = null,
+    val comfyChainStore: com.promenar.infinity.data.mediagen.comfy.StatefulChainStore? = null,
+    val comfyExecutionEngine: com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowExecutionEngine? = null,
 )
 
 /** 通道名称作为完整句子的插值使用。 */

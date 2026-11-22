@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -81,6 +83,18 @@ internal fun ProductionShotDetail(
     val failed = stringResource(R.string.production_panel_action_failed)
     val noPlanner = stringResource(R.string.p2_planner_unavailable)
     val working = busy || localBusy || loading
+    val comfyWorkflows by produceState<List<com.promenar.infinity.domain.mediagen.ComfyWorkflowState>>(emptyList(), services.comfyRepository) {
+        val repo = services.comfyRepository
+        if (repo == null) value = emptyList() else repo.observeEffectiveWorkflows().collect { value = it }
+    }
+    val comfyHosts by produceState<List<com.promenar.infinity.data.mediagen.comfy.ComfyHost>>(emptyList(), services.comfyRepository) {
+        val repo = services.comfyRepository
+        if (repo == null) value = emptyList() else repo.observeHosts().collect { value = it }
+    }
+    val comfyChains by produceState<List<com.promenar.infinity.domain.mediagen.StatefulChainRecord>>(emptyList(), services.comfyChainStore, sessionId) {
+        val store = services.comfyChainStore
+        if (store == null) value = emptyList() else store.observeSession(sessionId).collect { value = it }
+    }
     LaunchedEffect(sessionId, episodeId, shot.code, revision, refresh, services.planner) {
         val planner = services.planner
         if (planner != null) {
@@ -396,6 +410,25 @@ internal fun ProductionShotDetail(
                             }
                         }
                     }
+                    val activeChannelId = shot.channelId ?: resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)?.id
+                    val activeComfyWf = activeChannelId?.let { id ->
+                        comfyWorkflows.firstOrNull { wf -> wf.workflow.channelId == id }
+                    }
+                    if (activeComfyWf != null) item("comfy-workflow-chain") {
+                        ProductionComfyChainSection(
+                            workflowState = activeComfyWf,
+                            hosts = comfyHosts,
+                            chains = comfyChains,
+                            sessionId = sessionId,
+                            shot = shot,
+                            defaultPrompt = preview?.prompt ?: shot.prompt,
+                            executionEngine = services.comfyExecutionEngine,
+                            chainStore = services.comfyChainStore,
+                            parentWorking = working,
+                            onResultMessage = { msg -> notice = msg },
+                            onErrorMessage = { err -> localError = err },
+                        )
+                    }
                 }
             }
         }
@@ -404,9 +437,51 @@ internal fun ProductionShotDetail(
         PlanningSheet.MODE -> ProductionOptionSheet(stringResource(R.string.p2_mode), ShotMode.entries.map { it to it.label() }, shot.mode, { sheet = null }) { onRun(modeSelectionAction(location, it, channels, channelOrder)) }
         PlanningSheet.CHANNEL -> {
             val choices = channelChoices(channels, channelOrder, shot.mode)
+            val cloudChoices = choices.filterNot { it.id.startsWith("comfy:") }
+            val comfyChoices = choices.filter { it.id.startsWith("comfy:") }
+            val cloudLabel = stringResource(R.string.p2_channel_cloud_group)
+            val singleLabel = stringResource(R.string.media_settings_exec_single)
+            val chainLabel = stringResource(R.string.media_settings_exec_chain)
+            val hostNames = comfyHosts.associate { it.id to it.name }
+            val workflowsByChannel = comfyWorkflows.associateBy { it.workflow.channelId }
+            val options = buildList {
+                cloudChoices.forEach { ch ->
+                    add(
+                        ProductionChoice(
+                            value = ch.id,
+                            label = ch.id,
+                            detail = cloudLabel,
+                            icon = Icons.Rounded.Cloud,
+                            labelSegments = services.channelLabelSegments(ch.id),
+                        ),
+                    )
+                }
+                val groupedComfy = comfyChoices.groupBy { ch -> workflowsByChannel[ch.id]?.workflow?.hostId ?: "comfy" }
+                groupedComfy.forEach { (hostId, hostChoices) ->
+                    val hostTitle = hostNames[hostId] ?: hostId
+                    val comfyDetail = stringResource(R.string.p2_channel_comfy_group, hostTitle)
+                    hostChoices.forEach { ch ->
+                        val wf = workflowsByChannel[ch.id]?.workflow
+                        val isChain = wf?.executionMode == com.promenar.infinity.domain.mediagen.WorkflowExecutionMode.STATEFUL_CHAIN
+                        add(
+                            ProductionChoice(
+                                value = ch.id,
+                                label = ch.id,
+                                detail = comfyDetail,
+                                icon = Icons.Rounded.Dns,
+                                chip = ProductionChipSpec(
+                                    if (isChain) chainLabel else singleLabel,
+                                    if (isChain) ProductionTone.INFO else ProductionTone.NEUTRAL,
+                                ),
+                                labelSegments = services.channelLabelSegments(ch.id),
+                            ),
+                        )
+                    }
+                }
+            }
             ProductionChoiceSheet(
                 title = stringResource(R.string.p2_channel),
-                options = choices.map { ProductionChoice(it.id, it.id, labelSegments = services.channelLabelSegments(it.id)) },
+                options = options,
                 selected = shot.channelId ?: choices.firstOrNull()?.id,
                 onDismiss = { sheet = null },
                 emptyText = stringResource(R.string.p2_no_channels),

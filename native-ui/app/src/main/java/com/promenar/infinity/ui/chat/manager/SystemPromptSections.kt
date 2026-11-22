@@ -119,7 +119,14 @@ object SystemPromptSections {
     )
     private val PLAN_TOOLS = setOf("initialize_plan", "update_plan", "get_plan", "drop_plan")
     private val WORKSPACE_PROCESS_TOOLS = setOf("shell_exec", "python_exec", "run_script", "exec_js", "python_sandbox")
-    private val MEDIA_TOOLS = setOf("image_generation", "generate_image", "media_fetch", "view_media", "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send")
+    private val MEDIA_TOOLS = setOf(
+        "image_generation", "generate_image", "media_fetch", "view_media",
+        "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send",
+        "comfy_list_hosts", "comfy_probe", "comfy_list_submitters", "comfy_list_workflows",
+        "comfy_preflight_workflow", "comfy_get_chain_state", "comfy_save_submitter",
+        "comfy_delete_submitter", "comfy_save_workflow", "comfy_delete_workflow",
+        "comfy_run_workflow", "comfy_set_chain_tip", "comfy_templates", "comfy_define_template",
+    )
 
     /** [workspace] 为 null 或私有工作区时沿用私有工作区契约；自选目录与不可用状态另起一节说明。 */
     fun toolGuidance(
@@ -183,7 +190,10 @@ object SystemPromptSections {
         }
         if ("artifact_publish" in toolNames) appendLine("- 交付文件完成后调用 artifact_publish 声明。" + if ("canvas_create" in toolNames) "页面与原型使用画布工具。" else "")
         if (toolNames.any { it == "generate_image" || it == "image_generation" }) {
-            appendLine("- generate_image 按提示词生成图片；images 提供 1–16 个工作区 PNG/WebP/JPEG 路径时编辑图片，mask 可对第一张图指定同尺寸 PNG 蒙版。画板的 INFINITY_IMAGE_ANNOTATION 行给出原图与图层路径；按 kind 使用 images、mask 或 markup，markup 是 GPT Image 2.5 专用的同尺寸透明 PNG 标注，与 mask 互斥。生成数量 n 为 1–4；只传任务需要的可选参数，尺寸与质量支持以所选模型为准。input_fidelity 仅部分编辑模型支持，gpt-image-2 应省略。结果保存到工作区，按返回路径用 ![说明](路径) 引用；需要查看画面时调用 view_media。")
+            appendLine("- 云端生图（generate_image）使用「默认模型」中选定的唯一云端默认图像模型，与独立 ComfyUI 兼容层互不混淆：即使用户将云端默认图像/视频/音频模型留空，也可直接调用 ComfyUI 工作流生成。generate_image 按提示词生成图片；images 提供 1–16 个工作区 PNG/WebP/JPEG 路径时编辑图片，mask 可对第一张图指定同尺寸 PNG 蒙版。画板的 INFINITY_IMAGE_ANNOTATION 行给出原图与图层路径；按 kind 使用 images、mask 或 markup，markup 是 GPT Image 2.5 专用的同尺寸透明 PNG 标注，与 mask 互斥。生成数量 n 为 1–4；只传任务需要的可选参数，尺寸与质量支持以所选模型为准。input_fidelity 仅部分编辑模型支持，gpt-image-2 应省略。结果保存到工作区，按返回路径用 ![说明](路径) 引用；需要查看画面时调用 view_media。")
+        }
+        if ("comfy_run_workflow" in toolNames || "comfy_list_workflows" in toolNames) {
+            appendLine("- ComfyUI 兼容层工具（comfy_list_hosts、comfy_probe、comfy_list_submitters、comfy_list_workflows、comfy_preflight_workflow、comfy_save_submitter、comfy_save_workflow、comfy_run_workflow、comfy_get_chain_state、comfy_set_chain_tip）：管理并直接提交主机、Python 3.14 提交器与工作流（单次或有状态链 stateful_chain），无需用户去 UI 手工触发。日常生成只传 content_inputs；仅当需临时实验调整 FIXED 固定字段时传 fixed_overrides 与 reason 触发一次性 Diff 审批。有状态链工作流（如 Motion Context 多段接续）支持用 comfy_get_chain_state 查看 DAG 版本树，并用 parent_node_id 从任意有效中段发起新分支、retry_node_id 重跑任意段落、或 comfy_set_chain_tip 切换主链末端。")
         }
         if (toolNames.any { it.startsWith("canvas_") }) {
             appendLine()

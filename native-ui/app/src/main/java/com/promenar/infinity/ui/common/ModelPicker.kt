@@ -190,12 +190,15 @@ internal fun ModelSelectionUiModel.matchesModelPickerFilter(filterTag: String): 
     "chat" -> isChatSelectionCandidate()
     "multimodal" -> capabilityStates[ModelCapability.VISION_INPUT] == SupportState.SUPPORTED
     "reasoning" -> capabilityStates[ModelCapability.REASONING] == SupportState.SUPPORTED
-    "image" -> workload == ModelWorkload.IMAGE_GENERATION
+    "image", "cloud_image" -> workload == ModelWorkload.IMAGE_GENERATION
     "embedding" -> workload == ModelWorkload.EMBEDDING
     "rerank" -> workload == ModelWorkload.RERANK
+    "cloud_audio" -> workload == ModelWorkload.AUDIO ||
+        capabilityStates[ModelCapability.AUDIO_OUTPUT] == SupportState.SUPPORTED
     "audio" -> workload == ModelWorkload.AUDIO ||
         capabilityStates[ModelCapability.AUDIO_INPUT] == SupportState.SUPPORTED ||
         capabilityStates[ModelCapability.AUDIO_OUTPUT] == SupportState.SUPPORTED
+    "cloud_video" -> workload == ModelWorkload.VIDEO
     "video" -> workload == ModelWorkload.VIDEO ||
         capabilityStates[ModelCapability.VIDEO_INPUT] == SupportState.SUPPORTED
     "vision" -> capabilityStates[ModelCapability.VISION_INPUT] == SupportState.SUPPORTED

@@ -982,6 +982,8 @@ internal fun ApprovalKindBand(
     val transfer = sftpTransferDirection(toolName) != null
     val productionLock = toolName == "production_update" &&
         com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(executionTarget)
+    val comfyOverride = isComfyFixedOverride(toolName, executionTarget)
+    val comfyManagement = isComfyManagementTool(toolName)
     val scheme = MaterialTheme.colorScheme
     val accent = if (backend != null) scheme.primary else scheme.onSurfaceVariant
     val band = if (backend != null) scheme.primary.copy(alpha = 0.10f).compositeOver(scheme.surfaceContainerLow) else scheme.surfaceContainerHigh
@@ -1001,6 +1003,8 @@ internal fun ApprovalKindBand(
                 backend != null -> Icons.Rounded.Terminal
                 toolName == REQUEST_KNOWLEDGE_ACCESS_TOOL -> Icons.Rounded.Key
                 productionLock -> Icons.Rounded.Movie
+                comfyOverride -> Icons.Rounded.Science
+                comfyManagement -> Icons.Rounded.Tune
                 else -> Icons.Rounded.Extension
             },
             contentDescription = null,
@@ -1084,6 +1088,19 @@ internal fun ApprovalCallTitle(
     }
 }
 
+private fun isComfyFixedOverride(toolName: String, executionTarget: String?): Boolean =
+    toolName == "comfy_run_workflow" &&
+        com.promenar.infinity.data.mediagen.comfy.ComfyFixedOverrideApprovalPlanner.isOverrideTarget(executionTarget)
+
+private fun isComfyManagementTool(toolName: String): Boolean =
+    toolName in setOf(
+        "comfy_save_submitter",
+        "comfy_delete_submitter",
+        "comfy_save_workflow",
+        "comfy_delete_workflow",
+        "comfy_define_template",
+    )
+
 /**
  * 类别条文案。SFTP 传输与远程命令同走 SSH 后端（路由、风险与后台任务归类不变），这里只把显示类别写成“文件传输”。
  */
@@ -1091,6 +1108,10 @@ internal fun approvalKindLabel(toolName: String, executionTarget: String?): Int 
     if (sftpTransferDirection(toolName) != null) R.string.chat_approval_kind_file_transfer
     else if (toolName == "production_update" && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(executionTarget)) {
         R.string.production_lock_approval_where
+    } else if (isComfyFixedOverride(toolName, executionTarget)) {
+        R.string.comfy_override_approval_where
+    } else if (isComfyManagementTool(toolName)) {
+        R.string.comfy_management_approval_where
     } else when (CommandToolClassification.backendFor(toolName, ToolExecutionTargets.runsInLinux(executionTarget))) {
         CommandToolBackend.BUILTIN_SHELL, CommandToolBackend.BUILTIN_PYTHON -> R.string.chat_approval_kind_builtin_command
         CommandToolBackend.LINUX -> R.string.chat_approval_kind_linux_command
@@ -1169,6 +1190,14 @@ private fun approvalCallWhere(call: ApprovalDisplayCall): String? {
         return (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ProductionLock)
             ?.preflight?.productionTitle?.takeIf(String::isNotBlank)
     }
+    if (isComfyFixedOverride(call.name, call.executionTarget)) {
+        return (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyFixedOverride)
+            ?.preflight?.hostName?.takeIf(String::isNotBlank)
+    }
+    if (isComfyManagementTool(call.name)) {
+        return (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyManagement)
+            ?.hostName?.takeIf(String::isNotBlank)
+    }
     // 智能体配置的授权目标含字段摘要，不作为位置显示。
     if (call.name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE ||
         com.promenar.infinity.domain.agentconfig.AgentConfigTools.isWriteTarget(call.executionTarget)
@@ -1210,6 +1239,14 @@ private fun ApprovalCallBody(call: ApprovalDisplayCall, description: String, pen
     }
     (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyTemplate)?.let { template ->
         ComfyTemplateApprovalBody(template, call.name, pending)
+        return
+    }
+    (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyManagement)?.let { comfyManagement ->
+        ComfyManagementApprovalBody(comfyManagement, call.name, pending)
+        return
+    }
+    (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyFixedOverride)?.let { comfyOverride ->
+        ComfyFixedOverrideApprovalBody(comfyOverride, call.name, pending)
         return
     }
     (call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ProductionLock)?.let { productionLock ->
@@ -1446,12 +1483,17 @@ fun ApprovalCard(
                     val actionApproveLabel = if (remainingCount == 0) {
                         val isProductionLock = currentCall?.name == "production_update" &&
                             com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(currentCall.executionTarget)
+                        val isComfyOverride = currentCall != null &&
+                            isComfyFixedOverride(currentCall.name, currentCall.executionTarget)
+                        val isComfyMgmt = currentCall != null && isComfyManagementTool(currentCall.name)
                         val knowledgeApprove = currentCall?.knowledgeAccess?.takeIf { it.allowed }?.let { access ->
                             stringResource(if (access.readWrite) R.string.knowledge_access_approve_rw else R.string.knowledge_access_approve_ro)
                         }
                         when {
                             knowledgeApprove != null -> knowledgeApprove
                             isProductionLock -> stringResource(R.string.production_lock_approval_approve_btn)
+                            isComfyOverride -> stringResource(R.string.comfy_override_approval_approve_btn)
+                            isComfyMgmt -> stringResource(R.string.comfy_management_approval_approve_btn)
                             else -> null
                         }
                     } else null
@@ -1607,7 +1649,12 @@ private fun ApprovalQueuedSummaryRow(
     val where = approvalCallWhere(call)
     val unknownTarget = stringResource(R.string.chat_approval_execution_target_unknown)
     val template = call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyTemplate
-    val title = template?.templateName ?: approvalToolTitle(call.name)
+    val comfyManagement = call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyManagement
+    val comfyOverride = call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyFixedOverride
+    val title = template?.templateName
+        ?: comfyManagement?.title
+        ?: comfyOverride?.preflight?.workflowName
+        ?: approvalToolTitle(call.name)
     val displayWhere = where?.takeIf { it.isNotBlank() && it != call.name && it != title && it != unknownTarget }
     val showHighRiskIcon = call.highRisk ||
         call.preview?.action == ApprovalPreview.Action.DELETE ||

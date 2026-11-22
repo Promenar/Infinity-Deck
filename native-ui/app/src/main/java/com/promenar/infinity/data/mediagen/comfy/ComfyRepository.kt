@@ -10,26 +10,61 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import java.security.MessageDigest
 
-/** 界面持有完整仓库；工具只调用需审批的模板定义与只读探测、列表。 */
+/** 界面持有完整仓库；工作流/提交器变更与模板变更均需经过审批或明确用户操作。 */
 class ComfyRepository(
     private val storage: ComfyConfigurationStorage,
     private val credentials: ComfyCredentials,
     private val http: ComfyHttp,
     private val clock: () -> Long = System::currentTimeMillis,
+    val submitterFiles: ComfySubmitterFileStore = InMemoryComfySubmitterFileStore(),
 ) : ComfyTemplateChannelSource {
     // 所有实例共同串行化同一设置键的读改写，包括设置页与工具。
     private companion object { val mutation = Mutex() }
     fun observeHosts(): Flow<List<ComfyHost>> = storage.observe().map { it.hosts }.distinctUntilChanged()
     fun observeTemplates(): Flow<List<ComfyTemplateState>> = storage.observe().map { it.templates }.distinctUntilChanged()
-    override fun observeTemplateChannels(): Flow<List<MediaChannel>> = observeTemplates().map { list -> list.map { it.template.channel() } }.distinctUntilChanged()
+    fun observeSubmitters(): Flow<List<ComfySubmitterScript>> = storage.observe().map { it.submitters }.distinctUntilChanged()
+    fun observeWorkflows(): Flow<List<ComfyWorkflowState>> = storage.observe().map { it.workflows }.distinctUntilChanged()
+    fun observeEffectiveWorkflows(): Flow<List<ComfyWorkflowState>> = storage.observe().map { config ->
+        mergeEffectiveWorkflows(config)
+    }.distinctUntilChanged()
+
+    override fun observeTemplateChannels(): Flow<List<MediaChannel>> = storage.observe().map { config ->
+        val workflowChannels = config.workflows.map { it.workflow.toMediaChannel() }
+        val workflowIds = config.workflows.mapTo(mutableSetOf()) { it.workflow.channelId }
+        val legacyChannels = config.templates.map { it.template.channel() }.filter { it.id !in workflowIds }
+        workflowChannels + legacyChannels
+    }.distinctUntilChanged()
+
     suspend fun hosts(): List<ComfyHost> = storage.read().hosts
     suspend fun hasHostCredential(hostId: String): Boolean = credentials.contains(hostId)
     suspend fun templates(): List<ComfyTemplateState> = storage.read().templates
+    suspend fun submitters(hostId: String? = null): List<ComfySubmitterScript> = storage.read().submitters.let { all ->
+        if (hostId == null) all else all.filter { it.hostId == hostId }
+    }
+    suspend fun submitter(hostId: String, scriptId: String): ComfySubmitterScript? =
+        storage.read().submitters.firstOrNull { it.hostId == hostId && it.scriptId == scriptId }
+
+    suspend fun workflowStates(hostId: String? = null): List<ComfyWorkflowState> = storage.read().workflows.let { all ->
+        if (hostId == null) all else all.filter { it.workflow.hostId == hostId }
+    }
+
+    suspend fun effectiveWorkflowStates(hostId: String? = null): List<ComfyWorkflowState> =
+        mergeEffectiveWorkflows(storage.read()).let { all ->
+            if (hostId == null) all else all.filter { it.workflow.hostId == hostId }
+        }
+
+    suspend fun workflowState(workflowId: String): ComfyWorkflowState =
+        effectiveWorkflowStates().firstOrNull { it.workflow.workflowId == workflowId }
+            ?: throw ComfyFailure("ComfyUI 工作流不存在：$workflowId")
+
+    suspend fun workflowStateOrNull(workflowId: String): ComfyWorkflowState? =
+        effectiveWorkflowStates().firstOrNull { it.workflow.workflowId == workflowId }
+
     suspend fun host(id: String): ComfyHost = hosts().firstOrNull { it.id == id } ?: throw ComfyFailure("ComfyUI 主机不存在，请用户配置主机")
     suspend fun templateByChannel(channelId: String): ComfyTemplateState = templates().firstOrNull { it.template.channelId == channelId }
-        ?: throw ComfyFailure("ComfyUI 模板通道不存在")
+        ?: throw ComfyFailure("ComfyUI 工作流通道不存在")
 
-    /** credential 为空保留原凭据；NONE 会清除密钥。主机删除会同时删除其模板。 */
+    /** credential 为空保留原凭据；NONE 会清除密钥。主机删除会同时删除其工作流与提交器。 */
     suspend fun saveHost(host: ComfyHost, credential: ComfyCredential? = null) = mutation.withLock {
         val old = storage.read()
         require(old.hosts.any { it.id == host.id } || old.hosts.size < 100) { "最多配置 100 台主机" }
@@ -39,13 +74,271 @@ class ComfyRepository(
         val states = old.templates.map { state ->
             if (changed && state.template.hostId == host.id) state.copy(preflight = PreflightResult(PreflightStatus.REVIEW, uncertain = listOf("主机配置已变化，请重新预检"))) else state
         }
-        storage.write(old.copy(hosts = old.hosts.filterNot { it.id == host.id } + host, templates = states))
+        val workflows = old.workflows.map { state ->
+            if (changed && state.workflow.hostId == host.id) state.copy(preflight = PreflightResult(PreflightStatus.REVIEW, uncertain = listOf("主机配置已变化，请重新预检"))) else state
+        }
+        storage.write(old.copy(hosts = old.hosts.filterNot { it.id == host.id } + host, templates = states, workflows = workflows))
         if (host.authKind == ComfyAuthKind.NONE) credentials.remove(host.id)
     }
-    suspend fun removeHost(hostId: String) = mutation.withLock {
+    suspend fun removeHost(hostId: String) {
+        mutation.withLock {
+            val old = storage.read()
+            storage.write(
+                old.copy(
+                    hosts = old.hosts.filterNot { it.id == hostId },
+                    templates = old.templates.filterNot { it.template.hostId == hostId },
+                    workflows = old.workflows.filterNot { it.workflow.hostId == hostId },
+                    submitters = old.submitters.filterNot { it.hostId == hostId },
+                ),
+            )
+            credentials.remove(hostId)
+        }
+        submitterFiles.deleteHost(hostId)
+    }
+
+    suspend fun saveSubmitter(
+        hostId: String,
+        scriptId: String,
+        fileName: String,
+        displayName: String = fileName,
+        description: String = "",
+        sourceKind: SubmitterSourceKind = SubmitterSourceKind.AGENT_AUTHORED,
+        protocol: SubmitterInvocationProtocol = SubmitterInvocationProtocol.PAYLOAD_JSON,
+        sourceText: String,
+        supportFiles: Map<String, ByteArray> = emptyMap(),
+    ): ComfySubmitterScript {
+        host(hostId)
+        val sha256 = submitterFiles.saveFiles(hostId, scriptId, fileName, sourceText, supportFiles)
+        val record = ComfySubmitterScript(
+            scriptId = scriptId,
+            hostId = hostId,
+            fileName = fileName,
+            displayName = displayName,
+            description = description,
+            sourceKind = sourceKind,
+            protocol = protocol,
+            sha256 = sha256,
+            supportFiles = supportFiles.keys.sorted(),
+            lastDryRunStatus = SubmitterDryRunStatus.UNTESTED,
+            lastDryRunMessage = "",
+            lastDryRunLatencyMs = null,
+            lastDryRunAt = null,
+            updatedAt = clock(),
+        )
+        return mutation.withLock {
+            val old = storage.read()
+            require(old.hosts.any { it.id == hostId }) { "主机不存在：$hostId" }
+            val existing = old.submitters.firstOrNull { it.hostId == hostId && it.scriptId == scriptId }
+            require(existing != null || old.submitters.size < 200) { "最多配置 200 个提交器脚本" }
+            val next = old.submitters.filterNot { it.hostId == hostId && it.scriptId == scriptId } + record
+            storage.write(old.copy(submitters = next))
+            record
+        }
+    }
+
+    suspend fun updateSubmitterDryRun(
+        hostId: String,
+        scriptId: String,
+        status: SubmitterDryRunStatus,
+        message: String,
+        latencyMs: Long?,
+    ): ComfySubmitterScript = mutation.withLock {
         val old = storage.read()
-        storage.write(old.copy(hosts = old.hosts.filterNot { it.id == hostId }, templates = old.templates.filterNot { it.template.hostId == hostId }))
-        credentials.remove(hostId)
+        val existing = old.submitters.firstOrNull { it.hostId == hostId && it.scriptId == scriptId }
+            ?: throw ComfyFailure("提交器脚本不存在：$scriptId")
+        val updated = existing.copy(
+            lastDryRunStatus = status,
+            lastDryRunMessage = message.take(600),
+            lastDryRunLatencyMs = latencyMs,
+            lastDryRunAt = clock(),
+        )
+        storage.write(
+            old.copy(
+                submitters = old.submitters.map {
+                    if (it.hostId == hostId && it.scriptId == scriptId) updated else it
+                },
+            ),
+        )
+        updated
+    }
+
+    suspend fun deleteSubmitter(hostId: String, scriptId: String) {
+        mutation.withLock {
+            val old = storage.read()
+            val referencing = old.workflows.filter {
+                it.workflow.hostId == hostId && it.workflow.submitterScriptId == scriptId
+            }
+            if (referencing.isNotEmpty()) {
+                val names = referencing.joinToString("、") { "${it.workflow.name}(${it.workflow.workflowId})" }
+                throw ComfyFailure("无法删除提交器 $scriptId：以下工作流仍在引用：$names")
+            }
+            storage.write(
+                old.copy(submitters = old.submitters.filterNot { it.hostId == hostId && it.scriptId == scriptId }),
+            )
+        }
+        submitterFiles.deleteScript(hostId, scriptId)
+    }
+
+    suspend fun saveWorkflow(workflow: ComfyWorkflow, runPreflight: Boolean = true): ComfyWorkflowState {
+        val snapshot = storage.read()
+        val host = snapshot.hosts.firstOrNull { it.id == workflow.hostId }
+            ?: throw ComfyFailure("主机不存在，请用户先配置主机：${workflow.hostId}")
+        if (workflow.submitterScriptId != null) {
+            val submitter = snapshot.submitters.firstOrNull {
+                it.hostId == workflow.hostId && it.scriptId == workflow.submitterScriptId
+            } ?: throw ComfyFailure("提交器脚本不存在：${workflow.submitterScriptId}")
+            check(submitter.hostId == workflow.hostId)
+        }
+        val stamped = workflow.copy(updatedAt = clock())
+        val state = if (runPreflight) inspectWorkflow(stamped, host, snapshot.submitters)
+        else ComfyWorkflowState(stamped, PreflightResult(PreflightStatus.REVIEW, uncertain = listOf("尚未预检")), clock())
+        return mutation.withLock {
+            val current = storage.read()
+            require(current.workflows.any { it.workflow.workflowId == stamped.workflowId } || current.workflows.size < 500) {
+                "最多配置 500 个工作流"
+            }
+            storage.write(
+                current.copy(
+                    workflows = current.workflows.filterNot { it.workflow.workflowId == stamped.workflowId } + state,
+                ),
+            )
+            state
+        }
+    }
+
+    suspend fun preflightWorkflow(workflowId: String): ComfyWorkflowState {
+        val snapshot = storage.read()
+        val existing = snapshot.workflows.firstOrNull { it.workflow.workflowId == workflowId }
+        if (existing == null) {
+            // 若仍是旧 ComfyTemplate，转调旧 preflight 并投影返回。
+            if (snapshot.templates.any { it.template.id == workflowId }) {
+                val tState = preflight(workflowId)
+                return ComfyWorkflowState(ComfyWorkflow.fromLegacyTemplate(tState.template), tState.preflight, tState.checkedAt)
+            }
+            throw ComfyFailure("工作流不存在：$workflowId")
+        }
+        val host = snapshot.hosts.firstOrNull { it.id == existing.workflow.hostId }
+            ?: throw ComfyFailure("主机不存在：${existing.workflow.hostId}")
+        val next = inspectWorkflow(existing.workflow, host, snapshot.submitters)
+        return mutation.withLock {
+            val current = storage.read()
+            storage.write(
+                current.copy(
+                    workflows = current.workflows.map { if (it.workflow.workflowId == workflowId) next else it },
+                ),
+            )
+            next
+        }
+    }
+
+    suspend fun deleteWorkflow(workflowId: String) = mutation.withLock {
+        val old = storage.read()
+        storage.write(
+            old.copy(
+                workflows = old.workflows.filterNot { it.workflow.workflowId == workflowId },
+                templates = old.templates.filterNot { it.template.id == workflowId },
+            ),
+        )
+    }
+
+    private fun mergeEffectiveWorkflows(config: ComfyConfiguration): List<ComfyWorkflowState> {
+        val workflowIds = config.workflows.mapTo(mutableSetOf()) { it.workflow.workflowId }
+        val projected = config.templates
+            .filter { it.template.id !in workflowIds }
+            .map { state ->
+                ComfyWorkflowState(
+                    workflow = ComfyWorkflow.fromLegacyTemplate(state.template),
+                    preflight = state.preflight,
+                    checkedAt = state.checkedAt,
+                )
+            }
+        return config.workflows + projected
+    }
+
+    private suspend fun inspectWorkflow(
+        workflow: ComfyWorkflow,
+        host: ComfyHost,
+        submitters: List<ComfySubmitterScript>,
+    ): ComfyWorkflowState {
+        val missing = mutableListOf<String>()
+        val uncertain = mutableListOf<String>()
+        val submitter = workflow.submitterScriptId?.let { id ->
+            submitters.firstOrNull { it.hostId == workflow.hostId && it.scriptId == id }
+        }
+        if (workflow.submitterScriptId != null) {
+            if (submitter == null) {
+                missing += "缺少提交器脚本 ${workflow.submitterScriptId}"
+            } else {
+                when (submitter.lastDryRunStatus) {
+                    SubmitterDryRunStatus.PASSED -> Unit
+                    SubmitterDryRunStatus.FAILED -> missing += "提交器干跑失败：${submitter.lastDryRunMessage.take(120)}"
+                    SubmitterDryRunStatus.UNTESTED -> uncertain += "提交器 ${submitter.fileName} 尚未完成干跑自检"
+                }
+            }
+        }
+        val raw = workflow.rawWorkflowJson
+        if (raw != null) {
+            try {
+                val info = http.objectInfoFor(host, raw)
+                raw.forEach { (id, elem) ->
+                    val node = elem as? JsonObject
+                    val classType = (node?.get("class_type") as? JsonPrimitive)?.contentOrNull
+                    if (classType.isNullOrBlank()) {
+                        missing += "节点 $id 缺少 class_type"
+                    } else if (info[classType] == null) {
+                        missing += "节点 $classType"
+                    }
+                }
+                workflow.outputNodeIds.forEach { outId ->
+                    val node = raw[outId] as? JsonObject
+                    if (node == null) missing += "产出节点 $outId"
+                    else {
+                        val ct = (node["class_type"] as? JsonPrimitive)?.contentOrNull
+                        val outputNode = (ct?.let { info[it] as? JsonObject }?.get("output_node") as? JsonPrimitive)?.booleanOrNull
+                        if (outputNode == false) missing += "节点 $outId 不是产出节点"
+                    }
+                }
+                workflow.fields.forEach { field ->
+                    val nodeId = field.nodeId
+                    val inputKey = field.inputKey
+                    if (nodeId != null) {
+                        val node = raw[nodeId] as? JsonObject
+                        if (node == null) missing += "字段 ${field.key} 引用节点 $nodeId 不存在"
+                        else if (inputKey != null && (node["inputs"] as? JsonObject)?.containsKey(inputKey) != true) {
+                            uncertain += "字段 ${field.key} 输入 $nodeId.$inputKey 未在原始图 inputs 中显式列出"
+                        }
+                    }
+                    val upId = field.uploadNodeId
+                    val upInput = field.uploadInputKey
+                    if (upId != null) {
+                        val node = raw[upId] as? JsonObject
+                        if (node == null) missing += "字段 ${field.key} 上传节点 $upId 不存在"
+                        else if (upInput != null && (node["inputs"] as? JsonObject)?.containsKey(upInput) != true) {
+                            missing += "上传输入 $upId.$upInput"
+                        }
+                    }
+                }
+                validateComfyDynamicInputs(raw, info, missing, uncertain)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                uncertain += "无法读取主机节点信息，请检查连接与鉴权后重新预检"
+            }
+        } else {
+            try {
+                checkConnection(host.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                uncertain += "主机当前离线或鉴权失败，请检查主机连接"
+            }
+        }
+        val status = when {
+            missing.isNotEmpty() -> PreflightStatus.MISSING
+            uncertain.isNotEmpty() -> PreflightStatus.REVIEW
+            else -> PreflightStatus.PASS
+        }
+        return ComfyWorkflowState(workflow, PreflightResult(status, missing.distinct(), uncertain.distinct()), clock())
     }
     suspend fun removeTemplateByUser(templateId: String) = mutation.withLock {
         val old = storage.read()

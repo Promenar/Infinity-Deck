@@ -219,6 +219,9 @@ internal data class ComfyRemoteTicket(val promptId: String, val templateId: Stri
 internal fun queueContains(queue: JsonObject, name: String, promptId: String): Boolean = (queue[name] as? JsonArray).orEmpty().any {
     ((it as? JsonArray)?.getOrNull(1) as? JsonPrimitive)?.contentOrNull == promptId
 }
+private val COMFY_PURE_VIDEO_EXTENSIONS = setOf("mp4", "webm", "mov", "mkv", "avi")
+private val COMFY_VIDEO_EXTENSIONS = COMFY_PURE_VIDEO_EXTENSIONS + "gif"
+
 fun parseComfyHistory(history: JsonObject, promptId: String, slots: List<ComfySlot>): RemoteStatus {
     val entry = history[promptId] as? JsonObject ?: return RemoteStatus.Running()
     val status = entry["status"] as? JsonObject
@@ -229,24 +232,39 @@ fun parseComfyHistory(history: JsonObject, promptId: String, slots: List<ComfySl
     val outputs = entry["outputs"] as? JsonObject ?: return RemoteStatus.Failed("ComfyUI 任务完成但缺少产物")
     val files = slots.flatMap { slot ->
         val node = outputs[slot.nodeId] as? JsonObject
-        val kind = slot.outputKind ?: when (slot.input) { "images" -> InputKind.IMAGE; "gifs", "videos", "video" -> InputKind.VIDEO; "audio" -> InputKind.AUDIO; else -> return@flatMap emptyList() }
-        val fields = when (kind) { InputKind.IMAGE -> listOf("images"); InputKind.VIDEO -> listOf("gifs", "videos", "video"); InputKind.AUDIO -> listOf("audio") }
-        // 自定义历史字段保留原合同；标准字段按媒体种类选择，避免混入预览图。
-        val selected = if (slot.input in setOf("images", "gifs", "videos", "video", "audio")) fields else listOf(slot.input)
+        val animated = (node?.get("animated") as? JsonArray)?.map { (it as? JsonPrimitive)?.booleanOrNull == true }.orEmpty()
+        val kind = slot.outputKind ?: when (slot.input) { "images" -> InputKind.IMAGE; "gifs", "videos", "video" -> InputKind.VIDEO; "audio", "audios" -> InputKind.AUDIO; else -> return@flatMap emptyList() }
+        // ComfyUI 0.41.3 SaveVideo 会把 .mp4 写入 images 键并附带 animated:[true]，读取 images 时按扩展名与 animated 标志区分动静态产物。
+        val fields = when (kind) {
+            InputKind.IMAGE -> listOf("images")
+            InputKind.VIDEO -> listOf("gifs", "videos", "video", "images")
+            InputKind.AUDIO -> listOf("audio", "audios")
+        }
+        val selected = if (slot.input in setOf("images", "gifs", "videos", "video", "audio", "audios")) fields else listOf(slot.input)
         selected.flatMap { field ->
-            when (val value = node?.get(field)) {
+            val items = when (val value = node?.get(field)) {
                 is JsonArray -> value.toList()
                 is JsonObject -> listOf(value)
                 else -> emptyList()
             }
-        }.mapNotNull { raw ->
-            val value = raw as? JsonObject ?: return@mapNotNull null
-            val filename = (value["filename"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
-            val folder = (value["subfolder"] as? JsonPrimitive)?.contentOrNull.orEmpty()
-            val type = (value["type"] as? JsonPrimitive)?.contentOrNull ?: "output"
-            require(safeComfyFile(filename, false) && safeComfyFile(folder, true) && type in setOf("output", "temp", "input")) { "产物路径无效" }
-            val view = "http://comfy.invalid/view".toHttpUrl().newBuilder().addQueryParameter("filename", filename).addQueryParameter("subfolder", folder).addQueryParameter("type", type).build()
-            RemoteOutput("/view?${view.encodedQuery}", kind)
+            items.mapIndexedNotNull { itemIndex, raw ->
+                val value = raw as? JsonObject ?: return@mapIndexedNotNull null
+                val filename = (value["filename"] as? JsonPrimitive)?.contentOrNull ?: return@mapIndexedNotNull null
+                val ext = filename.substringAfterLast('.', "").lowercase()
+                if (field == "images") {
+                    if (kind == InputKind.VIDEO) {
+                        val isAnimatedItem = animated.getOrNull(itemIndex) == true && ext !in setOf("png", "jpg", "jpeg")
+                        if (ext !in COMFY_VIDEO_EXTENSIONS && !isAnimatedItem) return@mapIndexedNotNull null
+                    } else if (kind == InputKind.IMAGE && ext in COMFY_PURE_VIDEO_EXTENSIONS) {
+                        return@mapIndexedNotNull null
+                    }
+                }
+                val folder = (value["subfolder"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                val type = (value["type"] as? JsonPrimitive)?.contentOrNull ?: "output"
+                require(safeComfyFile(filename, false) && safeComfyFile(folder, true) && type in setOf("output", "temp", "input")) { "产物路径无效" }
+                val view = "http://comfy.invalid/view".toHttpUrl().newBuilder().addQueryParameter("filename", filename).addQueryParameter("subfolder", folder).addQueryParameter("type", type).build()
+                RemoteOutput("/view?${view.encodedQuery}", kind)
+            }
         }
     }.distinct()
     return if (files.isEmpty()) RemoteStatus.Failed("ComfyUI 任务完成但声明的产出节点没有文件") else RemoteStatus.Succeeded(files)

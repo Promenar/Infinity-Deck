@@ -102,6 +102,7 @@ object NavDestinations {
     const val RECORDING_SETTINGS = "recording_settings"
     const val PROVIDER_LIST = "provider_list"
     const val DEFAULT_MODELS = "default_models"
+    const val COMFY_HUB = "comfy_hub"
     /** 开发者页：版本号连点解锁后才在设置首页出现。 */
     const val DEVELOPER = "developer"
     /** 视觉实验室目录，path 为目录节点路径（如 chat/conversation），空为根目录。 */
@@ -920,7 +921,6 @@ internal fun NavGraphBuilder.settingsDestinations(
         navigator.Page(entry) {
             DefaultModelsScreen(
                 onNavigateBack = { navigator.back() },
-                onNavigateToMediaModels = { navigator.open(MediaSettingsRoutes.MODELS) },
             )
         }
     }

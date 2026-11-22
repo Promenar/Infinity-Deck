@@ -18,17 +18,23 @@ import com.promenar.infinity.navigation.SettingsNavigator
 import com.promenar.infinity.navigation.composablePage
 import java.util.UUID
 
-/** 制作面板通过现有 onNavigateToSecondary 回调打开 [MODELS]。 */
+/** 制作面板与设置首页通过此组路由进入 ComfyUI 与媒体明细页面。 */
 object MediaSettingsRoutes {
     const val MODELS = "media_models"
     const val MODEL = "media_model/{modelId}"
+    const val COMFY_HUB = NavDestinations.COMFY_HUB
     const val HOST = "comfy_host/{hostId}"
     const val HOST_FORM = "comfy_host_form?hostId={hostId}"
     const val TEMPLATE = "comfy_template/{templateId}"
+    const val WORKFLOW_EDITOR = "comfy_workflow_editor?hostId={hostId}&workflowId={workflowId}"
+
     fun model(id: String) = "media_model/${Uri.encode(id)}"
     fun host(id: String) = "comfy_host/${Uri.encode(id)}"
     fun hostForm(id: String? = null) = if (id == null) "comfy_host_form" else "comfy_host_form?hostId=${Uri.encode(id)}"
     fun template(id: String) = "comfy_template/${Uri.encode(id)}"
+    fun workflowEditor(hostId: String, workflowId: String? = null): String =
+        if (workflowId == null) "comfy_workflow_editor?hostId=${Uri.encode(hostId)}"
+        else "comfy_workflow_editor?hostId=${Uri.encode(hostId)}&workflowId=${Uri.encode(workflowId)}"
 }
 
 @Composable
@@ -42,11 +48,35 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
         navigator.Page(entry) {
             val vm = mediaSettingsViewModel()
             val state by vm.state.collectAsStateWithLifecycle()
-            MediaModelsScreenContent(state, onBack = { navigator.back() }, onMoveUp = vm::moveChannelUp,
+            MediaModelsScreenContent(
+                state,
+                onBack = { navigator.back() },
+                onMoveUp = vm::moveChannelUp,
                 onOpen = { row ->
                     row.modelId?.let { navigator.open(MediaSettingsRoutes.model(it)) }
                         ?: row.templateId?.let { navigator.open(MediaSettingsRoutes.template(it)) }
-                }, onProviders = { navigator.open(NavDestinations.PROVIDER_LIST) }, onRetry = vm::reload)
+                },
+                onProviders = { navigator.open(NavDestinations.PROVIDER_LIST) },
+                onRetry = vm::reload,
+            )
+        }
+    }
+    composablePage(MediaSettingsRoutes.COMFY_HUB) { entry ->
+        navigator.Page(entry) {
+            val vm = mediaSettingsViewModel()
+            val state by vm.state.collectAsStateWithLifecycle()
+            LifecycleResumeEffect(vm) {
+                vm.checkConnections()
+                onPauseOrDispose { }
+            }
+            ComfyHubScreenContent(
+                state = state,
+                onBack = { navigator.back() },
+                onOpenHost = { hostId -> navigator.open(MediaSettingsRoutes.host(hostId)) },
+                onAddHost = { navigator.open(MediaSettingsRoutes.hostForm()) },
+                onCheckAll = vm::checkConnections,
+                onRetry = vm::reload,
+            )
         }
     }
     composablePage(MediaSettingsRoutes.MODEL, arguments = listOf(navArgument("modelId") { type = NavType.StringType })) { entry ->
@@ -56,9 +86,15 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
             val id = entry.arguments?.getString("modelId").orEmpty()
             val model = state.snapshot.models.firstOrNull { it.id == id && it.effectiveMediaSettings() != null }
             if (model == null) MediaMissingScreen(state, { navigator.back() }, vm::reload) else {
-                MediaModelDetailScreenContent(model, state, onBack = { navigator.back() },
-                    onMode = { vm.setReferenceMode(id, it) }, onReferenceUp = { vm.moveReferenceUp(id, it) },
-                    onSaveTariff = { draft, saved -> vm.saveTariff(id, draft, saved) }, onRetry = vm::reload)
+                MediaModelDetailScreenContent(
+                    model,
+                    state,
+                    onBack = { navigator.back() },
+                    onMode = { vm.setReferenceMode(id, it) },
+                    onReferenceUp = { vm.moveReferenceUp(id, it) },
+                    onSaveTariff = { draft, saved -> vm.saveTariff(id, draft, saved) },
+                    onRetry = vm::reload,
+                )
             }
         }
     }
@@ -73,17 +109,76 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
                     vm.checkConnections()
                     onPauseOrDispose { }
                 }
-                ComfyHostScreenContent(host, state, onBack = { navigator.back() },
+                ComfyHostScreenContent(
+                    host = host,
+                    state = state,
+                    onBack = { navigator.back() },
                     onEdit = { navigator.open(MediaSettingsRoutes.hostForm(id)) },
                     onDelete = { vm.removeHost(id) { navigator.back() } },
                     onOpenTemplate = { navigator.open(MediaSettingsRoutes.template(it)) },
-                    onPreflight = { vm.preflightHost(id) }, onCheck = vm::checkConnections, onRetry = vm::reload)
+                    onOpenWorkflowEditor = { wfId -> navigator.open(MediaSettingsRoutes.workflowEditor(id, wfId)) },
+                    onNewWorkflow = { navigator.open(MediaSettingsRoutes.workflowEditor(id)) },
+                    onPreflightWorkflow = vm::preflightWorkflow,
+                    onDeleteWorkflow = { wfId -> vm.deleteWorkflow(wfId) },
+                    onSaveSubmitter = { scriptId, fileName, displayName, description, sourceKind, protocol, sourceText, supportFiles, runDryRun, onDone ->
+                        vm.saveSubmitter(
+                            hostId = id,
+                            scriptId = scriptId,
+                            fileName = fileName,
+                            displayName = displayName,
+                            description = description,
+                            sourceKind = sourceKind,
+                            protocol = protocol,
+                            sourceText = sourceText,
+                            supportFiles = supportFiles,
+                            runDryRun = runDryRun,
+                            onSaved = onDone,
+                        )
+                    },
+                    onDryRunSubmitter = { scriptId -> vm.dryRunSubmitter(id, scriptId) },
+                    onDryRunAllSubmitters = { vm.dryRunAllSubmitters(id) },
+                    onDeleteSubmitter = { scriptId -> vm.deleteSubmitter(id, scriptId) },
+                    onReadSubmitterSource = { scriptId -> vm.readSubmitterSource(id, scriptId) },
+                    onPreflight = { vm.preflightHost(id) },
+                    onCheck = vm::checkConnections,
+                    onRetry = vm::reload,
+                )
             }
         }
     }
-    composablePage(MediaSettingsRoutes.HOST_FORM, arguments = listOf(navArgument("hostId") {
-        type = NavType.StringType; nullable = true; defaultValue = null
-    })) { entry ->
+    composablePage(
+        MediaSettingsRoutes.WORKFLOW_EDITOR,
+        arguments = listOf(
+            navArgument("hostId") { type = NavType.StringType },
+            navArgument("workflowId") { type = NavType.StringType; nullable = true; defaultValue = null },
+        ),
+    ) { entry ->
+        navigator.Page(entry) {
+            val vm = mediaSettingsViewModel()
+            val state by vm.state.collectAsStateWithLifecycle()
+            val hostId = entry.arguments?.getString("hostId").orEmpty()
+            val wfId = entry.arguments?.getString("workflowId")
+            val host = state.snapshot.hosts.firstOrNull { it.id == hostId }
+            val existing = wfId?.let { target -> state.snapshot.workflows.firstOrNull { it.workflow.workflowId == target }?.workflow }
+            if (host == null || (wfId != null && state.loaded && existing == null)) {
+                MediaMissingScreen(state, { navigator.back() }, vm::reload)
+            } else {
+                ComfyWorkflowEditorScreenContent(
+                    host = host,
+                    existingWorkflow = existing,
+                    submitters = state.snapshot.submitters,
+                    state = state,
+                    onBack = { navigator.back() },
+                    onSave = { wf -> vm.saveWorkflow(wf) { navigator.back() } },
+                    onRetry = vm::reload,
+                )
+            }
+        }
+    }
+    composablePage(
+        MediaSettingsRoutes.HOST_FORM,
+        arguments = listOf(navArgument("hostId") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) { entry ->
         navigator.Page(entry) {
             val vm = mediaSettingsViewModel()
             val state by vm.state.collectAsStateWithLifecycle()
@@ -91,10 +186,16 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
             val newId = remember { UUID.randomUUID().toString() }
             val host = state.snapshot.hosts.firstOrNull { it.id == id }
             if (!state.loaded || (id != null && host == null)) MediaMissingScreen(state, { navigator.back() }, vm::reload) else {
-                ComfyHostFormScreenContent(host, id != null && id in state.snapshot.credentialHosts, state, onBack = { navigator.back() },
+                ComfyHostFormScreenContent(
+                    host,
+                    id != null && id in state.snapshot.credentialHosts,
+                    state,
+                    onBack = { navigator.back() },
                     onSave = { draft, credential ->
                         vm.saveHost(draft.toHost(id ?: newId, host), credential) { navigator.back() }
-                    }, onRetry = vm::reload)
+                    },
+                    onRetry = vm::reload,
+                )
             }
         }
     }
@@ -105,8 +206,14 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
             val id = entry.arguments?.getString("templateId").orEmpty()
             val template = state.snapshot.templates.firstOrNull { it.template.id == id }
             if (template == null) MediaMissingScreen(state, { navigator.back() }, vm::reload) else {
-                ComfyTemplateScreenContent(template, state, onBack = { navigator.back() },
-                    onLock = { vm.lockTemplate(id, it) }, onPreflight = { vm.preflight(id) }, onRetry = vm::reload)
+                ComfyTemplateScreenContent(
+                    template,
+                    state,
+                    onBack = { navigator.back() },
+                    onLock = { vm.lockTemplate(id, it) },
+                    onPreflight = { vm.preflight(id) },
+                    onRetry = vm::reload,
+                )
             }
         }
     }

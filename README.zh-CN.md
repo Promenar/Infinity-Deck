@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.70.5-beta`（versionCode `197`），在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上修复 ComfyUI 帧率对齐、V3 `COMBO` 与嵌套动态参数诊断、`comfy_probe` 分片探测、端到端 `LAST_FRAME`（L2VA）支持、参考位默认顺序回退、孤立上传节点裁剪与变更实时重扫共 8 项制作缺陷，并完成声纹（`campplus.onnx`）与 SenseVoice 模型不可变 Hugging Face commit 主源锁定及校验重试恢复。`v0.70.4-beta` 累计交付离线 `three.js` 3D 白模分镜预演与 Beauty/Depth 抽帧及硬件 MP4 导出、全视觉参考资产双模与已锁定项 AI 改写审批、全站黑曜石熏黑毛玻璃与「环境光」省电实底及根级悬浮通知胶囊、全站 46 项常驻控件与布局稳定性改造、多图滑切查看器（1×–5× 与 90° 旋转）、录音富格式整理（表格 / Mermaid / ECharts / LaTeX / 1440px+ PNG·PDF 导出）、已发送消息编辑重生成及 `2 MiB` 滚动诊断与单会话轨迹导出。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
+- **当前版本**：`v0.71.0-beta`（versionCode `198`），在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上将云端默认媒体模型（图像/视频/音频独立单选或留空）与设置首页独立的「ComfyUI」兼容层彻底解耦，上线无限自定义内容/固定字段与多文件入参工作流框架、由本机 `127.0.0.1` 回环鉴权代理守护的内部 `PackagedPython` 3.14 提交器沙箱、14 个一等 `comfy_*` 智能体工具与固定参数单次实验 Diff 审批、`STATEFUL_CHAIN` 有状态链式 DAG 任意中段分支重跑能力，并修复 `SaveVideo` `.mp4` 产物漏判、云端默认图像模型被覆写与多卡审批队列聚焦错位问题。前序 `v0.70.5-beta`（`197`）交付了 ComfyUI/L2VA/分镜规划 8 项修复及声纹/SenseVoice 不可变官方源校验；`v0.70.4-beta` 累计交付离线 `three.js` 3D 白模分镜预演与 Beauty/Depth 抽帧及硬件 MP4 导出、全视觉参考资产双模与已锁定项 AI 改写审批、全站黑曜石熏黑毛玻璃与「环境光」省电实底及根级悬浮通知胶囊、全站 46 项常驻控件与布局稳定性改造、多图滑切查看器（1×–5× 与 90° 旋转）、录音富格式整理、已发送消息编辑重生成及 `2 MiB` 滚动诊断导出。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
 
 ### 从源码构建
 
@@ -204,7 +204,7 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 - 内置多标签浏览器，支持移动/桌面 UA 切换、直连本地端口（如 `localhost:8888`）与 `tailnet` 内部站点；支持智能体操作旁观与人工接管
 - 支持生成可交互多屏原型、画布页面与多版本产物
 - 支持云端与 ComfyUI 图像生成，内置画板提供标注与局部重绘蒙版涂抹，配合全站多图滑切查看器（1×–5× 双指/双击缩放、90° 旋转）统一浏览参考图与生成结果
-- 内置影视制作面板：管理剧本、双模视觉参考资产（多视角整卡 / 分张单视图）、分镜、视频候选与配乐，支持单入口审批、已锁定项 AI 改写逐次审批、按尾帧串联续接镜头、调用 ComfyUI 超分/补帧模板、离线 `three.js` 3D 白模分镜预演（机位/自由观察、180° 轴线安全区与 Beauty/Depth 抽帧及硬件 MP4 导出），以及本机合成导出 MP4 粗剪与 SRT 字幕（兼容火山方舟 Seedance、MiniMax 与自建 ComfyUI）
+- 内置影视制作面板：管理剧本、双模视觉参考资产（多视角整卡 / 分张单视图）、分镜、视频候选与配乐，支持单入口审批、已锁定项 AI 改写逐次审批、按尾帧串联续接镜头、调用 ComfyUI 超分/补帧工作流、离线 `three.js` 3D 白模分镜预演（机位/自由观察、180° 轴线安全区与 Beauty/Depth 抽帧及硬件 MP4 导出），以及本机合成导出 MP4 粗剪与 SRT 字幕（兼容火山方舟 Seedance、MiniMax 与自建 ComfyUI）
 - 会话内容支持导出为独立 HTML、A4 PDF 或长图
 
 各模块的详细说明与限制边界见[功能详解](docs/guide/features.md)。

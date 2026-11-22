@@ -399,6 +399,8 @@ class SettingsViewModel(
     val modelTimeouts: StateFlow<ModelTimeoutSettings> = pm.modelTimeouts
     fun setModelTimeout(kind: ModelTimeoutKind, seconds: Int) = pm.setModelTimeout(kind, seconds)
     val imageModelId: StateFlow<String> = pm.imageModelId
+    val videoModelId: StateFlow<String> = pm.videoModelId
+    val audioModelId: StateFlow<String> = pm.audioModelId
     val embeddingModelId: StateFlow<String> = pm.embeddingModelId
     val rerankModelId: StateFlow<String> = pm.rerankModelId
 

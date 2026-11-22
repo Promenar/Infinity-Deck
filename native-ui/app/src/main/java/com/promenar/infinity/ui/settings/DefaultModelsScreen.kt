@@ -6,9 +6,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ShortText
 import androidx.compose.material.icons.automirrored.rounded.Sort
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,7 +46,10 @@ enum class DefaultModelRole(
 ) {
     SUMMARY("summary", "chat", R.string.settings_model_summary),
     EMBEDDING("embedding", "embedding", R.string.settings_model_embedding),
-    RERANK("rerank", "rerank", R.string.settings_model_rerank)
+    RERANK("rerank", "rerank", R.string.settings_model_rerank),
+    IMAGE("image", "cloud_image", R.string.settings_default_cloud_image),
+    VIDEO("video", "cloud_video", R.string.settings_default_cloud_video),
+    AUDIO("audio", "cloud_audio", R.string.settings_default_cloud_audio),
 }
 
 @Composable
@@ -59,6 +64,9 @@ fun DefaultModelsScreen(
     val summaryModelId by viewModel.summaryModelId.collectAsState()
     val embeddingModelId by viewModel.embeddingModelId.collectAsState()
     val rerankModelId by viewModel.rerankModelId.collectAsState()
+    val imageModelId by viewModel.imageModelId.collectAsState()
+    val videoModelId by viewModel.videoModelId.collectAsState()
+    val audioModelId by viewModel.audioModelId.collectAsState()
     val timeouts by viewModel.modelTimeouts.collectAsState()
 
     var activePickerRole by remember { mutableStateOf<DefaultModelRole?>(null) }
@@ -73,17 +81,35 @@ fun DefaultModelsScreen(
         }
     }
 
-    val state = remember(resolvedModels, summaryModelId, embeddingModelId, rerankModelId, timeouts) {
+    val state = remember(
+        resolvedModels,
+        summaryModelId,
+        embeddingModelId,
+        rerankModelId,
+        imageModelId,
+        videoModelId,
+        audioModelId,
+        timeouts,
+    ) {
         val summaryInfo = resolvedModels.firstOrNull { it.selectionId == summaryModelId }
         val embeddingInfo = resolvedModels.firstOrNull { it.selectionId == embeddingModelId }
         val rerankInfo = resolvedModels.firstOrNull { it.selectionId == rerankModelId }
+        val imageInfo = resolvedModels.firstOrNull { it.selectionId == imageModelId }
+        val videoInfo = resolvedModels.firstOrNull { it.selectionId == videoModelId }
+        val audioInfo = resolvedModels.firstOrNull { it.selectionId == audioModelId }
         DefaultModelsScreenState(
             summaryModelName = resolveDefaultModelName(resolvedModels, summaryModelId),
             embeddingModelName = resolveDefaultModelName(resolvedModels, embeddingModelId),
             rerankModelName = resolveDefaultModelName(resolvedModels, rerankModelId),
+            imageModelName = resolveDefaultModelName(resolvedModels, imageModelId),
+            videoModelName = resolveDefaultModelName(resolvedModels, videoModelId),
+            audioModelName = resolveDefaultModelName(resolvedModels, audioModelId),
             summaryProviderName = summaryInfo?.providerName,
             embeddingProviderName = embeddingInfo?.providerName,
             rerankProviderName = rerankInfo?.providerName,
+            imageProviderName = imageInfo?.providerName,
+            videoProviderName = videoInfo?.providerName,
+            audioProviderName = audioInfo?.providerName,
             timeouts = timeouts,
         )
     }
@@ -102,7 +128,6 @@ fun DefaultModelsScreen(
     DefaultModelsScreenContent(
         state = state,
         actions = actions,
-        onMediaModels = onNavigateToMediaModels,
     )
 
     if (activePickerRole != null) {
@@ -111,6 +136,9 @@ fun DefaultModelsScreen(
             DefaultModelRole.SUMMARY -> summaryModelId
             DefaultModelRole.EMBEDDING -> embeddingModelId
             DefaultModelRole.RERANK -> rerankModelId
+            DefaultModelRole.IMAGE -> imageModelId
+            DefaultModelRole.VIDEO -> videoModelId
+            DefaultModelRole.AUDIO -> audioModelId
         }
 
         ModelPicker(
@@ -137,9 +165,15 @@ internal data class DefaultModelsScreenState(
     val summaryModelName: String = "",
     val embeddingModelName: String = "",
     val rerankModelName: String = "",
+    val imageModelName: String = "",
+    val videoModelName: String = "",
+    val audioModelName: String = "",
     val summaryProviderName: String? = null,
     val embeddingProviderName: String? = null,
     val rerankProviderName: String? = null,
+    val imageProviderName: String? = null,
+    val videoProviderName: String? = null,
+    val audioProviderName: String? = null,
     val timeouts: ModelTimeoutSettings = ModelTimeoutSettings(),
 )
 
@@ -163,15 +197,16 @@ internal fun DefaultModelsScreenContent(
         LazyColumn(contentPadding = contentPadding) {
             item("models") {
                 InfinitySettingsSection(
-                    title = stringResource(R.string.settings_section_ai_models),
+                    title = stringResource(R.string.settings_default_text_section),
                     footer = stringResource(R.string.settings_model_quick_description),
                     footerModifier = Modifier.testTag("default_model_quick_description"),
                 ) {
-                    DefaultModelRole.entries.forEach { role ->
+                    listOf(DefaultModelRole.SUMMARY, DefaultModelRole.EMBEDDING, DefaultModelRole.RERANK).forEach { role ->
                         val (selectedModelName, providerName) = when (role) {
                             DefaultModelRole.SUMMARY -> state.summaryModelName to state.summaryProviderName
                             DefaultModelRole.EMBEDDING -> state.embeddingModelName to state.embeddingProviderName
                             DefaultModelRole.RERANK -> state.rerankModelName to state.rerankProviderName
+                            else -> "" to null
                         }
                         DefaultModelSettingItem(
                             role = role,
@@ -183,16 +218,26 @@ internal fun DefaultModelsScreenContent(
                     }
                 }
             }
-            if (onMediaModels != null) item("media-models") {
-                InfinitySettingsSection(title = stringResource(R.string.media_settings_title)) {
-                    InfinitySettingsItem(
-                        icon = Icons.Rounded.AutoAwesome,
-                        title = stringResource(R.string.media_settings_title),
-                        subtitle = stringResource(R.string.media_settings_entry_subtitle),
-                        subtitleMaxLines = 1,
-                        onClick = onMediaModels,
-                        showChevron = true,
-                    )
+            item("cloud-media-models") {
+                InfinitySettingsSection(
+                    title = stringResource(R.string.settings_default_media_section),
+                    footer = stringResource(R.string.settings_default_media_footer),
+                ) {
+                    listOf(DefaultModelRole.IMAGE, DefaultModelRole.VIDEO, DefaultModelRole.AUDIO).forEach { role ->
+                        val (selectedModelName, providerName) = when (role) {
+                            DefaultModelRole.IMAGE -> state.imageModelName to state.imageProviderName
+                            DefaultModelRole.VIDEO -> state.videoModelName to state.videoProviderName
+                            DefaultModelRole.AUDIO -> state.audioModelName to state.audioProviderName
+                            else -> "" to null
+                        }
+                        DefaultModelSettingItem(
+                            role = role,
+                            selectedModelName = selectedModelName,
+                            onSelectModel = { actions.onShowModelPicker(role) },
+                            onClearModel = { actions.onClearModel(role) },
+                            providerName = providerName,
+                        )
+                    }
                 }
             }
             item("timeouts") {
@@ -240,6 +285,9 @@ private fun DefaultModelRole.vectorIcon() = when (this) {
     DefaultModelRole.SUMMARY -> Icons.AutoMirrored.Rounded.ShortText
     DefaultModelRole.EMBEDDING -> Icons.Rounded.Hub
     DefaultModelRole.RERANK -> Icons.AutoMirrored.Rounded.Sort
+    DefaultModelRole.IMAGE -> Icons.Rounded.Image
+    DefaultModelRole.VIDEO -> Icons.Rounded.Movie
+    DefaultModelRole.AUDIO -> Icons.Rounded.GraphicEq
 }
 
 @Composable

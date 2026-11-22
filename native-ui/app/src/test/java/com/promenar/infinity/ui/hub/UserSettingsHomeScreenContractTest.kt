@@ -75,6 +75,8 @@ class UserSettingsHomeScreenContractTest {
         val aiSection = content.substringAfter("settings_ia_section_models")
             .substringBefore("settings_ia_section_agent_runtime")
         assertThat(aiSection.indexOf("PROVIDER_LIST")).isLessThan(aiSection.indexOf("DEFAULT_MODELS"))
+        assertThat(aiSection).contains("COMFY_HUB")
+        assertThat(aiSection.indexOf("DEFAULT_MODELS")).isLessThan(aiSection.indexOf("COMFY_HUB"))
     }
 
     @Test
@@ -357,5 +359,16 @@ class UserSettingsHomeScreenContractTest {
 
         assertThat(providerListSource).contains("UiTags.settingsProviderCard(")
         assertThat(providerListSource).contains("UiTags.settingsProviderActions(")
+    }
+
+    @Test
+    fun `comfyui entry lives under models section without layer badge and provider list stays cloud only`() {
+        assertThat(uiTagsSource).contains("SETTINGS_COMFY_ENTRY")
+        assertThat(screenSource).contains("UiTags.SETTINGS_COMFY_ENTRY")
+        assertThat(screenSource).contains("NavDestinations.COMFY_HUB")
+        assertThat(screenSource).doesNotContain("兼容层")
+        assertThat(providerListSource).doesNotContain("ComfyHostsSection")
+        assertThat(providerListSource).doesNotContain("迁移到")
+        assertThat(providerListSource).doesNotContain("ComfyUI 兼容层")
     }
 }

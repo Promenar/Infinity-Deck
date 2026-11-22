@@ -51,11 +51,11 @@
     <string name="production_task_cancel">取消</string>
     <string name="p2_task_canceled">已取消</string>
 
-    <string name="media_settings_templates_in_session">模板由智能体在会话中管理，修改在会话内批准</string>
+    <string name="media_settings_templates_in_session">工作流由智能体在会话中管理，修改在会话内批准</string>
 
-    <string name="comfy_template_approval_new">新建工作流模板</string>
-    <string name="comfy_template_approval_edit">修改工作流模板</string>
-    <string name="comfy_template_approval_template">模板</string>
+    <string name="comfy_template_approval_new">新建工作流</string>
+    <string name="comfy_template_approval_edit">修改工作流</string>
+    <string name="comfy_template_approval_template">工作流</string>
     <string name="comfy_template_approval_host">主机</string>
     <string name="comfy_template_approval_nodes">节点</string>
     <string name="comfy_template_approval_added">新增 %1$s</string>

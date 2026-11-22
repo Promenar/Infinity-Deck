@@ -11,14 +11,19 @@ class MediaSettingsPanelHostTest {
             MediaSettingsRoutes.MODELS,
             // JVM 单测没有 android.net.Uri，按 Uri.encode 的结果直接写出实际路由与登记的路由模式。
             MediaSettingsRoutes.MODEL,
+            MediaSettingsRoutes.COMFY_HUB,
             MediaSettingsRoutes.HOST,
             MediaSettingsRoutes.HOST_FORM,
             MediaSettingsRoutes.TEMPLATE,
+            MediaSettingsRoutes.WORKFLOW_EDITOR,
             "media_model/cloud%3Aseedance",
+            "comfy_hub",
             "comfy_host/main",
             "comfy_host_form",
             "comfy_host_form?hostId=main",
             "comfy_template/main%2Fqwen-image",
+            "comfy_workflow_editor?hostId=main",
+            "comfy_workflow_editor?hostId=main&workflowId=wf1",
         ).forEach { assertThat(isMediaSettingsRoute(it)).isTrue() }
     }
 

@@ -77,6 +77,7 @@ internal class DefaultChatGenerationRunnerFactory(
     private val attachmentWorkspaceStore: com.promenar.infinity.data.document.UserAttachmentWorkspaceStore? = null,
     private val cleanupGate: com.promenar.infinity.data.session.SessionExecutionGate? = null,
     private val cleanupDispatcher: kotlinx.coroutines.CoroutineDispatcher = generationCleanupDispatcher,
+    private val comfyRepository: com.promenar.infinity.data.mediagen.comfy.ComfyRepository? = null,
 ) : GenerationRunnerFactory {
     override fun create(request: GenerationRequest, taskId: String): GenerationRunner =
         ChatGenerationRunner(createRuntime(request.sessionId, taskId),
@@ -134,6 +135,7 @@ internal class DefaultChatGenerationRunnerFactory(
             branchService = branchService, branchPlans = branchPlans, sessionMailbox = sessionMailbox,
             knowledgeCatalog = knowledgeCatalog, knowledgeAccessPlanner = knowledgeAccessPlanner, knowledgeTurns = knowledgeTurns,
             chatCitationRecorder = chatCitationRecorder,
+            comfyRepository = comfyRepository,
         )
     }
 }

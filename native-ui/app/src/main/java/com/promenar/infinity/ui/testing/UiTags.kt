@@ -175,6 +175,7 @@ object UiTags {
     const val SETTINGS_PROVIDER_LIST = "settings_provider_list"
     const val SETTINGS_PROVIDER_ENTRY = "settings_provider_entry"
     const val SETTINGS_DEFAULT_MODELS_ENTRY = "settings_default_models_entry"
+    const val SETTINGS_COMFY_ENTRY = "settings_comfy_entry"
     const val SETTINGS_ADD_PROVIDER = "settings_add_provider"
     const val SETTINGS_PROVIDER_ACTIONS = "settings_provider_actions"
     const val SETTINGS_LOCAL_INFERENCE_ENTRY = "settings_local_inference_entry"

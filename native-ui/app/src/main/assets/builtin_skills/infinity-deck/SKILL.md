@@ -47,6 +47,10 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 | `agents_write` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `browser_eval` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `comfy_define_template` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `comfy_delete_submitter` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `comfy_delete_workflow` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `comfy_save_submitter` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `comfy_save_workflow` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `copy_knowledge_to_linux` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_directory` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 | `create_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
@@ -79,7 +83,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 
 MCP 工具由用户连接的服务器动态提供，名称不是固定内置清单的一部分：风险为 SCHEDULE、ACCESS_GRANT 或 AGENT_CONFIG 的工具需逐次审批，其它按实际工具名、参数目标和会话权限规则判定；连接不代表可以越过外部服务权限。自定义数据库/脚本 Skill 当前没有隔离执行器，不向模型暴露执行。`request_secret` 和 `show_secret` 免工具执行审批，但其保密卡需要用户输入或查看；不要让用户把秘密贴进聊天。`capture_secret` 是命令参数机制，不是独立模型工具。
 
-ComfyUI 主机由用户在界面配置。`comfy_probe` 需指定 `node_type` 或 `node_types`（1～30 个精确节点类名）按节点分片读取节点与模型摘要，`comfy_templates` 列出模板、通道、锁定状态与预检结果，指定 `template_id` 和 `recheck=true` 可重新预检；这两个工具免执行审批。`comfy_define_template` 定义并锁定 API Format 工作流模板，属于配置变更，每次都需用户审批且不可限时免批；新建与修改同一 id 的已锁定模板都走这一审批，批准后模板保持锁定并重新预检。这些工具不提交生成任务。
+ComfyUI 主机与云端默认媒体模型相互独立：主机地址与鉴权凭据由用户在“设置 → ComfyUI”界面配置；即使用户在默认模型页将云端默认图像/视频模型留空，也可直接通过 ComfyUI 工作流生成。`comfy_list_hosts`、`comfy_probe`、`comfy_list_submitters`、`comfy_list_workflows`、`comfy_preflight_workflow`、`comfy_get_chain_state` 及旧接口 `comfy_templates` 均免执行审批。`comfy_save_submitter`、`comfy_delete_submitter`、`comfy_save_workflow`、`comfy_delete_workflow` 与 `comfy_define_template` 属于配置变更，每次均需用户审批且不可限时免批；提交器 `.py` 脚本仅在内部受控 Python 3.14 运行目录执行，且仅接收本机回环代理地址，零接触主机密钥与令牌。`comfy_run_workflow` 按两级门禁执行：日常仅传 `content_inputs` 时免工作流固定参数审批（支持单次执行与 `stateful_chain` 多段接续/任意有效中段重跑/分叉）；当传入 `fixed_overrides` 且值偏离工作流固定基线时，系统弹出精确 Diff 卡片请求一次性批准，批准仅对本次运行生效且绝不修改保存的工作流基线。`comfy_set_chain_tip` 免审批，用于切换有状态链当前末端节点。
 
 ### 仅用户可操作的配置
 

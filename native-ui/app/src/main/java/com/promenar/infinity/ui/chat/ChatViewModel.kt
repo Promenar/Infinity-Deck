@@ -198,12 +198,14 @@ internal suspend fun resolveChatApprovalExecutionTarget(
     sessionCommunicationTarget: (suspend (Session, String, String) -> String?)? = null,
     knowledgeAccessTarget: (suspend (Session, String, String) -> String?)? = null,
     productionLockTarget: (suspend (Session, String, String, String, String?) -> String?)? = null,
+    comfyOverrideTarget: (suspend (String, String) -> String?)? = null,
 ): String? {
     val call = session.messages.firstOrNull { it.id == assistantMessageId }?.toolCalls.orEmpty()
         .firstOrNull { it.id == identity.toolCallId && it.name == identity.toolName } ?: return null
     val tool = toolLookup(identity.runtimeToolId) ?: return null
     return knowledgeAccessTarget?.invoke(session, call.name, call.arguments)
         ?: productionLockTarget?.invoke(session, assistantMessageId, call.name, call.arguments, identity.executionTarget)
+        ?: comfyOverrideTarget?.invoke(call.name, call.arguments)
         ?: sessionCommunicationTarget?.invoke(session, call.name, call.arguments)
         ?: com.promenar.infinity.data.generation.resolveSessionToolTarget(
             session, tool, call.arguments, workspaceRepository, mounts, sshHostStore, sshSessionHost, linuxFiles,
@@ -517,6 +519,17 @@ class ChatViewModel(
                         ops?.let {
                             (application as InfinityApplication).productionRepository
                                 .preflightLockApproval(currentSession.id, msgId, it, reason, expectedTarget = expectedTarget)
+                                ?.authorizationTarget
+                        }
+                    }
+                },
+                comfyOverrideTarget = { toolName, arguments ->
+                    if (toolName != "comfy_run_workflow") null else {
+                        val validArgs = (com.promenar.infinity.domain.tool.ToolArgumentsValidator()
+                            .validate(arguments) as? com.promenar.infinity.domain.tool.ToolArgumentsValidation.Valid)?.arguments
+                        validArgs?.let {
+                            com.promenar.infinity.data.mediagen.comfy.ComfyFixedOverrideApprovalPlanner
+                                .analyze((application as InfinityApplication).comfyMedia.repository, it)
                                 ?.authorizationTarget
                         }
                     }

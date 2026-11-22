@@ -15,6 +15,7 @@ class SettingsNavigationContractTest {
         assertThat(navGraphSource).contains("const val THEME_CONFIG = \"theme_config\"")
         assertThat(navGraphSource).contains("const val PROVIDER_LIST = \"provider_list\"")
         assertThat(navGraphSource).contains("const val DEFAULT_MODELS = \"default_models\"")
+        assertThat(navGraphSource).contains("const val COMFY_HUB = \"comfy_hub\"")
         assertThat(navGraphSource).contains("const val PROVIDER_FORM = \"provider_form?providerId={providerId}\"")
         assertThat(navGraphSource).contains("const val PROVIDER_MODELS = \"provider_models/{providerId}\"")
         assertThat(navGraphSource).contains("NavDestinations.PROVIDER_LIST")

@@ -1370,18 +1370,30 @@ fun ChatScreenContent(
                                     calls = request.calls.map { call ->
                                         val isProductionLock = call.toolName == "production_update" &&
                                             com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(call.executionTarget)
+                                        val isComfyOverride = call.toolName == "comfy_run_workflow" &&
+                                            com.promenar.infinity.data.mediagen.comfy.ComfyFixedOverrideApprovalPlanner.isOverrideTarget(call.executionTarget)
+                                        val isComfyManagement = call.toolName in setOf(
+                                            "comfy_save_submitter",
+                                            "comfy_delete_submitter",
+                                            "comfy_save_workflow",
+                                            "comfy_delete_workflow",
+                                            "comfy_define_template",
+                                        )
                                         ApprovalDisplayCall(
                                             name = call.toolName,
                                             argumentsSummary = call.argumentsSummary,
-                                            riskLabel = if (isProductionLock) {
-                                                stringResource(R.string.production_lock_approval_tag)
-                                            } else {
-                                                approvalRiskLabel(call.risk)
+                                            riskLabel = when {
+                                                isProductionLock -> stringResource(R.string.production_lock_approval_tag)
+                                                isComfyOverride -> stringResource(R.string.comfy_override_approval_tag)
+                                                isComfyManagement -> stringResource(R.string.comfy_management_approval_tag)
+                                                else -> approvalRiskLabel(call.risk)
                                             },
                                             executionTarget = call.executionTarget,
                                             highRisk = call.risk in setOf("delete", "process"),
                                             timedGrantLabel = call.grantCategory?.let { timedGrantLabel(it) },
-                                            oneShotOnly = call.toolName == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE,
+                                            oneShotOnly = call.toolName == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE ||
+                                                isComfyOverride ||
+                                                isComfyManagement,
                                             preview = remember(call, request.assistantMessageId, uiState.messages) {
                                                 ApprovalPreview.forCall(call, uiState.messages, request.assistantMessageId)
                                             },

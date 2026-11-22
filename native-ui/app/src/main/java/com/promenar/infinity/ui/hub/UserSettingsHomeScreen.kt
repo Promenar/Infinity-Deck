@@ -446,6 +446,14 @@ internal fun UserSettingsHomeScreenContent(
                         selected = state.selectedRoute == NavDestinations.DEFAULT_MODELS,
                         modifier = Modifier.testTag(UiTags.SETTINGS_DEFAULT_MODELS_ENTRY),
                     )
+                    UserSettingsNavigationItem(
+                        icon = Icons.Rounded.Hub,
+                        title = stringResource(R.string.settings_ia_comfyui),
+                        subtitle = stringResource(R.string.settings_ia_comfyui_subtitle),
+                        onClick = { actions.onNavigateToSecondary(NavDestinations.COMFY_HUB) },
+                        selected = state.selectedRoute == NavDestinations.COMFY_HUB,
+                        modifier = Modifier.testTag(UiTags.SETTINGS_COMFY_ENTRY),
+                    )
                     if (state.localInferenceAvailable) {
                         Box(modifier = Modifier.testTag(UiTags.SETTINGS_LOCAL_INFERENCE_ENTRY)) {
                             UserSettingsNavigationItem(

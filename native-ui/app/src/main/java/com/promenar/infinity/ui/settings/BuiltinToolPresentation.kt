@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.Calculate
+import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.CreateNewFolder
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.FindInPage
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.ImageSearch
 import androidx.compose.material.icons.rounded.Javascript
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewInAr
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -53,7 +56,13 @@ internal fun builtinToolCategory(id: String): BuiltinToolCategory = when (id) {
     "file_read", "file_list", "file_search", "file_diff", "file_write", "file_patch",
     "create_file", "create_directory", "move_file", "delete_file", "copy_knowledge_to_linux" -> BuiltinToolCategory.FILES
     "exec_js", "run_script", "shell_exec", "python_exec", "python_sandbox" -> BuiltinToolCategory.EXECUTION
-    "image_generation", "view_media", "media_fetch" -> BuiltinToolCategory.MEDIA
+    "image_generation", "view_media", "media_fetch",
+    "comfy_probe", "comfy_templates", "comfy_define_template",
+    "comfy_list_hosts", "comfy_list_submitters", "comfy_list_workflows",
+    "comfy_preflight_workflow", "comfy_get_chain_state",
+    "comfy_save_submitter", "comfy_delete_submitter",
+    "comfy_save_workflow", "comfy_delete_workflow",
+    "comfy_run_workflow", "comfy_set_chain_tip" -> BuiltinToolCategory.MEDIA
     "state_define", "state_update", "state_get", "state_remove",
     "production_define", "production_attach", "production_get", "production_update", "production_remove", "production_previs",
     "initialize_plan", "update_plan", "get_plan", "drop_plan" -> BuiltinToolCategory.PLANNING
@@ -78,6 +87,13 @@ internal fun builtinToolIcon(id: String): ImageVector = when (id) {
     "image_generation" -> Icons.Rounded.Image
     "view_media" -> Icons.Rounded.ImageSearch
     "media_fetch" -> Icons.Rounded.Download
+    "comfy_list_hosts", "comfy_probe" -> Icons.Rounded.Hub
+    "comfy_list_submitters", "comfy_save_submitter" -> Icons.Rounded.Code
+    "comfy_delete_submitter", "comfy_delete_workflow" -> Icons.Rounded.DeleteOutline
+    "comfy_templates", "comfy_list_workflows", "comfy_save_workflow", "comfy_define_template" -> Icons.Rounded.Tune
+    "comfy_preflight_workflow" -> Icons.Rounded.CheckCircleOutline
+    "comfy_get_chain_state", "comfy_set_chain_tip" -> Icons.Rounded.AccountTree
+    "comfy_run_workflow" -> Icons.Rounded.PlayCircleOutline
     "file_read" -> Icons.Rounded.Description
     "file_write" -> Icons.Rounded.EditNote
     "file_list" -> Icons.Rounded.FolderOpen

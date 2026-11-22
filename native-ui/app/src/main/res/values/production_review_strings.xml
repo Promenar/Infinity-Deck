@@ -56,11 +56,11 @@
     <string name="production_task_cancel">Cancel</string>
     <string name="p2_task_canceled">Canceled</string>
 
-    <string name="media_settings_templates_in_session">Templates are managed by the agent in a session; changes are approved there</string>
+    <string name="media_settings_templates_in_session">Workflows are managed by the agent in a session; changes are approved there</string>
 
-    <string name="comfy_template_approval_new">New workflow template</string>
-    <string name="comfy_template_approval_edit">Edit workflow template</string>
-    <string name="comfy_template_approval_template">Template</string>
+    <string name="comfy_template_approval_new">New workflow</string>
+    <string name="comfy_template_approval_edit">Edit workflow</string>
+    <string name="comfy_template_approval_template">Workflow</string>
     <string name="comfy_template_approval_host">Host</string>
     <string name="comfy_template_approval_nodes">Nodes</string>
     <string name="comfy_template_approval_added">Added %1$s</string>

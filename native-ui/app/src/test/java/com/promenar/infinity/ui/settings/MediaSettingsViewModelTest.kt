@@ -92,6 +92,74 @@ class MediaSettingsViewModelTest {
         assertEquals(ComfyConnection.OFFLINE, vm.state.value.connections["h"])
         vm.viewModelScopeCancelForTest()
     }
+
+    @Test fun managesSubmittersAndWorkflowsWithDryRunPreflightAndFailureRecovery() = runTest(dispatcher) {
+        val store = FakeMediaSettingsStore()
+        val vm = MediaSettingsViewModel({ store }, dispatcher)
+        runCurrent()
+
+        var savedSubmitter = false
+        vm.saveSubmitter(
+            hostId = "h",
+            scriptId = "sub_qwen",
+            fileName = "submit_qwen.py",
+            displayName = "Qwen Submit",
+            description = "Qwen 2.1",
+            sourceKind = SubmitterSourceKind.DESKTOP_IMPORT,
+            protocol = SubmitterInvocationProtocol.CLI_ARGS,
+            sourceText = "print('ok')",
+            supportFiles = emptyMap(),
+            runDryRun = true,
+        ) { savedSubmitter = true }
+        advanceUntilIdle()
+        assertTrue(savedSubmitter)
+        assertEquals("sub_qwen", vm.state.value.snapshot.submitters.single().scriptId)
+        assertEquals(SubmitterDryRunStatus.PASSED, vm.state.value.snapshot.submitters.single().lastDryRunStatus)
+
+        vm.dryRunSubmitter("h", "sub_qwen")
+        advanceUntilIdle()
+        assertEquals(listOf("h:sub_qwen"), store.dryRuns)
+
+        val wf = ComfyWorkflow(
+            workflowId = "wf_qwen",
+            hostId = "h",
+            name = "Qwen 2.1",
+            mediaCategory = ComfyMediaCategory.IMAGE,
+            submitterScriptId = "sub_qwen",
+            fields = listOf(WorkflowFieldSpec(key = "prompt", label = "Prompt", mutability = FieldMutability.CONTENT, valueType = FieldValueType.TEXT)),
+        )
+        var savedWorkflow = false
+        vm.saveWorkflow(wf) { savedWorkflow = true }
+        advanceUntilIdle()
+        assertTrue(savedWorkflow)
+        assertEquals("wf_qwen", vm.state.value.snapshot.workflows.single().workflow.workflowId)
+
+        vm.preflightWorkflow("wf_qwen")
+        advanceUntilIdle()
+        assertEquals(listOf("wf_qwen"), store.workflowPreflights)
+
+        store.fail = true
+        var deletedOnFailure = false
+        vm.deleteWorkflow("wf_qwen") { deletedOnFailure = true }
+        advanceUntilIdle()
+        assertFalse(deletedOnFailure)
+        assertTrue(vm.state.value.failed)
+        assertFalse(vm.state.value.busy)
+
+        store.fail = false
+        var deletedWorkflow = false
+        vm.deleteWorkflow("wf_qwen") { deletedWorkflow = true }
+        advanceUntilIdle()
+        assertTrue(deletedWorkflow)
+        assertTrue(vm.state.value.snapshot.workflows.isEmpty())
+
+        var deletedSubmitter = false
+        vm.deleteSubmitter("h", "sub_qwen") { deletedSubmitter = true }
+        advanceUntilIdle()
+        assertTrue(deletedSubmitter)
+        assertTrue(vm.state.value.snapshot.submitters.isEmpty())
+        vm.viewModelScopeCancelForTest()
+    }
 }
 
 private fun MediaSettingsViewModel.viewModelScopeCancelForTest() {
@@ -113,6 +181,8 @@ private class FakeMediaSettingsStore : MediaSettingsStore {
     var lastMode: CharacterReferenceMode? = null
     var lastReferenceOrder = emptyList<String>()
     var tariffWrites = 0
+    var dryRuns = mutableListOf<String>()
+    var workflowPreflights = mutableListOf<String>()
     var fail = false
     override fun observe() = snapshots
     override suspend fun reorder(group: MediaGroup, ids: List<String>) {
@@ -133,5 +203,61 @@ private class FakeMediaSettingsStore : MediaSettingsStore {
     override suspend fun lock(id: String, referenceOrder: List<String>) {
         lastReferenceOrder = referenceOrder
         snapshots.value = snapshots.value.copy(templates = snapshots.value.templates.map { it.copy(template = it.template.copy(locked = true)) })
+    }
+    override suspend fun saveSubmitter(
+        hostId: String,
+        scriptId: String,
+        fileName: String,
+        displayName: String,
+        description: String,
+        sourceKind: SubmitterSourceKind,
+        protocol: SubmitterInvocationProtocol,
+        sourceText: String,
+        supportFiles: Map<String, ByteArray>,
+        runDryRun: Boolean,
+    ) {
+        if (fail) error("fixture")
+        val saved = ComfySubmitterScript(
+            scriptId = scriptId,
+            hostId = hostId,
+            fileName = fileName,
+            displayName = displayName,
+            description = description,
+            sourceKind = sourceKind,
+            protocol = protocol,
+            sha256 = "0".repeat(64),
+            supportFiles = supportFiles.keys.toList(),
+            lastDryRunStatus = if (runDryRun) SubmitterDryRunStatus.PASSED else SubmitterDryRunStatus.UNTESTED,
+        )
+        snapshots.value = snapshots.value.copy(
+            submitters = snapshots.value.submitters.filterNot { it.hostId == hostId && it.scriptId == scriptId } + saved,
+        )
+    }
+    override suspend fun dryRunSubmitter(hostId: String, scriptId: String) {
+        if (fail) error("fixture")
+        dryRuns += "$hostId:$scriptId"
+    }
+    override suspend fun deleteSubmitter(hostId: String, scriptId: String) {
+        if (fail) error("fixture")
+        snapshots.value = snapshots.value.copy(
+            submitters = snapshots.value.submitters.filterNot { it.hostId == hostId && it.scriptId == scriptId },
+        )
+    }
+    override suspend fun saveWorkflow(workflow: ComfyWorkflow) {
+        if (fail) error("fixture")
+        val state = ComfyWorkflowState(workflow, PreflightResult(PreflightStatus.PASS))
+        snapshots.value = snapshots.value.copy(
+            workflows = snapshots.value.workflows.filterNot { it.workflow.workflowId == workflow.workflowId } + state,
+        )
+    }
+    override suspend fun preflightWorkflow(workflowId: String) {
+        if (fail) error("fixture")
+        workflowPreflights += workflowId
+    }
+    override suspend fun deleteWorkflow(workflowId: String) {
+        if (fail) error("fixture")
+        snapshots.value = snapshots.value.copy(
+            workflows = snapshots.value.workflows.filterNot { it.workflow.workflowId == workflowId },
+        )
     }
 }

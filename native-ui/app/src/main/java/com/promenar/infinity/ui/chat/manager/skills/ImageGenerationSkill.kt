@@ -135,7 +135,11 @@ class ImageGenerationSkill(
         val modelId = providerManager.imageModelId.value.takeIf { it.isNotBlank() } ?: ""
 
         if (modelId.isBlank()) {
-            return ToolResult(id = resultId, content = "Image generation not configured: no image model selected. Please select an image model in Settings → Default Image Model.", status = "error")
+            return ToolResult(
+                id = resultId,
+                content = "Image generation not configured: no cloud image model selected. Please select a Default Image Model in Settings → Default Models, or use ComfyUI workflows (comfy_list_workflows / comfy_run_workflow) if you want local image generation.",
+                status = "error",
+            )
         }
 
         output.emit(com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT, "正在生成 ${request.requested.n ?: 1} 张图片\n")

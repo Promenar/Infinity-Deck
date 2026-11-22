@@ -89,8 +89,8 @@
       "linux_sha256": "4a68945423b98ef05e608c45fc3c83f10aebd3d78bd24daa98b01d6defab7418"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/defaultModelsChineseLargeFontReleasePreview_Default models Chinese large font_8ee62bc8_0.png": {
-      "base_sha256": "835f7a3d680430ceecf33513f815e220e687c1353e07fa5648d405db76e711f9",
-      "linux_sha256": "835f7a3d680430ceecf33513f815e220e687c1353e07fa5648d405db76e711f9"
+      "base_sha256": "7f1323411d79c11579d6fe06b50ff456aecff6bf1377624c6f12f5f8c7475cde",
+      "linux_sha256": "7f1323411d79c11579d6fe06b50ff456aecff6bf1377624c6f12f5f8c7475cde"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/emptyChatEnglishLandscapeReleasePreview_Empty chat English landscape_a72a9f74_0.png": {
       "base_sha256": "b4f504405ac3558d8f836c7ce061d112e60fcec5b04782069423d48eedd368ad",
@@ -133,16 +133,16 @@
       "linux_sha256": "3b2d44902ebb78457b5f79cbf1650e8e1f47733eb7cd2fd51a77e17698d7b2c9"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/userSettingsAppChinesePhoneReleasePreview_User settings app Chinese phone_921f91d8_0.png": {
-      "base_sha256": "dc7433c61ef7b31a79fcf55806d94e9ff547920e4a8a838893b2df4a1e65eccc",
-      "linux_sha256": "dc7433c61ef7b31a79fcf55806d94e9ff547920e4a8a838893b2df4a1e65eccc"
+      "base_sha256": "6423f768a96e11b493a6c5c56c4c9f22e2778f4ec3f17e45dad8ddb6010801cc",
+      "linux_sha256": "6423f768a96e11b493a6c5c56c4c9f22e2778f4ec3f17e45dad8ddb6010801cc"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/userSettingsAppChineseTabletReleasePreview_User settings app Chinese tablet_60d69b4f_0.png": {
-      "base_sha256": "ec8f1011a45ea7d610a1a0a6b068af1a06fa0cd12c0dbbbe46f30da1fb6d6e7f",
-      "linux_sha256": "ec8f1011a45ea7d610a1a0a6b068af1a06fa0cd12c0dbbbe46f30da1fb6d6e7f"
+      "base_sha256": "313e09e2f209f42a029390a727d5e9ce9d65e91dc563113f1f3c410d2e4ec3bc",
+      "linux_sha256": "313e09e2f209f42a029390a727d5e9ce9d65e91dc563113f1f3c410d2e4ec3bc"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/userSettingsIntegratedNavigationChinesePhoneReleasePreview_User settings integrated navigation Chinese phone_8b19e30b_0.png": {
-      "base_sha256": "ec9bbc4f255fd2c9226b6ba8b080b877da5d6a16b67f842e0692857cca6fc675",
-      "linux_sha256": "ec9bbc4f255fd2c9226b6ba8b080b877da5d6a16b67f842e0692857cca6fc675"
+      "base_sha256": "141c8fe16af3fcebb793e8317e71576cbcac3cb8a9f89512e0e6b126db1087c8",
+      "linux_sha256": "141c8fe16af3fcebb793e8317e71576cbcac3cb8a9f89512e0e6b126db1087c8"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/userSettingsProviderLargeFontReleasePreview_User settings provider English large font_e804a4ab_0.png": {
       "base_sha256": "ef287dcaaa1fcbd10e6cde35c69df574ff4d18d2d50ff9f67de8a696758edd3e",
@@ -805,24 +805,24 @@
       "linux_sha256": "6c07be4ae94c858632b9e445e91760ee85fe20f3b9f90ef5a26f89041cf11ed8"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/settingsHomeBatch1AvatarBrand_设置首页 已设头像 品牌 浅色英文 360_65654fd7_0.png": {
-      "base_sha256": "d25571792e3cb97385b1ca02591bff25fabd1f99a3f8f83d1bbc5ef7b84aaf0d",
-      "linux_sha256": "d25571792e3cb97385b1ca02591bff25fabd1f99a3f8f83d1bbc5ef7b84aaf0d"
+      "base_sha256": "7cba40fe862ce7581f7a8114300288e54c8484f22d1d74fa975cda40d4dedf51",
+      "linux_sha256": "7cba40fe862ce7581f7a8114300288e54c8484f22d1d74fa975cda40d4dedf51"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/settingsHomeBatch1LargeText_设置首页 深色中文 字号130_07ff7895_0.png": {
-      "base_sha256": "1caccac853593cff1cf54046276cf97f853c954b272a449a1a42d6a7d826b780",
-      "linux_sha256": "1caccac853593cff1cf54046276cf97f853c954b272a449a1a42d6a7d826b780"
+      "base_sha256": "01c78c7b60fc2c9251edc134f0d21f1a277378bf582c25dc76ecad94d084b02a",
+      "linux_sha256": "01c78c7b60fc2c9251edc134f0d21f1a277378bf582c25dc76ecad94d084b02a"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/settingsHomeBatch1LightEnglish_设置首页 浅色英文_08fc9be1_0.png": {
-      "base_sha256": "fa0ff91eebb0980e90201ea7dc1c20db518145c0b05c45fbbc5302cb4429f21c",
-      "linux_sha256": "fa0ff91eebb0980e90201ea7dc1c20db518145c0b05c45fbbc5302cb4429f21c"
+      "base_sha256": "b13f0ebb07e1939e80ee96bc146576e2157da8269a9f3e84bda4b2428f75abc0",
+      "linux_sha256": "b13f0ebb07e1939e80ee96bc146576e2157da8269a9f3e84bda4b2428f75abc0"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/settingsHomeBatch1_设置首页 深色中文 360_215f4ca3_0.png": {
-      "base_sha256": "139a2ad49fecc26d9a8c66551e96dd689b3de4712bd5eb50f9b57da7ca46ddde",
-      "linux_sha256": "139a2ad49fecc26d9a8c66551e96dd689b3de4712bd5eb50f9b57da7ca46ddde"
+      "base_sha256": "6598fa59ca3f696e96a525d36492c25703b5183a450e6adec3c5a18874dd6faa",
+      "linux_sha256": "6598fa59ca3f696e96a525d36492c25703b5183a450e6adec3c5a18874dd6faa"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/settingsHomeBatch1_设置首页 深色中文 411_78157f6c_0.png": {
-      "base_sha256": "8a97899469efe2ec92cdcccccbdaeb35c0dafc090a08357a903645170cbd7743",
-      "linux_sha256": "8a97899469efe2ec92cdcccccbdaeb35c0dafc090a08357a903645170cbd7743"
+      "base_sha256": "7b496025cde04d53a137b5d9795aaf82672b0ff7e90225c06cf9bab0bd0ab8f0",
+      "linux_sha256": "7b496025cde04d53a137b5d9795aaf82672b0ff7e90225c06cf9bab0bd0ab8f0"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/toolsBudgetBatch1_工具执行预算 深色中文 360_da67b490_0.png": {
       "base_sha256": "5f0f0907d6e3bcb08d9f1f4d266367526ad9f0ed4588bc403ba6e9635d7ddcb4",

@@ -212,4 +212,113 @@ class ComfySkillsTest {
         val failed = ComfyDefineTemplateSkill(f.repository).execute(buildJsonObject { put("template", JsonObject(emptyMap())) }, context)
         assertEquals("error", failed.status); assertTrue(failed.content.contains("字段"))
     }
+
+    @Test fun allFourteenComfyToolsPassSchemaValidationAndManageSubmittersWorkflowsAndChains() = runTest {
+        val f = ComfyFixture()
+        f.repository.saveHost(f.host)
+        f.http.info = Json.parseToJsonElement(
+            """{"Save":{"input":{"required":{}},"output_node":true,"output":["IMAGE"]}}""",
+        ).jsonObject
+        val chains = InMemoryStatefulChainStore()
+        val tools = comfyTools(f.repository, chainStore = chains)
+        assertEquals(14, tools.size)
+        val validator = com.promenar.infinity.domain.tool.ToolSchemaValidator()
+        tools.forEach { tool ->
+            val validation = validator.validateDefinition(tool.parametersSchema)
+            assertTrue("${tool.name}: $validation", validation is com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid)
+        }
+
+        // 1. 保存并列出提交器脚本
+        val saveSub = tools.single { it.name == "comfy_save_submitter" }
+        assertEquals(com.promenar.infinity.domain.tool.ToolRisk.AGENT_CONFIG, saveSub.risk)
+        val subRes = saveSub.execute(
+            buildJsonObject {
+                put("host_id", f.host.id)
+                put("script_id", "qwen21_py")
+                put("file_name", "submit_qwen21.py")
+                put("protocol", "CLI_ARGS")
+                put("source_text", "print('ok')")
+                putJsonObject("support_files") { put("workflow_base.json", "{}") }
+                put("run_dry_run", false)
+            },
+            context,
+        )
+        assertNotEquals(subRes.content, "error", subRes.status)
+        val listedSubs = tools.single { it.name == "comfy_list_submitters" }.execute(buildJsonObject { put("host_id", f.host.id) }, context)
+        assertEquals(1, Json.parseToJsonElement(listedSubs.content).jsonObject["count"]!!.jsonPrimitive.int)
+
+        // 2. 创建超过 10 个无限字段的工作流（CONTENT + FIXED + TIMED_FILES/FILE_LIST 等）
+        val saveWf = tools.single { it.name == "comfy_save_workflow" }
+        assertEquals(com.promenar.infinity.domain.tool.ToolRisk.AGENT_CONFIG, saveWf.risk)
+        val fieldsJson = JsonArray(
+            (1..12).map { i ->
+                buildJsonObject {
+                    put("key", if (i <= 6) "c_field_$i" else "f_field_$i")
+                    put("label", "字段 $i")
+                    put("mutability", if (i <= 6) "CONTENT" else "FIXED")
+                    put("valueType", when (i) {
+                        1 -> "TEXT"
+                        2 -> "FILE_LIST"
+                        3 -> "TIMED_FILES"
+                        7 -> "INT"
+                        else -> "STRING"
+                    })
+                    if (i == 7) put("defaultValue", 24)
+                }
+            },
+        )
+        val wfArgs = buildJsonObject {
+            put("reason", "注册多字段测试工作流")
+            putJsonObject("workflow") {
+                put("workflowId", "wf_unlimited")
+                put("hostId", f.host.id)
+                put("name", "无限字段视频流")
+                put("mediaCategory", "VIDEO")
+                put("submitterScriptId", "qwen21_py")
+                put("executionMode", "STATEFUL_CHAIN")
+                putJsonObject("chainSpec") {
+                    putJsonArray("stages") { add("first"); add("next") }
+                    put("defaultBranchPolicy", "ISOLATED_DIR")
+                }
+                put("fields", fieldsJson)
+                putJsonObject("capabilities") { putJsonArray("modes") { add("TEXT"); add("REFERENCE") } }
+            }
+        }
+        val savedWf = saveWf.execute(wfArgs, context)
+        assertNotEquals(savedWf.content, "error", savedWf.status)
+        val listWf = tools.single { it.name == "comfy_list_workflows" }.execute(buildJsonObject { put("workflow_id", "wf_unlimited") }, context)
+        val wfItem = Json.parseToJsonElement(listWf.content).jsonObject["workflows"]!!.jsonArray.single().jsonObject
+        assertEquals(6, wfItem["content_fields"]!!.jsonArray.size)
+        assertEquals(6, wfItem["fixed_fields"]!!.jsonArray.size)
+
+        // 3. 被工作流引用时禁止删除提交器；删除工作流后再删除提交器成功
+        val delSub = tools.single { it.name == "comfy_delete_submitter" }
+        assertEquals("error", delSub.execute(buildJsonObject { put("host_id", f.host.id); put("script_id", "qwen21_py") }, context).status)
+        val delWf = tools.single { it.name == "comfy_delete_workflow" }
+        assertNotEquals("error", delWf.execute(buildJsonObject { put("workflow_id", "wf_unlimited") }, context).status)
+        assertNotEquals("error", delSub.execute(buildJsonObject { put("host_id", f.host.id); put("script_id", "qwen21_py") }, context).status)
+
+        // 4. 查询与切换有状态链当前末端节点
+        val chainRecord = StatefulChainRecord(
+            chainId = "chain_1",
+            sessionId = context.sessionId,
+            workflowId = "wf_unlimited",
+            hostId = f.host.id,
+            rootNodeId = "n1",
+            activeTipNodeId = "n2b",
+            nodes = listOf(
+                StatefulChainNode(nodeId = "n1", segmentIndex = 1, attemptLabel = "v1", outputMediaPath = "m/1.mp4", stateValidity = ChainNodeValidity.ACTIVE),
+                StatefulChainNode(nodeId = "n2a", parentNodeId = "n1", stage = "next", segmentIndex = 2, attemptLabel = "v1", outputMediaPath = "m/2a.mp4", stateValidity = ChainNodeValidity.ACTIVE),
+                StatefulChainNode(nodeId = "n2b", parentNodeId = "n1", stage = "next", segmentIndex = 2, attemptLabel = "v2", outputMediaPath = "m/2b.mp4", stateValidity = ChainNodeValidity.OVERWRITTEN_BY_SIBLING),
+            ),
+        )
+        chains.save(chainRecord)
+        val chainStateRes = tools.single { it.name == "comfy_get_chain_state" }.execute(buildJsonObject { put("chain_id", "chain_1") }, context)
+        assertEquals(1, Json.parseToJsonElement(chainStateRes.content).jsonObject["count"]!!.jsonPrimitive.int)
+        val setTip = tools.single { it.name == "comfy_set_chain_tip" }
+        assertEquals("error", setTip.execute(buildJsonObject { put("chain_id", "chain_1"); put("node_id", "n2b") }, context).status)
+        val okTip = setTip.execute(buildJsonObject { put("chain_id", "chain_1"); put("node_id", "n2a") }, context)
+        assertNotEquals("error", okTip.status)
+        assertEquals("n2a", chains.get(context.sessionId, "chain_1")!!.activeTipNodeId)
+    }
 }

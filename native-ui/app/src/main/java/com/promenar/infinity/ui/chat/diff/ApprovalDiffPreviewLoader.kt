@@ -71,6 +71,22 @@ sealed interface ApprovalDiffPreview {
         val modelChanges: List<FieldChange>,
         val capabilityChanges: List<FieldChange>,
     ) : ApprovalDiffPreview
+
+    /** ComfyUI 工作流/提交器脚本管理审批（新增/更新/删除必经一次性审批）。 */
+    data class ComfyManagement(
+        val title: String,
+        val hostName: String,
+        val reason: String,
+        val rows: List<Pair<String, String>>,
+        val isDeletion: Boolean = false,
+    ) : ApprovalDiffPreview
+
+    /** ComfyUI 固定字段单次实验覆写审批（仅当偏离基线时触发，且仅当次生效）。 */
+    data class ComfyFixedOverride(
+        val preflight: com.promenar.infinity.data.mediagen.comfy.ComfyFixedOverridePreflight,
+        val contentSummary: String,
+        val chainContextSummary: String? = null,
+    ) : ApprovalDiffPreview
 }
 
 /** 审批卡字段表的一行；[key] 为工具字段键，[oldValue]/[newValue] 已格式化为显示文本，旧值为空表示新建。 */
@@ -213,6 +229,13 @@ internal fun rememberApprovalDiffPreview(
             call.toolName == "comfy_define_template" ->
                 ComfyTemplatePreviewLoader(AppComfyTemplatePreviewSources(application.comfyMedia.repository))
                     .load(arguments, approvalReason)
+            call.toolName in setOf("comfy_save_submitter", "comfy_delete_submitter", "comfy_save_workflow", "comfy_delete_workflow") ->
+                ComfyWorkflowApprovalPreviewLoader(application.comfyMedia.repository)
+                    .loadManagement(call.toolName, arguments, approvalReason)
+            call.toolName == "comfy_run_workflow" &&
+                com.promenar.infinity.data.mediagen.comfy.ComfyFixedOverrideApprovalPlanner.isOverrideTarget(call.executionTarget) ->
+                ComfyWorkflowApprovalPreviewLoader(application.comfyMedia.repository)
+                    .loadFixedOverride(arguments, approvalReason)
             call.toolName == "production_update" && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(call.executionTarget) -> try {
                 val ops = arguments["operations"] as? JsonArray ?: return@produceState
                 val reason = runCatching {

@@ -16,5 +16,6 @@ object ToolArgumentApprovalRules {
     internal fun requiresNonGrantableApproval(toolName: String, resolvedTarget: String?): Boolean =
         (toolName in setOf("session_read", "session_search", "session_list") && resolvedTarget?.startsWith("session-approval:") == true) ||
             (toolName == "production_update" && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(resolvedTarget)) ||
+            (toolName == "comfy_run_workflow" && com.promenar.infinity.data.mediagen.comfy.ComfyFixedOverrideApprovalPlanner.isOverrideTarget(resolvedTarget)) ||
             toolName == "agents_write" || toolName == "resolve_startup_issue" || toolName in SSH_HOST_CONFIG_TOOLS
 }
