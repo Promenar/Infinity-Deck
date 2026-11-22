@@ -16,4 +16,7 @@
     <string name="chat_inline_approval_approve">批准</string>
     <string name="chat_inline_approval_approve_current">批准当前</string>
     <string name="chat_inline_approval_reject_current">拒绝当前</string>
+    <string name="chat_inline_approval_queue_expand">展开详情</string>
+    <string name="chat_inline_approval_queue_collapse">收起详情</string>
+    <string name="chat_inline_approval_queue_high_risk_cd">包含高风险操作</string>
 </resources>

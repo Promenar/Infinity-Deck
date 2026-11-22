@@ -1397,6 +1397,10 @@ fun ApprovalCard(
     } else stringResource(R.string.chat_approval_required)
 
     val first = calls.firstOrNull()
+    val queuedCalls = calls.drop(1)
+    var queueExpanded by remember(first?.name, first?.executionTarget, first?.argumentsSummary, calls.size) {
+        mutableStateOf(false)
+    }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1419,7 +1423,7 @@ fun ApprovalCard(
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // “需要审批 / 已执行”进入无障碍状态与标题措辞；已执行时底部另有状态行。
+                // “需要审批 / 已执行”进入无障碍状态与标题措辞；已执行时紧随其下给出状态行，动作按钮始终贴近当前待批调用。
                 Box(
                     modifier = Modifier
                         .semantics(mergeDescendants = false) { stateDescription = statusLabel }
@@ -1434,24 +1438,6 @@ fun ApprovalCard(
                         }
                     } else {
                         ApprovalCallBody(first, description, pending = !isExecuted)
-                    }
-                }
-                if (remainingCount > 0) {
-                    Text(
-                        text = stringResource(R.string.chat_approval_remaining, remainingCount),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    calls.drop(1).forEach { call ->
-                        // 后续调用各带一条类别条，命令与内置工具并排时一眼可分。
-                        Column(
-                            Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(14.dp)),
-                        ) {
-                            ApprovalKindBand(call.name, approvalCallWhere(call), call.riskLabel, executionTarget = call.executionTarget)
-                            Box(Modifier.padding(12.dp)) { ApprovalCallBody(call, "", pending = false) }
-                        }
                     }
                 }
                 if (isExecuted) {
@@ -1484,6 +1470,226 @@ fun ApprovalCard(
                         oneShotOnly = currentCall?.oneShotOnly == true,
                     )
                 }
+                if (queuedCalls.isNotEmpty()) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                    ApprovalQueuedCallsSection(
+                        queuedCalls = queuedCalls,
+                        expanded = queueExpanded,
+                        onToggle = { queueExpanded = !queueExpanded },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 排队中的后续待批调用区：默认收起为紧凑摘要（保持操作栏紧贴当前待批调用），需要逐条细查时再展开详情。 */
+@Composable
+private fun ApprovalQueuedCallsSection(
+    queuedCalls: List<ApprovalDisplayCall>,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    val toggleLabel = stringResource(
+        if (expanded) R.string.chat_inline_approval_queue_collapse else R.string.chat_inline_approval_queue_expand,
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag(UiTags.CHAT_APPROVAL_QUEUE_SECTION),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                    .padding(start = 12.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Layers,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = stringResource(R.string.chat_approval_remaining, queuedCalls.size),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onToggle)
+                        .testTag(UiTags.CHAT_APPROVAL_QUEUE_TOGGLE),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = toggleLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                            Icon(
+                                imageVector = if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visible = !expanded,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                Column {
+                    queuedCalls.forEachIndexed { index, call ->
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        ApprovalQueuedSummaryRow(queuePosition = index + 2, call = call)
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visible = expanded,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                Column(
+                    modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp, top = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    queuedCalls.forEach { call ->
+                        // 后续调用各带一条类别条，命令与内置工具并排时一眼可分。
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), RoundedCornerShape(12.dp)),
+                        ) {
+                            ApprovalKindBand(call.name, approvalCallWhere(call), call.riskLabel, executionTarget = call.executionTarget)
+                            Box(Modifier.padding(12.dp)) { ApprovalCallBody(call, "", pending = false) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ApprovalQueuedSummaryRow(
+    queuePosition: Int,
+    call: ApprovalDisplayCall,
+) {
+    val where = approvalCallWhere(call)
+    val unknownTarget = stringResource(R.string.chat_approval_execution_target_unknown)
+    val template = call.diffPreview as? com.promenar.infinity.ui.chat.diff.ApprovalDiffPreview.ComfyTemplate
+    val title = template?.templateName ?: approvalToolTitle(call.name)
+    val displayWhere = where?.takeIf { it.isNotBlank() && it != call.name && it != title && it != unknownTarget }
+    val showHighRiskIcon = call.highRisk ||
+        call.preview?.action == ApprovalPreview.Action.DELETE ||
+        call.preview?.scriptAllowsNetwork == true
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ) {
+            Text(
+                text = "#$queuePosition",
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = InfinityMonospace),
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (displayWhere != null) {
+                        Text(
+                            text = displayWhere,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = InfinityMonospace),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        Text(
+                            text = InfinityMetaSeparator,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.clearAndSetSemantics {},
+                        )
+                    }
+                    // 原始工具 ID 独立成节点渲染，确保语义查找与视觉截断互不干扰。
+                    Text(
+                        text = call.name,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = InfinityMonospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (showHighRiskIcon) {
+                    Icon(
+                        imageVector = Icons.Rounded.Warning,
+                        contentDescription = stringResource(R.string.chat_inline_approval_queue_high_risk_cd),
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+                if (call.riskLabel.isNotBlank()) ApprovalTag(call.riskLabel)
             }
         }
     }

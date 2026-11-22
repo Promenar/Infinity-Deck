@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **修复多卡审批队列聚焦错位与运行坞待批计数歧义（[ChatInlineComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInlineComponents.kt)、[RunDock.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/components/RunDock.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)）**：
+  - 将 `ApprovalCard` 的 `拒绝当前 / 批准当前` 操作栏上移紧贴当前待批调用 `calls.first()` 正下方，并将后续排队调用 `calls.drop(1)` 收进操作栏下方的可折叠「接下来还有 N 项」次级容器（默认展示带 `#序号`、独立工具名节点、目标与风险标签的紧凑摘要，点击「展开详情 / 收起详情」平滑展开完整详情并遵循系统减少动态效果设置）。
+  - 优化 `RunDockRow` 待审批状态文案：直接显示 `%d 项待批准` / `%d to approve` 且在等待审批时省略裸计划进度 `planDone/planTotal`，消除「等待审批 0/3」造成计数卡死的误解；同步校准 `ChatScreen` 尾部前置待响应卡片的 `approvalItemIndex` 并对超长审批卡片启用顶边保护滚动，防止当前待批项被顶出视口上方。
+
 ## [0.70.5-beta] - 2026-11-22
 
 - **修复声纹模型下载校验永久失败并锁定不可变官方模型源（[RecordingSpeakerModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingSpeakerModel.kt)、[RecordingAsrModel.kt](native-ui/app/src/main/java/com/promenar/infinity/recording/RecordingAsrModel.kt)、[ModelDownloader.kt](native-ui/app/src/main/java/com/promenar/infinity/data/local/inference/ModelDownloader.kt)、[recording_speaker_strings.xml](native-ui/app/src/main/res/values-zh-rCN/recording_speaker_strings.xml)）**：

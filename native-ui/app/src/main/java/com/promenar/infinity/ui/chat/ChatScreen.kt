@@ -637,8 +637,25 @@ fun ChatScreenContent(
         }
     }
 
+    val approvalIdentity = uiState.approvalRequest?.let { it.identityHash ?: it.hashCode().toString() }
+    val showCompressionFeedback = compressionState.isCompressing ||
+        compressionState.result != null || compressionState.detail.isNotBlank()
+    val trailingIndices = resolveChatTrailingItemIndices(
+        pipelineGroupCount = pipelineGroups.size,
+        hasCompression = showCompressionFeedback,
+        hasQuestion = state.pendingQuestion != null,
+        hasSecretInput = state.pendingSecretInput != null,
+        hasBranchPlan = pendingBranchPlan != null,
+    )
+    val compressionItemIndex = trailingIndices.compression
+    val questionItemIndex = trailingIndices.question
+    val secretInputItemIndex = trailingIndices.secretInput
+    val branchPlanItemIndex = trailingIndices.branchPlan
+    val approvalItemIndex = trailingIndices.approval
+
     suspend fun scrollItemAboveComposer(activeIndex: Int) {
         if (activeIndex < 0 || !autoFollowEnabled) return
+        val preserveTop = approvalIdentity != null && activeIndex == approvalItemIndex
 
         val liveComposerInsets = chatComposerInsets(
             with(density) { currentComposerHeightPx.toDp() },
@@ -653,18 +670,22 @@ fun ChatScreenContent(
             val activeItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == activeIndex }
                 ?: return
             val targetBottom = layoutInfo.viewportEndOffset - inputOverlapPx
-            val overflow = (activeItem.offset + activeItem.size) - targetBottom
-            if (overflow > 0) {
-                listState.scrollBy(overflow.toFloat())
+            val delta = computeScrollIntoViewDelta(
+                itemOffset = activeItem.offset,
+                itemSize = activeItem.size,
+                viewportStart = layoutInfo.viewportStartOffset,
+                targetBottom = targetBottom,
+                preserveTop = preserveTop,
+            )
+            if (delta > 0) {
+                listState.scrollBy(delta.toFloat())
             }
         }
 
         val activeItemVisible = listState.layoutInfo.visibleItemsInfo.any { it.index == activeIndex }
         if (!activeItemVisible) {
-            // 目标 item 在屏幕外：先把它拉进组成窗口。scrollToItem 会挂起直到该 item
-            // 完成一次布局，返回后 layoutInfo 已反映新位置；随后重新读取并精确校正遮挡，
-            // 避免仅做粗滚而把尾部消息留在输入浮岛覆盖区内。
-            listState.scrollToItem(activeIndex, 100_000)
+            // 超长审批卡从顶部定位，避免把当前待批调用顶出视口上方；普通尾项仍对齐到底部。
+            listState.scrollToItem(activeIndex, if (preserveTop) 0 else 100_000)
             withFrameNanos { }
         }
 
@@ -683,13 +704,8 @@ fun ChatScreenContent(
         }
     }
 
-    // 新的审批请求排在消息之后，自动跟随只对齐最后一条消息时它会落在输入栏与键盘下方；
-    // 出现时把审批卡滚到输入栏上方，确保批准与拒绝按钮可见可点。
-    val approvalIdentity = uiState.approvalRequest?.let { it.identityHash ?: it.hashCode().toString() }
-    val showCompressionFeedback = compressionState.isCompressing ||
-        compressionState.result != null || compressionState.detail.isNotBlank()
-    val compressionItemIndex = pipelineGroups.size
-    val approvalItemIndex = compressionItemIndex + (if (showCompressionFeedback) 1 else 0)
+    // 新的审批请求排在消息与其它待响应卡之后，自动跟随只对齐最后一条消息时它会落在输入栏与键盘下方；
+    // 出现时把审批卡滚到输入栏上方，并对超长审批卡保护顶边，确保当前待批项与批准按钮可见可点。
     LaunchedEffect(showCompressionFeedback, compressionState.isCompressing, compressionState.result) {
         if (!showCompressionFeedback) return@LaunchedEffect
         withFrameNanos { }
@@ -700,9 +716,7 @@ fun ChatScreenContent(
         withFrameNanos { }
         scrollItemAboveComposer(approvalItemIndex)
     }
-    // 分支方案卡同样排在消息之后（提问卡、保密输入卡之后）：出现时滚到输入栏上方，三个选择按钮可见可点。
-    val branchPlanItemIndex = approvalItemIndex +
-        (if (state.pendingQuestion != null) 1 else 0) + (if (state.pendingSecretInput != null) 1 else 0)
+    // 分支方案卡排在提问卡、保密输入卡之后：出现时滚到输入栏上方，三个选择按钮可见可点。
     LaunchedEffect(pendingBranchPlan?.toolCallId) {
         if (pendingBranchPlan == null) return@LaunchedEffect
         withFrameNanos { }
@@ -710,13 +724,11 @@ fun ChatScreenContent(
     }
     // 提问卡与保密输入卡紧跟在消息（与上下文压缩反馈）之后：出现时同样滚到输入栏上方，
     // 否则自动跟随只对齐最后一条消息，卡片会被输入栏盖住，只露出顶边。
-    val questionItemIndex = approvalItemIndex
     LaunchedEffect(state.pendingQuestion?.toolCallId) {
         if (state.pendingQuestion == null) return@LaunchedEffect
         withFrameNanos { }
         scrollItemAboveComposer(questionItemIndex)
     }
-    val secretInputItemIndex = questionItemIndex + (if (state.pendingQuestion != null) 1 else 0)
     LaunchedEffect(state.pendingSecretInput?.toolCallId) {
         if (state.pendingSecretInput == null) return@LaunchedEffect
         withFrameNanos { }
@@ -961,7 +973,7 @@ fun ChatScreenContent(
         val hubUsed = panelHubUsage(restorePanelHubUsage(hubUsedToken), panelHubActive(sideArtifacts.size, sideCandidates.size, sideBoard != null, state.production.enabled))
         SideEffect { savePanelHubUsage(hubUsed).let { if (it != hubUsedToken) hubUsedToken = it } }
         val hubSummaries = mapOf(
-            ChatPage.Run to (dock?.label?.takeUnless { it is com.promenar.infinity.ui.chat.components.RunDockLabel.Board }
+            ChatPage.Run to (dock?.takeUnless { it.label is com.promenar.infinity.ui.chat.components.RunDockLabel.Board }
                 ?.let { com.promenar.infinity.ui.chat.components.runDockLabelText(it) } ?: stringResource(R.string.panel_hub_idle)),
             ChatPage.Explorer to state.workspace?.let { workspaceStatusName(it) },
             ChatPage.Git to panelHubGitSummary(state.gitEntry ?: state.gitSummary),
@@ -1092,7 +1104,7 @@ fun ChatScreenContent(
                     // 审批卡与子代理审批组都排在底部留白之前，跳到其中第一项。
                     val pendingItems = (if (uiState.approvalRequest?.takeUnless { uiState.isApprovalSubmitting } != null) 1 else 0) +
                         (if (state.pendingQuestion != null) 1 else 0) + (if (state.pendingSecretInput != null) 1 else 0) +
-                        subagentApprovalGroups.size
+                        (if (pendingBranchPlan != null) 1 else 0) + subagentApprovalGroups.size
                     val target = listState.layoutInfo.totalItemsCount - 1 - pendingItems
                     listState.animateScrollToItem(target.coerceAtLeast(0))
                 }
@@ -3922,4 +3934,49 @@ private fun TouchLockDialogWithClock(
         unlock = unlock,
         onUnlock = onUnlock,
     )
+}
+
+/** 聊天尾部待响应卡片按 `LazyColumn` 实际顺序计算列表下标，避免前置卡片存在时审批定位偏移。 */
+internal data class ChatTrailingItemIndices(
+    val compression: Int,
+    val question: Int,
+    val secretInput: Int,
+    val branchPlan: Int,
+    val approval: Int,
+)
+
+internal fun resolveChatTrailingItemIndices(
+    pipelineGroupCount: Int,
+    hasCompression: Boolean,
+    hasQuestion: Boolean,
+    hasSecretInput: Boolean,
+    hasBranchPlan: Boolean,
+): ChatTrailingItemIndices {
+    val compression = pipelineGroupCount
+    val question = compression + if (hasCompression) 1 else 0
+    val secretInput = question + if (hasQuestion) 1 else 0
+    val branchPlan = secretInput + if (hasSecretInput) 1 else 0
+    val approval = branchPlan + if (hasBranchPlan) 1 else 0
+    return ChatTrailingItemIndices(
+        compression = compression,
+        question = question,
+        secretInput = secretInput,
+        branchPlan = branchPlan,
+        approval = approval,
+    )
+}
+
+/** 计算将目标项推入输入栏上方所需的滚动偏移；[preserveTop] 开启时保证卡片顶边不被推出视口顶部。 */
+internal fun computeScrollIntoViewDelta(
+    itemOffset: Int,
+    itemSize: Int,
+    viewportStart: Int,
+    targetBottom: Int,
+    preserveTop: Boolean,
+): Int {
+    val overflow = (itemOffset + itemSize) - targetBottom
+    if (overflow <= 0) return 0
+    if (!preserveTop) return overflow
+    val maxTopShift = (itemOffset - viewportStart).coerceAtLeast(0)
+    return minOf(overflow, maxTopShift)
 }

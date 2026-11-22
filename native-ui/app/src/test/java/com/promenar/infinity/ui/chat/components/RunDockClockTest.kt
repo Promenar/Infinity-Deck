@@ -25,4 +25,18 @@ class RunDockClockTest {
         assertThat(runDockMetaText(dock, elapsedSeconds = null)).isEmpty()
         assertThat(runDockMetaText(dock.copy(planDone = 2, planTotal = 5), elapsedSeconds = 9)).isEqualTo("2/5 · 0:09")
     }
+
+    @Test
+    fun `等待审批时省略计划分数，只保留本轮用时以免误解`() {
+        val waitingDock = runDockState(
+            plan = null, isGenerating = true, pendingApprovals = 3, runningJobs = 0,
+            enabledSchedules = 0, boardTitle = null, elapsedMillis = null,
+        )!!.copy(planDone = 0, planTotal = 3)
+        assertThat(waitingDock.label).isEqualTo(RunDockLabel.WaitingApproval)
+        assertThat(runDockMetaText(waitingDock, elapsedSeconds = null)).isEmpty()
+        assertThat(runDockMetaText(waitingDock, elapsedSeconds = 42)).isEqualTo("0:42")
+
+        val resumedDock = waitingDock.copy(label = RunDockLabel.Step("生成工作流"), pendingApprovals = 0)
+        assertThat(runDockMetaText(resumedDock, elapsedSeconds = 42)).isEqualTo("0/3 · 0:42")
+    }
 }

@@ -3,8 +3,8 @@
     <string name="run_dock_open">Open run details</string>
     <string name="run_dock_jump_approval_cd">%1$d approvals pending, jump to the first</string>
     <plurals name="run_dock_pending_approvals">
-        <item quantity="one">%d pending</item>
-        <item quantity="other">%d pending</item>
+        <item quantity="one">%d to approve</item>
+        <item quantity="other">%d to approve</item>
     </plurals>
     <string name="run_dock_waiting_approval">Waiting for approval</string>
     <string name="run_dock_plan_completed">Plan completed</string>

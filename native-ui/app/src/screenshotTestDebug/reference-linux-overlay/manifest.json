@@ -249,12 +249,12 @@
       "linux_sha256": "53d35df734b9032b92bba394b59a6af86176eb27178e8ec0fc13bd0245d9602d"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/runDockStatesDarkPreview_运行坞 深中360 大字_e38c1b07_0.png": {
-      "base_sha256": "6c331426ed6fd41f90f2164b0b1dfd90fd1d503650e7ffdfbf6ff72f522d0250",
-      "linux_sha256": "6c331426ed6fd41f90f2164b0b1dfd90fd1d503650e7ffdfbf6ff72f522d0250"
+      "base_sha256": "a59a0a61851e6ffee377dfb36f633183b1c38b1ced1967e8062af4d3769ab244",
+      "linux_sha256": "a59a0a61851e6ffee377dfb36f633183b1c38b1ced1967e8062af4d3769ab244"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/runDockStatesDarkPreview_运行坞 深中411_5cf37beb_0.png": {
-      "base_sha256": "8e02f765d81d76834cdd7a88ea78429cb39fc7e148d881a937a170ce7fd84fe0",
-      "linux_sha256": "8e02f765d81d76834cdd7a88ea78429cb39fc7e148d881a937a170ce7fd84fe0"
+      "base_sha256": "5982f468d8b1e49730953f59ab10d0caec837403f11b9637461de3e1a4b03684",
+      "linux_sha256": "5982f468d8b1e49730953f59ab10d0caec837403f11b9637461de3e1a4b03684"
     },
     "com/promenar/infinity/ui/chat/KnowledgeSearchScreenshotTestKt/knowledgeSearchDetailsPreview_知识检索详情 浅英360 大字_80fc5719_0.png": {
       "base_sha256": "3b3ba6ada3151d2e966b6b0c39952557aa341a384ac478f477ab0f4358cee893",
@@ -409,12 +409,12 @@
       "linux_sha256": "1965ef19ebe35a0641bc9eb4f6672a66418675d9ca2c9cef55306e638bcd276a"
     },
     "com/promenar/infinity/ui/chat/components/AgentActivityScreenshotTestKt/scheduleApprovalPlayDarkEnglishPreview_定时审批 Play 深英360_8bfd6802_0.png": {
-      "base_sha256": "14a94581902f41ea5b12dfdb092800fe543033619ff1370219a116c294912bac",
-      "linux_sha256": "fa7355e06c6184a2a242730935c59d5ee259cbb511dc211c441e3f480f63f2a7"
+      "base_sha256": "3287158f47a533fdc49caa60ad1903775dbf2ba80e5966aa9a062b424bc0ed3e",
+      "linux_sha256": "3287158f47a533fdc49caa60ad1903775dbf2ba80e5966aa9a062b424bc0ed3e"
     },
     "com/promenar/infinity/ui/chat/components/AgentActivityScreenshotTestKt/scheduleApprovalSideloadLightChinesePreview_定时与后台命令审批 侧载 浅中360_f0748dbe_0.png": {
-      "base_sha256": "ae5e81da002bb9703e8c731ec3e67079ad08481f3c7d5e38f380d5eb8f23bee2",
-      "linux_sha256": "ae5e81da002bb9703e8c731ec3e67079ad08481f3c7d5e38f380d5eb8f23bee2"
+      "base_sha256": "4e98354b6d9114de64fab6c948d1f164a98c30dc88b1f0fe3c6441febe6e8dea",
+      "linux_sha256": "4e98354b6d9114de64fab6c948d1f164a98c30dc88b1f0fe3c6441febe6e8dea"
     },
     "com/promenar/infinity/ui/chat/runmode/RunModeScreenshotTestKt/runModeTopBarAndUnavailableDarkPreview_运行模式 顶栏与修复 深中360_d6ae7266_0.png": {
       "base_sha256": "23900493d2c4d441aed0d7eab452f9a243ceb213ef98e2dd18e8b1eaa570244a",

@@ -77,7 +77,7 @@ internal fun RunDockRow(
     modifier: Modifier = Modifier,
     startedAt: Long? = null,
 ) {
-    val label = runDockLabelText(state.label)
+    val label = runDockLabelText(state)
     val elapsedSeconds by rememberRunElapsedSeconds(startedAt)
     val meta = runDockMetaText(state, elapsedSeconds)
     val openLabel = stringResource(R.string.run_dock_open)
@@ -272,10 +272,14 @@ internal fun RunDockDot(tone: RunDockTone, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun runDockLabelText(label: RunDockLabel): String = when (label) {
+internal fun runDockLabelText(state: RunDockUiState): String = when (val label = state.label) {
     is RunDockLabel.Step -> label.title
     RunDockLabel.Running -> stringResource(R.string.chat_progress_running)
-    RunDockLabel.WaitingApproval -> stringResource(R.string.run_dock_waiting_approval)
+    RunDockLabel.WaitingApproval -> if (state.pendingApprovals > 0) {
+        pluralStringResource(R.plurals.run_dock_pending_approvals, state.pendingApprovals, state.pendingApprovals)
+    } else {
+        stringResource(R.string.run_dock_waiting_approval)
+    }
     RunDockLabel.WaitingAnswer -> stringResource(R.string.run_dock_waiting_answer)
     RunDockLabel.PlanCompleted -> stringResource(R.string.run_dock_plan_completed)
     is RunDockLabel.Paused -> if (label.step.isBlank()) stringResource(R.string.run_dock_paused)
@@ -284,9 +288,11 @@ internal fun runDockLabelText(label: RunDockLabel): String = when (label) {
     is RunDockLabel.Board -> label.title
 }
 
-/** 运行坞文字尾部：计划进度“2/5”与本轮用时（[runDockElapsedText]），以“ · ”相连。 */
+/** 运行坞文字尾部：计划进度“2/5”（待审批时省略，避免与待批项数混淆）与本轮用时（[runDockElapsedText]），以“ · ”相连。 */
 internal fun runDockMetaText(state: RunDockUiState, elapsedSeconds: Long?): String = buildList {
-    if (state.planTotal != null) add("${state.planDone ?: 0}/${state.planTotal}")
+    if (state.planTotal != null && state.label != RunDockLabel.WaitingApproval) {
+        add("${state.planDone ?: 0}/${state.planTotal}")
+    }
     elapsedSeconds?.let { add(runDockElapsedText(it)) }
 }.joinToString(" · ")  // wrap-check: allow 运行坞单行省略；触控锁中作为一段短计时
 

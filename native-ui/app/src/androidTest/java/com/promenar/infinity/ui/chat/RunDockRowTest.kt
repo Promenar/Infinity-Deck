@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.R
@@ -66,6 +67,11 @@ class RunDockRowTest {
                 )
             }
         }
+        val expectedLabel = context.resources.getQuantityString(R.plurals.run_dock_pending_approvals, 2, 2)
+        val dockDescription = rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_MAIN)
+            .assertContentDescriptionContains(expectedLabel, substring = true)
+            .fetchSemanticsNode().config[SemanticsProperties.ContentDescription].joinToString()
+        assertThat(dockDescription).doesNotContain("1/2")
         rule.onNodeWithTag(UiTags.CHAT_RUN_DOCK_JOBS, useUnmergedTree = true).assertExists()
         rule.onNodeWithTag(UiTags.CHAT_TOUCH_LOCK_BUTTON).assertDoesNotExist()
     }

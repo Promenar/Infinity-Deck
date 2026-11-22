@@ -17,4 +17,7 @@
     <string name="chat_inline_approval_approve">Approve</string>
     <string name="chat_inline_approval_approve_current">Approve current</string>
     <string name="chat_inline_approval_reject_current">Reject current</string>
+    <string name="chat_inline_approval_queue_expand">Details</string>
+    <string name="chat_inline_approval_queue_collapse">Hide</string>
+    <string name="chat_inline_approval_queue_high_risk_cd">High-risk action</string>
 </resources>

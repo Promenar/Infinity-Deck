@@ -151,15 +151,49 @@ class ChatApprovalLayoutTest {
                 ),
             )
         }
-        fun assertRisks() {
+        fun assertRisks(expanded: Boolean) {
             rule.onNodeWithText(resources().getString(R.string.agent_panels_irreversible_warning)).assertIsDisplayed()
-            rule.onAllNodesWithText(resources().getString(R.string.agent_panels_network_allowed)).assertCountEquals(1)
-            rule.onNodeWithText("console.log(1)").assertIsDisplayed()
+            rule.onNodeWithText("exec_js").assertIsDisplayed()
             rule.onNodeWithText("Execution mode: semi").assertDoesNotExist()
+            if (expanded) {
+                rule.onAllNodesWithText(resources().getString(R.string.agent_panels_network_allowed)).assertCountEquals(1)
+                rule.onNodeWithText("console.log(1)").assertIsDisplayed()
+            } else {
+                rule.onAllNodesWithText(resources().getString(R.string.agent_panels_network_allowed)).assertCountEquals(0)
+            }
         }
-        assertRisks()
+        assertRisks(expanded = false)
+        rule.onNodeWithTag(UiTags.CHAT_APPROVAL_QUEUE_TOGGLE).performClick()
+        assertRisks(expanded = true)
         rule.runOnIdle { executed = true }
-        assertRisks()
+        assertRisks(expanded = true)
+    }
+
+    @Test
+    fun actionBarStaysDirectlyBelowCurrentCallAndQueueExpandsOnTap() {
+        content {
+            ApprovalCard(
+                toolName = "write_file",
+                description = "",
+                calls = listOf(
+                    call("write_file", "/notes/first.md"),
+                    call("write_file", "/notes/second.md").copy(
+                        preview = ApprovalPreview.Preview(ApprovalPreview.Action.OVERWRITE, "/notes/second.md", "second-body-detail"),
+                    ),
+                    call("delete_file", "/notes/third.md", highRisk = true),
+                ),
+                onApproveAll = {},
+            )
+        }
+
+        val approveBottom = rule.onNodeWithTag(UiTags.CHAT_APPROVAL_APPROVE).fetchSemanticsNode().boundsInRoot.bottom
+        val queueTop = rule.onNodeWithTag(UiTags.CHAT_APPROVAL_QUEUE_SECTION).fetchSemanticsNode().boundsInRoot.top
+        assertThat(approveBottom).isAtMost(queueTop + 1f)
+        rule.onNodeWithTag(UiTags.CHAT_APPROVAL_QUEUE_SECTION).assertIsDisplayed()
+        rule.onNodeWithText("second-body-detail").assertDoesNotExist()
+
+        rule.onNodeWithTag(UiTags.CHAT_APPROVAL_QUEUE_TOGGLE).performClick()
+        rule.onNodeWithText("second-body-detail").assertIsDisplayed()
     }
 
     @Test
