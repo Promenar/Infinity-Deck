@@ -30,11 +30,24 @@ class ToolExecutionPolicyTest {
                     """{"path":"/a","irreversible":true,"url":"https://example.com/?data=secret"}""")).isFalse()
             }
             assertThat(ToolExecutionPolicy.requiresApproval(mode, "delete_file", ToolRisk.DELETE,
-                """{"path":"/a"}""")).isTrue()
+                """{"path":"/a"}""")).isEqualTo(mode == ExecutionMode.WORKSPACE)
+            assertThat(ToolExecutionPolicy.requiresApproval(mode, "shell_exec", ToolRisk.PROCESS,
+                """{"command":"ls -la"}""")).isFalse()
+            assertThat(ToolExecutionPolicy.requiresApproval(mode, "shell_exec", ToolRisk.PROCESS,
+                """{"command":"touch a.txt"}""")).isEqualTo(mode == ExecutionMode.WORKSPACE)
+            assertThat(ToolExecutionPolicy.catastrophicBlock("shell_exec", """{"command":"rm -rf /"}"""))
+                .isNotNull()
+            assertThat(ToolExecutionPolicy.catastrophicBlock("python_exec", """{"code":"import shutil; shutil.rmtree('/')"}"""))
+                .isNotNull()
             listOf("schedule_create", "ssh_host_save", "ssh_host_delete", "ssh_host_install_key").forEach { tool ->
                 assertThat(ToolExecutionPolicy.requiresApproval(mode, tool, ToolRisk.UNKNOWN)).isTrue()
             }
-            listOf("/skills/demo/SKILL.md", "/.agents/skills/demo/SKILL.md").forEach { path ->
+            listOf(
+                "/skills/demo/SKILL.md",
+                "/.agents/skills/demo/SKILL.md",
+                "/data/user/0/com.promenar.infinity/files/agent_skills/demo/SKILL.md",
+                "/data/user/0/com.promenar.infinity/files/session_workspaces/s1/.agents/skills/demo/SKILL.md",
+            ).forEach { path ->
                 assertThat(ToolExecutionPolicy.requiresApproval(mode, "write_file", ToolRisk.FILE_WRITE,
                     """{"path":"$path"}""")).isTrue()
             }

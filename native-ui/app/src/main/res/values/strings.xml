@@ -418,8 +418,8 @@
     <string name="chat_input_placeholder">Message %1$s</string>
     <string name="chat_input_placeholder_default">Message</string>
     <string name="chat_execution_mode_cd">Approvals: %1$s</string>
-    <string name="chat_execution_mode_workspace_hint">Approve each command</string>
-    <string name="chat_execution_mode_full_access_hint">Commands run directly</string>
+    <string name="chat_execution_mode_workspace_hint">Read-only free; ask risky</string>
+    <string name="chat_execution_mode_full_access_hint">Routine auto; admin asks</string>
     <string name="chat_input_placeholder_generating">Queue your next message</string>
     <string name="chat_empty_prompt">What would you like to do today?</string>
     <string name="chat_cd_options">Options</string>
@@ -1636,10 +1636,10 @@
     <string name="tailscale_value_not_set">Not set</string>
     <string name="tailscale_control_official">Tailscale</string>
     <string name="tailscale_auth_key_hint">Paste an auth key starting with tskey-</string>
-    <string name="common_mode_workspace">Ask for commands</string>
+    <string name="common_mode_workspace">Approve by risk</string>
     <string name="common_mode_full_access">No approvals</string>
-    <string name="common_mode_workspace_desc">Files read and write freely in the workspace; each command needs approval</string>
-    <string name="common_mode_full_access_desc">Commands run without approval and can access all app data</string>
+    <string name="common_mode_workspace_desc">Read-only &amp; workspace edits run freely; risky commands, deletes &amp; outside writes ask</string>
+    <string name="common_mode_full_access_desc">Routine commands, deletes &amp; outside writes run directly; runtime &amp; config changes still ask</string>
     <string name="chat_runtime_changes_title">Critical app data changed</string>
     <plurals name="chat_runtime_changes_more">
         <item quantity="one">%d more</item>

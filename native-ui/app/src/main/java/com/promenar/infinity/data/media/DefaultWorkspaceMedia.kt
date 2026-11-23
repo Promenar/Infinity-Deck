@@ -45,6 +45,7 @@ internal class DefaultWorkspaceMedia(
     private val modeFor: (suspend (String) -> com.promenar.infinity.domain.model.SessionRunMode?)? = null,
     private val linuxFiles: com.promenar.infinity.domain.linux.LinuxFileSystem? = null,
     directoryBackend: ((SessionWorkspace.Directory) -> ExternalFolderBackend)? = null,
+    private val builtinRealPaths: Boolean = false,
 ) : WorkspaceMediaResolver, WorkspaceMediaStore {
     private val targets = WorkspaceFileTargetResolver(sessions, workspace, mounts, sessionWorkspace, userSkillsDirectory, linuxDirectoryBackend = directoryBackend, pathPresenter = pathPresenter, modeFor = modeFor, linuxFiles = linuxFiles)
     private val local = MediaLocalAccess(fileSystem)
@@ -59,17 +60,40 @@ internal class DefaultWorkspaceMedia(
         val privateDestination = com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(
             com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE,
         )
+        val presenter = targets.presenter(sessionId)
+        val useBuiltinReal = builtinRealPaths && presenter != com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter
         // 显式私有路径须使用私有入口，保证私有根下的同名挂载目录不会被重新解释。
-        if (privatePath != null) return targets.presenter(sessionId).present(privateDestination.destination, privatePath, privatePrimary = false)
+        if (privatePath != null) {
+            return if (useBuiltinReal) targets.presentBuiltinRealPath(sessionId, privateDestination, privatePath)
+            else presenter.present(privateDestination.destination, privatePath, privatePrimary = false)
+        }
         val virtualPath = "/$path"
         val bindings = mounts.namespaceBindings(sessionId)
         val alias = com.promenar.infinity.data.storage.ExternalMountPaths.aliasOf(virtualPath, com.promenar.infinity.data.storage.ExternalMountPaths.WORKSPACE_ALIAS in bindings)
-        val presenter = targets.presenter(sessionId)
         return when (alias) {
-            null -> targets.present(sessionId, privateDestination, virtualPath)
-            com.promenar.infinity.data.storage.ExternalMountPaths.WORKSPACE_ALIAS -> targets.present(sessionId, com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.PRIMARY_WORKSPACE), virtualPath)
-            com.promenar.infinity.data.storage.ExternalMountPaths.SKILLS_ALIAS -> if (presenter == com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter) "/mnt$virtualPath" else virtualPath
-            else -> virtualPath
+            null -> if (useBuiltinReal) targets.presentBuiltinRealPath(sessionId, privateDestination, virtualPath) else targets.present(sessionId, privateDestination, virtualPath)
+            com.promenar.infinity.data.storage.ExternalMountPaths.WORKSPACE_ALIAS -> {
+                val primary = com.promenar.infinity.data.workspace.WorkspaceFileDestinationBinding(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.PRIMARY_WORKSPACE)
+                if (useBuiltinReal) targets.presentBuiltinRealPath(sessionId, primary, virtualPath) else targets.present(sessionId, primary, virtualPath)
+            }
+            com.promenar.infinity.data.storage.ExternalMountPaths.SKILLS_ALIAS -> when {
+                presenter == com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter -> "/mnt$virtualPath"
+                useBuiltinReal -> com.promenar.infinity.data.workspace.BuiltinRealPathPaths.joinPath(
+                    com.promenar.infinity.data.workspace.BuiltinRealPathContext.canonicalOrAbs(userSkillsDirectory),
+                    virtualPath.removePrefix("/skills").ifEmpty { "/" },
+                )
+                else -> virtualPath
+            }
+            else -> if (useBuiltinReal) {
+                val mount = mounts.visible(sessionId).singleOrNull { it.alias == alias && it.sourceType == "real_path" }
+                if (mount != null) {
+                    val rel = com.promenar.infinity.data.storage.ExternalMountPaths.parse(virtualPath)?.second ?: "/"
+                    com.promenar.infinity.data.workspace.BuiltinRealPathPaths.joinPath(
+                        com.promenar.infinity.data.workspace.BuiltinRealPathContext.canonicalOrAbs(File(mount.sourceId)),
+                        rel,
+                    )
+                } else virtualPath
+            } else virtualPath
         }
     }
 
@@ -137,7 +161,12 @@ internal class DefaultWorkspaceMedia(
             try {
                 val explicit = targetPath?.takeUnless(String::isEmpty)?.let { normalize(sessionId, it) }
                 val destination = if (explicit == null) targets.defaultDestination(sessionId) else null
-                val initialPath = explicit ?: targets.present(sessionId, requireNotNull(destination), "/media")
+                val useBuiltinReal = builtinRealPaths && targets.presenter(sessionId) != com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter
+                val initialPath = explicit ?: if (useBuiltinReal) {
+                    targets.presentBuiltinRealPath(sessionId, requireNotNull(destination), "/media")
+                } else {
+                    targets.present(sessionId, requireNotNull(destination), "/media")
+                }
                 protect(sessionId, initialPath)
                 val target = targets.resolve(sessionId, initialPath, writing = true, destination)
                 withContext(ExternalMountOperationBindings(target.mountIds)) {
@@ -235,7 +264,7 @@ internal class DefaultWorkspaceMedia(
 
     private suspend fun ensureParents(target: Target, path: String) {
         var parent = target.virtualRoot
-        for (component in target.relative(path).trim('/').split('/').dropLast(1)) {
+        for (component in target.relative(path).trim('/').split('/').dropLast(1).filter(String::isNotEmpty)) {
             parent = if (parent == "/") "/$component" else "$parent/$component"
             val existing = entry(target, parent)
             if (existing != null) {
@@ -246,7 +275,7 @@ internal class DefaultWorkspaceMedia(
                 if (target.directoryBackend != null) target.directoryBackend.createDirectory(target.relative(parent))
                 else if (target.mount != null) mounts.createDirectory(target.sessionId, target.accessPath(parent))
                 else {
-                    val parentEntry = entry(target, parent.substringBeforeLast('/').ifEmpty { "/" }) ?: fail("IO", "媒体父目录不可用")
+                    val parentEntry = entry(target, parent.substringBeforeLast('/', "").ifEmpty { "/" }) ?: fail("IO", "媒体父目录不可用")
                     workspace.createDirectoryInWorkspace(target.root!!.uuid, UUID.randomUUID().toString(), component, parentEntry.uuid, target.materialized(parent))
                 }
             } catch (cancelled: CancellationException) {
@@ -268,7 +297,7 @@ internal class DefaultWorkspaceMedia(
                 mounts.write(target.sessionId, target.accessPath(path), file.readBytes(), expectedSha256 = null, createOnly = true)
             } else {
                 val root = target.root ?: fail("INVALID_PATH", "不能向挂载列表目录保存媒体")
-                val parent = entry(target, path.substringBeforeLast('/').ifEmpty { "/" }) ?: fail("IO", "媒体父目录不存在")
+                val parent = entry(target, path.substringBeforeLast('/', "").ifEmpty { "/" }) ?: fail("IO", "媒体父目录不存在")
                 val coroutine = currentCoroutineContext()
                 created = workspace.createFileInWorkspaceStreaming(root.uuid, UUID.randomUUID().toString(), path.substringAfterLast('/'), mime, parent.uuid, target.materialized(path), MAX_WORKSPACE_MEDIA_BYTES) { output ->
                     file.inputStream().use { input ->
@@ -346,19 +375,27 @@ internal class DefaultWorkspaceMedia(
     }
 
     private suspend fun normalize(sessionId: String, path: String): String {
-        if (SCHEME.containsMatchIn(path.trimStart())) fail("INVALID_PATH", "媒体只接受工作区虚拟路径，不接受 URI")
+        if (SCHEME.containsMatchIn(path.trimStart())) fail("INVALID_PATH", "媒体只接受工作区路径，不接受 URI")
         return if (targets.presenter(sessionId) == com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter) {
             com.promenar.infinity.data.workspace.LinuxSessionPaths.normalize(path, targets.linuxWorkingDirectory(sessionId))
-        } else ExternalFolderPaths.normalize(path).also { ExternalMountPaths.parse(it) }
+        } else if (builtinRealPaths) {
+            targets.normalizeBuiltinMediaPath(sessionId, path)
+        } else {
+            ExternalFolderPaths.normalize(path).also { ExternalMountPaths.parse(it) }
+        }
     }
 
     private suspend fun protect(sessionId: String, path: String) {
+        val skillsCanonical = com.promenar.infinity.data.workspace.BuiltinRealPathContext.canonicalOrAbs(userSkillsDirectory)
+        if (com.promenar.infinity.data.workspace.BuiltinRealPathPaths.isSameOrBelow(path, skillsCanonical)) {
+            fail("PROTECTED_PATH", "技能目录写入需要逐次审批，媒体存储不能直接写入")
+        }
         val selectedRelative = if (targets.presenter(sessionId) == com.promenar.infinity.data.workspace.LinuxWorkspaceFilePathPresenter) {
             val cwd = targets.linuxWorkingDirectory(sessionId)
             path.takeIf { it == cwd || it.startsWith("$cwd/") }?.removePrefix(cwd)
         } else null
-        val relative = (targets.presenter(sessionId).privateRelativePath(path) ?: selectedRelative ?: if (path == "/mnt/skills" || path.startsWith("/mnt/skills/")) "/skills" else ExternalMountPaths.parse(path)?.second ?: path).lowercase(Locale.ROOT)
-        if (path == "/mnt/skills" || path.startsWith("/mnt/skills/") || path == "/skills" || path.startsWith("/skills/") || relative == "/.agents/skills" || relative.startsWith("/.agents/skills/")) {
+        val relative = (targets.presenter(sessionId).privateRelativePath(path) ?: selectedRelative ?: if (path == "/mnt/skills" || path.startsWith("/mnt/skills/")) "/skills" else ExternalMountPaths.parse(path)?.second ?: ExternalFolderPaths.normalize(path)).lowercase(Locale.ROOT)
+        if (path == "/mnt/skills" || path.startsWith("/mnt/skills/") || path == "/skills" || path.startsWith("/skills/") || relative == "/.agents/skills" || relative.startsWith("/.agents/skills/") || relative.contains("/.agents/skills/")) {
             fail("PROTECTED_PATH", "技能目录写入需要逐次审批，媒体存储不能直接写入")
         }
     }

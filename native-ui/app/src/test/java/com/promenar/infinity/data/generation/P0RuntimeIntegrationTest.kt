@@ -659,7 +659,7 @@ class P0RuntimeIntegrationTest {
         assertThat(fixture.prompts).hasSize(2)
         assertThat(fixture.prompts.first().tools).isNotEmpty()
         assertThat(fixture.prompts.last().tools).isNull()
-        assertThat(fixture.prompts.last().messages.first().content).contains("权限档：工作区")
+        assertThat(fixture.prompts.last().messages.first().content).contains("权限档：按风险审批")
         assertThat(fixture.resolvedModels.last()).isEqualTo("local::p0-integration-model")
         assertThat(fixture.messageRepository.getById("assistant")!!.modelId).isEqualTo("local::p0-integration-model")
         assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext)

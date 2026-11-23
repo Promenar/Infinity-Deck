@@ -348,9 +348,18 @@ class SubagentRunner(
             return result(message, true)
         }
         val arguments = resolved.arguments
+        val usesLinux = session.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX
+        val catastrophic = ToolExecutionPolicy.catastrophicBlock(call.name, call.arguments, usesLinux = usesLinux)
+        if (catastrophic != null) {
+            val blockedContent = com.promenar.infinity.domain.tool.CommandToolResult(
+                errorCode = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.ERROR_CODE,
+                guidance = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.blockedGuidance(catastrophic),
+            ).toJson().toString()
+            return result(blockedContent, failed = true)
+        }
         val target = host.target(session, tool, call.arguments)
         val mode = ExecutionModeCodec.parseOrWorkspace(session.executionMode.ifEmpty { "workspace" })
-        val needsApproval = ToolExecutionPolicy.requiresApproval(mode, call.name, tool.risk, call.arguments, target, usesLinux = session.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX)
+        val needsApproval = ToolExecutionPolicy.requiresApproval(mode, call.name, tool.risk, call.arguments, target, usesLinux = usesLinux)
         if (needsApproval) {
             val activeStatus = if (current().status == SubagentStatus.WRAPPING_UP) SubagentStatus.WRAPPING_UP else SubagentStatus.RUNNING
             val preview = approvalPreview(call.name, arguments)
@@ -635,8 +644,7 @@ class SubagentRunner(
         private val CONTROL_TOOLS = setOf(SubagentLimits.WAIT_TOOL_NAME, "session_branch", "session_list", "session_stop")
         private const val INTERRUPTED_TOOL_RESULT = "工具执行被中断，状态未知。请先核对实际状态，不要直接重复可能产生副作用的操作。"
         private const val LINUX_PATHS = "文件工具使用 Linux 路径：/workspace 为主工作区，/home/session 为会话专用空间，/mnt/<别名> 为真实路径挂载。"
-        private const val WORKSPACE_PATHS = "工作区文件使用以 / 开头的虚拟路径（相对工作区根目录），文件工具接受 path 或 uuid；" +
-            "先用 list_files、search_files 查找，不要猜测路径，也不要使用设备上的绝对路径。"
+        private const val WORKSPACE_PATHS = "内置模式文件工具与命令共用真实 Android 路径：工作区内可用不带前导 / 的相对路径或完整真实路径，工作区外与真实路径挂载使用完整真实路径；仅无 POSIX 路径的逻辑挂载（/mnt/knowledge、SAF /mnt/<别名>）使用 /mnt/... 前缀；禁止使用已废除的伪前导 /（如 /notes/a.md、/skills/...、/session/...）。文件工具接受 path 或 uuid；先用 list_files、search_files 查找，不要猜测路径。"
         private const val SYSTEM_PROMPT = "你是主智能体派生的子代理，在独立上下文中完成交给你的一项子任务。" +
             "你只与主智能体通信：不要向用户提问，信息不足时基于已有信息给出最佳结论并说明假设。" +
             "完成后只输出交给主智能体的结论正文，简洁、结构清楚，包含关键事实、路径与未解决事项。"

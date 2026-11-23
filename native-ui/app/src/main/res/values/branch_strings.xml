@@ -9,9 +9,9 @@
     <string name="branch_context_fresh">Fresh</string>
     <string name="branch_context_inherit">Inherit from main</string>
     <string name="branch_mode_full_access">No approvals</string>
-    <string name="branch_mode_workspace">Ask for commands</string>
+    <string name="branch_mode_workspace">Approve by risk</string>
     <string name="branch_mode_same_as_parent">%1$s · same as main</string>
-    <string name="branch_mode_differs_stricter">Differs from main session: every command needs approval</string>
+    <string name="branch_mode_differs_stricter">Differs from main session: risky commands and deletes need approval</string>
     <string name="branch_mode_differs_looser">Differs from main session: commands run without approval and can access all app data</string>
     <string name="branch_option_toggle">Switch</string>
     <string name="branch_worktree_line">From %1$s · %2$s</string>

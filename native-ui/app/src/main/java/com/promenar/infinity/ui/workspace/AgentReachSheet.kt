@@ -537,7 +537,7 @@ private fun ApprovalSection(state: AgentReachState) {
                 },
             ),
             icon = Icons.Rounded.VerifiedUser,
-            subtitleMaxLines = 2,
+            subtitleMaxLines = 3,
             modifier = Modifier.testTag("agent_reach_mode"),
         )
     }

@@ -193,6 +193,7 @@ internal class DefaultChatGenerationRuntime(
     private val stateBoardRepository: com.promenar.infinity.data.repository.StateBoardRepository? = null,
     private val runModeCheck: (suspend (String) -> GenerationFailure?)? = null,
     private val linuxFiles: com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess? = null,
+    private val builtinFiles: com.promenar.infinity.ui.chat.manager.skills.BuiltinRealPathWorkspaceAccess? = null,
     private val askUserLedger: com.promenar.infinity.data.repository.AskUserLedgerRepository? = null,
     private val secretInputLedger: com.promenar.infinity.data.secret.SecretInputLedgerRepository? = null,
     private val subagentCompletions: com.promenar.infinity.data.trigger.SubagentCompletionSteering? = null,
@@ -473,6 +474,10 @@ internal class DefaultChatGenerationRuntime(
             tools = tools.ifEmpty { null },
             maxTokens = session.inferenceParams.withDefaults(config.inferenceDefaults()).maxTokens,
         )
+        val isBuiltinRun = (session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN) == com.promenar.infinity.domain.model.SessionRunMode.BUILTIN
+        val builtinWorkspacePath = if (isBuiltinRun) runCatching { builtinFiles?.workingDirectory(sessionId) }.getOrNull() else null
+        val builtinPrivateWorkspacePath = if (isBuiltinRun) runCatching { builtinFiles?.privateWorkspacePath(sessionId) }.getOrNull() else null
+        val builtinUserSkillsPath = if (isBuiltinRun) builtinFiles?.userSkillsRealPath else null
         val context = contextBuilder.buildContext(ContextBuilderParams(
             sessionId = sessionId,
             content = lastUser?.contentForModel().orEmpty(),
@@ -491,6 +496,9 @@ internal class DefaultChatGenerationRuntime(
             mounts = visibleMounts(sessionId),
             modelContextTokens = PreparedPromptBudgetGate.resolveWindow(session, prompt, settings, preparedRoute?.modelId).modelContextTokens,
             runtimeModelId = prompt.model,
+            builtinWorkspacePath = builtinWorkspacePath,
+            builtinPrivateWorkspacePath = builtinPrivateWorkspacePath,
+            builtinUserSkillsPath = builtinUserSkillsPath,
         ))
         val systemPrompt = replaceHistorySummary(context.finalSystemPrompt, session.summary, session.summary)
         preparedContext = context.copy(
@@ -653,6 +661,10 @@ internal class DefaultChatGenerationRuntime(
             ?: agentConfig.modelId.takeIf(String::isNotBlank)
             ?: ProviderManager.getInstance().getMainConfiguredModelId().orEmpty()
         val effectiveRagOptions = session.ragOptions ?: RagOptions()
+        val isBuiltinTurn = (session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN) == com.promenar.infinity.domain.model.SessionRunMode.BUILTIN
+        val turnBuiltinWorkspacePath = if (isBuiltinTurn) runCatching { builtinFiles?.workingDirectory(request.sessionId) }.getOrNull() else null
+        val turnBuiltinPrivatePath = if (isBuiltinTurn) runCatching { builtinFiles?.privateWorkspacePath(request.sessionId) }.getOrNull() else null
+        val turnBuiltinSkillsPath = if (isBuiltinTurn) builtinFiles?.userSkillsRealPath else null
         val params = ContextBuilderParams(
             sessionId = request.sessionId,
             stateExcludedMessageIds = request.messageIdsToReplace,
@@ -681,6 +693,9 @@ internal class DefaultChatGenerationRuntime(
             agentMemoryPolicy = agentConfig.memoryPolicy,
             workspace = sessionWorkspace?.invoke(request.sessionId),
             mounts = visibleMounts(request.sessionId),
+            builtinWorkspacePath = turnBuiltinWorkspacePath,
+            builtinPrivateWorkspacePath = turnBuiltinPrivatePath,
+            builtinUserSkillsPath = turnBuiltinSkillsPath,
         )
         val turnId = request.userMessageId ?: knowledgeTurnId(session, assistantMessageId(request))
         knowledgeTurns?.seed(session, turnId)
@@ -1303,28 +1318,35 @@ internal class DefaultChatGenerationRuntime(
                             .analyze(repo, validArgs)?.authorizationTarget
                     }
                 }
-            } else branchService?.invoke()?.approvalTarget(session, call.name, call.arguments) ?: resolveSessionToolTarget(session, it, call.arguments, workspaceRepository, externalFolders, sshRuntime?.hostStore, sshRuntime?.let { runtime -> runtime::sessionHost }, linuxFiles) }
+            } else branchService?.invoke()?.approvalTarget(session, call.name, call.arguments) ?: resolveSessionToolTarget(session, it, call.arguments, workspaceRepository, externalFolders, sshRuntime?.hostStore, sshRuntime?.let { runtime -> runtime::sessionHost }, linuxFiles, builtinFiles = builtinFiles) }
         }
         val mode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode)
         val turnId = request.userMessageId ?: com.promenar.infinity.data.knowledge.knowledgeTurnId(session, assistantMessageId(request))
         knowledgeTurns?.seed(session, turnId)
+        val usesLinux = session.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX
+        // 毁灭性根目录命令两档模式均硬拦截，不进入审批卡，直接由执行器落账返回结构化拒绝。
+        val catastrophicBlockedIds = calls.filter { call ->
+            com.promenar.infinity.domain.tool.ToolExecutionPolicy.catastrophicBlock(call.name, call.arguments, usesLinux) != null
+        }.mapTo(mutableSetOf()) { it.id }
         val grantCategories = calls.associate { call ->
-            call.id to com.promenar.infinity.domain.tool.ToolExecutionPolicy.grantCategory(
+            call.id to if (call.id in catastrophicBlockedIds) null else com.promenar.infinity.domain.tool.ToolExecutionPolicy.grantCategory(
                 mode, call.name, preparedByName[call.name]?.singleOrNull()?.risk ?: contentStrategy.riskForTool(call.name),
-                call.arguments, targets[call.id], usesLinux = session.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
+                call.arguments, targets[call.id], usesLinux = usesLinux,
             )
         }
         // 授权在本轮判定时取快照，执行中到期不改变已经准入的调用。
         val timedGrantTargets = calls.filter { call ->
-            grantCategories[call.id]?.let { timedGrants?.isValid(session.id, it) } == true
+            call.id !in catastrophicBlockedIds &&
+                grantCategories[call.id]?.let { timedGrants?.isValid(session.id, it) } == true
         }.associate { it.id to targets[it.id] }
         val requestedPendingIds = calls.filter { call ->
-            call.id !in invalidConfigCalls && call.id !in timedGrantTargets &&
-            !(call.name == "request_knowledge_access" && knowledgeTurns?.isDenied(session.id, turnId) == true) &&
-            com.promenar.infinity.domain.tool.ToolExecutionPolicy.requiresApproval(
-                mode, call.name, preparedByName[call.name]?.singleOrNull()?.risk ?: contentStrategy.riskForTool(call.name),
-                call.arguments, targets[call.id], usesLinux = session.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
-            )
+            call.id !in catastrophicBlockedIds &&
+                call.id !in invalidConfigCalls && call.id !in timedGrantTargets &&
+                !(call.name == "request_knowledge_access" && knowledgeTurns?.isDenied(session.id, turnId) == true) &&
+                com.promenar.infinity.domain.tool.ToolExecutionPolicy.requiresApproval(
+                    mode, call.name, preparedByName[call.name]?.singleOrNull()?.risk ?: contentStrategy.riskForTool(call.name),
+                    call.arguments, targets[call.id], usesLinux = usesLinux,
+                )
         }.mapTo(mutableSetOf()) { it.id }
         val grantTargets = emptyMap<String, String>()
         val validInvocations = calls.mapNotNull { call ->

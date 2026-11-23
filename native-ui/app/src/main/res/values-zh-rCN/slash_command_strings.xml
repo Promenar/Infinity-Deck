@@ -18,7 +18,7 @@
     <string name="slash_cmd_clear_name">清空历史</string>
     <string name="slash_cmd_clear_desc">确认后删除本会话的全部消息</string>
     <string name="slash_cmd_mode_name">审批</string>
-    <string name="slash_cmd_mode_desc">切换审批：命令需批准或免批准</string>
+    <string name="slash_cmd_mode_desc">切换审批：按风险审批或免批准</string>
     <string name="slash_cmd_tools_name">工具调用</string>
     <string name="slash_cmd_tools_desc">为本会话开启或关闭工具调用</string>
     <string name="slash_cmd_export_name">导出会话</string>
@@ -39,7 +39,7 @@
     <!-- 无法执行 -->
     <string name="slash_reject_nothing_to_clear">本会话还没有可清空的消息</string>
     <string name="slash_reject_nothing_to_export">本会话还没有可导出的消息</string>
-    <string name="slash_reject_unknown_mode">没有“%1$s”，可用：命令需批准或免批准</string>
+    <string name="slash_reject_unknown_mode">没有“%1$s”，可用：按风险审批或免批准</string>
     <string name="slash_reject_unknown_toggle">用法：/tools on 或 /tools off</string>
     <string name="slash_reject_unknown_format">导出只支持 md、txt、html、pdf 或 png</string>
     <string name="slash_block_disabled">技能 /%1$s 已停用，可在会话设置的“工具”中启用</string>

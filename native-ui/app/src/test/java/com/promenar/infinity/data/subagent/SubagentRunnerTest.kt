@@ -454,7 +454,7 @@ class SubagentRunnerTest {
                 task.join()
                 assertThat(host.executed.map { it.first }).containsExactly(case.tool)
                 assertThat(models.requests.first().messages.first().content).contains(
-                    if (mode == "workspace") "requires user approval" else "without per-command approval",
+                    if (mode == "workspace") "require user approval" else "without per-command approval",
                 )
             }
         }
@@ -496,7 +496,7 @@ class SubagentRunnerTest {
     fun `完全访问模式执行命令工具不出现审批`() = runTest {
         val broker = SubagentApprovalBroker()
         val host = FakeHost(listOf(shell))
-        val models = ScriptedModels(listOf(toolCall("c1", "shell_exec", """{"command":"ls"}""")), listOf(text("done")))
+        val models = ScriptedModels(listOf(toolCall("c1", "shell_exec", """{"command":"touch demo.txt"}""")), listOf(text("done")))
 
         val result = runner(models, host, broker).run(parent(), session("auto"), "step", run(), null) { _, _ -> }
 
@@ -506,10 +506,26 @@ class SubagentRunnerTest {
     }
 
     @Test
+    fun `子代理执行毁灭性根目录命令两档均直接硬拦截且不弹审批`() = runTest {
+        for (mode in listOf("workspace", "full_access")) {
+            val broker = SubagentApprovalBroker()
+            val host = FakeHost(listOf(shell))
+            val models = ScriptedModels(listOf(toolCall("c1", "shell_exec", """{"command":"rm -rf /"}""")), listOf(text("stopped")))
+
+            val result = runner(models, host, broker).run(parent(), session(mode), "step", run(), null) { _, _ -> }
+
+            assertThat(result.status).isEqualTo(SubagentStatus.COMPLETED)
+            assertThat(host.executed).isEmpty()
+            assertThat(broker.pending.value).isEmpty()
+            assertThat(models.requests.last().messages.last().content).contains("EXEC_BLOCKED_CATASTROPHIC_COMMAND")
+        }
+    }
+
+    @Test
     fun `工作区模式逐条审批且记住标志不会产生授权`() = runTest {
         val broker = SubagentApprovalBroker()
         val host = FakeHost(listOf(shell))
-        val models = ScriptedModels(listOf(toolCall("c1", "shell_exec", """{"command":"ls"}""")), listOf(text("done")))
+        val models = ScriptedModels(listOf(toolCall("c1", "shell_exec", """{"command":"touch demo.txt"}""")), listOf(text("done")))
         val statuses = mutableListOf<SubagentStatus>()
         val job = launch {
             val result = runner(models, host, broker).run(parent(), session("semi"), "step", run(), null) { run, _ -> statuses += run.status }
@@ -766,8 +782,8 @@ class SubagentRunnerTest {
         runCurrent()
         assertThat(host.executed).hasSize(1)
         assertThat(broker.pending.value).hasSize(1)
-        assertThat(models.requests[0].messages.first().content).contains("权限档：完全访问")
-        assertThat(models.requests[1].messages.first().content).contains("权限档：工作区")
+        assertThat(models.requests[0].messages.first().content).contains("权限档：免批准")
+        assertThat(models.requests[1].messages.first().content).contains("权限档：按风险审批")
         broker.resolve(broker.pending.value.single().id, approved = false)
         job.join()
         assertThat(host.executed).hasSize(1)

@@ -56,15 +56,21 @@ class SystemPromptSectionsMediaTest {
 
     @Test fun `默认落点提示区分技能挂载与用户挂载且支持运行模式呈现`() {
         val workspace = com.promenar.infinity.data.workspace.SessionWorkspace.Directory(
-            com.promenar.infinity.data.local.db.entity.WorkspaceEntity("ws", "project", "项目", "project", 1), java.io.File("project"))
+            com.promenar.infinity.data.local.db.entity.WorkspaceEntity("ws", "project", "项目", "project", 1), java.io.File("/data/user/0/app/files/projects/project"))
         val skills = com.promenar.infinity.domain.storage.ExternalMount("builtin:skills", "skills", "builtin_skills", "agent_skills", "s", 0)
         val assets = com.promenar.infinity.domain.storage.ExternalMount("assets", "素材", "real_path", "/assets", "s", 0)
-        val main = SystemPromptSections.toolGuidance(setOf("canvas_create", "media_fetch"), false, workspace, mounts = listOf(skills))
-        assertThat(main).contains("默认保存在主工作区（`/`）")
-        val privatePrompt = SystemPromptSections.toolGuidance(setOf("canvas_create", "media_fetch"), false, workspace, mounts = listOf(skills, assets))
-        assertThat(privatePrompt).contains("默认保存在会话专用空间（`/session`）")
+        val main = SystemPromptSections.toolGuidance(setOf("canvas_create", "media_fetch"), false, workspace, mounts = listOf(skills),
+            builtinWorkspacePath = "/data/user/0/app/files/projects/project",
+            builtinPrivateWorkspacePath = "/data/user/0/app/files/session_workspaces/s")
+        assertThat(main).contains("默认保存在主工作区（`/data/user/0/app/files/projects/project`）")
+        assertThat(main).contains("通过 `/data/user/0/app/files/session_workspaces/s`")
+        val privatePrompt = SystemPromptSections.toolGuidance(setOf("canvas_create", "media_fetch"), false, workspace, mounts = listOf(skills, assets),
+            builtinWorkspacePath = "/data/user/0/app/files/projects/project",
+            builtinPrivateWorkspacePath = "/data/user/0/app/files/session_workspaces/s")
+        assertThat(privatePrompt).contains("默认保存在会话专用空间（`/data/user/0/app/files/session_workspaces/s`）")
         assertThat(privatePrompt).contains("切换主工作区不会搬动镜像")
         val linux = SystemPromptSections.toolGuidance(setOf("canvas_create"), false, workspace, mounts = listOf(assets),
+            runMode = com.promenar.infinity.domain.model.SessionRunMode.LINUX,
             filePathPresenter = com.promenar.infinity.data.workspace.WorkspaceFilePathPresenter { target, path, _ ->
                 if (target == com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE) "/home/session" + path.trimEnd('/') else path
             })

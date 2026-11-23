@@ -159,10 +159,10 @@ class AgentReachModelsTest {
             ReachPathKind.SKILLS to "/mnt/skills",
         ).inOrder()
         assertThat(reachPaths(SessionRunMode.BUILTIN, repo, mounts).map { it.kind to it.path }).containsExactly(
-            ReachPathKind.WORKSPACE to "/",
-            ReachPathKind.SESSION to "/session",
+            ReachPathKind.WORKSPACE to "/storage/emulated/0/repo",
+            ReachPathKind.SESSION to "files/workspaces",
             ReachPathKind.MOUNT to "/mnt/photos",
-            ReachPathKind.SKILLS to "/skills",
+            ReachPathKind.SKILLS to "\$INFINITY_SKILLS",
         ).inOrder()
         assertThat(reachPaths(SessionRunMode.LINUX, repo, mounts).first { it.kind == ReachPathKind.MOUNT }.mount).isEqualTo(mounts.single())
 

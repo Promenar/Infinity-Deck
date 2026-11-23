@@ -9,9 +9,9 @@
     <string name="branch_context_fresh">全新</string>
     <string name="branch_context_inherit">继承主会话</string>
     <string name="branch_mode_full_access">免批准</string>
-    <string name="branch_mode_workspace">命令需批准</string>
+    <string name="branch_mode_workspace">按风险审批</string>
     <string name="branch_mode_same_as_parent">%1$s · 沿用主会话</string>
-    <string name="branch_mode_differs_stricter">与主会话不同：每条命令需批准</string>
+    <string name="branch_mode_differs_stricter">与主会话不同：高危命令与删除需批准</string>
     <string name="branch_mode_differs_looser">与主会话不同：命令免批准，可访问全部应用数据</string>
     <string name="branch_option_toggle">切换</string>
     <string name="branch_worktree_line">基于 %1$s · %2$s</string>

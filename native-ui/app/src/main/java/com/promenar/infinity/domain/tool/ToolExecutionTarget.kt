@@ -151,11 +151,16 @@ object ToolExecutionTargets {
         if (kind !in setOf("path", "move") || tuple.size != if (kind == "path") 2 else 3) return false
         tuple.drop(1).any { item ->
             val path = (item as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@any false
-            // 共享存储工作区大小写不敏感，项目技能目录的两段按忽略大小写比较；/skills 是精确匹配的虚拟根。
+            // 共享存储工作区大小写不敏感，项目技能目录的两段按忽略大小写比较；同时识别内置真实路径下的用户技能目录。
             val scopedPath = com.promenar.infinity.data.workspace.SessionPrivateWorkspacePaths.relative(path) ?: path
-            val folded = scopedPath.uppercase(Locale.ROOT).lowercase(Locale.ROOT)
+            val folded = scopedPath.uppercase(Locale.ROOT).lowercase(Locale.ROOT).trimEnd('/')
             path == "/skills" || path.startsWith("/skills/") ||
-                folded == "/.agents" || folded == "/.agents/skills" || folded.startsWith("/.agents/skills/")
+                folded == "/.agents" || folded == "/.agents/skills" || folded.startsWith("/.agents/skills/") ||
+                folded.endsWith("/.agents") || folded.endsWith("/.agents/skills") || folded.contains("/.agents/skills/") ||
+                folded == "/data/user/0/com.promenar.infinity/files/agent_skills" ||
+                folded.startsWith("/data/user/0/com.promenar.infinity/files/agent_skills/") ||
+                folded == "/data/data/com.promenar.infinity/files/agent_skills" ||
+                folded.startsWith("/data/data/com.promenar.infinity/files/agent_skills/")
         }
     }.getOrDefault(false)
 
@@ -166,7 +171,8 @@ object ToolExecutionTargets {
         toolName in SKILL_MUTATIONS && target != null && (isSkillsPathTarget(target) || runCatching {
             val parts = Json.parseToJsonElement(target) as? JsonArray
             val metadata = parts?.lastOrNull() as? JsonObject
-            (metadata?.get("linuxSkills") as? JsonPrimitive)?.booleanOrNull == true
+            (metadata?.get("linuxSkills") as? JsonPrimitive)?.booleanOrNull == true ||
+                (metadata?.get("builtinSkills") as? JsonPrimitive)?.booleanOrNull == true
         }.getOrDefault(false))
 
     /** 清除不可见控制字符与格式控制后按 UTF-16 长度限制显示，保留完整代理对。 */

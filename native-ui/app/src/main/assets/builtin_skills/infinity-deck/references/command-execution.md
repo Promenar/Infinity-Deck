@@ -32,14 +32,14 @@
 
 - 内置模式下 `python3`、`git`、`pip` 是当前 shell 中的函数，子 sh 脚本与 subprocess 中不可见；改用 `sys.executable`/`$INFINITY_PYTHON`、`python3 -m infinity_git`、`python3 -m infinity_pip`，或用 `. 脚本` 在当前 shell 执行。内置 git 只支持 HTTPS 远端，不支持的子命令返回 `GIT_UNSUPPORTED`。
 - 内置模式（`arm64-v8a`）随应用打包精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，不含 `lavfi` 虚拟输入），已通过符号链接目录前置进 `PATH`（并保留 `INFINITY_FFMPEG`/`INFINITY_FFPROBE`），因此在 `shell_exec`、`python_exec` 及 Python `subprocess` 中均可直接调用 `ffmpeg`/`ffprobe`。Linux 模式改用 Alpine `apk add ffmpeg` 安装的 musl 二进制，不混用 Android 打包库。
-- 内置模式下，命令输出中出现的工作区物理路径会被宿主自动脱敏替换为字面量 `$INFINITY_WORKSPACE`（既隐藏应用目录，又可直接用于下一条命令）；因此 `pwd` 或 `echo "$INFINITY_WORKSPACE"` 输出 `$INFINITY_WORKSPACE` 属于正常现象，不是变量未展开。
+- 内置模式下，命令与文件工具完全共用真实 Android 规范路径，`pwd`、`echo "$INFINITY_WORKSPACE"` 与文件工具返回路径一致，命令输出直接保留真实路径（不再脱敏为字面量 `$INFINITY_WORKSPACE`）。
 - 内置模式运行在 Android 原生环境，系统根目录没有可写的 `/tmp`，临时文件一律使用 `$TMPDIR`（指向 `cacheDir/exec-tmp`）或工作区临时文件并在结束后清理；Linux 模式 rootfs 内 `/tmp` 正常可写。
-- 内置模式的命令看不到 `/mnt/<别名>`（含 `/mnt/knowledge` 与 SAF），需先用文件工具复制到工作区。Linux 模式仅真实路径 `/mnt/<别名>` 可见，SAF 与 `/mnt/knowledge` 均不挂载到 Linux shell（资料库内容用文件工具读写，或经 `copy_knowledge_to_linux` 拷入 `/home/session/inbox`）。完整四层隔离矩阵见 `references/runtime-isolation.md`。
+- 内置模式的命令可直接按真实路径访问已授权的真实路径挂载，仅 SAF 挂载与 `/mnt/knowledge` 资料库对命令不可见（需用文件工具读取或拷入工作区）。Linux 模式仅真实路径 `/mnt/<别名>` 可见，SAF 与 `/mnt/knowledge` 均不挂载到 Linux shell（资料库内容用文件工具读写，或经 `copy_knowledge_to_linux` 拷入 `/home/session/inbox`）。完整四层隔离矩阵见 `references/runtime-isolation.md`。
 - 本机命令以普通应用身份使用设备当前网络，服务监听端口请用 1024 以上。
 - `command` 最多 32000 字符，`python_exec` 的 `code` 最多 40000 字符且 UTF-8 不超过 120000 字节；更长的内容写入工作区文件后执行。
 - 写入工作区的大日志或大文本用 `read_file` 分段读取：单文件最多 100 MiB，每次最多 2000 行；按结果“后续”行给出的 `startLine`（超长行另带 `lineByteOffset`）继续读，直到显示“已到文件末尾”。
 - 命令直接读写工作区，删除或覆盖的文件无法恢复。应用工作区在命令结束后对账，结果的 `workspace_changes` 列出变化；自选目录工作区不对账。
-- 工作区档下每条命令需要用户审批，完全访问档免批。审批被拒后不重试，也不改换工具或环境绕过。
+- **按风险审批档**下，经严格词法解析确认零副作用的只读 `shell_exec` 命令（如 `ls`/`pwd`/`cat`/`head`/`tail`/`stat`/`rg`/`grep`/只读 `find`/只读 `git`/`ffprobe`/`python3 --version`）自动免批，其余命令与脚本逐条审批；**免批准档**下常规命令免批。针对根目录、共享存储根、应用数据根或未展开根目录变量的毁灭性命令在两档下均直接硬拦截（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`）且不可审批。审批被拒后不重试，也不改换工具或环境绕过。
 
 ## 结果字段
 
@@ -69,6 +69,7 @@
 | `TERMUX_TIMEOUT` | 只停止了本地等待，Termux 中的命令可能仍在运行 | 先确认原命令状态，再决定是否重试；长命令改用 `background: true` |
 | `truncated: true` | 只保留了输出末尾 | 把输出重定向到工作区文件，用 `read_file` 或 `search_files` 读取；`ssh_exec` 可调大 `max_output_chars` |
 | `EXEC_STOPPED`、`TERMUX_STOPPED`、`SSH_STOPPED` | 用户停止了命令 | 不自动重试，说明情况或询问用户 |
+| `EXEC_BLOCKED_CATASTROPHIC_COMMAND` | 命令触及系统根、共享存储根、应用数据根或未展开根目录变量的毁灭性操作，两档均不可审批硬拦截 | 严禁重试或换壳绕过；将操作范围精确限定到具体子文件或子目录后重新评估 |
 | `EXEC_INTERRUPTED` | 用户插入了新消息，命令未执行或已中断 | 先处理用户的新消息 |
 | `EXEC_LINUX_UNAVAILABLE` | Linux 环境不可用 | 请用户到“设置 → Linux 环境”修复，或在聊天顶部切换运行模式 |
 | `EXEC_MODE_CHANGED`、`EXEC_RUN_MODE_REQUIRED` | 会话运行模式已变化或尚未确定 | 按 `guidance` 处理后重新调用 |

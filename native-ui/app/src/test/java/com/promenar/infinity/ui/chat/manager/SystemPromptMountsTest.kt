@@ -21,7 +21,7 @@ class SystemPromptMountsTest {
             ),
         )
         assertThat(text).contains("### Mounted Folders")
-        assertThat(text).contains("`/mnt/docs/`: commands reach it at the real path `/storage/emulated/0/Documents`.")
+        assertThat(text).contains("`/storage/emulated/0/Documents`（挂载 `docs`）：文件工具与命令共用该真实路径")
         assertThat(text).contains("`/mnt/termux/`: file tools only.")
         assertThat(text).contains("`/mnt/gone/`: currently unavailable")
         assertThat(text).doesNotContain("/storage/emulated/0/Old")

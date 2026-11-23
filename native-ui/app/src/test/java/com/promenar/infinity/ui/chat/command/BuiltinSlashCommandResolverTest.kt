@@ -47,6 +47,7 @@ class BuiltinSlashCommandResolverTest {
             "full_access" to ExecutionMode.FULL_ACCESS, "FULL_ACCESS" to ExecutionMode.FULL_ACCESS, "完全访问" to ExecutionMode.FULL_ACCESS,
             "full access" to ExecutionMode.FULL_ACCESS, "workspace" to ExecutionMode.WORKSPACE, "工作区" to ExecutionMode.WORKSPACE,
             "免批准" to ExecutionMode.FULL_ACCESS, "No approvals" to ExecutionMode.FULL_ACCESS,
+            "按风险审批" to ExecutionMode.WORKSPACE, "Approve by risk" to ExecutionMode.WORKSPACE,
             "命令需批准" to ExecutionMode.WORKSPACE, "Ask for commands" to ExecutionMode.WORKSPACE,
         ).forEach { (argument, mode) ->
             assertThat(resolve(BuiltinSlashCommand.MODE, argument)).isEqualTo(SlashCommandAction.SetExecutionMode(mode))

@@ -85,6 +85,7 @@ class RuntimeGuideToolContractTest {
         val targets = mapOf(
             "普通" to null,
             "技能目录" to "[\"path\",\"/skills/demo/SKILL.md\"]",
+            "工作区外" to "[\"path\",\"/data/user/0/demo/cache/a.txt\",{\"outsideWorkspace\":true}]",
             "Linux根目录" to "[\"path\",\"/etc/demo\",{\"linuxRootfs\":true}]",
             "跨会话" to "session-approval:other",
         )

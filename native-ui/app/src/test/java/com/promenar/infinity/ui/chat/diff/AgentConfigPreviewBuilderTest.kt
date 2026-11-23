@@ -33,7 +33,7 @@ class AgentConfigPreviewBuilderTest {
         override suspend fun mcpName(id: String) = "MCP-$id"
         override suspend fun workspaceName(id: String) = "WS-$id"
     }
-    private val labels = AgentConfigValueLabels(on = "开启", off = "关闭", workspaceMode = "命令需批准", untitledSession = "新会话") { "档位-$it" }
+    private val labels = AgentConfigValueLabels(on = "开启", off = "关闭", workspaceMode = "按风险审批", untitledSession = "新会话") { "档位-$it" }
 
     private fun request(json: String) = AgentsWriteRequest.parse(Json.parseToJsonElement(json).jsonObject)!!
 
@@ -81,7 +81,7 @@ class AgentConfigPreviewBuilderTest {
             FieldChange("name", null, "翻译助手"),
             FieldChange("modelId", null, "DeepSeek · m2"),
             FieldChange("reasoningEffort", null, "档位-low"),
-            FieldChange(AgentConfigPreviewBuilder.EXECUTION_MODE_KEY, null, "命令需批准"),
+            FieldChange(AgentConfigPreviewBuilder.EXECUTION_MODE_KEY, null, "按风险审批"),
         ).inOrder()
         assertThat(preview.promptDiff).isNotNull()
         assertThat(preview.impact).isEqualTo(AgentConfigImpact.NewAgent)

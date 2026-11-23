@@ -283,7 +283,7 @@ class BuiltinExecServiceTest {
         assertThat(value.keys.take(4)).containsExactly("error_code", "guidance", "exit_code", "timed_out").inOrder()
         assertThat(value.getValue("exit_code").jsonPrimitive.int).isEqualTo(4)
         val stdout = value.getValue("stdout").jsonPrimitive.content.lines()
-        assertThat(stdout[0]).isEqualTo("\$INFINITY_WORKSPACE")
+        assertThat(stdout[0]).isEqualTo(workspace.canonicalPath)
         assertThat(stdout[1]).isEqualTo("builtin:unset:${File(work, "home").path}")
         assertThat(stdout[2]).isEqualTo("in")
         assertThat(value.getValue("stderr").jsonPrimitive.content).isEqualTo("err\n")
@@ -301,7 +301,7 @@ class BuiltinExecServiceTest {
         val value = json(ShellExecSkill(service(sessionWorkspace = { requested += it; directory })).execute(
             args("command" to "pwd; echo \"\$INFINITY_WORKSPACE_KIND\"; echo hi > made.txt"), context,
         ).content)
-        assertThat(value.getValue("stdout").jsonPrimitive.content.lines().take(2)).containsExactly("\$INFINITY_WORKSPACE", "project").inOrder()
+        assertThat(value.getValue("stdout").jsonPrimitive.content.lines().take(2)).containsExactly(project.canonicalPath, "project").inOrder()
         assertThat(File(project, "made.txt").readText()).isEqualTo("hi\n")
         assertThat(File(workspace, "made.txt").exists()).isFalse()
         assertThat(value).doesNotContainKey("workspace_changes")
@@ -432,29 +432,17 @@ class BuiltinExecServiceTest {
     }
 
     @Test
-    fun `输出中的工作区物理路径替换为环境变量`() {
-        val root = File(work, "ws")
-        assertThat(BuiltinExecService.virtualize("${root.path}/a.txt and ${root.path}", root))
-            .isEqualTo("\$INFINITY_WORKSPACE/a.txt and \$INFINITY_WORKSPACE")
-    }
+    fun `毁灭性根目录命令在执行服务层直接硬拦截而不启动进程`() = runBlocking<Unit> {
+        val shellResult = service().runShell("root", "s", "rm -rf /", null, 30)
+        assertThat(shellResult.errorCode).isEqualTo(com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.ERROR_CODE)
+        assertThat(shellResult.exitCode).isNull()
+        assertThat(shellResult.guidance).contains("不可跳过")
 
-    @Test
-    fun `实时输出中被读取块切开的工作区路径仍被替换，结束时补发暂存的块尾`() {
-        val root = File(work, "ws")
-        val seen = mutableListOf<Pair<com.promenar.infinity.domain.tool.ToolOutputStream, String>>()
-        val tee = LiveWorkspaceOutput(root) { stream, text -> seen.add(stream to text) }
-        val out = com.promenar.infinity.domain.tool.ToolOutputStream.STDOUT
-        val err = com.promenar.infinity.domain.tool.ToolOutputStream.STDERR
-        val split = root.path.length / 2
-        tee.accept(out, "see ${root.path.take(split)}")
-        tee.accept(err, "e1\n")
-        tee.accept(out, "${root.path.drop(split)}/a.txt\n")
-        tee.accept(out, "tail /")
-        tee.finish()
-        assertThat(seen.filter { it.first == out }.joinToString("") { it.second })
-            .isEqualTo("see \$INFINITY_WORKSPACE/a.txt\ntail /")
-        assertThat(seen.filter { it.first == err }.map { it.second }).containsExactly("e1\n")
-        assertThat(seen.joinToString("") { it.second }).doesNotContain(root.path)
+        val sdcardResult = service().runShell("root", "s", "rm -rf /sdcard/*", null, 30)
+        assertThat(sdcardResult.errorCode).isEqualTo(com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.ERROR_CODE)
+
+        val pyResult = service().runPython("root", "s", "import shutil; shutil.rmtree('/')", null, 30)
+        assertThat(pyResult.errorCode).isEqualTo(com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.ERROR_CODE)
     }
 
     @Test
@@ -475,7 +463,7 @@ class BuiltinExecServiceTest {
     }
 
     @Test
-    fun `实时输出隐去工作区物理路径，聊天界面停止返回 EXEC_STOPPED`() = runBlocking<Unit> {
+    fun `实时输出原样保留真实工作区路径，聊天界面停止返回 EXEC_STOPPED`() = runBlocking<Unit> {
         val store = ToolLiveOutputStore()
         val sink = store.open("step")
         val printed = kotlinx.coroutines.CompletableDeferred<Unit>()
@@ -487,13 +475,13 @@ class BuiltinExecServiceTest {
         kotlinx.coroutines.withTimeout(10_000) { printed.await() }
         watcher.join()
         assertThat(store.snapshot("step")?.stoppable).isTrue()
-        assertThat(store.snapshot("step")?.text).isEqualTo("\$INFINITY_WORKSPACE\nready\n")
+        assertThat(store.snapshot("step")?.text).isEqualTo("${workspace.canonicalPath}\nready\n")
 
         store.requestStop("step")
         val value = json(kotlinx.coroutines.withTimeout(10_000) { run.await() }.toJson().toString())
         assertThat(value.getValue("error_code").jsonPrimitive.content).isEqualTo("EXEC_STOPPED")
         assertThat(value.getValue("guidance").jsonPrimitive.content).contains("聊天界面")
-        assertThat(value.getValue("stdout").jsonPrimitive.content).isEqualTo("\$INFINITY_WORKSPACE\nready\n")
+        assertThat(value.getValue("stdout").jsonPrimitive.content).isEqualTo("${workspace.canonicalPath}\nready\n")
     }
 
     @Test

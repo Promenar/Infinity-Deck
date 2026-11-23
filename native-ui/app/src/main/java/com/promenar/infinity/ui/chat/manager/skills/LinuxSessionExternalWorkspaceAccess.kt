@@ -44,7 +44,7 @@ class LinuxSessionExternalWorkspaceAccess(
     private val indexEvents: FileIndexEventSink = FileIndexEventSink.None,
     private val sessions: com.promenar.infinity.data.repository.ISessionRepository? = null,
     private val branchNamespace: suspend (sessionId: String) -> BranchLinuxFileNamespace? = { null },
-) : ExternalWorkspaceAccess by original {
+) : SessionNamespaceWorkspaceAccess, ExternalWorkspaceAccess by original {
     private data class Namespace(val root: FileEntry, val workspace: SessionWorkspace, val mount: ExternalMount,
         val branch: BranchLinuxFileNamespace?, val workspaceOverride: BranchLinuxWorkspaceOperation?) {
         private val record get() = when (workspace) {
@@ -59,7 +59,7 @@ class LinuxSessionExternalWorkspaceAccess(
             ?: selectedDirectory ?: LinuxSessionPaths.WORKSPACE_ROOT
     }
     private val versions = LinuxVersionSnapshots(VERSION_BYTES)
-    internal val knowledgeManager: ExternalFolderManager? get() = original as? ExternalFolderManager
+    override val knowledgeManager: ExternalFolderManager? get() = original as? ExternalFolderManager
 
     override fun observeMounts(sessionId: String) = original.observeMounts(sessionId).map { mounts -> mounts.filter(::allowed) }
     override suspend fun visible(sessionId: String): List<ExternalMount> = operation {
@@ -80,12 +80,21 @@ class LinuxSessionExternalWorkspaceAccess(
 
     override suspend fun workspaceMount(sessionId: String): ExternalMount = namespace(sessionId).mount
 
-    internal suspend fun toolRootUuid(sessionId: String): String = operation {
+    override suspend fun toolRootUuid(sessionId: String): String = operation {
         val current = namespace(sessionId)
         uuid(current, current.workingDirectory)
     }
 
-    internal suspend fun workingDirectory(sessionId: String): String = namespace(sessionId).workingDirectory
+    override suspend fun workingDirectory(sessionId: String): String = namespace(sessionId).workingDirectory
+
+    override suspend fun searchRoots(sessionId: String): List<String> {
+        val cwd = workingDirectory(sessionId)
+        return listOfNotNull(cwd.takeUnless { it == "/" }, "/workspace", "/home/session", "/mnt").distinct()
+    }
+
+    override suspend fun aliasOf(sessionId: String, path: String): String = LinuxSessionPaths.aliasOf(path)
+
+    override fun protectedVirtualRoots(): Set<String> = setOf("/mnt")
 
     override suspend fun resolveUuid(sessionId: String, uuid: String): String? = operation {
         val current = namespace(sessionId)
@@ -104,7 +113,7 @@ class LinuxSessionExternalWorkspaceAccess(
 
     override suspend fun entry(sessionId: String, path: String): FileEntry? = entry(sessionId, path, fillHash = true)
 
-    internal suspend fun statEntry(sessionId: String, path: String): FileEntry? = entry(sessionId, path, fillHash = false)
+    override suspend fun statEntry(sessionId: String, path: String): FileEntry? = entry(sessionId, path, fillHash = false)
 
     private suspend fun entry(sessionId: String, path: String, fillHash: Boolean): FileEntry? = operation {
         val current = namespace(sessionId)
@@ -296,7 +305,7 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     /** 与审批解析器共用，确保别名存在且来源不为 SAF。 */
-    suspend fun validatePath(sessionId: String, path: String): String = operation {
+    override suspend fun validatePath(sessionId: String, path: String): String = operation {
         val current = namespace(sessionId)
         val normalized = normalize(current, path)
         val target = route(current, normalized)
@@ -305,7 +314,7 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     /** 审批与执行使用同一 Linux 路径元组和命名空间身份，不先转换成其它目标。 */
-    suspend fun executionTarget(sessionId: String, tool: ProtocolTool, args: JsonObject): String? = operation {
+    override suspend fun executionTarget(sessionId: String, tool: ProtocolTool, args: JsonObject): String? = operation {
         val current = namespace(sessionId)
         val normalized = LinuxSessionPaths.normalizeArguments(tool.function.name, args, current.workingDirectory)
         val resolved = mutableMapOf<String, String>()
@@ -361,7 +370,7 @@ class LinuxSessionExternalWorkspaceAccess(
         })).toString()
     }
 
-    internal suspend fun invocationArguments(sessionId: String, tool: String, args: JsonObject): JsonObject = operation {
+    override suspend fun invocationArguments(sessionId: String, tool: String, args: JsonObject): JsonObject = operation {
         val current = namespace(sessionId)
         val values = LinuxSessionPaths.normalizeArguments(tool, args, current.workingDirectory).toMutableMap()
         for (key in listOf("uuid", "parentUuid", "newParentUuid")) {
@@ -390,7 +399,7 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     /** 私有历史由 Room 文件版本表提供，不能退化成挂载的进程内快照。 */
-    internal suspend fun diffPrivate(sessionId: String, uuid: String, basisHash: String?): DiffResult? = operation {
+    override suspend fun diffPrivate(sessionId: String, uuid: String, basisHash: String?): DiffResult? = operation {
         val current = namespace(sessionId)
         val path = resolveUuid(sessionId, uuid) ?: fail("NOT_FOUND", "条目不属于当前 Linux 会话")
         val target = route(current, path)
@@ -400,7 +409,7 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     /** 同一私有树内移动沿用 Room 身份和版本链；跨来源移动仍使用校验与补偿传输。 */
-    internal suspend fun movePrivate(sessionId: String, source: String, destination: String, expectedHash: String?): com.promenar.infinity.data.model.ToolResult? = operation {
+    override suspend fun movePrivate(sessionId: String, source: String, destination: String, expectedHash: String?): com.promenar.infinity.data.model.ToolResult? = operation {
         val current = namespace(sessionId)
         val from = route(current, mutation(current, source))
         val to = route(current, mutation(current, destination))
@@ -428,7 +437,7 @@ class LinuxSessionExternalWorkspaceAccess(
         com.promenar.infinity.data.model.ToolResult("linux_private_move", "已完成：$destination [uuid=${moved.uuid}] [hash=${moved.hash}]")
     }
 
-    internal suspend fun sameMountedBackend(sessionId: String, source: String, destination: String): Boolean = operation {
+    override suspend fun sameMountedBackend(sessionId: String, source: String, destination: String): Boolean = operation {
         val current = namespace(sessionId)
         sameMountedBackend(route(current, normalize(current, source)), route(current, normalize(current, destination)))
     }
@@ -439,7 +448,7 @@ class LinuxSessionExternalWorkspaceAccess(
             ExternalMountPaths.parse(from.path)?.first == ExternalMountPaths.parse(to.path)?.first
 
     /** 同一挂载内使用原后端移动；转换与读写共用绑定，跨命名空间交回快照流程。 */
-    internal suspend fun moveMounted(sessionId: String, source: String, destination: String): Unit? = operation {
+    override suspend fun moveMounted(sessionId: String, source: String, destination: String): Unit? = operation {
         val current = namespace(sessionId)
         val from = route(current, mutation(current, source))
         val to = route(current, mutation(current, destination))
@@ -459,7 +468,7 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     /** MIME 只选择文本类型，UTF-8、NUL 与预算门禁继续核验真实字节。 */
-    internal suspend fun textMime(sessionId: String, path: String): String? = operation {
+    override suspend fun textMime(sessionId: String, path: String): String? = operation {
         val current = namespace(sessionId)
         val target = route(current, path)
         when (target.kind) {
@@ -471,7 +480,7 @@ class LinuxSessionExternalWorkspaceAccess(
         }
     }
 
-    internal suspend fun isPathWritable(sessionId: String, path: String): Boolean = operation {
+    override suspend fun isPathWritable(sessionId: String, path: String): Boolean = operation {
         val current = namespace(sessionId)
         val target = route(current, path)
         if (target.kind == LinuxSessionPathKind.MOUNTS) return@operation false

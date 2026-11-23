@@ -57,7 +57,7 @@ class WorkspaceSwitchNoticeTest {
         ).finalSystemPrompt
         val privatePrompt = prompt(session)
         val revalidation = "Paths, uuids and hashes are scoped to the current workspace. After switching workspaces, list or read files again before reusing earlier values."
-        assertThat(privatePrompt).contains("This conversation has a private workspace.")
+        assertThat(privatePrompt).contains("文件工具与 shell/Python 共用真实 Android 路径")
         assertThat(privatePrompt).contains(revalidation)
         assertThat(prompt(session.copy(messages = messages - notice))).isEqualTo(privatePrompt)
 

@@ -42,7 +42,7 @@
         <item quantity="one">Affects %2$d chat of “%1$s” from the next turn; new-chat defaults apply only to new chats</item>
         <item quantity="other">Affects %2$d chats of “%1$s” from the next turn; new-chat defaults apply only to new chats</item>
     </plurals>
-    <string name="agent_config_impact_new_agent">Creates the agent only; approvals: “Ask for commands”</string>
+    <string name="agent_config_impact_new_agent">Creates the agent only; approvals: “Approve by risk”</string>
     <string name="agent_config_impact_new_session">Creates the chat only; you stay here</string>
     <string name="agent_config_impact_current_session">This chat only, from the next turn</string>
     <string name="agent_config_impact_other_session">That chat only, from its next turn</string>

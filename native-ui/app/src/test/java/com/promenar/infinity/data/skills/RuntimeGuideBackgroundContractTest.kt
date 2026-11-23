@@ -110,6 +110,7 @@ class RuntimeGuideBackgroundContractTest {
             "EXEC_STOPPED", "EXEC_INTERRUPTED", "EXEC_LINUX_UNAVAILABLE", "EXEC_MODE_CHANGED", "EXEC_WORKSPACE_UNAVAILABLE",
             "EXEC_PYTHON_UNAVAILABLE", "TERMUX_TIMEOUT", "TERMUX_INTEGRATION_DISABLED", "SSH_HOST_KEY_UNTRUSTED",
             "SECRET_CAPTURE_BACKGROUND_UNSUPPORTED", "JOB_NOT_FOUND", "JOB_UNAVAILABLE",
+            "EXEC_BLOCKED_CATASTROPHIC_COMMAND",
             "\$TMPDIR", "\$INFINITY_WORKSPACE", "ffmpeg", "ffprobe", "/mnt/knowledge", "references/runtime-isolation.md")
             .forEach { assertWithMessage(it).that(reference).contains(it) }
         assertThat(reference.length).isAtMost(8_000)
@@ -120,13 +121,15 @@ class RuntimeGuideBackgroundContractTest {
         assertThat(BuiltinSkillCatalog.REFERENCE_FILES).contains(isolationRef)
         val content = guideDirectory.resolve(isolationRef).readText()
         listOf("isolatedProcess", ":script_runtime", "/mnt/knowledge", "copy_knowledge_to_linux",
-            "/mnt/comfy_run", "/mnt/comfy_stage", "\$INFINITY_WORKSPACE", "\$TMPDIR", "ffmpeg", "ffprobe", "PATH")
+            "/mnt/comfy_run", "/mnt/comfy_stage", "\$INFINITY_WORKSPACE", "\$TMPDIR", "ffmpeg", "ffprobe", "PATH",
+            "EXEC_BLOCKED_CATASTROPHIC_COMMAND", "infinity_encrypted_secrets.xml")
             .forEach { assertWithMessage(it).that(content).contains(it) }
         assertThat(content.length).isAtMost(8_000)
 
         val builtinGuidance = SystemPromptSections.toolGuidance(setOf("shell_exec", "comfy_run_workflow"), generic = false, runMode = SessionRunMode.BUILTIN)
         assertThat(builtinGuidance).contains("\$TMPDIR")
         assertThat(builtinGuidance).contains("\$INFINITY_WORKSPACE")
+        assertThat(builtinGuidance).contains("真实 Android 路径")
         assertThat(builtinGuidance).contains("FFmpeg/ffprobe 已加入 PATH")
         assertThat(builtinGuidance).contains("Linux 虚拟环境")
     }

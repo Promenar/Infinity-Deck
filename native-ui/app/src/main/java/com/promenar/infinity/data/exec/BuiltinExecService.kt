@@ -113,6 +113,14 @@ class BuiltinExecService(
     ): CommandToolResult {
         val mode = sessionMode(sessionId) ?: return modeRequired()
         if (expectedMode != null && mode != expectedMode) return modeChanged()
+        val decision = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.classifyShell(
+            command,
+            appDataDir = runtimeDataMonitor?.dataDirectoryPath,
+            usesLinux = mode == SessionRunMode.LINUX,
+        )
+        if (decision.verdict == com.promenar.infinity.domain.tool.CommandSafetyVerdict.BLOCKED_CATASTROPHIC) {
+            return catastrophicBlocked(decision)
+        }
         return execute(workspaceRootUuid, sessionId, timeoutSeconds, if (mode == SessionRunMode.LINUX) ExecRunKind.LINUX else ExecRunKind.SHELL, command, live, stdin, attachment, capture) { root, kind ->
             BuiltinCommandRequest(
                 argv = listOf(shell, "-c", environment.shellPrelude() + "\n__infinity_command=\"\$1\"; shift; eval \"\$__infinity_command\"", "sh", command),
@@ -137,6 +145,13 @@ class BuiltinExecService(
     ): CommandToolResult {
         val mode = sessionMode(sessionId)
         if (expectedMode != null && mode != expectedMode) return modeChanged()
+        val decision = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.classifyPython(
+            code,
+            appDataDir = runtimeDataMonitor?.dataDirectoryPath,
+        )
+        if (decision.verdict == com.promenar.infinity.domain.tool.CommandSafetyVerdict.BLOCKED_CATASTROPHIC) {
+            return catastrophicBlocked(decision)
+        }
         when (mode) {
             null -> return modeRequired()
             SessionRunMode.LINUX -> return execute(workspaceRootUuid, sessionId, timeoutSeconds, ExecRunKind.LINUX,
@@ -175,6 +190,14 @@ class BuiltinExecService(
         val resolvedSessionId = sessionId ?: location.sessionId
         val linux = kind == com.promenar.infinity.domain.jobs.BackgroundJobRunner.LINUX ||
             kind == com.promenar.infinity.domain.jobs.BackgroundJobRunner.PYTHON && sessionMode(resolvedSessionId) == SessionRunMode.LINUX
+        val bgDecision = if (kind == com.promenar.infinity.domain.jobs.BackgroundJobRunner.PYTHON || location.pythonSource) {
+            com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.classifyPython(source, appDataDir = runtimeDataMonitor?.dataDirectoryPath)
+        } else {
+            com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.classifyShell(source, appDataDir = runtimeDataMonitor?.dataDirectoryPath, usesLinux = linux)
+        }
+        if (bgDecision.verdict == com.promenar.infinity.domain.tool.CommandSafetyVerdict.BLOCKED_CATASTROPHIC) {
+            throw SecurityException("${com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.ERROR_CODE}: ${com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.blockedGuidance(bgDecision)}")
+        }
         if (kind == com.promenar.infinity.domain.jobs.BackgroundJobRunner.PYTHON && !linux && !environment.pythonAvailable) {
             throw IllegalArgumentException("当前设备没有内置 Python，请改用 termux_exec 或 ssh_exec。")
         }
@@ -282,23 +305,20 @@ class BuiltinExecService(
             try {
                 before = runtimeDataMonitor?.capture()
                 if (linux && commandRequest.terminal) return runner.runTerminal(commandRequest, control,
-                    onTerminalOutput = { safeLive.replace(ToolOutputStream.STDOUT, virtualize(it, root)) },
+                    onTerminalOutput = { safeLive.replace(ToolOutputStream.STDOUT, redactLinuxHostRoot(it, root)) },
                     processGroupFile = attachment?.processGroupFile, terminalLog = attachment?.logFile)
                 if (attachment != null && capture == null) {
                     return com.promenar.infinity.data.jobs.RotatingJobLog(attachment.logFile,
                         startedAtMillis = control.logStartedAtMillis ?: wallClockMillis()).use { log ->
-                        val tee = LiveWorkspaceOutput(root) { stream, text ->
+                        runner.runAttached(commandRequest, control, attachment.processGroupFile) { stream, text ->
                             log.write(text.toByteArray(Charsets.UTF_8))
                             control.outputEvents?.invoke(stream, text)
                             safeLive.emit(stream, text)
                         }
-                        try { runner.runAttached(commandRequest, control, attachment.processGroupFile, tee::accept) }
-                        finally { tee.finish() }
                     }
                 }
                 if (safeLive === ToolLiveOutputSink.None) return runner.runAttached(commandRequest, control, attachment?.processGroupFile)
-                val tee = LiveWorkspaceOutput(root, safeLive::emit)
-                return try { runner.run(commandRequest, control, tee::accept) } finally { tee.finish() }
+                return runner.run(commandRequest, control, safeLive::emit)
             } finally {
                 if (linux) {
                     try { packageProvenance.after(packagesBefore, sessionId, title) }
@@ -379,8 +399,8 @@ class BuiltinExecService(
             guidance = listOfNotNull(guidance, if (kind == ExecRunKind.LINUX) LinuxMissingCommandGuidance.hint(output.exitCode, output.stdout + "\n" + output.stderr, messages) else null, pauseGuidance(output.pausedMillis, held.foreground)).joinToString("").ifEmpty { null },
             exitCode = output.exitCode,
             timedOut = output.timedOut,
-            stdout = if (capture == null) virtualize(output.stdout, root) else output.stdout,
-            stderr = virtualize(output.stderr, root),
+            stdout = if (kind == ExecRunKind.LINUX) redactLinuxHostRoot(output.stdout, root) else output.stdout,
+            stderr = if (kind == ExecRunKind.LINUX) redactLinuxHostRoot(output.stderr, root) else output.stderr,
             stdoutOriginalLength = output.stdoutOriginalLength,
             stderrOriginalLength = output.stderrOriginalLength,
             stdoutTruncated = output.stdoutTruncated,
@@ -430,6 +450,11 @@ class BuiltinExecService(
 
     private fun modeRequired() = CommandToolResult(errorCode = "EXEC_RUN_MODE_REQUIRED", guidance = messages(RunModeMessage.MODE_REQUIRED))
 
+    private fun catastrophicBlocked(decision: com.promenar.infinity.domain.tool.CommandSafetyDecision) = CommandToolResult(
+        errorCode = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.ERROR_CODE,
+        guidance = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.blockedGuidance(decision),
+    )
+
     private fun linuxUnavailable() = CommandToolResult(
         errorCode = "EXEC_LINUX_UNAVAILABLE", guidance = messages(RunModeMessage.LINUX_UNAVAILABLE),
         backendFields = buildJsonObject { put("runtime", "linux") },
@@ -456,23 +481,26 @@ class BuiltinExecService(
         }.joinToString("").ifEmpty { null }
     }
 
+    /** Linux 会话使用 guest 路径，仅对 Linux 输出隐藏可能泄漏的 Android 宿主工作区路径；内置模式直接保留真实路径。 */
+    private fun redactLinuxHostRoot(text: String, root: File): String {
+        if (text.isEmpty()) return text
+        var result = text
+        val candidates = listOfNotNull(runCatching { root.canonicalPath }.getOrNull(), root.absolutePath, root.path)
+            .map { it.trimEnd('/') }
+            .filter { it.length > 1 }
+            .distinct()
+            .sortedByDescending { it.length }
+        for (candidate in candidates) {
+            result = result.replace(candidate, "\$INFINITY_WORKSPACE")
+        }
+        return result
+    }
+
     companion object {
         const val MAX_LISTED_PATHS = 200
         /** 低于该值的暂停多为调度抖动，不提示。 */
         const val PAUSE_REPORT_MILLIS = 3_000L
         private const val MAX_WARNING_PATHS = 20
-
-        /** 输出中的工作区物理路径替换为 `$INFINITY_WORKSPACE`，既不暴露应用目录，也可直接用于下一条命令。 */
-        internal fun virtualize(text: String, root: File): String = virtualize(text, workspacePaths(root))
-
-        internal fun virtualize(text: String, paths: List<String>): String =
-            paths.fold(text) { result, path -> result.replace(path, "\$INFINITY_WORKSPACE") }
-
-        /** 工作区的书写路径与规范路径，长的在前，避免短路径先替换掉长路径的一部分。 */
-        internal fun workspacePaths(root: File): List<String> =
-            listOf(root.path, runCatching { root.canonicalPath }.getOrDefault(root.path)).distinct()
-                .filter { it.length > 1 }
-                .sortedByDescending { it.length }
 
         /** 自选目录工作区不逐次统计改动，只说明工作区类型。 */
         internal fun directoryFields(kind: String): JsonObject = buildJsonObject {
@@ -527,37 +555,5 @@ class BuiltinExecService(
                 }))
             }
         }
-    }
-}
-
-/**
- * 实时输出逐块替换工作区物理路径。读取块可能恰好切在路径中间，因此块尾若是某条路径的前缀就先暂存，
- * 与下一块拼接后再替换；命令结束时 [finish] 补发暂存内容。stdout 与 stderr 由两个读取线程并发调用。
- */
-internal class LiveWorkspaceOutput(root: File, private val emit: (ToolOutputStream, String) -> Unit) {
-    private val paths = BuiltinExecService.workspacePaths(root)
-    private val pending = HashMap<ToolOutputStream, String>()
-
-    @Synchronized
-    fun accept(stream: ToolOutputStream, text: String) {
-        val replaced = BuiltinExecService.virtualize(pending.remove(stream).orEmpty() + text, paths)
-        val hold = heldSuffixLength(replaced)
-        if (hold > 0) pending[stream] = replaced.takeLast(hold)
-        replaced.dropLast(hold).takeIf(String::isNotEmpty)?.let { emit(stream, it) }
-    }
-
-    @Synchronized
-    fun finish() {
-        pending.forEach { (stream, text) -> emit(stream, text) }
-        pending.clear()
-    }
-
-    /** 块尾与某条路径开头重合的最长长度（不含整条路径，整条已被替换）。 */
-    private fun heldSuffixLength(text: String): Int {
-        for (length in minOf(text.length, (paths.maxOfOrNull { it.length } ?: 1) - 1) downTo 1) {
-            val suffix = text.substring(text.length - length)
-            if (paths.any { it.length > length && it.startsWith(suffix) }) return length
-        }
-        return 0
     }
 }

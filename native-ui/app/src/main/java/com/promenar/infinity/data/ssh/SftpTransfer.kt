@@ -123,7 +123,11 @@ internal fun sftpFailure(code: String): SftpTransferFailure = when (code.removeP
 /** 生成式下载不能绕过既有技能目录的逐次审批入口。 */
 fun isSftpProtectedLocalPath(path: String): Boolean {
     val parts = path.replace('\\', '/').split('/').filter(String::isNotEmpty).map { it.lowercase(java.util.Locale.ROOT) }
-    return parts.firstOrNull() == "skills" || ".agents" in parts ||
+    val isRealUserSkills = parts.indices.any { i -> parts[i] == "files" && parts.getOrNull(i + 1) == "agent_skills" }
+    return parts.firstOrNull() == "skills" ||
+        parts.take(2) == listOf("mnt", "skills") ||
+        isRealUserSkills ||
+        ".agents" in parts ||
         com.promenar.infinity.data.skills.BuiltinSkillCatalog.isVirtualPath(path)
 }
 

@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /** 只记录元数据，不读取应用内容；不跟随符号链接。 */
 class RuntimeDataMonitor(private val dataDirectory: File, private val maxEntries: Int = 4096) {
+    val dataDirectoryPath: String get() = runCatching { dataDirectory.canonicalPath }.getOrDefault(dataDirectory.path)
     internal data class Entry(val identity: String, val size: Long, val modified: Long)
     class Snapshot internal constructor(internal val groups: Map<String, Map<String, Entry>?>)
     private val groups = listOf("databases", "shared_prefs", "no_backup", "files/agent_skills", "diagnostics")

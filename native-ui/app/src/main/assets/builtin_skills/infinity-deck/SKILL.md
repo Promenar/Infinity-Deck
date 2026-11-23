@@ -11,37 +11,33 @@ description: 管理或创建技能、编辑技能文件、管理智能体规则�
 
 | 项目 | 内置模式 | Linux 模式 |
 |---|---|---|
-| `shell_exec` | Android `/system/bin/sh`（不可装系统包；临时文件用 `$TMPDIR`，输出物理路径脱敏为 `$INFINITY_WORKSPACE`） | proot + Alpine（musl，`apk` 装包）；不可用时由用户处理或切模式，不自动回退 |
-| `python_exec` | 打包 Python 3.14（可装纯 Python pip）；arm64 内置精简 FFmpeg/ffprobe 已进 `PATH` | Linux `python3` 与 `apk` 工具，不混用 Android 打包二进制 |
-| 文件工具工作区 | `/`；命令起点为 `$INFINITY_WORKSPACE` | 普通工作区 `/workspace`，私有会话另有 `/home/session`；Linux/分支目录用绑定路径 |
-| 外部挂载与资料库 | `/mnt/<别名>`（含 SAF 与经 `request_knowledge_access` 授权的 `/mnt/knowledge`）；命令不可直访 SAF/资料库 | 文件工具见真实路径与 `/mnt/knowledge`；Linux shell 仅见真实路径，资料经 `copy_knowledge_to_linux` 拷入 `/home/session/inbox` |
-| 用户级技能 | 文件工具 `/skills/<名称>`；命令 `$INFINITY_SKILLS/<名称>` | 文件工具和命令 `/mnt/skills/<名称>`，`INFINITY_SKILLS=/mnt/skills` |
-| 项目级技能 | 目录型工作区 `/.agents/skills/<名称>` | `<当前工作区路径>/.agents/skills/<名称>`；普通目录工作区通常为 `/workspace/.agents/skills/<名称>` |
-| 技能读取工具 | `activate_skill` 与 `read_skill_file` 的用户/项目虚拟路径固定为 `/skills/<名称>`、`/.agents/skills/<名称>` | 与内置模式相同；这是技能选择路径，不是 Linux 文件工具路径 |
+| `shell_exec` | `/system/bin/sh`（不可装系统包；临时用 `$TMPDIR`，输出保留真实路径） | proot + Alpine（`apk` 装包）；不可用时不自动回退 |
+| `python_exec` | 打包 Python 3.14（可装纯 Python pip）；arm64 精简 FFmpeg/ffprobe 已进 `PATH` | Linux `python3` 与 `apk` 工具，不混用 Android 打包库 |
+| 文件工具与工作区 | 统一用真实 Android 路径（同 `$INFINITY_WORKSPACE`）；工作区内可用无前导 `/` 相对路径，禁用 `/skills`、`/session` 等旧虚拟前缀 | 普通 `/workspace`，私有另有 `/home/session`；Linux/分支目录用绑定路径 |
+| 外部挂载与资料库 | 真实挂载共用设备真实路径；无 POSIX 路径的 `/mnt/knowledge`、SAF `/mnt/<别名>` 仅文件工具可访问 | 文件工具见真实路径与 `/mnt/knowledge`；shell 仅见真实路径，资料用 `copy_knowledge_to_linux` 拷入 `/home/session/inbox` |
+| 用户级技能 | 真实目录 `files/agent_skills/<名称>`（同 `$INFINITY_SKILLS/<名称>`） | 文件工具与命令 `/mnt/skills/<名称>`（`INFINITY_SKILLS=/mnt/skills`） |
+| 项目级技能 | 目录工作区 `<工作区真实路径>/.agents/skills/<名称>`（相对 `.agents/skills/<名称>`） | `<工作区>/.agents/skills/<名称>`（普通工作区为 `/workspace/.agents/skills/<名称>`） |
+| 技能读取工具 | `activate_skill`/`read_skill_file` 按名或虚拟路径 `/skills/<名称>`、`/.agents/skills/<名称>` 选技能 | 同左（仅作技能选择标识，非文件工具磁盘路径） |
 
-Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node.js 与 npm、FFmpeg，用户可能没有全部安装；使用前先确认，缺少时用 `apk add` 补装（遵循命令审批）。
+Linux 可选包（git、`rg`、python3/pip、nodejs/npm、ffmpeg）用前确认，缺少时 `apk add` 补装。已保存到工作区的历史用户图片和文档以工作区路径提供；重看图片用 `view_media` 查看图片、重看文档用 `read_file` 读取文档，引用失效请用户重新确认附件。
 
-已保存到工作区的历史用户图片和文档以工作区路径提供；需要重新查看时，使用 `view_media` 查看图片、使用 `read_file` 读取文档。引用失效时，请用户在对应会话与工作区重新确认附件。
+私有会话不扫描项目技能；切换目录工作区后重扫。`termux_exec` 仅内置模式且已授权启用时可用；SSH 工具在远端执行，与本地模式独立；`exec_js`/`run_script`/`python_sandbox` 为隔离脚本入口，Linux 会话隐藏。
 
-私有会话不扫描项目级技能。切换目录工作区后，项目技能按新的工作区重新扫描。`Termux` 是另一个 Android 应用：`termux_exec` 只在内置模式且用户已安装、授权并启用集成时可用，以 Termux 身份执行。SSH 工具在用户配置的远端主机执行，与本地运行模式相互独立。`exec_js`、`run_script`、`python_sandbox` 是应用提供的隔离脚本入口，在 Linux 会话隐藏。
-
-内置命令及 Linux 进程均以本应用 Android 用户运行；“工作区”权限档是审批策略，不是进程路径沙盒。完整四层隔离分级、路径可见性矩阵、`$TMPDIR`/`$INFINITY_WORKSPACE` 脱敏及 FFmpeg 边界见 `references/runtime-isolation.md`。Linux 中 `/root` 不入备份且重置清空，`/home/session` 在 rootfs 外。Codex CLI、Claude Code 及 `~/.codex`、`~/.claude`、`/root/AGENTS.md` 属第三方工具，不改变本智能体配置。
+内置与 Linux 进程均以本应用 Android 用户运行；“按风险审批”是审批策略而非进程路径沙盒。完整四层隔离分级、路径矩阵、`$TMPDIR` 与 FFmpeg 边界见 `references/runtime-isolation.md`。Linux 中 `/root` 不入备份且重置清空，`/home/session` 在 rootfs 外。Codex CLI、Claude Code 及 `~/.codex`、`~/.claude`、`/root/AGENTS.md` 属第三方工具，不改变本智能体配置。
 
 ## 五级权限边界
 
-1. **自由**：工具执行无需审批；仍须符合用户任务、工具参数、凭据、可见数据范围与能力开关。“自由”不代表没有副作用。
-2. **逐次审批**：调用前由用户批准；不能用已记住的其它路径或主机授权越过逐次审批。普通命令在工作区档需审批，完全访问档免批。创建定时任务、授予知识访问、启动问题修复、SSH 主机保存/删除/安装公钥、install_skill 以及 agents_write 在两档都需审批；install_skill 与 agents_write 每次都需用户审批，不可限时免审批。读取同一智能体的非家族会话也需逐次审批。技能目录变更、工作区档的命令与 Linux 系统目录写入的审批卡还提供“批准，10 分钟内同类免审批”：用户选择后，本会话该类别的调用在 10 分钟内直接执行，到期或用户在输入栏盾牌菜单中恢复逐次审批后重新弹卡；子代理与脚本内的文件操作不受影响。批量修改技能时可以提示用户使用这个选项，但不要催促或假定用户已选择。
-3. **审批加书面同意**：修改关键运行数据前，必须先在回复中解释目的与影响并取得用户明确书面同意；需要执行审批的工具还要通过审批卡。完全访问档免除某些工具审批，不免除书面同意。关键运行数据包括 `databases/`（含 `infinity_v2.db`）、`shared_prefs/`、`no_backup/` 以及诊断日志 `files/infinity_diagnostics.jsonl`、`files/infinity_logs.txt`、`files/diag-keep`。用户技能目录 `files/agent_skills/` 不在此列：通过技能目录下的文件工具创建、编辑与删除用户技能时，审批卡就是用户的确认，不需要另取书面同意；不要用命令修改它来绕开审批卡。`files/python-user` 中安装 pip 包和 Linux 中安装软件包属于正常使用。`runtime_changes` 是事后变化检测，不是访问限制或未被触碰的证明。
-4. **仅用户可操作**：下表中的界面配置没有供智能体操作的专用工具。请给出入口，由用户完成，不能直接篡改数据库或偏好文件来绕过界面。
-5. **不可能**：在本应用现有权限和接口内，不能绕过 Android 安全边界授予系统权限、任意修改受保护的 Android 系统设置、读取其它应用的私有数据；不能让 Linux shell 直接看到 SAF 授权目录。用户可在 Android 设置中授权的项目属于“仅用户可操作”，已授权的共享文件不属于其它应用私有数据。
+1. **自由**：无需审批；仍须符合任务、参数、凭据与可见范围。在“按风险审批”档下，经严格解析确认零副作用的只读 `shell_exec` 命令（`ls`/`pwd`/`cat`/`head`/`tail`/`stat`/`rg`/`grep`/只读 `find`/只读 `git`/`ffprobe`/`python3 --version` 等）自动免批。
+2. **逐次审批**：调用前由用户批准，不得以其它授权绕过。非只读 `shell_exec`、`python_exec`、`termux_exec`、`ssh_*`、`sftp_upload`/`sftp_download`、`job_input`、`browser_eval`、`delete_file`、工作区外真实路径变更及 Linux rootfs 变更在按风险审批档需批、免批准档免批（L1）。`schedule_create`、`request_knowledge_access`、`resolve_startup_issue`、`ssh_host_*`、ComfyUI 配置/模板变更及 `fixed_overrides`、技能目录变更、`install_skill`、跨会话读取与 `agents_write` 在两档均需批（L2）；`install_skill`/`agents_write`/ComfyUI 配置不可限时免批。技能、命令、删除、工作区外与 Linux 系统目录审批卡提供“批准，10 分钟内同类免审批”，到期或在输入栏盾牌菜单恢复后重新弹卡；子代理与脚本内文件操作不受影响。
+3. **审批加书面同意**：关键运行数据包括 `databases/`（含 `infinity_v2.db`）、`shared_prefs/`（不含加密密钥 `infinity_encrypted_secrets.xml*`）、`no_backup/` 及诊断日志 `files/infinity_diagnostics.jsonl`、`files/infinity_logs.txt`、`files/diag-keep`。文件工具开放只读自诊断并硬拒写删；用命令修改前须先说明目的与影响并取得用户明确书面同意，审批卡不替代书面同意。用户技能 `files/agent_skills/` 不在此列：用文件工具修改时审批卡即确认，勿用命令绕开审批。`files/python-user` 装 pip 与 Linux 装包属正常使用。`runtime_changes` 为事后检测，不构成事前拦截。
+4. **仅用户可操作**：下表界面配置无专用工具，请给出入口由用户操作，不能篡改数据库或偏好文件绕过。
+5. **不可能 / 不可审批硬拦截**：不能绕过 Android 安全边界授系统权限、改系统设置、读它应用私有数据，或让 Linux shell 直访 SAF。加密密钥 `shared_prefs/infinity_encrypted_secrets.xml*` 对文件工具全硬拒。针对系统根（`/`）、共享存储根（`/sdcard`、`/storage/emulated/0`）、应用数据根、Linux 系统根或未展开根目录变量的毁灭性命令两档均直接硬拦截（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`），不弹审批卡。
 
 ### 模型工具审批表
 
-表中依次列出内置/工作区、内置/完全访问、Linux/工作区、Linux/完全访问四种配置的普通调用级别。“自由”只表示审批判定；工具实际暴露仍受模式、用户开关和会话能力限制。参数条件列用同一顺序的“批/免/拒”表示审批、免批或执行前拒绝的覆盖值；未列条件沿用普通调用。技能目录条件也包含移动来源或目标、项目技能父目录，以及 Linux 解析出的技能目录身份；Linux根目录表示 rootfs 中的文件变更；跨会话表示解析为 `session-approval:` 的读取目标。
+依次列出内置/按风险审批、内置/免批准、Linux/按风险审批、Linux/免批准四种配置的普通调用级别。“自由”仅指审批判定；参数条件列以同顺序“批/免/拒”表示覆盖值。技能目录含移动两端、项目技能父目录与真实/Linux 技能身份；工作区外指内置模式工作区外合法真实路径变更；Linux根目录指 rootfs 变更；跨会话指 `session-approval:` 读取。未列工具四配置均自由且无参数条件。
 
-下表列出配置工具及需要审批或有参数条件的工具；未列出的模型工具在四种配置下均为“自由”，没有参数条件。
-
-| 工具 | 内置/工作区 | 内置/完全访问 | Linux/工作区 | Linux/完全访问 | 参数条件 |
+| 工具 | 内置/按风险审批 | 内置/免批准 | Linux/按风险审批 | Linux/免批准 | 参数条件 |
 |---|---|---|---|---|---|
 | `agents_read` | 自由 | 自由 | 自由 | 自由 | 无 |
 | `agents_write` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
@@ -51,15 +47,15 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 | `comfy_delete_workflow` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `comfy_save_submitter` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `comfy_save_workflow` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
-| `copy_knowledge_to_linux` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
-| `create_directory` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
-| `create_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
-| `delete_file` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 技能目录=批,批,批,批;Linux根目录=批,批,批,批 |
+| `copy_knowledge_to_linux` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
+| `create_directory` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
+| `create_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
+| `delete_file` | 逐次审批 | 自由 | 逐次审批 | 自由 | 技能目录=批,批,批,批 |
 | `install_skill` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `job_input` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
-| `media_fetch` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
-| `move_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
-| `patch_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
+| `media_fetch` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
+| `move_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
+| `patch_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 | `python_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `request_knowledge_access` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `resolve_startup_issue` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
@@ -77,20 +73,20 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 | `ssh_session_open` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `ssh_session_send` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `termux_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
-| `write_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
+| `write_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 
-技能目录变更与 SSH 主机配置始终逐次审批；Linux rootfs 变更在工作区档审批、完全访问档免批。命令审批不解析命令文本识别技能目录，勿用命令改用户技能，改用文件工具；改项目技能前先说明目标。定时任务仅创建需审批。远端 `sftp_write` 免批，`sftp_upload`/`sftp_download` 属命令类；`sftp_download` 写入技能目录直接拒绝，改用文件工具。首次主机信任、指纹变更与秘密输入仍由用户处理。
+技能目录与 SSH 主机配置始终逐次审批；工作区外写入与 Linux rootfs 变更按风险审批档批、免批准档免；`shell_exec` 零副作用只读命令在按风险审批档免批，毁灭性根目录命令两档均硬拦截。勿用命令绕过文件工具改用户技能；改项目技能前先说明目标。`sftp_write` 免批，`sftp_download` 写入技能目录直接拒绝。首次主机信任、指纹变更与秘密输入由用户处理。
 
-MCP 工具由已连服务器动态提供：风险为 SCHEDULE、ACCESS_GRANT 或 AGENT_CONFIG 须逐次审批，其余按工具名、参数目标与会话规则判定；连接不越过外部权限。自定义数据库/脚本 Skill 无隔离执行器，不暴露执行。`request_secret`/`show_secret` 免审批，秘密由卡片输入/查看，勿让用户贴进聊天；`capture_secret` 是命令参数机制。
+MCP 工具由已连服务器动态提供：SCHEDULE/ACCESS_GRANT/AGENT_CONFIG 须逐次审批，其余按目标与会话规则判定。自定义数据库/脚本 Skill 不暴露执行。`request_secret`/`show_secret` 免审批，勿让用户把秘密贴进聊天；`capture_secret` 是命令参数机制。
 
-ComfyUI 在“设置 → ComfyUI”配置，与云端默认媒体模型独立（云端留空亦可调用）。只读与查询类工具（`comfy_list_*`/`comfy_probe`/`comfy_preflight_workflow`/`comfy_get_chain_state`/`comfy_templates`）及 `comfy_set_chain_tip` 免审批；配置变更（`comfy_save_*`/`comfy_delete_*`/`comfy_define_template`）每次逐次审批且不可限时免批。提交器随会话模式自动选用 Linux 虚拟环境或内置 Python 3.14，仅见回环代理地址、零接触密钥。`comfy_run_workflow` 日常传 `content_inputs` 免审批，传 `fixed_overrides` 弹 Diff 卡一次性批准、不改基线。开发或调试提交器前先读 `references/comfyui-submitters.md`。
+ComfyUI 在“设置 → ComfyUI”配置，与云端默认媒体模型独立。只读查询工具与 `comfy_set_chain_tip` 免审批；配置/模板变更（`comfy_save_*`/`comfy_delete_*`/`comfy_define_template`）每次审批且不可限时免批。提交器自动随模式选 Linux 或内置 Python 3.14，经回环代理零接触密钥。`comfy_run_workflow` 日常免批，传 `fixed_overrides` 弹 Diff 卡一次性批准。详见 `references/comfyui-submitters.md`。
 
 ### 仅用户可操作的配置
 
 | 事项 | 界面入口 |
 |---|---|
 | 切换本会话运行模式 | 聊天顶部运行模式入口（内置 / Linux）；Linux 不可用时按环境提示处理 |
-| 切换权限档 | 会话设置 → 工具 → 审批（工作区 / 完全访问） |
+| 切换权限档 | 会话设置 → 工具 → 审批（按风险审批 / 免批准） |
 | 提供商、模型与凭据 | 设置 → AI 与模型 → 提供商管理；秘密也可由 request_secret 保密卡交给用户填写 |
 | 安装、修复、重置或卸载 Linux | 设置 → Linux 环境；Play 版或不支持的 ABI 不提供 Linux |
 | 系统授权（所有文件访问、通知、Termux 命令等） | 按应用的授权提示前往 Android 系统设置；智能体不能代替用户授予 |

@@ -7,14 +7,14 @@
 
     <string name="agent_reach_run_mode_linux">Linux mode</string>
     <string name="agent_reach_run_mode_builtin">Built-in mode</string>
-    <string name="agent_reach_permission_workspace">Ask for commands</string>
+    <string name="agent_reach_permission_workspace">Approve by risk</string>
     <string name="agent_reach_permission_full_access">No approvals</string>
     <string name="agent_reach_workspace_storage">%1$s · %2$s</string>
     <string name="agent_reach_workspace_unavailable">The workspace is unavailable</string>
 
     <string name="agent_reach_section_paths">File locations</string>
     <string name="agent_reach_paths_footer_linux">Other paths are cleared when Linux is reset</string>
-    <string name="agent_reach_paths_footer_builtin">Built-in commands use real paths; the workspace is %1$s</string>
+    <string name="agent_reach_paths_footer_builtin">Built-in file tools and commands share real paths; workspace is %1$s</string>
     <string name="agent_reach_path_workspace">Current workspace</string>
     <string name="agent_reach_path_workspace_desc">Commands start here by default</string>
     <string name="agent_reach_path_session_desc">Reach it here when it isn\'t the workspace</string>
@@ -53,7 +53,7 @@
     <string name="agent_reach_runners_settings">Settings</string>
 
     <string name="agent_reach_section_approval">When it asks you</string>
-    <string name="agent_reach_approval_footer">Scheduled tasks, skill-folder changes and SSH host setup always ask.</string>
+    <string name="agent_reach_approval_footer">Skill folders, config edits, schedules, SSH hosts, and ComfyUI management always ask; destructive root-wipe commands are always blocked.</string>
 
     <string name="agent_reach_section_network">Where it can connect</string>
     <string name="agent_reach_network_public">Direct network access</string>

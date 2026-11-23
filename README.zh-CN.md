@@ -118,7 +118,7 @@
 
 ## 安全与数据边界
 
-- **命令审批门禁**：默认要求人工批准每条 Shell / SSH 命令；文件删除等破坏性操作在任何权限模式下均强制触发单独确认。
+- **按风险分级审批与根目录硬拦截**：默认「按风险审批」档对经严格词法解析的零副作用只读命令自动免批，写/执行命令、文件删除与工作区外写入需确认；「免批准」档跳过常规 L1 动作，而技能、智能体配置、ComfyUI/SSH/定时任务等 L2 运行时管理在两档均始终逐次确认。针对系统根 `/`、共享存储根 `/sdcard`·`/storage/emulated/0`、应用数据根或未展开根目录变量的毁灭性命令在两档下均直接硬拦截，不弹审批卡。
 - **凭据上下文隔离**：密码与令牌输入通过独立保密输入卡直接写入加密凭据库，不进入 LLM 上下文与聊天记录，显示期间启用 `FLAG_SECURE` 禁止截屏。
 - **Android Keystore 钥匙串**：API Key、SSH 私钥、Git 令牌与站点凭据均加密存储；查看明文需通过系统生物识别或锁屏认证，展示 30 秒后自动隐藏，复制后 60 秒自动清理剪贴板。
 - **本地存储与直连请求**：会话数据库、知识库索引、录音与配置均存储在设备本地；模型调用从客户端直接发往所配置的接口地址，无中间代理服务器。
@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.71.6-beta`（versionCode `204`），统一内置 `arm64-v8a` FFmpeg/ffprobe 的 `PATH` 符号链接暴露（使 `shell_exec`、`python_exec` 含 Python `subprocess` 与 ComfyUI `BUILTIN_PYTHON` 提交器行为完全一致），在预装内置技能 `infinity-deck` 中新增全站四层运行时与可读写隔离契约（`references/runtime-isolation.md`），并同步更新首屏系统提示与全部内置参考文档（`$TMPDIR`、`$INFINITY_WORKSPACE` 输出脱敏、资料库 `/mnt/knowledge` 与 `copy_knowledge_to_linux`、ComfyUI 双运行时、20 秒转后台及会话记忆池）。前序 `v0.71.5-beta`（`203`）上线 ComfyUI 零硬编码全能提交器框架（10 类通用能力）、双执行环境自动切换（Linux / 内置 Python 3.14）、内置精简 `arm64-v8a` FFmpeg 9.1 / ffprobe + 8-bit `libx264`（`+2.69 MiB` APK 增量，16KB 页对齐，GPL-3.0）及 `STATEFUL_CHAIN` 3 处缺口闭合；`v0.71.4-beta`（`202`）完成了 Tailnet 预认证与可重放上传、通用 JSON 多槽位/动态槽位与裁剪、`skill_import` 与 `ComfyErrorDiagnostics` 以及 `LiveStep` 平静等待态 6 类系统修复；`v0.71.0-beta`（`198`）在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上落地独立 ComfyUI 兼容层与 14 个一等 `comfy_*` 工具。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
+- **当前版本**：`v0.72.0-beta`（versionCode `205`），将内置模式统一收口至唯一真实 Android 路径体系（文件工具、`shell_exec`、`python_exec` 与媒体存取共用真实规范路径与无前导 `/` 相对路径，仅无 POSIX 路径的 `/mnt/knowledge` 与 SAF 保留虚拟前缀），向文件工具开放关键运行时数据只读自诊断同时对加密密钥库 `infinity_encrypted_secrets.xml*` 实行读写全硬拒，上线 L1/L2 按命令风险分级审批模型（默认「按风险审批」含严格零副作用只读白名单，「免批准」跳过常规动作且保留 L2 管理审批），并在两档下内置不可审批的毁灭性根目录破坏硬拦截防线（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`）。前序 `v0.71.6-beta`（`204`）统一内置 `arm64-v8a` FFmpeg/ffprobe `PATH` 符号链接并补齐 `infinity-deck` 运行时隔离契约；`v0.71.5-beta`（`203`）上线 ComfyUI 零硬编码全能提交器框架（10 类通用能力）、双执行环境自动切换（Linux / 内置 Python 3.14）、内置精简 `arm64-v8a` FFmpeg 9.1 / ffprobe + 8-bit `libx264`（`+2.69 MiB` APK 增量，16KB 页对齐，GPL-3.0）及 `STATEFUL_CHAIN` 3 处缺口闭合；`v0.71.0-beta`（`198`）在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上落地独立 ComfyUI 兼容层与 14 个一等 `comfy_*` 工具。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
 
 ### 从源码构建
 

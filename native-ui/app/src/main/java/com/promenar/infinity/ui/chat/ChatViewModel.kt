@@ -195,6 +195,7 @@ internal suspend fun resolveChatApprovalExecutionTarget(
     mounts: com.promenar.infinity.domain.storage.ExternalWorkspaceAccess? = null,
     sshHostStore: com.promenar.infinity.data.ssh.SshHostStore? = null,
     linuxFiles: com.promenar.infinity.ui.chat.manager.skills.LinuxSessionExternalWorkspaceAccess? = null,
+    builtinFiles: com.promenar.infinity.ui.chat.manager.skills.BuiltinRealPathWorkspaceAccess? = null,
     sessionCommunicationTarget: (suspend (Session, String, String) -> String?)? = null,
     knowledgeAccessTarget: (suspend (Session, String, String) -> String?)? = null,
     productionLockTarget: (suspend (Session, String, String, String, String?) -> String?)? = null,
@@ -208,7 +209,7 @@ internal suspend fun resolveChatApprovalExecutionTarget(
         ?: comfyOverrideTarget?.invoke(call.name, call.arguments)
         ?: sessionCommunicationTarget?.invoke(session, call.name, call.arguments)
         ?: com.promenar.infinity.data.generation.resolveSessionToolTarget(
-            session, tool, call.arguments, workspaceRepository, mounts, sshHostStore, sshSessionHost, linuxFiles,
+            session, tool, call.arguments, workspaceRepository, mounts, sshHostStore, sshSessionHost, linuxFiles, builtinFiles = builtinFiles,
         )
 }
 
@@ -506,6 +507,7 @@ class ChatViewModel(
                 mounts = (application as InfinityApplication).externalFolderManager,
                 sshHostStore = (application as InfinityApplication).sshHostStore,
                 linuxFiles = (application as InfinityApplication).linuxSessionFiles,
+                builtinFiles = (application as InfinityApplication).builtinSessionFiles,
                 sessionCommunicationTarget = (application as InfinityApplication)::sessionCommunicationApprovalTarget,
                 knowledgeAccessTarget = (application as InfinityApplication)::knowledgeAccessApprovalTarget,
                 productionLockTarget = { currentSession, msgId, toolName, arguments, expectedTarget ->

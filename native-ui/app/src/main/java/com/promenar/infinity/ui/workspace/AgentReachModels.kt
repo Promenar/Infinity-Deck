@@ -42,6 +42,8 @@ internal data class ReachMount(
     /** 知识库挂载；路径区按 [readOnly] 显示“知识库 · 只读”或“知识库 · 读写授权”标签。 */
     val knowledgeBase: Boolean = false,
     val readOnly: Boolean = true,
+    /** 真实路径挂载在内置模式下的设备真实目录路径；SAF/知识库为 null。 */
+    val realPath: String? = null,
 )
 
 internal enum class ReachBackendKind { BUILTIN, SANDBOX, LINUX, TERMUX, SSH }
@@ -108,6 +110,7 @@ internal fun ExternalMount.toReach(): ReachMount = ReachMount(
     unavailable = unavailableReason != null,
     knowledgeBase = isKnowledgeBaseSource,
     readOnly = readOnly || sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE,
+    realPath = if (sourceType == "real_path") sourceId.takeIf { it.startsWith('/') } else null,
 )
 
 /** Linux 就绪且开启时 shell_exec 在 Alpine 中运行。只在会话尚未保存运行模式时用来推断。 */
@@ -124,18 +127,27 @@ internal enum class ReachPathKind { WORKSPACE, SESSION, MOUNT, SKILLS }
 internal data class ReachPath(val kind: ReachPathKind, val path: String, val mount: ReachMount? = null)
 
 /**
- * 文件位置随运行模式切换：Linux 模式下文件工具与命令共用 guest 路径，内置模式下为文件工具的虚拟路径。
+ * 文件位置随运行模式切换：Linux 模式下文件工具与命令共用 guest 路径，内置模式下统一展示真实路径体系（无 POSIX 路径的逻辑挂载保留 `/mnt/<别名>`）。
  * 本会话文件夹只在工作区不是它本身时单列。
  */
 internal fun reachPaths(mode: SessionRunMode, workspace: SessionWorkspaceUi, mounts: List<ReachMount>): List<ReachPath> {
     val linux = mode == SessionRunMode.LINUX
+    val builtinWorkspace = (workspace as? SessionWorkspaceUi.Directory)
+        ?.location
+        ?.takeIf { it.startsWith('/') }
+        ?: "\$INFINITY_WORKSPACE"
     return buildList {
-        add(ReachPath(ReachPathKind.WORKSPACE, if (linux) linuxWorkspacePath(workspace) else "/"))
+        add(ReachPath(ReachPathKind.WORKSPACE, if (linux) linuxWorkspacePath(workspace) else builtinWorkspace))
         if (workspace is SessionWorkspaceUi.Directory || workspace is SessionWorkspaceUi.Unavailable) {
             add(ReachPath(ReachPathKind.SESSION, if (linux) LINUX_SESSION_PATH else BUILTIN_SESSION_PATH))
         }
-        mounts.forEach { add(ReachPath(ReachPathKind.MOUNT, "/mnt/${it.alias}", it)) }
-        add(ReachPath(ReachPathKind.SKILLS, if (linux) "/mnt/skills" else "/skills"))
+        mounts.forEach { mount ->
+            val shown = if (!linux && mount.source == ReachMountSource.PATH && !mount.realPath.isNullOrBlank()) {
+                mount.realPath
+            } else "/mnt/${mount.alias}"
+            add(ReachPath(ReachPathKind.MOUNT, shown, mount))
+        }
+        add(ReachPath(ReachPathKind.SKILLS, if (linux) "/mnt/skills" else "\$INFINITY_SKILLS"))
     }
 }
 
@@ -147,7 +159,7 @@ internal fun linuxWorkspacePath(workspace: SessionWorkspaceUi): String =
         ?: "/workspace"
 
 private const val LINUX_SESSION_PATH = "/home/session"
-private const val BUILTIN_SESSION_PATH = "/session"
+private const val BUILTIN_SESSION_PATH = "files/workspaces"
 
 /** “运行代码”一节：[shown] 逐项展开，[inactive] 合成一行“未启用”。 */
 internal data class ReachRunners(

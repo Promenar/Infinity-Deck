@@ -98,6 +98,12 @@ data class ContextBuilderParams(
     val cachedTurnContext: String? = null,
     /** 用户通过 $名称点名并已加载的技能正文。 */
     val requestedSkills: List<com.promenar.infinity.ui.chat.manager.skills.RequestedSkill> = emptyList(),
+    /** 内置模式真实路径体系下的主工作区规范路径；null 时退回工作区根或 `$INFINITY_WORKSPACE`。 */
+    val builtinWorkspacePath: String? = null,
+    /** 内置模式真实路径体系下的会话私有目录规范路径；主工作区为目录型时用于展示独立私有落点。 */
+    val builtinPrivateWorkspacePath: String? = null,
+    /** 内置模式真实路径体系下的用户技能目录规范路径；null 时退回 `$INFINITY_SKILLS`。 */
+    val builtinUserSkillsPath: String? = null,
 )
 
 interface WebSearchProvider {
@@ -489,6 +495,8 @@ class ContextBuilder(
             mode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode),
             runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
             workspace = params.workspace,
+            builtinWorkspacePath = params.builtinWorkspacePath,
+            builtinUserSkillsPath = params.builtinUserSkillsPath,
         ))
         finish("runtime")
         sb.appendLine()
@@ -506,9 +514,11 @@ class ContextBuilder(
                 generic = false,
                 workspace = params.workspace,
                 workspaceChanged = true,
-                workspaceSkillsShadowed = params.workspace is com.promenar.infinity.data.workspace.SessionWorkspace.Directory,
+                workspaceSkillsShadowed = false,
                 mounts = params.mounts,
                 runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
+                builtinWorkspacePath = params.builtinWorkspacePath,
+                builtinPrivateWorkspacePath = params.builtinPrivateWorkspacePath,
             )
         }
         if (toolGuidance.isNotEmpty()) {

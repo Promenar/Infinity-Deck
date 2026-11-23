@@ -18,7 +18,7 @@
     <string name="slash_cmd_clear_name">Clear history</string>
     <string name="slash_cmd_clear_desc">Delete all messages in this chat after you confirm</string>
     <string name="slash_cmd_mode_name">Approvals</string>
-    <string name="slash_cmd_mode_desc">Switch approvals: ask for commands or no approvals</string>
+    <string name="slash_cmd_mode_desc">Switch approvals: approve by risk or no approvals</string>
     <string name="slash_cmd_tools_name">Tool use</string>
     <string name="slash_cmd_tools_desc">Turn tool use on or off for this chat</string>
     <string name="slash_cmd_export_name">Export chat</string>
@@ -39,7 +39,7 @@
     <!-- 无法执行 -->
     <string name="slash_reject_nothing_to_clear">This chat has no messages to clear</string>
     <string name="slash_reject_nothing_to_export">This chat has no messages to export</string>
-    <string name="slash_reject_unknown_mode">Unknown option “%1$s”. Use ask for commands or no approvals</string>
+    <string name="slash_reject_unknown_mode">Unknown option “%1$s”. Use approve by risk or no approvals</string>
     <string name="slash_reject_unknown_toggle">Use /tools on or /tools off</string>
     <string name="slash_reject_unknown_format">Export supports md, txt, html, pdf or png</string>
     <string name="slash_block_disabled">Skill /%1$s is off. Turn it on in chat settings under Tools</string>

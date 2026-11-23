@@ -540,7 +540,7 @@ class DefaultChatGenerationRuntimeTest {
         fixture.runtime.stream(fixture.request, 1).toList()
         assertThat(requests.map { it.model }).containsExactly("skills", "skills").inOrder()
         assertThat(requests.map { it.maxTokens }).containsExactly(16, 16).inOrder()
-        assertThat(requests.last().messages.first().content).contains("权限档：工作区")
+        assertThat(requests.last().messages.first().content).contains("权限档：按风险审批")
         assertThat(fixture.toolSessions.last().activeMcpServerIds).isEmpty()
         val next = skillsFixture(catalog, localProvider = local)
         next.store.updateSession("skills-session") { it.copy(modelId = "local::changed", inferenceParams = InferenceParams(maxTokens = 99)) }
@@ -770,7 +770,7 @@ class DefaultChatGenerationRuntimeTest {
             fixture.store.updateSession("skills-session") { it.copy(runMode = com.promenar.infinity.domain.model.SessionRunMode.LINUX) }
             assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
             grants.grant("skills-session", category)
-            val command = GenerationToolCall("command", "shell_exec", """{"command":"pwd"}""")
+            val command = GenerationToolCall("command", "shell_exec", """{"command":"touch /tmp/demo"}""")
             val file = GenerationToolCall("rootfs", "write_file", """{"path":"/etc/profile"}""")
             val allowed = if (category == com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND) command else file
             val decision = fixture.runtime.handleTools(fixture.request, listOf(allowed))
@@ -782,6 +782,27 @@ class DefaultChatGenerationRuntimeTest {
             assertThat(fixture.store.getSession("skills-session")!!.approvalRequest!!.calls.single().grantCategory)
                 .isEqualTo(if (pending == command) com.promenar.infinity.domain.tool.ApprovalGrantCategory.COMMAND else com.promenar.infinity.domain.tool.ApprovalGrantCategory.LINUX_ROOTFS)
         }
+    }
+
+    @Test fun `毁灭性根目录命令两档均不弹审批卡且严格只读命令免审批`() = runTest {
+        val catalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            coEvery { scan(any()) } returns com.promenar.infinity.data.skills.SkillSnapshot(null, emptyList())
+        }
+        val ledger = mockk<ToolExecutionLedger>(relaxed = true) {
+            coEvery { createToolApproval(any(), any(), any(), any(), any()) } returns com.promenar.infinity.data.repository.ToolApprovalCreation.CREATED
+        }
+        val fixture = skillsFixture(catalog, toolNames = listOf("shell_exec", "python_exec"), toolLedger = ledger)
+        assertThat(fixture.runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+
+        // 按风险审批模式下：ls -la 直接放行；rm -rf / 不弹审批卡，直接交给执行器落账拒绝
+        val calls = listOf(
+            GenerationToolCall("ro", "shell_exec", """{"command":"ls -la"}"""),
+            GenerationToolCall("nuke", "shell_exec", """{"command":"rm -rf /"}"""),
+        )
+        assertThat(fixture.runtime.handleTools(fixture.request, calls)).isEqualTo(GenerationToolDecision.CONTINUE)
+        assertThat(fixture.store.getSession("skills-session")!!.approvalRequest).isNull()
+        coVerify(exactly = 0) { ledger.createToolApproval(any(), any(), any(), any(), any()) }
+        coVerify { fixture.executor.executeTools(any(), any(), any(), setOf("ro", "nuke"), any(), any(), any()) }
     }
 
     @Test fun `实际运行时读取智能体工具模式目录并播种自动引用`() = runTest {
@@ -1076,13 +1097,15 @@ class DefaultChatGenerationRuntimeTest {
             Triple(ProtocolTool(function = ProtocolToolFunction("web_fetch", "", "{}"), risk = ToolRisk.SAFE_READ, runtimeToolId = "web_fetch", sourceId = "builtin"),
                 """{"url":"https://example.com/a"}""", """["host","example.com"]"""),
             Triple(ProtocolTool(function = ProtocolToolFunction("shell_exec", "", "{}"), risk = ToolRisk.PROCESS, runtimeToolId = "shell_exec", sourceId = "builtin"),
-                """{"command":"git status"}""", """["process","builtin","git status"]"""),
+                """{"command":"touch demo.txt"}""", """["process","builtin","touch demo.txt"]"""),
             Triple(ProtocolTool(function = ProtocolToolFunction("mcp_call", "", "{}"), risk = ToolRisk.UNKNOWN, runtimeToolId = "mcp:server:tool", sourceId = "mcp", mcpServerId = "server"),
                 "{}", """["mcp","server","tool"]"""),
         )
         for ((tool, args, target) in cases) {
             assertAllowlistDecision(tool, args, target, null, testDirectory("other-workspace"), tool.function.name != "shell_exec")
         }
+        assertAllowlistDecision(cases[1].first, """{"command":"git status"}""", cases[1].third,
+            null, testDirectory("other-workspace"), true)
         assertAllowlistDecision(cases[1].first, """{"command":"git status && rm x"}""", cases[1].third,
             null, testDirectory("other-workspace"), false)
     }

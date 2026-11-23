@@ -449,7 +449,7 @@ class BackgroundJobManager(
             }
             return com.promenar.infinity.domain.tool.CommandToolResult(
                 guidance = "命令仍在运行；用 job_status/job_wait 查看，用 job_input 回答提示，用 job_stop 结束。",
-                stdout = (output?.stdout ?: rawTail?.text.orEmpty()).let { text -> directory?.let { BuiltinExecService.virtualize(text, it) } ?: text },
+                stdout = output?.stdout ?: rawTail?.text.orEmpty(),
                 stderr = output?.stderr.orEmpty(), stdoutOriginalLength = output?.stdoutOriginalLength ?: rawTail?.takeUnless { it.truncated }?.text?.length?.toLong(),
                 stderrOriginalLength = output?.stderrOriginalLength ?: 0, stdoutTruncated = output?.stdoutTruncated ?: rawTail?.truncated ?: false,
                 stderrTruncated = output?.stderrTruncated ?: false, backendFields = fields,
@@ -1096,9 +1096,7 @@ class BackgroundJobManager(
         val warning = reconcileWarning(record)
         val tail=if(record.runnerKind==BackgroundJobRunner.TERMUX && refreshRemote) refreshTermux(record) else {
             val snapshot = active[id]?.control?.outputSnapshot
-            val raw = snapshot?.let { JobLogTail(it.stdout.takeLast(8_000), it.stdoutTruncated || it.stdout.length > 8_000) } ?: readJobLogTail(logFile(record))
-            val directory = record.workspaceDirectory?.let(::File)
-            if (directory == null) raw else raw.copy(text = BuiltinExecService.virtualize(raw.text, directory))
+            snapshot?.let { JobLogTail(it.stdout.takeLast(8_000), it.stdoutTruncated || it.stdout.length > 8_000) } ?: readJobLogTail(logFile(record))
         }
         record=owned(sessionId,id, initializeStore = false)
         val lastOutputAt = active[id]?.lastOutputAtMillis ?: record.lastOutputAtMillis

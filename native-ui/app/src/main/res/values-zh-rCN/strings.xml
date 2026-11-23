@@ -418,8 +418,8 @@
     <string name="chat_input_placeholder">给 %1$s 发消息</string>
     <string name="chat_input_placeholder_default">发消息</string>
     <string name="chat_execution_mode_cd">审批：%1$s</string>
-    <string name="chat_execution_mode_workspace_hint">逐条批准命令</string>
-    <string name="chat_execution_mode_full_access_hint">命令直接执行</string>
+    <string name="chat_execution_mode_workspace_hint">只读免批，高危审批</string>
+    <string name="chat_execution_mode_full_access_hint">常规免批，管理确认</string>
     <string name="chat_input_placeholder_generating">写下一条，发送后排队</string>
     <string name="chat_empty_prompt">今天想做点什么？</string>
     <string name="chat_cd_options">选项</string>
@@ -1629,10 +1629,10 @@
     <string name="tailscale_value_not_set">未设置</string>
     <string name="tailscale_control_official">Tailscale 官方</string>
     <string name="tailscale_auth_key_hint">粘贴以 tskey- 开头的 auth key</string>
-    <string name="common_mode_workspace">命令需批准</string>
+    <string name="common_mode_workspace">按风险审批</string>
     <string name="common_mode_full_access">免批准</string>
-    <string name="common_mode_workspace_desc">工作区内文件直接读写，命令逐条确认</string>
-    <string name="common_mode_full_access_desc">命令直接执行，可读写全部应用数据</string>
+    <string name="common_mode_workspace_desc">只读命令与工作区读写免批，高危命令、删除与区外写入需确认</string>
+    <string name="common_mode_full_access_desc">常规命令、删除与区外写入免批，运行时与配置管理仍需逐次确认</string>
     <string name="chat_runtime_changes_title">改动了运行时关键数据</string>
     <plurals name="chat_runtime_changes_more">
         <item quantity="other">另有 %d 项</item>

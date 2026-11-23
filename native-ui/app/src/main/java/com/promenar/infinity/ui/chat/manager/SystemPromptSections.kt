@@ -30,6 +30,8 @@ object SystemPromptSections {
         runMode: SessionRunMode = SessionRunMode.BUILTIN,
         linuxAvailable: Boolean = LinuxExecRouting.available,
         workspace: com.promenar.infinity.data.workspace.SessionWorkspace? = null,
+        builtinWorkspacePath: String? = null,
+        builtinUserSkillsPath: String? = null,
     ): String = buildString {
         val linux = runMode == SessionRunMode.LINUX
         val configuredWorkspace = when (workspace) {
@@ -38,7 +40,9 @@ object SystemPromptSections {
             else -> null
         }
         val root = when {
-            !linux -> "/"
+            !linux -> builtinWorkspacePath?.takeIf(String::isNotBlank)
+                ?: (workspace as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory)?.root?.path
+                ?: "\$INFINITY_WORKSPACE"
             configuredWorkspace?.kind == com.promenar.infinity.data.branch.BranchWorktreeWorkspaceResolver.KIND -> configuredWorkspace.location
             configuredWorkspace?.kind == com.promenar.infinity.data.local.db.entity.WorkspaceEntity.KIND_LINUX_HOME ->
                 com.promenar.infinity.data.workspace.LinuxWorkspaceLocation.parse(configuredWorkspace.location)?.directory ?: "\$INFINITY_WORKSPACE"
@@ -46,15 +50,16 @@ object SystemPromptSections {
             workspace == com.promenar.infinity.data.workspace.SessionWorkspace.Private -> "/workspace"
             else -> "\$INFINITY_WORKSPACE"
         }
+        val userSkills = if (linux) "/mnt/skills" else builtinUserSkillsPath?.takeIf(String::isNotBlank) ?: "\$INFINITY_SKILLS"
         appendLine("## Runtime Environment")
         appendLine("- Environment: ${AppBrand.DISPLAY_NAME}")
         appendLine("- 你是 ${AppBrand.DISPLAY_NAME} 的智能体，运行在 Android 应用内。")
         modelId?.takeIf(String::isNotBlank)?.let { appendLine("- Model: $it") }
-        appendLine("- 本会话运行模式：${if (linux) "Linux" else "内置"}；权限档：${if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) "工作区" else "完全访问"}；Linux：${if (linuxAvailable) "可用" else "不可用"}。")
-        appendLine("- 应用工作区：$root；" + if (linux) "私有会话另有 /home/session；命令起始目录以 INFINITY_WORKSPACE 为准。" else "文件工具以此为根；命令起始目录以 INFINITY_WORKSPACE 为准。")
+        appendLine("- 本会话运行模式：${if (linux) "Linux" else "内置"}；权限档：${if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) "按风险审批" else "免批准"}；Linux：${if (linuxAvailable) "可用" else "不可用"}。")
+        appendLine("- 应用工作区：$root；" + if (linux) "私有会话另有 /home/session；命令起始目录以 INFINITY_WORKSPACE 为准。" else "文件工具与命令共用该真实路径；相对路径（不带前导 /）相对此目录，禁用 /skills、/session 等旧虚拟前缀。")
         appendLine("- 成果文件：已设定工作区时，遵循项目规则放入工作区内合适的子目录；未设定工作区时放入会话文件夹，并按用途使用子目录。")
-        appendLine("- 应用挂载：/mnt/<别名>；" + if (linux) "仅真实路径挂载可见，SAF 挂载不可见。" else "文件工具可访问已授权挂载，命令不能直接使用 SAF 路径。")
-        appendLine("- 用户技能：${if (linux) "/mnt/skills" else "/skills"}（命令中使用 INFINITY_SKILLS）；目录型工作区的项目技能：${root.trimEnd('/')}/.agents/skills；私有会话不扫描项目技能。")
+        appendLine("- 应用挂载：" + if (linux) "/mnt/<别名>；仅真实路径挂载可见，SAF 挂载不可见。" else "真实路径挂载直接使用设备真实路径；无 POSIX 路径的逻辑挂载（/mnt/knowledge、SAF /mnt/<别名>）仅文件工具可访问。")
+        appendLine("- 用户技能：$userSkills（命令中使用 INFINITY_SKILLS）；目录型工作区的项目技能：${root.trimEnd('/')}/.agents/skills；私有会话不扫描项目技能。")
         appendLine("- 内置只读技能：${com.promenar.infinity.data.skills.BuiltinSkillCatalog.VIRTUAL_DIR}/SKILL.md，仅技能读取工具可读。")
         appendLine("- Linux 中安装的 Codex CLI、Claude Code 等 CLI、~/.codex、~/.claude 及 /root 下的规则文件属于第三方工具，不是你的运行时；不要通过修改它们改变自身行为或配置。")
         appendLine("- 管理技能、规则或说明自身能力与权限时，先用 activate_skill(name=\"infinity-deck\") 读取内置指南；具体审批与关键运行数据规则见下方权限段。")
@@ -66,7 +71,7 @@ object SystemPromptSections {
         "文件工具与命令使用相同的 Linux 路径，相对路径相对当前会话的起始工作目录；/root、/etc 等绝对路径指向 Linux rootfs。" +
         "/home/session 保存在 rootfs 之外，重置 Linux 不删除它；/root 不进入备份，重置会清空。文件元数据密集操作较慢。" +
         "Linux 不可用时返回错误，请用户在会话中处理环境，不能自动改用系统 sh、打包 Python 或其它运行环境。" +
-        "Linux 命令以本应用的 Android 用户运行，工作区档逐条审批，完全访问档免批。" +
+        "Linux 命令以本应用的 Android 用户运行，按风险审批档下严格解析的零副作用只读命令免批、其余命令逐条审批，免批准档常规命令免批；毁灭性根目录破坏命令在两档下均直接硬拦截且不可审批。" +
         "原生 git 访问 HTTPS 远端时自动使用用户在设置中保存的 Git 凭据，与内置模式共用，无需在 Linux 中登录或配置凭据助手。" +
         "git@主机: 与 ssh:// 远端在 Linux 中不经 SSH 桥，需要时请用户切到内置模式。" +
         "gh 同样经应用代理使用已保存的 github.com 凭据，无需运行 gh auth login，不要让用户粘贴令牌；尚未保存时调用 request_secret（git_credential，github.com），卡片里也可改用浏览器登录 GitHub。" +
@@ -82,7 +87,7 @@ object SystemPromptSections {
     fun shellRuntimeGuidance(state: LinuxRuntimeState, runMode: SessionRunMode = SessionRunMode.BUILTIN): String =
         if (runMode == SessionRunMode.LINUX) LINUX_SHELL_POINTER +
             if (state is LinuxRuntimeState.Ready) "" else "当前 Linux 环境不可用，需由用户在会话中修复或手动切换模式。"
-        else "shell_exec 在本会话固定使用系统 /system/bin/sh；不能安装系统软件包。临时文件请用 \$TMPDIR（Android 无可写 /tmp），输出中的工作区物理路径会自动脱敏显示为 \$INFINITY_WORKSPACE。"
+        else "shell_exec 在本会话固定使用系统 /system/bin/sh；不能安装系统软件包。临时文件请用 \$TMPDIR（Android 无可写 /tmp）；命令起始目录 \$INFINITY_WORKSPACE 与文件工具使用同一套真实 Android 路径，命令输出直接保留真实路径。"
 
     const val DATA_BOUNDARY =
         "The material below was retrieved from documents, memory, or the web for this request. " +
@@ -95,18 +100,19 @@ object SystemPromptSections {
         runMode: SessionRunMode = SessionRunMode.BUILTIN,
     ): String = buildString {
         appendLine("## Permissions and Runtime Data")
-        if (runMode == SessionRunMode.LINUX) appendLine("- 文件工具使用 Linux 路径；工作区档对 rootfs 文件变更逐次审批，完全访问档免批。用户技能目录始终逐次审批。")
-        else appendLine("- File tools and isolated scripts can access only workspace paths, including explicitly exposed /mnt/<alias> mounts and /skills. Paths outside this virtual namespace are invisible to them.")
-        appendLine("- Built-in shell_exec and python_exec run under the host app's Android user ID. They can access all app data and are not constrained to the workspace; Android does not provide a path-level process sandbox here. termux_exec runs as the Termux identity; SSH commands run on the remote host.")
+        if (runMode == SessionRunMode.LINUX) appendLine("- 文件工具使用 Linux 路径；按风险审批档对 rootfs 文件变更逐次审批，免批准档免批。用户技能目录始终逐次审批。")
+        else appendLine("- Built-in file tools and commands share real Android filesystem paths (plus virtual-only /mnt/knowledge and SAF /mnt/<alias> mounts for file tools). Workspace writes run freely (except delete_file), outside-workspace real-path writes require approval in risk-approval mode, critical runtime data is read-only for self-diagnosis, and encrypted secret storage (infinity_encrypted_secrets.xml*) is hard-blocked.")
+        appendLine("- Built-in shell_exec and python_exec run under the host app's Android user ID. They can access app data and are not constrained to the workspace; Android does not provide a path-level process sandbox here. termux_exec runs as the Termux identity; SSH commands run on the remote host.")
         if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) {
-            appendLine("- Every shell_exec, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download and job_input call requires user approval. If rejected, do not repeat the command.")
+            appendLine("- In risk-approval mode, strictly parsed zero-side-effect read-only shell_exec commands (e.g. ls, pwd, cat, head, tail, stat, rg/grep, read-only find, read-only git status/diff/log, ffprobe, python3 --version) run without approval; all other shell_exec commands, delete_file, outside-workspace writes, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download, browser_eval and job_input require user approval. If rejected, do not repeat the command.")
         } else {
-            appendLine("- shell_exec, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download and job_input run without per-command approval.")
+            appendLine("- In no-approval mode, routine shell_exec, delete_file, outside-workspace writes, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download, browser_eval and job_input run without per-command approval.")
         }
-        appendLine("- In both scopes, schedule_create, request_knowledge_access, resolve_startup_issue, skill-directory mutations and SSH host configuration require approval for every call. session_read/session_search/session_list require approval when accessing other sessions outside the permitted family. Linux rootfs mutations require approval in workspace scope. Other tools do not require execution approval.")
+        appendLine("- Catastrophic destructive commands targeting system root (/), Android shared storage roots (/sdcard, /storage/emulated/0), app data roots, Linux system roots, or unexpanded root variables are unconditionally blocked in both modes (EXEC_BLOCKED_CATASTROPHIC_COMMAND) and cannot be approved.")
+        appendLine("- In both modes, agents_write, install_skill, skill-directory mutations, ComfyUI config/template mutations and fixed_overrides, SSH host configuration, schedule_create, request_knowledge_access, and resolve_startup_issue require approval for every call. session_read/session_search/session_list require approval when accessing other sessions outside the permitted family. Linux rootfs mutations require approval in risk-approval mode. Other tools do not require execution approval.")
         appendLine("- agents_write 每次都需用户审批，不可限时免审批；配置修改从下一轮生效。")
-        appendLine("- Critical runtime data includes databases/ (including infinity_v2.db), shared_prefs/, no_backup/, and diagnostic logs (files/infinity_diagnostics.jsonl, files/infinity_logs.txt, files/diag-keep). In either scope, before modifying any of these, explain the purpose and impact in your reply and obtain the user's explicit written consent. Tool approval alone does not replace that consent.")
-        appendLine("- files/agent_skills/ is the user skill directory. Create, edit or delete user skills with the file tools under the user skill path; each call is confirmed on the approval card and needs no separate written consent. Do not modify it with commands to bypass that approval.")
+        appendLine("- Critical runtime data includes databases/ (including infinity_v2.db), shared_prefs/ (excluding infinity_encrypted_secrets.xml*, which is hard-blocked for both reads and writes), no_backup/, and diagnostic logs (files/infinity_diagnostics.jsonl, files/infinity_logs.txt, files/diag-keep). File tools allow read-only self-diagnosis here and hard-block all writes/deletes. In either mode, before modifying any critical runtime data via commands, explain the purpose and impact in your reply and obtain the user's explicit written consent. Tool approval alone does not replace that consent.")
+        appendLine("- files/agent_skills/ is the user skill directory. Create, edit or delete user skills with the file tools under the real user skill path (or /mnt/skills in Linux mode); each call is confirmed on the approval card and needs no separate written consent. Do not modify it with commands to bypass that approval.")
         appendLine("- 安装或整包替换用户技能时调用 install_skill，files 提供完整技能包的路径与内容并包含有效 SKILL.md，替换已有技能时设置 overwrite=true；用户逐次批准该快照后技能自动启用，用户手动停用的技能保持停用。")
         appendLine("- Installing pip packages into files/python-user is normal use.")
         if (runMode == SessionRunMode.LINUX) appendLine("- 在 Linux 中安装软件包属于正常使用；Linux 主目录 /root 不进入备份。")
@@ -135,13 +141,15 @@ object SystemPromptSections {
         workspace: com.promenar.infinity.data.workspace.SessionWorkspace? = null,
         /** 会话中途切换过工作区：历史消息里的路径与哈希可能属于之前的工作区。 */
         workspaceChanged: Boolean = false,
-        /** 目录型工作区的 skills 条目被用户级虚拟目录遮蔽。 */
+        /** 目录型工作区的 skills 条目被用户级虚拟目录遮蔽（内置真实路径模式已无遮蔽）。 */
         workspaceSkillsShadowed: Boolean = false,
-        /** 当前会话可见的挂载；用户技能目录由 `/skills` 单独说明。 */
+        /** 当前会话可见的挂载；用户技能目录由运行环境段单独说明。 */
         mounts: List<com.promenar.infinity.domain.storage.ExternalMount> = emptyList(),
         linuxState: LinuxRuntimeState = LinuxExecRouting.state,
         runMode: SessionRunMode = SessionRunMode.BUILTIN,
         filePathPresenter: com.promenar.infinity.data.workspace.WorkspaceFilePathPresenter = com.promenar.infinity.data.workspace.workspaceFilePathPresenter(runMode),
+        builtinWorkspacePath: String? = null,
+        builtinPrivateWorkspacePath: String? = null,
     ): String = buildString {
         appendLine("## Tool Use")
         appendLine("- Call tools through the native function-calling interface only. Arguments must be a JSON object that matches the tool's schema; never write tool calls as text, JSON, or XML in your reply.")
@@ -209,24 +217,22 @@ object SystemPromptSections {
             appendLine("### Workspace Files")
             if (usesLinux) {
                 appendLine("- 文件工具与 shell 共用 Linux 路径：/workspace 为基础工作区挂载，/home/session 为隔离的会话专用空间，/mnt/<别名> 为真实目录挂载，/mnt/skills 为用户技能；其它绝对路径位于 rootfs。相对路径相对当前会话的起始工作目录（INFINITY_WORKSPACE），路径不允许 ..。")
-            } else if (workspace == null || workspace == com.promenar.infinity.data.workspace.SessionWorkspace.Private) {
-                appendLine("- This conversation has a private workspace. Paths are relative to its root and start with `/` (for example `/notes/plan.md`); file tools accept either `path` or `uuid`.")
             } else {
-                appendLine("- Paths are relative to the current workspace root and start with `/` (for example `/src/main.py`); file tools accept either `path` or `uuid`.")
+                val primaryDisplay = builtinWorkspacePath?.takeIf(String::isNotBlank)
+                    ?: (workspace as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory)?.root?.path
+                    ?: "\$INFINITY_WORKSPACE"
+                appendLine("- 文件工具与 shell/Python 共用真实 Android 路径。当前主工作区：`$primaryDisplay`。路径写法唯一：工作区内文件可用不带前导 `/` 的相对路径（如 `notes/plan.md`）或完整真实路径；工作区外、真实路径挂载与用户技能使用完整真实路径；禁止使用已废除的伪前导 `/`（如 `/notes/plan.md`、`/skills/...`、`/session/...`）或 `..`。仅无 POSIX 路径的逻辑挂载（`/mnt/knowledge`、SAF `/mnt/<别名>`）保留 `/mnt/...` 前缀。文件工具接受 `path` 或 `uuid`。")
             }
             appendLine("- Explore with `list_files` (use `depth` for subfolders) and `search_files` (`mode=content` greps file text). Do not invent paths or uuids.")
             appendLine("- Read before you edit. `read_file` prefixes each line with `N| `; that prefix is not file content, and `patch_file` line numbers refer to it.")
             appendLine("- `write_file` and `patch_file` require `expectedHash`, the latest hash from `read_file`, `list_files`, or your previous write. On a hash conflict, re-read the file and redo the change.")
             appendLine("- Prefer `patch_file` for local edits and `write_file` for full rewrites of existing files. Create new files with `create_file` and folders with `create_directory`.")
-            appendLine("- `move_file` moves or renames; `delete_file` permanently deletes items and requires user approval.")
+            appendLine("- `move_file` moves or renames; `delete_file` permanently deletes items (requires approval in risk-approval mode; runs without approval in no-approval mode except for skill directories).")
         }
         if (toolNames.any { it in WORKSPACE_TOOLS || it in WORKSPACE_PROCESS_TOOLS }) {
-            currentWorkspace(workspace, usesLinux)?.let {
+            currentWorkspace(workspace, usesLinux, builtinWorkspacePath)?.let {
                 appendLine()
                 append(it)
-            }
-            if (workspace is com.promenar.infinity.data.workspace.SessionWorkspace.Directory && workspaceSkillsShadowed) {
-                appendLine("- File tools reserve `/skills` for user skills. If the workspace root contains a `skills` entry, access that entry as `./skills` through `shell_exec`.")
             }
             if (workspaceChanged) {
                 appendLine("- Paths, uuids and hashes are scoped to the current workspace. After switching workspaces, list or read files again before reusing earlier values.")
@@ -268,7 +274,7 @@ object SystemPromptSections {
             }
             appendLine("- 已保存到工作区的历史用户图片和文档以工作区路径提供" + if (rereadTools.isEmpty()) "。" else "；需要重新查看时，${rereadTools.joinToString("、")}。")
             appendLine("- 图片、视频和音频遵循运行环境段的成果文件落点，展示前保存；项目规则未指定目录时使用 media/<yyyy-MM-dd>/。脚本、命令生成或网络下载的媒体同样适用。")
-            appendLine("- Present workspace media in your reply with `![brief description](workspace path)`. A regular link `[name](workspace path)` appears as a file card. Use the virtual paths returned by file tools verbatim (for example `/workspace/media/...` or `/media/...`), never rewrite them into `../` relative paths, never use local absolute filesystem paths or inline base64, and never put `![...](path)` inside a Markdown table cell (put media references on standalone lines or inside ```gallery / ```carousel blocks instead).")
+            appendLine("- Present workspace media in your reply with `![brief description](workspace path)`. A regular link `[name](workspace path)` appears as a file card. Use the exact path returned by tools verbatim (for example `media/2026-10-20/demo.png`, real workspace paths in built-in mode, or `/workspace/media/...` in Linux mode); never rewrite them into `../` relative paths or inline base64, and never put `![...](path)` inside a Markdown table cell (put media references on standalone lines or inside ```gallery / ```carousel blocks instead).")
             appendLine("- Media already shown in tool steps can still be referenced in your reply when useful.")
             appendLine("- 回复中的 ```html 卡片可以只读引用当前工作区的图片、视频和音频：地址为 https://workspace-media.infinity.invalid/workspace/ 加工作区根下的相对路径，每个路径段分别 URL 编码，例如 media/demo.mp4 写作 https://workspace-media.infinity.invalid/workspace/media/demo.mp4；视频和音频使用带 controls 的原生标签。")
             appendLine("- By default each media reference is shown on its own at its position in the text. For a set of images on one theme that need no per-image commentary, wrap them in a ```gallery block to show them as a grid; for a set meant to be viewed in order, wrap them in a ```carousel block to show a swipeable viewer. Put one `![brief description](workspace path)` per line inside the block. Do not use these blocks when each image needs its own paragraph of text.")
@@ -283,16 +289,32 @@ object SystemPromptSections {
             toolNames.any { it.startsWith("canvas_") || it in WORKSPACE_TOOLS || it in WORKSPACE_PROCESS_TOOLS || it in MEDIA_TOOLS }) {
             val destination = com.promenar.infinity.data.workspace.defaultWorkspaceFileDestination(workspace, mounts)
             val privatePrimary = workspace == null || workspace == com.promenar.infinity.data.workspace.SessionWorkspace.Private
-            val root = filePathPresenter.present(destination, "/", privatePrimary)
+            val root = if (usesLinux) {
+                filePathPresenter.present(destination, "/", privatePrimary)
+            } else {
+                when (destination) {
+                    com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE ->
+                        builtinPrivateWorkspacePath?.takeIf(String::isNotBlank)
+                            ?: builtinWorkspacePath?.takeIf(String::isNotBlank)
+                            ?: "\$INFINITY_WORKSPACE"
+                    com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.PRIMARY_WORKSPACE ->
+                        builtinWorkspacePath?.takeIf(String::isNotBlank)
+                            ?: (workspace as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory)?.root?.path
+                            ?: "\$INFINITY_WORKSPACE"
+                }
+            }
             val label = if (destination == com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE) "会话专用空间" else "主工作区"
             appendLine()
             appendLine("### 默认文件落点")
             appendLine("- 未指定目标时，工具将新画布镜像与媒体默认保存在$label（`$root`）的 canvas/ 与 media/<yyyy-MM-dd>/ 目录；已设定工作区时，创建成果须显式指定工作区子目录，并遵循项目规则的落点约定。技能挂载不影响默认落点。")
             appendLine("- 已有画布镜像保持首次目标，切换主工作区不会搬动镜像。使用工具返回的 workspace_path 或媒体路径访问文件。")
             if (!privatePrimary) {
-                val privateRoot = filePathPresenter.present(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE, "/", false)
+                val privateRoot = if (usesLinux) {
+                    filePathPresenter.present(com.promenar.infinity.data.workspace.WorkspaceDefaultFileDestination.SESSION_PRIVATE, "/", false)
+                } else {
+                    builtinPrivateWorkspacePath?.takeIf(String::isNotBlank) ?: "(当前会话私有空间真实目录)"
+                }
                 appendLine("- 文件工具通过 `$privateRoot` 访问会话专用空间。")
-                if (privateRoot == "/session") appendLine("- 主工作区真实的 session 目录可在命令中使用相对路径 ./session 访问。")
             }
         }
     }
@@ -304,7 +326,8 @@ object SystemPromptSections {
         if (visible.isEmpty()) return null
         return buildString {
             appendLine("### Mounted Folders")
-            appendLine("- 文件工具通过 `/mnt/<alias>/` 访问会话挂载。")
+            if (usesLinux) appendLine("- 文件工具与 Linux 命令通过 `/mnt/<alias>/` 访问会话真实路径挂载，资料库使用 `/mnt/<alias>/`。")
+            else appendLine("- 真实路径挂载在文件工具与命令中统一直接使用设备真实路径；无 POSIX 路径的逻辑挂载（知识库、SAF）仅文件工具通过 `/mnt/<alias>/` 访问。")
             visible.forEach { mount ->
                 val alias = mount.alias.take(64)
                 val realPath = runCatching { com.promenar.infinity.data.storage.ExternalMountPaths.commandAccess(mount).realPath }.getOrNull()
@@ -312,16 +335,21 @@ object SystemPromptSections {
                     mount.unavailableReason != null -> "- `/mnt/$alias/`: currently unavailable; ask the user to check or re-authorize it."
                     mount.isKnowledgeBaseSource && mount.readOnly -> "- `/mnt/$alias/`：只读知识库。普通资料和原始录音 .wav 可读取；录音整理稿 .md 可带 expectedHash 版本化编辑并同步录音工作台。仅文件工具可访问，命令无法访问知识库挂载。"
                     mount.isKnowledgeBaseSource -> "- `/mnt/$alias/`：知识库读写。文件工具可创建、编辑、在库内移动与经审批删除资料文档并同步索引；录音整理稿 .md 同步录音工作台，原始录音 .wav 只读。仅文件工具可访问。"
+                    realPath != null && !usesLinux && mount.readOnly -> "- `${realPath.take(256)}`（挂载 `$alias`）：只读；文件工具与命令共用该真实路径，仅允许读取、列目录和搜索。"
+                    realPath != null && !usesLinux -> "- `${realPath.take(256)}`（挂载 `$alias`）：文件工具与命令共用该真实路径（禁止使用 `/mnt/$alias/`）。"
                     mount.readOnly -> "- `/mnt/$alias/`：只读；仅允许读取、列目录和搜索。"
                     realPath != null && usesLinux -> "- `/mnt/$alias/`：Linux 命令与文件工具使用同一路径。"
-                    realPath != null -> "- `/mnt/$alias/`: commands reach it at the real path `${realPath.take(256)}`."
                     else -> "- `/mnt/$alias/`: file tools only. It was authorized through the system folder picker, so shell, Python and Termux commands cannot reach it."
                 })
             }
         }
     }
 
-    private fun currentWorkspace(workspace: com.promenar.infinity.data.workspace.SessionWorkspace?, usesLinux: Boolean = false): String? = when (workspace) {
+    private fun currentWorkspace(
+        workspace: com.promenar.infinity.data.workspace.SessionWorkspace?,
+        usesLinux: Boolean = false,
+        builtinWorkspacePath: String? = null,
+    ): String? = when (workspace) {
         null, com.promenar.infinity.data.workspace.SessionWorkspace.Private -> null
         is com.promenar.infinity.data.workspace.SessionWorkspace.Directory -> buildString {
             if (workspace.kind == com.promenar.infinity.data.branch.BranchWorktreeWorkspaceResolver.KIND) {
@@ -342,8 +370,13 @@ object SystemPromptSections {
                     "Linux 环境目录 `${com.promenar.infinity.data.workspace.LinuxWorkspaceLocation.workingDirectory(workspace.workspace)}`（重置或卸载 Linux 时清空）"
                 else -> "an app-managed project folder"
             }
+            val rootPath = if (usesLinux) {
+                com.promenar.infinity.data.workspace.LinuxWorkspaceLocation.workingDirectory(workspace.workspace)
+            } else {
+                builtinWorkspacePath?.takeIf(String::isNotBlank) ?: workspace.root.path
+            }
             appendLine("### Current Workspace")
-            appendLine("- This conversation uses the user-selected workspace \"${workspace.workspace.displayName.take(64)}\", $place. `${if (usesLinux) com.promenar.infinity.data.workspace.LinuxWorkspaceLocation.workingDirectory(workspace.workspace) else "/"}` is its root; `/mnt/<alias>` mounts stay available.")
+            appendLine("- This conversation uses the user-selected workspace \"${workspace.workspace.displayName.take(64)}\", $place. `$rootPath` is its root; configured mounts stay available.")
             appendLine("- The host app does not index or back up this folder. `shell_exec` and `python_exec` run inside it without change tracking (no `workspace_changes`); use `git status` to review changes, and treat pushing to a remote as the durable backup.")
             if (shared) appendLine("- Shared storage is case-insensitive and does not support symbolic links or executable permissions.")
         }

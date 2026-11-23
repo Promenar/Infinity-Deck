@@ -302,7 +302,8 @@ class DefaultChatGenerationContentStrategy(
     override fun pendingApprovalIds(toolCalls: List<ToolCall>, executionMode: String): List<String> {
         val mode = ExecutionModeCodec.parseOrWorkspace(executionMode)
         return toolCalls.filter { call ->
-            ToolExecutionPolicy.requiresApproval(mode, call.name, riskForTool(call.name), call.arguments)
+            ToolExecutionPolicy.catastrophicBlock(call.name, call.arguments) == null &&
+                ToolExecutionPolicy.requiresApproval(mode, call.name, riskForTool(call.name), call.arguments)
         }.map { it.id }
     }
 

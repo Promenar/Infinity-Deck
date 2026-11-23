@@ -5,14 +5,14 @@
 
     <string name="agent_reach_run_mode_linux">Linux 模式</string>
     <string name="agent_reach_run_mode_builtin">内置模式</string>
-    <string name="agent_reach_permission_workspace">命令需批准</string>
+    <string name="agent_reach_permission_workspace">按风险审批</string>
     <string name="agent_reach_permission_full_access">免批准</string>
     <string name="agent_reach_workspace_storage">%1$s · %2$s</string>
     <string name="agent_reach_workspace_unavailable">工作区当前不可用</string>
 
     <string name="agent_reach_section_paths">文件位置</string>
     <string name="agent_reach_paths_footer_linux">其它路径在重置 Linux 时清空</string>
-    <string name="agent_reach_paths_footer_builtin">内置命令使用真实路径，工作区为 %1$s</string>
+    <string name="agent_reach_paths_footer_builtin">内置模式文件工具与命令共用真实路径，工作区为 %1$s</string>
     <string name="agent_reach_path_workspace">当前工作区</string>
     <string name="agent_reach_path_workspace_desc">命令默认从这里开始</string>
     <string name="agent_reach_path_session_desc">工作区不是它时，从这里访问</string>
@@ -50,7 +50,7 @@
     <string name="agent_reach_runners_settings">设置</string>
 
     <string name="agent_reach_section_approval">什么时候问你</string>
-    <string name="agent_reach_approval_footer">定时任务、技能目录变更和 SSH 主机配置始终逐次批准。</string>
+    <string name="agent_reach_approval_footer">技能目录、配置修改、定时任务、SSH 主机与 ComfyUI 管理始终逐次批准；毁灭性根目录命令两档均直接拦截。</string>
 
     <string name="agent_reach_section_network">能连到哪里</string>
     <string name="agent_reach_network_public">直连访问</string>

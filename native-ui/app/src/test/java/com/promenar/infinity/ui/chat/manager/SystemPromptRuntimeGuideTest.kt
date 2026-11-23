@@ -12,10 +12,10 @@ class SystemPromptRuntimeGuideTest {
         for (runMode in SessionRunMode.entries) for (mode in ExecutionMode.entries) for (available in listOf(false, true)) {
             val text = SystemPromptSections.runtimeEnvironment("model", mode, runMode, available, com.promenar.infinity.data.workspace.SessionWorkspace.Private)
             assertThat(text).contains("本会话运行模式：${if (runMode == SessionRunMode.LINUX) "Linux" else "内置"}")
-            assertThat(text).contains("权限档：${if (mode == ExecutionMode.WORKSPACE) "工作区" else "完全访问"}")
+            assertThat(text).contains("权限档：${if (mode == ExecutionMode.WORKSPACE) "按风险审批" else "免批准"}")
             assertThat(text).contains("Linux：${if (available) "可用" else "不可用"}")
-            assertThat(text).contains(if (runMode == SessionRunMode.LINUX) "用户技能：/mnt/skills" else "用户技能：/skills")
-            assertThat(text).contains(if (runMode == SessionRunMode.LINUX) "/workspace/.agents/skills" else "/.agents/skills")
+            assertThat(text).contains(if (runMode == SessionRunMode.LINUX) "用户技能：/mnt/skills" else "用户技能：\$INFINITY_SKILLS")
+            assertThat(text).contains(if (runMode == SessionRunMode.LINUX) "/workspace/.agents/skills" else "\$INFINITY_WORKSPACE/.agents/skills")
             assertThat(text).contains("/root")
             assertThat(text).contains("第三方工具")
             assertThat(text.lines().filter(String::isNotBlank).size).isAtMost(15)
@@ -47,8 +47,8 @@ class SystemPromptRuntimeGuideTest {
     @Test fun `渲染内置和Linux两份固定段交付示例`() {
         val builtin = SystemPromptSections.runtimeEnvironment("example/model", ExecutionMode.WORKSPACE, SessionRunMode.BUILTIN, false)
         val linux = SystemPromptSections.runtimeEnvironment("example/model", ExecutionMode.FULL_ACCESS, SessionRunMode.LINUX, true, com.promenar.infinity.data.workspace.SessionWorkspace.Private)
-        assertThat(builtin).contains("本会话运行模式：内置；权限档：工作区；Linux：不可用")
-        assertThat(linux).contains("本会话运行模式：Linux；权限档：完全访问；Linux：可用")
+        assertThat(builtin).contains("本会话运行模式：内置；权限档：按风险审批；Linux：不可用")
+        assertThat(linux).contains("本会话运行模式：Linux；权限档：免批准；Linux：可用")
         println("BUILTIN_EXAMPLE_BEGIN\n${builtin}BUILTIN_EXAMPLE_END")
         println("LINUX_EXAMPLE_BEGIN\n${linux}LINUX_EXAMPLE_END")
     }
@@ -63,6 +63,6 @@ class SystemPromptRuntimeGuideTest {
         assertThat(first.finalSystemPrompt).doesNotContain("独有")
         assertThat(first.finalSystemPrompt).doesNotContain("Current scope:")
         val linux = builder.buildContext(params.copy(session = params.session.copy(runMode = SessionRunMode.LINUX, executionMode = "full_access")))
-        assertThat(linux.finalSystemPrompt).contains("本会话运行模式：Linux；权限档：完全访问")
+        assertThat(linux.finalSystemPrompt).contains("本会话运行模式：Linux；权限档：免批准")
     }
 }

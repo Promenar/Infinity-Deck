@@ -30,7 +30,7 @@ private fun schema(properties: String = "", required: String = "") =
     """{"type":"object","properties":{$properties},"required":[$required],"additionalProperties":false}"""
 
 private enum class BrowserDeveloperTool(val toolName: String, val help: String, val schema: String) {
-    EVAL("browser_eval", "在当前标签页全局作用域执行 JavaScript 源码，返回最后表达式的 JSON 序列化文本（最多 16000 字符，截断标记 truncated）。支持同步结果；异步任务需另次读取状态。脚本最多 32000 字符。命令需批准档每次审批且展示脚本全文，免批准档免审批。页面脚本可读取或修改页面并发起网络请求。",
+    EVAL("browser_eval", "在当前标签页全局作用域执行 JavaScript 源码，返回最后表达式的 JSON 序列化文本（最多 16000 字符，截断标记 truncated）。支持同步结果；异步任务需另次读取状态。脚本最多 32000 字符。按风险审批档每次审批且展示脚本全文，免批准档免审批。页面脚本可读取或修改页面并发起网络请求。",
         schema(""""code":{"type":"string","description":"JavaScript 源码，1–32000 字符"}""", "\"code\"")),
     CONSOLE("browser_console", "读取当前标签的控制台记录（log/debug/warning/error/tip、文本、来源、行号、时间戳与序号）。环形缓冲最多 200 条，每条文本最多 2000 字符。since_last_read 默认 true，按标签推进游标；级别过滤也消耗当前游标之前的记录。导航或释放页面时清空。结果最多 16000 字符，未返回记录保留给下一次增量读取。",
         schema(""""levels":{"type":"array","items":{"type":"string","enum":["log","debug","warning","error","tip"]}},"since_last_read":{"type":"boolean"}""")),

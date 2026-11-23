@@ -411,7 +411,18 @@ class ToolExecutor internal constructor(
         if (!expectedIdentity.requiresApproval && (timedGrant || call.id in expectedGrantTargets)) {
             diagnostic.approval("APPROVED", "RUNNING")
         }
-        val result = executeSkill(currentSkill, arguments, call, currentSession, approvedTarget, approvalBound, stepId, targetMsgId, diagnostic)
+        val catastrophic = com.promenar.infinity.domain.tool.ToolExecutionPolicy.catastrophicBlock(
+            call.name, call.arguments, usesLinux = currentSession.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
+        )
+        val result = if (catastrophic != null) {
+            val blockedContent = com.promenar.infinity.domain.tool.CommandToolResult(
+                errorCode = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.ERROR_CODE,
+                guidance = com.promenar.infinity.domain.tool.ShellCommandSafetyClassifier.blockedGuidance(catastrophic),
+            ).toJson().toString()
+            ToolResult("${call.name}_blocked_${java.util.UUID.randomUUID()}", blockedContent, "error")
+        } else {
+            executeSkill(currentSkill, arguments, call, currentSession, approvedTarget, approvalBound, stepId, targetMsgId, diagnostic)
+        }
         hooks.afterSkillExecution()
         val failed = result.status != "success"
         val safeResultData = sanitizeResultData(result.data, failed, currentSkill)

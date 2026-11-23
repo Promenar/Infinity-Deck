@@ -366,13 +366,13 @@ class ContextBuilderTest {
         assertThat(directory).doesNotContain("This conversation has a private workspace")
         val project = prompt(com.promenar.infinity.data.workspace.SessionWorkspace.Directory(shared.copy(kind = "project", location = "repo"), java.io.File("/data/user/0/app/files/projects/repo")))
         assertThat(project).contains("app-managed project folder")
-        assertThat(project).doesNotContain("/data/user/0")
+        assertThat(project).contains("/data/user/0/app/files/projects/repo")
         assertThat(project).doesNotContain("case-insensitive")
         val unavailable = prompt(com.promenar.infinity.data.workspace.SessionWorkspace.Unavailable("ws", shared, "目录不存在"), setOf("shell_exec"))
         assertThat(unavailable).contains("currently unavailable (目录不存在)")
         assertThat(unavailable).contains("never fall back")
         val private = prompt(com.promenar.infinity.data.workspace.SessionWorkspace.Private)
-        assertThat(private).contains("This conversation has a private workspace")
+        assertThat(private).contains("文件工具与 shell/Python 共用真实 Android 路径")
         assertThat(private).doesNotContain("### Current Workspace")
         assertThat(prompt(com.promenar.infinity.data.workspace.SessionWorkspace.Directory(shared, java.io.File(shared.location)), setOf("calculator")))
             .doesNotContain("### Current Workspace")
@@ -461,11 +461,10 @@ class ContextBuilderTest {
                 "s1", "hi", assistantMsgId = "m1", session = Session("s1", "a1"),
                 workspace = workspace, availableToolNames = setOf("read_file"),
             )).finalSystemPrompt
-            root.resolve("sub/skills").mkdirs()
-            assertThat(prompt(directory)).contains("File tools reserve `/skills`")
+            // 内置真实路径体系下用户技能位于真实 files/agent_skills 目录，不再占用或遮蔽工作区根目录下的 skills 条目。
             root.resolve("skills").writeText("workspace entry")
-            assertThat(prompt(directory)).contains("File tools reserve `/skills`")
-            assertThat(prompt(directory)).contains("./skills")
+            assertThat(prompt(directory)).doesNotContain("File tools reserve `/skills`")
+            assertThat(prompt(directory)).contains(root.path)
             for (workspace in listOf(null, com.promenar.infinity.data.workspace.SessionWorkspace.Private,
                 com.promenar.infinity.data.workspace.SessionWorkspace.Unavailable("project", entity, "不可用"))) {
                 assertThat(prompt(workspace)).doesNotContain("File tools reserve `/skills`")

@@ -5,14 +5,17 @@ import com.promenar.infinity.domain.model.ExecutionMode
 import org.junit.Test
 
 class ApprovalGrantCategoryTest {
-    @Test fun `删除在所有模式和后端均需审批且技能目录优先`() {
+    @Test fun `删除在风险审批档需审批、免批准档跳过且技能目录两档均优先`() {
         for (mode in ExecutionMode.entries) for (linux in listOf(false, true)) {
-            checkCategory(ApprovalGrantCategory.DELETE, mode, "delete_file", ToolRisk.DELETE,
+            val expectedDelete = if (mode == ExecutionMode.WORKSPACE) ApprovalGrantCategory.DELETE else null
+            checkCategory(expectedDelete, mode, "delete_file", ToolRisk.DELETE,
                 """{"path":"/normal.txt"}""", linux = linux)
-            checkCategory(ApprovalGrantCategory.DELETE, mode, "delete_file", ToolRisk.DELETE,
+            checkCategory(expectedDelete, mode, "delete_file", ToolRisk.DELETE,
                 target = """["path","/etc/example",{"linuxRootfs":true}]""", linux = linux)
             checkCategory(ApprovalGrantCategory.SKILLS, mode, "delete_file", ToolRisk.DELETE,
                 """{"path":"/skills/demo"}""", linux = linux)
+            checkCategory(ApprovalGrantCategory.SKILLS, mode, "delete_file", ToolRisk.DELETE,
+                """{"path":"/data/user/0/com.promenar.infinity/files/agent_skills/demo"}""", linux = linux)
         }
     }
 
@@ -43,6 +46,10 @@ class ApprovalGrantCategoryTest {
             }
             val target = """["path","/etc/profile",{"linuxRootfs":true}]"""
             checkCategory(if (workspace && linux) ApprovalGrantCategory.LINUX_ROOTFS else null, mode, "write_file", ToolRisk.FILE_WRITE, target = target, linux = linux)
+            val outsideTarget = """["path","/storage/emulated/0/outside.txt",{"outsideWorkspace":true}]"""
+            checkCategory(if (workspace && !linux) ApprovalGrantCategory.OUTSIDE_WORKSPACE else null, mode, "write_file", ToolRisk.FILE_WRITE, target = outsideTarget, linux = linux)
+            checkCategory(null, mode, "shell_exec", ToolRisk.PROCESS, """{"command":"ls -la"}""", linux = linux)
+            checkCategory(if (workspace) ApprovalGrantCategory.COMMAND else null, mode, "shell_exec", ToolRisk.PROCESS, """{"command":"touch a.txt"}""", linux = linux)
             checkCategory(null, mode, "read_file", ToolRisk.SAFE_READ, target = target, linux = linux)
             checkCategory(null, mode, "write_file", ToolRisk.FILE_WRITE, """{"path":"/normal.md"}""", linux = linux)
         }

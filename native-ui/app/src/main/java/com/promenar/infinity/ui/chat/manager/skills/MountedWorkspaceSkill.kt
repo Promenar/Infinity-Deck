@@ -84,12 +84,13 @@ class MountedWorkspaceSkill(
             val privateInvocation = !linuxPaths && listOf("path", "parentPath", "newParentPath").any { key -> args.stringArgument(key)?.let(SessionPrivateWorkspacePaths::contains) == true } ||
                 !linuxPaths && listOf("uuid", "parentUuid", "newParentUuid").any { key -> args.stringArgument(key)?.let(SessionPrivateWorkspacePaths::privateUuid) != null }
             val privateRoot = if (privateInvocation) workspace.ensureSessionRoot(invocation.sessionId) else null
-            val linuxRootUuid = if (linuxPaths && mounts is LinuxSessionExternalWorkspaceAccess) mounts.toolRootUuid(invocation.sessionId) else null
+            val namespaceAccess = mounts as? SessionNamespaceWorkspaceAccess
+            val namespacedRootUuid = if (linuxPaths && namespaceAccess != null) namespaceAccess.toolRootUuid(invocation.sessionId) else null
             val context = if (workspaceMount == null && privateRoot == null) invocation else object : SkillExecutionContext by invocation {
-                override val workspaceRootUuid = privateRoot?.uuid ?: linuxRootUuid ?: ExternalMountPaths.uuid(requireNotNull(workspaceMount), "/")
+                override val workspaceRootUuid = privateRoot?.uuid ?: namespacedRootUuid ?: ExternalMountPaths.uuid(requireNotNull(workspaceMount), "/")
             }
             fun String.external() = (linuxPaths || !SessionPrivateWorkspacePaths.contains(this)) && (rooted || isMounted())
-            fun aliasOf(path: String) = if (linuxPaths) com.promenar.infinity.data.workspace.LinuxSessionPaths.aliasOf(path) else ExternalMountPaths.aliasOf(path, rooted)
+            suspend fun aliasOf(path: String) = if (linuxPaths && namespaceAccess != null) namespaceAccess.aliasOf(context.sessionId, path) else ExternalMountPaths.aliasOf(path, rooted)
             val visibleMountIds = mounts.visible(context.sessionId).associate { it.alias to it.id } +
                 listOfNotNull(workspaceMount).associate { it.alias to it.id }
             val approvedMountIds = context.approvedExecutionTarget?.let {
@@ -120,8 +121,8 @@ class MountedWorkspaceSkill(
                     ?: (destinationParent?.isMounted() == true || destinationParent == null && sourceMounted))
                 val resolvedPaths = listOf("uuid" to sourcePath, "parentUuid" to parentPath, "newParentUuid" to destinationParent)
                     .mapNotNull { (key, path) -> routedArgs.stringArgument(key)?.trim()?.takeIf { it.isNotEmpty() && path != null }?.let { it to path!! } }.toMap()
-                val currentTarget = if (linuxPaths && mounts is LinuxSessionExternalWorkspaceAccess)
-                    mounts.executionTarget(context.sessionId, original.toProtocolTool(), routedArgs)
+                val currentTarget = if (linuxPaths && namespaceAccess != null)
+                    namespaceAccess.executionTarget(context.sessionId, original.toProtocolTool(), routedArgs)
                 else ToolExecutionTargets.extract(original.toProtocolTool(), routedArgs.toString(), resolvedPaths)
                 // 审批侧无法给出目标的变更（如路径写法与审批规范化不一致）不执行，避免批准内容与实际写入位置不同。
                 if (ToolExecutionTargets.isPathMutation(original.id) && currentTarget == null) {
@@ -136,10 +137,10 @@ class MountedWorkspaceSkill(
                 }
                 if (context.isApprovalBoundExecution || context.approvedExecutionTarget != null) {
                     val usedAliases = listOfNotNull(sourcePath?.takeIf { sourceMounted }, parentPath?.takeIf { parentMounted }, destinationParent?.takeIf { destinationMounted })
-                        .mapNotNull(::aliasOf)
+                        .mapNotNull { aliasOf(it) }
                     if (usedAliases.any { it !in approvedMountIds }) fail("CONFLICT", "批准目标缺少挂载或工作区身份，请重新审批")
                 }
-                val knowledgeManager = if (mounts is LinuxSessionExternalWorkspaceAccess) mounts.knowledgeManager else mounts as? ExternalFolderManager
+                val knowledgeManager = namespaceAccess?.knowledgeManager ?: mounts as? ExternalFolderManager
                 val writeMounts = if (ToolExecutionTargets.isPathMutation(original.id)) mounts.visible(context.sessionId) + listOfNotNull(workspaceMount) else emptyList()
                 val knowledgeSource = sourceMounted && sourcePath != null && writeMounts.any { it.alias == aliasOf(sourcePath) && it.isKnowledgeBaseSource }
                 val canEditRecording = original.id in setOf("write_file", "patch_file")
@@ -189,7 +190,7 @@ class MountedWorkspaceSkill(
                     if (writeMounts.any { it.alias == aliasOf(path) && it.isKnowledgeBaseSource }) {
                         knowledgeManager?.requireKnowledgeMutation(context.sessionId, path)
                     }
-                    WorkspaceTextContentPolicy().validate(name, (mounts as? LinuxSessionExternalWorkspaceAccess)?.textMime(context.sessionId, path), bytes, WorkspaceTextOperation.WRITE)
+                    WorkspaceTextContentPolicy().validate(name, namespaceAccess?.textMime(context.sessionId, path), bytes, WorkspaceTextOperation.WRITE)
                     val created = mounts.write(context.sessionId, path, bytes, null, true)
                     return@bound finish(ToolResult("mount_create", "已创建 $path [uuid=${created.uuid}] [sha256=${created.hash}]"))
                 }
@@ -264,25 +265,25 @@ class MountedWorkspaceSkill(
     }
 
     private suspend fun move(context: SkillExecutionContext, source: String, destination: String, expected: String?, sourceMounted: Boolean, destinationMounted: Boolean): ToolResult {
-        val linux = (mounts as? LinuxSessionExternalWorkspaceAccess)?.takeIf { linuxPaths }
-        if (linux != null) { linux.validatePath(context.sessionId, source); linux.validatePath(context.sessionId, destination) }
+        val ns = (mounts as? SessionNamespaceWorkspaceAccess)?.takeIf { linuxPaths }
+        if (ns != null) { ns.validatePath(context.sessionId, source); ns.validatePath(context.sessionId, destination) }
         else { ExternalFolderPaths.normalize(source); ExternalFolderPaths.normalize(destination) }
-        (mounts as? LinuxSessionExternalWorkspaceAccess)?.movePrivate(context.sessionId, source, destination, expected)?.let { return it }
+        ns?.movePrivate(context.sessionId, source, destination, expected)?.let { return it }
         if (destination != source && destination.startsWith(source.trimEnd('/') + "/")) fail("INVALID_PATH", "不能移动到子目录")
         val privateBackend = PrivateWorkspaceTransferBackend(workspace, context.workspaceRootUuid, indexEvents, privateReader)
         val bindings = kotlinx.coroutines.currentCoroutineContext()[ExternalMountOperationBindings]?.mountIds
             ?: mounts.namespaceBindings(context.sessionId)
         val rooted = ExternalMountPaths.WORKSPACE_ALIAS in bindings
         listOfNotNull(source.takeIf { sourceMounted }, destination.takeIf { destinationMounted }).forEach { path ->
-            val alias = if (linuxPaths) com.promenar.infinity.data.workspace.LinuxSessionPaths.aliasOf(path) else ExternalMountPaths.aliasOf(path, rooted)
+            val alias = if (ns != null) ns.aliasOf(context.sessionId, path) else ExternalMountPaths.aliasOf(path, rooted)
             if (alias !in bindings) fail("NOT_FOUND", "移动涉及的挂载不可见")
             (mounts.visible(context.sessionId) + listOfNotNull(mounts.workspaceMount(context.sessionId)))
                 .singleOrNull { it.alias == alias }?.requireWritable()
         }
         val visible = mounts.visible(context.sessionId)
-        fun knowledgeMount(path: String, mounted: Boolean): ExternalMount? {
+        suspend fun knowledgeMount(path: String, mounted: Boolean): ExternalMount? {
             if (!mounted) return null
-            val alias = if (linux != null) com.promenar.infinity.data.workspace.LinuxSessionPaths.aliasOf(path)
+            val alias = if (ns != null) ns.aliasOf(context.sessionId, path)
                 else ExternalMountPaths.aliasOf(path, rooted)
             return visible.singleOrNull { it.alias == alias && it.isKnowledgeBaseSource }
         }
@@ -292,7 +293,7 @@ class MountedWorkspaceSkill(
             if (sourceKnowledge == null || sourceKnowledge.id != destinationKnowledge?.id) {
                 fail("UNSUPPORTED", "资料库文档移动必须在同一知识库内")
             }
-            val manager = (if (linux != null) linux.knowledgeManager else mounts as? ExternalFolderManager)
+            val manager = (if (ns != null) ns.knowledgeManager else mounts as? ExternalFolderManager)
                 ?: fail("UNAVAILABLE", "资料库文件移动服务不可用")
             manager.moveKnowledgeDocument(context.sessionId, source, destination, expected)
             return ToolResult("mount_move", if (source == destination) "目标路径未变化：$source" else "资料库条目已移动：$source → $destination")
@@ -301,8 +302,8 @@ class MountedWorkspaceSkill(
         val privateNamespace = SessionPrivateWorkspaceBackend(privateBackend)
         val sourceBackend = if (sourceMounted) externalBackend else privateNamespace
         val targetBackend = if (destinationMounted) externalBackend else privateNamespace
-        val sameMount = sourceMounted && destinationMounted && if (linux != null) {
-            linux.sameMountedBackend(context.sessionId, source, destination)
+        val sameMount = sourceMounted && destinationMounted && if (ns != null) {
+            ns.sameMountedBackend(context.sessionId, source, destination)
         } else {
             val sourceAlias = ExternalMountPaths.aliasOf(source, rooted)
             val targetAlias = ExternalMountPaths.aliasOf(destination, rooted)
@@ -329,7 +330,7 @@ class MountedWorkspaceSkill(
         // 摘要校验到移动之间仍有短暂竞态；后端在实际移动前会再次核对来源身份。
         val nativeMoved = try {
             if (!sameMount) false
-            else if (linux != null) linux.moveMounted(context.sessionId, source, destination) != null
+            else if (ns != null) ns.moveMounted(context.sessionId, source, destination) != null
             else { externalBackend.move(source, destination); true }
         } catch (failure: ExternalFolderException) {
             if (failure.code != "UNSUPPORTED") throw failure
@@ -337,8 +338,8 @@ class MountedWorkspaceSkill(
         }
         if (nativeMoved) return ToolResult("mount_move", "已移动（原位重命名） / Moved (in-place rename)：$source → $destination")
         try {
-            if (linux != null) {
-                // 传输只校验根下名称；实际路径已由 Linux 命名空间核验，每次 IO 仍通过原安全后端。
+            if (ns != null) {
+                // 传输只校验根下名称；实际路径已由命名空间核验，每次 IO 仍通过原安全后端。
                 try {
                     ExternalTreeTransfer.move(LinuxToolTransferBackend(sourceBackend, source), "/item", LinuxToolTransferBackend(targetBackend, destination), "/item", expected)
                 } catch (failure: ExternalFolderException) {
@@ -361,7 +362,7 @@ class MountedWorkspaceSkill(
         val uuid = args.stringArgument(uuidKey)?.trim()?.takeIf(String::isNotEmpty)
         return if (uuid != null) repository.getByUuid(context.workspaceRootUuid, uuid)?.materializedPath
         else args.stringArgument(pathKey)?.takeIf(String::isNotBlank)?.let {
-            if (linuxPaths && mounts is LinuxSessionExternalWorkspaceAccess) mounts.validatePath(context.sessionId, it)
+            if (linuxPaths && mounts is SessionNamespaceWorkspaceAccess) mounts.validatePath(context.sessionId, it)
             else normalizeWorkspaceToolPath(it)
         }
     }
@@ -437,7 +438,7 @@ internal class MountedWorkspaceRepository(
         if (!target.external()) return getByMaterializedPath(root, target)
         val entry = when (mounts) {
             is ExternalFolderManager -> mounts.statEntry(session, target)
-            is LinuxSessionExternalWorkspaceAccess -> mounts.statEntry(session, target)
+            is SessionNamespaceWorkspaceAccess -> mounts.statEntry(session, target)
             else -> mounts.entry(session, target)
         }
         return entry?.takeIf { uuid == null || it.uuid == uuid }?.copy(workspaceRootUuid = root)
@@ -454,7 +455,7 @@ internal class MountedWorkspaceRepository(
             mounts.readStream(session, path, ReadWindowRequest.MAX_FILE_BYTES, ::externalStreamHash)
         }
         val writable = when (mounts) {
-            is LinuxSessionExternalWorkspaceAccess -> mounts.isPathWritable(session, path)
+            is SessionNamespaceWorkspaceAccess -> mounts.isPathWritable(session, path)
             else -> {
                 val alias = ExternalMountPaths.aliasOf(path, rooted)
                 val mount = (mounts.visible(session) + listOfNotNull(mounts.workspaceMount(session))).singleOrNull { it.alias == alias }
@@ -513,19 +514,18 @@ internal class MountedWorkspaceRepository(
         }
 
     internal suspend fun normalizeSearchPath(path: String): String =
-        if (linuxPaths && mounts is LinuxSessionExternalWorkspaceAccess) mounts.validatePath(session, path)
+        if (linuxPaths && mounts is SessionNamespaceWorkspaceAccess) mounts.validatePath(session, path)
         else ExternalFolderPaths.normalize(normalizeWorkspaceToolPath(path))
 
     internal fun searchesMount(path: String): Boolean = path.external()
 
-    private suspend fun linuxSearchPaths(): List<String> {
-        val cwd = (mounts as? LinuxSessionExternalWorkspaceAccess)?.workingDirectory(session)
-        return listOfNotNull(cwd?.takeUnless { it == "/" }, "/workspace", "/home/session", "/mnt").distinct()
-    }
+    private suspend fun namespaceSearchPaths(): List<String> =
+        (mounts as? SessionNamespaceWorkspaceAccess)?.searchRoots(session)
+            ?: listOf("/workspace", "/home/session", "/mnt")
 
     internal suspend fun contentSearchRoots(root: String, diagnostics: WorkspaceTraversalDiagnostics): List<WorkspaceTraversalDirectory> =
         if (!linuxPaths) listOf(WorkspaceTraversalDirectory(root, "/"))
-        else linuxSearchPaths().mapNotNull { path -> diagnostics.attempt(path) { requireSearchDirectory(this, root, path) } }
+        else namespaceSearchPaths().mapNotNull { path -> diagnostics.attempt(path) { requireSearchDirectory(this, root, path) } }
 
     override fun searchByName(workspaceRootUuid: String, query: String): Flow<List<FileEntry>> = flow {
         emit(searchNames(workspaceRootUuid, query, null, WorkspaceTraversalDiagnostics()))
@@ -538,10 +538,10 @@ internal class MountedWorkspaceRepository(
         val matches = if (!rooted && startPath == null) {
             diagnostics.attempt("/") { base.searchByName(root, query).firstOrNull().orEmpty() }.orEmpty().toMutableList()
         } else mutableListOf()
-        // 自选目录不建索引，按目录逐层遍历。Linux 默认范围仅包含工作区、专用空间和挂载。
+        // 自选目录不建索引，按目录逐层遍历。命名空间模式默认范围仅包含工作区、专用空间和可见挂载。
         val startPaths = when {
             startPath != null -> listOf(startPath)
-            linuxPaths -> linuxSearchPaths()
+            linuxPaths -> namespaceSearchPaths()
             rooted -> listOf("/", "/mnt", "/skills")
             else -> listOf("/mnt", "/skills")
         }
@@ -658,7 +658,7 @@ private class MountedFileOperations(
     }
     override suspend fun diffFile(workspaceRootUuid: String, uuid: String, basisHash: String?): DiffResult {
         if (isPrivate(uuid)) return base.diffFile(privateRoot(workspaceRootUuid), privateUuid(uuid), basisHash).copy(uuid = uuid)
-        (mounts as? LinuxSessionExternalWorkspaceAccess)?.diffPrivate(session, uuid, basisHash)?.let {
+        (mounts as? SessionNamespaceWorkspaceAccess)?.diffPrivate(session, uuid, basisHash)?.let {
             completedHash = it.currentHash
             return it
         }
@@ -700,7 +700,7 @@ private class MountedFileOperations(
         return writer.write(session, path, bytes, expectedHash, false)
     }
 
-    private suspend fun textMime(path: String) = (mounts as? LinuxSessionExternalWorkspaceAccess)?.textMime(session, path)
+    private suspend fun textMime(path: String) = (mounts as? SessionNamespaceWorkspaceAccess)?.textMime(session, path)
 }
 
 /** 私有工作区通过现有仓库创建、删除和确认，读取继续使用安全文件操作与根身份。 */

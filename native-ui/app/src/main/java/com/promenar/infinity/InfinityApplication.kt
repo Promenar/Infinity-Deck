@@ -976,6 +976,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             arguments: String,
         ) = com.promenar.infinity.data.generation.resolveSessionToolTarget(
             session, tool, arguments, workspaceRepository, externalFolderManager, sshHostStore, sshRuntime::sessionHost, linuxSessionFiles,
+            builtinFiles = builtinSessionFiles,
         )
 
         override suspend fun isGranted(sessionId: String, toolName: String, target: String) = false
@@ -1400,6 +1401,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             productionTurnEnd = { sessionId -> productionFileAudit.scan(sessionId) },
             runModeCheck = ::checkSessionRunMode,
             linuxFiles = linuxSessionFiles,
+            builtinFiles = builtinSessionFiles,
             askUserLedger = askUserLedger,
             secretInputLedger = secretInputLedger,
             agentConfigService = { agentConfigService },
@@ -2000,6 +2002,19 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     }
     val linuxSessionFiles by linuxSessionFilesDelegate
 
+    val builtinSessionFiles by lazy {
+        com.promenar.infinity.ui.chat.manager.skills.BuiltinRealPathWorkspaceAccess(
+            externalFolderManager,
+            workspaceRepository,
+            fileOperationRepository,
+            sessionWorkspaceResolver::resolve,
+            userSkillsDir = skillCatalog.userRoot,
+            appDataDir = filesDir.parentFile ?: File(applicationInfo.dataDir),
+            indexEvents = pendingDocumentIndexCoordinator,
+            sessions = sessionRepository,
+        )
+    }
+
     internal fun forgetLinuxRootfsVersions(path: String) {
         if (linuxSessionFilesDelegate.isInitialized()) linuxSessionFiles.forgetRootfsVersions(path)
     }
@@ -2032,6 +2047,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 com.promenar.infinity.ui.chat.manager.skills.LinuxSessionFileSkill(
                     com.promenar.infinity.ui.chat.manager.skills.MountedWorkspaceSkill(skill, externalFolderManager, workspaceRepository, fileOperationRepository, pendingDocumentIndexCoordinator),
                     sessionRunModes::modeFor, linuxSessionFiles, workspaceRepository, fileOperationRepository, pendingDocumentIndexCoordinator,
+                    builtinFiles = builtinSessionFiles,
                 )
             startupDiagnosticTools(startupIssueManager).forEach(::register)
             com.promenar.infinity.ui.chat.manager.skills.longTermMemoryTools(longTermMemoryRepository, longTermMemoryAccess).forEach(::register)
@@ -3563,6 +3579,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             modeFor = sessionRunModes::modeFor,
             linuxFiles = linux.files,
             directoryBackend = sessionWorkspaceResolver::backend,
+            builtinRealPaths = true,
         )
     }
 
@@ -3580,9 +3597,12 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         val trimmed = virtualDirPath.trim().trimEnd('/')
         if (trimmed.isEmpty() || "://" in trimmed) return@withContext false
 
+        val userSkillsCanonical = runCatching { skillCatalog.userRoot.canonicalPath }.getOrDefault(skillCatalog.userRoot.absolutePath).trimEnd('/')
+        val normalizedInput = trimmed.replace(Regex("^/data/data/"), "/data/user/0/")
         val skillSubPath = when {
             trimmed.startsWith("/mnt/skills/") -> trimmed.removePrefix("/mnt/skills/")
             trimmed.startsWith("/skills/") -> trimmed.removePrefix("/skills/")
+            normalizedInput.startsWith("$userSkillsCanonical/") -> normalizedInput.removePrefix("$userSkillsCanonical/")
             else -> null
         }
         val sourcePair: Pair<java.io.File, java.io.File>? = if (skillSubPath != null) {
@@ -3599,9 +3619,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             val workspaceDir = sessionWorkspaceResolver.resolve(sessionId) as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory
                 ?: return@withContext false
             val root = workspaceDir.root.canonicalFile
+            val rootPath = root.path.trimEnd('/')
             val rel = when {
-                trimmed == "/workspace" -> ""
+                trimmed == "/workspace" || normalizedInput == rootPath -> ""
                 trimmed.startsWith("/workspace/") -> trimmed.removePrefix("/workspace/")
+                normalizedInput.startsWith("$rootPath/") -> normalizedInput.removePrefix("$rootPath/")
                 trimmed.startsWith("/") -> trimmed.removePrefix("/")
                 else -> trimmed
             }

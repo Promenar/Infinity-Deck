@@ -84,7 +84,7 @@ private fun AgentConfigApprovalPage(mode: InfinityThemeMode) {
                                     FieldChange("modelId", null, "DeepSeek · deepseek-v4"),
                                     FieldChange("temperature", null, "0.3"),
                                     FieldChange("reasoningEffort", null, "低"),
-                                    FieldChange("executionMode", null, "命令需批准"),
+                                    FieldChange("executionMode", null, "按风险审批"),
                                 ),
                                 promptDiff = FileDiffModel.fromTexts("", "你是中英互译助手。\n- 保留原文格式。", changeKind = FileChangeKind.CREATED),
                                 impact = AgentConfigImpact.NewAgent,

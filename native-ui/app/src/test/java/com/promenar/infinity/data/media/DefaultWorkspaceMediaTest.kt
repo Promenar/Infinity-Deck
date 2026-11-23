@@ -666,5 +666,28 @@ class DefaultWorkspaceMediaTest {
         assertThat(context.cacheDir.list()!!.toSet()).isEqualTo(before)
     }
 
+    @Test fun `内置真实路径模式下自动保存返回无前导斜杠相对路径并可按真实绝对路径解析`() = runBlocking {
+        val realService = DefaultWorkspaceMedia(
+            context, SessionRepository(db.sessionDao(), db.messageDao()), repo, mounts, roots::resolve,
+            FileIndexEventSink.None, clock, fs, skillsRoot, BuiltinWorkspaceFilePathPresenter,
+            modeFor = { com.promenar.infinity.domain.model.SessionRunMode.BUILTIN },
+            directoryBackend = roots::backend,
+            builtinRealPaths = true,
+        )
+        val saved = realService.save("session", MediaPayload.Bytes(png), MediaOrigin.GENERATED)
+        assertThat(saved.path).matches("media/2026-10-20/gen-0032-[0-9a-f]{6}\\.png")
+        assertThat(realService.resolve("session", saved.path)).isInstanceOf(MediaResolution.Available::class.java)
+        val realAbsPath = File(privateRoot, saved.path).canonicalPath
+        val resolvedReal = realService.resolve("session", realAbsPath)
+        assertThat(resolvedReal).isInstanceOf(MediaResolution.Available::class.java)
+        assertThat(((resolvedReal as MediaResolution.Available).source as MediaSource.LocalFile).file.canonicalPath)
+            .isEqualTo(realAbsPath)
+        // 真实技能路径写入依然被保护门禁拒绝
+        val realSkillTarget = File(skillsRoot, "demo/a.png").canonicalPath
+        val failure = runCatching { realService.save("session", MediaPayload.Bytes(png), MediaOrigin.DOWNLOAD, targetPath = realSkillTarget) }.exceptionOrNull()
+        assertThat(failure).isInstanceOf(WorkspaceMediaException::class.java)
+        assertThat((failure as WorkspaceMediaException).code).isEqualTo("PROTECTED_PATH")
+    }
+
     companion object { private const val AUTHORITY = "com.promenar.infinity.test.media" }
 }

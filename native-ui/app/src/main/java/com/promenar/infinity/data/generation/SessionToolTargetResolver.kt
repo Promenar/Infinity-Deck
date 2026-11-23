@@ -24,6 +24,7 @@ suspend fun resolveSessionToolTarget(
     sftpWorkspaceFiles: com.promenar.infinity.data.workspace.SftpWorkspaceFiles? = null,
     sftpRuntime: com.promenar.infinity.data.ssh.SshRuntime? = null,
     sftpLinuxFiles: com.promenar.infinity.domain.linux.LinuxFileSystem? = null,
+    builtinFiles: com.promenar.infinity.ui.chat.manager.skills.BuiltinRealPathWorkspaceAccess? = null,
 ): String? {
     val args = (ToolArgumentsValidator().validate(arguments) as? ToolArgumentsValidation.Valid)?.arguments ?: return null
     val installedSftp = com.promenar.infinity.ui.chat.manager.skills.InstalledSftpTransferAccess.get(sshHostStore)
@@ -56,6 +57,9 @@ suspend fun resolveSessionToolTarget(
         if (usesLinux && tool.mcpServerId == null && tool.sourceId == "builtin" &&
             tool.function.name in setOf("read_file", "write_file", "patch_file", "diff_file", "delete_file", "create_file", "create_directory", "move_file", "list_files", "search_files")
         ) return linuxFiles?.executionTarget(session.id, tool, args)
+        if (!usesLinux && builtinFiles != null && tool.mcpServerId == null && tool.sourceId == "builtin" &&
+            tool.function.name in setOf("read_file", "write_file", "patch_file", "diff_file", "delete_file", "create_file", "create_directory", "move_file", "list_files", "search_files")
+        ) return builtinFiles.executionTarget(session.id, tool, args)
         val visibleMounts = mounts?.visible(session.id).orEmpty()
         // 自选目录工作区以空别名挂载承载 `/`：路径授权绑定工作区身份，切换工作区后旧授权不再适用。
         val workspaceMount = mounts?.workspaceMount(session.id)
