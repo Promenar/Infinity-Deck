@@ -227,6 +227,37 @@ class BuiltinCommandRunnerTest {
     }
 
     @Test
+    fun `终端模式传入空串 stdin 不会提前发送 EOF 且仍可交互写入`() = runBlocking<Unit> {
+        val terminalRunner = BuiltinCommandRunner(
+            groupLauncher = listOf(PERL, "-e", "setpgrp(0, 0); exec @ARGV or exit 127"),
+            shell = "/bin/sh",
+            signaller = HostSignaller,
+            scratchDirectory = { File(work, "scratch") },
+            killGraceMillis = 500,
+            terminalFactory = { argv, directory, environment ->
+                ProcessBuilder(argv).directory(directory).redirectErrorStream(true)
+                    .also { it.environment().clear(); it.environment().putAll(environment) }.start()
+            },
+        )
+        val control = BuiltinCommandControl()
+        val job = async(kotlinx.coroutines.Dispatchers.IO) {
+            terminalRunner.run(
+                request("echo ready; read line; echo \"got:\$line\"", timeout = 10, stdin = "").copy(terminal = true),
+                control,
+            )
+        }
+        withTimeout(5_000) { control.started.await() }
+        withTimeout(5_000) { while (control.input == null) delay(10) }
+        delay(150)
+        assertThat(job.isCompleted).isFalse()
+        control.writeInput("ok\n", eof = false)
+        val output = withTimeout(5_000) { job.await() }
+        assertThat(output.timedOut).isFalse()
+        assertThat(output.exitCode).isEqualTo(0)
+        assertThat(output.stdout).contains("got:ok")
+    }
+
+    @Test
     fun `临时目录在结束后清理`() = runBlocking<Unit> {
         runner.run(request("true"))
         assertThat(File(work, "scratch").listFiles().orEmpty().toList()).isEmpty()

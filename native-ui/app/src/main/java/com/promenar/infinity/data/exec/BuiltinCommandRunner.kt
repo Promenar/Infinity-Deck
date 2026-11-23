@@ -316,7 +316,9 @@ class BuiltinCommandRunner(
                 daemon("infinity-exec-stdout") { stdout.consume(process.inputStream) },
                 daemon("infinity-exec-stderr") { stderr.consume(process.errorStream) },
             )
-            if (request.terminal && request.stdin == null) {
+            // 伪终端下空串 stdin 归一化为未提供，防止交互式 CLI 因误发 Ctrl-D EOF 提前退出。
+            val effectiveStdin = if (request.terminal && request.stdin.isNullOrEmpty()) null else request.stdin
+            if (request.terminal && effectiveStdin == null) {
                 control.inputBytes = { bytes, eof ->
                     synchronized(process.outputStream) {
                         if (!process.isAlive) throw java.io.IOException("任务已经结束")
@@ -335,7 +337,7 @@ class BuiltinCommandRunner(
                 }
             } else daemon("infinity-exec-stdin") {
                 process.outputStream.use { output ->
-                    request.stdin?.let { output.write(it.toByteArray(Charsets.UTF_8)) }
+                    effectiveStdin?.let { output.write(it.toByteArray(Charsets.UTF_8)) }
                     if (request.terminal) { output.write(byteArrayOf(4, 4)); output.flush() }
                 }
             }

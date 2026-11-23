@@ -76,8 +76,10 @@ object SystemPromptSections {
         "git@主机: 与 ssh:// 远端在 Linux 中不经 SSH 桥，需要时请用户切到内置模式。" +
         "gh 同样经应用代理使用已保存的 github.com 凭据，无需运行 gh auth login，不要让用户粘贴令牌；尚未保存时调用 request_secret（git_credential，github.com），卡片里也可改用浏览器登录 GitHub。" +
         "shell_exec 在伪终端运行（TERM=xterm-256color，120列×40行，stderr合并到stdout）。默认15秒让出为后台任务，yield_after_seconds=0 等待到 timeout_seconds；background:true 立即返回任务号。" +
+        "background:true 与自动让出的后台任务不随本轮生成结束或取消而停止（最长运行 max_runtime_minutes 默认120、上限1440，后台不使用 timeout_seconds；on_exit 默认 notify，结束后需继续处理请用 wake）。" +
         "命令输出实时显示给用户，模型仅在工具返回或查询任务时看到输出。交互命令让出后，应立即把已有输出中需用户操作的登录链接、验证码转告用户，再用 job_wait 等待或 job_input 回答提示。" +
-        "需要交互的命令不要传 stdin；job_input 可发送文本、回车和EOF。不要在前台命令中用 nohup … & 后台化，工具调用结束时进程组会被结束。" +
+        "需要用户在内置浏览器完成登录并回调本地端口（如 127.0.0.1 端口的 OAuth 回调）时，用 background:true（建议 on_exit:\"wake\" 并保留足够 max_runtime_minutes）启动监听并用 browser_open 打开页面后，直接结束本轮把浏览器交给用户，不要在用户完成回调前调用 job_stop。" +
+        "需要交互的命令不要传 stdin；job_input 可发送文本、回车和EOF。主命令须保持前台运行，不要在前台或后台命令中用 nohup … &、setsid、screen、tmux 或 --daemon 自行守护化，主命令退出或工具调用结束时整棵 proot 进程组会被结束。" +
         "infinity-wake [--key K] [--title T] [消息]（消息缺省读 stdin）可从后台脚本唤醒本会话智能体，常与 shell_exec background:true 启动的后台任务配合盯日志、等下载或轮询；只在应用运行期间有效，proot 进程随应用进程存活。" +
         "同一会话 60 秒内最多唤醒一次，期间多条合并、同 key 只保留最新，正文超过 4096 字符会截断。"
 
@@ -256,7 +258,7 @@ object SystemPromptSections {
             appendLine("- 需要在本次工具调用之后继续运行的进程用命令工具的 background:true 启动并用 job_* 工具管理；命令里的 nohup、&、setsid、screen、tmux 不能让本机进程持续运行。周期性工作用 schedule_create。细节读 read_skill_file(name=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.NAME}\", path=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.REFERENCE_FILES.first()}\")。")
         }
         if (toolNames.any { it in setOf("shell_exec", "python_exec", "termux_exec") } && "job_wait" in toolNames) {
-            if (runMode == SessionRunMode.LINUX) appendLine("- Linux 长命令可用 background:true 立即返回，或等待前台默认15秒让出；两者均用 job_status/job_wait/job_input/job_stop 操作。让出的进程持续在原目录持锁运行，结束后对账，结果包含 workspace_changes；自选目录不对账。")
+            if (runMode == SessionRunMode.LINUX) appendLine("- Linux 长命令可用 background:true 立即返回，或等待前台默认15秒让出；两者均不随本轮生成结束或取消而停止，用 job_status/job_wait/job_input/job_stop 操作。让出的进程直接在原目录运行，结束后异步对账，结果包含 workspace_changes；自选目录不对账。")
             else appendLine("- 耗时超过约一分钟或需要持续运行的命令使用 background:true；启动后继续其它工作，需要结果时用 job_wait。长任务优先 on_exit:\"wake\"，不要循环轮询。私有工作区后台命令在快照中运行，结束时合入，冲突产物保留在 jobs/；job_status/job_wait 发布日志。")
         }
         if (toolNames.any(PLAN_TOOLS::contains)) {

@@ -678,6 +678,23 @@ class BackgroundJobManagerTest {
         } finally { scope.coroutineContext[Job]?.cancelAndJoin(); root.deleteRecursively() }
     }
 
+    @Test fun `后台任务启动时前台服务被拒立即透出降级告警`() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("job-fgs-denied").toFile()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val keep = object : ExecKeepAlive {
+            override suspend fun <T> hold(run: ExecRunInfo, stop: () -> Unit, block: suspend () -> T): ExecHeld<T> =
+                ExecHeld(block(), ExecForegroundState.NOT_ALLOWED)
+            override suspend fun <T> holdState(run: ExecRunInfo, stop: () -> Unit, block: suspend (ExecForegroundState) -> T): ExecHeld<T> =
+                ExecHeld(block(ExecForegroundState.NOT_ALLOWED), ExecForegroundState.NOT_ALLOWED)
+        }
+        try {
+            val m = manager(root, scope, BackgroundJobStore(File(root, "store")), keepAlive = keep)
+            val job = m.startBuiltin("s", "root", BackgroundJobRunner.SHELL, "sleep 5", null, 1, BackgroundJobExitAction.NONE)
+            assertThat(job.guidance).contains("未允许启动前台服务")
+            m.stop(job.id)
+        } finally { scope.cancel(); root.deleteRecursively() }
+    }
+
     private fun fixture(sessionLimit:Int=MAX_SESSION_RUNNING, globalLimit:Int=MAX_GLOBAL_RUNNING, block:suspend CoroutineScope.(BackgroundJobManager)->Unit)=runBlocking {
         val root=Files.createTempDirectory("job-manager").toFile()
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)

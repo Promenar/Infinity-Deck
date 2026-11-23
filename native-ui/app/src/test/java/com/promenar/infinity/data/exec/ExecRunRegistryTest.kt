@@ -49,4 +49,17 @@ class ExecRunRegistryTest {
         assertThat(model.stopIds).containsExactly("a", "b").inOrder()
         assertThat(ExecNotificationModel.from(emptyList())).isEqualTo(ExecNotificationModel(0, null, emptyList()))
     }
+
+    @Test
+    fun `更新运行条目可升级为后台态并保留原停止回调`() {
+        val registry = ExecRunRegistry()
+        var stopped = false
+        registry.register(ExecRunRegistry.Active(ExecRunInfo("a", ExecRunKind.LINUX, "codex login", 60, 1_000L, background = false)) { stopped = true })
+        registry.update("a") { it.copy(background = true, timeoutSeconds = 7200) }
+        val updated = registry.runs.value.single().info
+        assertThat(updated.background).isTrue()
+        assertThat(updated.timeoutSeconds).isEqualTo(7200)
+        assertThat(registry.stop(listOf("a"))).isEqualTo(1)
+        assertThat(stopped).isTrue()
+    }
 }

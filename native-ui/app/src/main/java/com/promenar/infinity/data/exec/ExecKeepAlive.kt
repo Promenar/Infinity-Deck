@@ -51,11 +51,21 @@ data class ExecHeld<T>(val value: T, val foreground: ExecForegroundState)
 interface ExecKeepAlive {
     /** [stop] 由通知的停止按钮在任意线程调用；[block] 结束（含取消）后立即释放全部资源。 */
     suspend fun <T> hold(run: ExecRunInfo, stop: () -> Unit, block: suspend () -> T): ExecHeld<T>
+
+    /** 与 [hold] 相同，但在命令体启动前将当前前台服务状态传给调用方，便于立即透出降级告警。 */
+    suspend fun <T> holdState(run: ExecRunInfo, stop: () -> Unit, block: suspend (ExecForegroundState) -> T): ExecHeld<T> =
+        hold(run, stop) { block(ExecForegroundState.STARTED) }
+
+    /** 更新运行中条目的展示信息（例如前台命令自动让出为后台任务后切换通知标题）。 */
+    fun update(runId: String, transform: (ExecRunInfo) -> ExecRunInfo) {}
 }
 
 object NoExecKeepAlive : ExecKeepAlive {
     override suspend fun <T> hold(run: ExecRunInfo, stop: () -> Unit, block: suspend () -> T): ExecHeld<T> =
         ExecHeld(block(), ExecForegroundState.UNSUPPORTED)
+
+    override suspend fun <T> holdState(run: ExecRunInfo, stop: () -> Unit, block: suspend (ExecForegroundState) -> T): ExecHeld<T> =
+        ExecHeld(block(ExecForegroundState.UNSUPPORTED), ExecForegroundState.UNSUPPORTED)
 }
 
 /** 运行中命令的登记表；前台服务据此渲染通知并转发停止请求。 */
@@ -66,6 +76,10 @@ class ExecRunRegistry {
     val runs: StateFlow<List<Active>> = state.asStateFlow()
 
     fun register(active: Active) = state.update { it + active }
+
+    fun update(id: String, transform: (ExecRunInfo) -> ExecRunInfo) = state.update { runs ->
+        runs.map { active -> if (active.info.id == id) Active(transform(active.info), active.stop) else active }
+    }
 
     fun unregister(id: String) = state.update { runs -> runs.filterNot { it.info.id == id } }
 

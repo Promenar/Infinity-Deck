@@ -10,6 +10,7 @@ import com.promenar.infinity.domain.jobs.*
 import com.promenar.infinity.domain.tool.ToolLiveOutputSink
 import com.promenar.infinity.domain.tool.ToolOutputStream
 import com.promenar.infinity.domain.trigger.*
+import com.promenar.infinity.utils.InfinityLogger
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -269,12 +270,13 @@ class BackgroundJobManager(
             }
             sink.onStop(handle.control::requestStop)
             try {
-                keepAlive.hold(runInfo(record), handle.control::requestStop) {
+                keepAlive.holdState(runInfo(record), handle.control::requestStop) { foreground ->
                     var current=record
                     var command:PreparedBackgroundCommand?=null
                     try {
                         val location=prepareWorkspace(record)
-                        current=record.copy(workspaceDirectory=location.workspaceDirectory.path,isolatedWorkspace=location.isolated)
+                        val foregroundWarning = if (foreground == ExecForegroundState.NOT_ALLOWED) FOREGROUND_SERVICE_NOT_ALLOWED_GUIDANCE else null
+                        current=record.copy(workspaceDirectory=location.workspaceDirectory.path,isolatedWorkspace=location.isolated,guidance=foregroundWarning)
                         store.put(current)
                         val log=logFile(current)
                         log.parentFile?.mkdirs(); if(!log.exists()) log.createNewFile()
@@ -298,16 +300,22 @@ class BackgroundJobManager(
                                 handle.control.requestStop()
                             } else null
                             try {
-                                runner.runBackground(prepared.request,handle.control,log,File(record.runDirectory,"pgid"),onStarted={started.complete(current)},onOutput=sink::emit,onTerminalOutput={ sink.replace(ToolOutputStream.STDOUT, it) })
+                                runner.runBackground(prepared.request,handle.control,log,File(record.runDirectory,"pgid"),onStarted={
+                                    emitJobStartDiagnostic(current, background = true, foregroundState = foreground.name)
+                                    started.complete(current)
+                                },onOutput=sink::emit,onTerminalOutput={ sink.replace(ToolOutputStream.STDOUT, it) })
                             } finally {
                                 withContext(NonCancellable) { watcher?.cancelAndJoin(); prepared.afterRun() }
                             }
                         }
                         val terminal=when {linuxRemoved -> "FAILED"; output.stoppedByUser -> "STOPPED"; output.timedOut -> "TIMED_OUT"; else -> "EXITED"}
-                        finish(current.copy(state=terminal,exitCode=output.exitCode,endedAtMillis=now(),guidance=if(linuxRemoved) messages(RunModeMessage.LINUX_UNAVAILABLE) else if(actualKind == BackgroundJobRunner.LINUX) LinuxMissingCommandGuidance.hint(output.exitCode, readJobLogTail(log).text, messages) else null),handle)
+                        val endedRecord = current.copy(state=terminal,exitCode=output.exitCode,endedAtMillis=now(),guidance=if(linuxRemoved) messages(RunModeMessage.LINUX_UNAVAILABLE) else if(actualKind == BackgroundJobRunner.LINUX) LinuxMissingCommandGuidance.hint(output.exitCode, readJobLogTail(log).text, messages) else null)
+                        emitJobEndDiagnostic(endedRecord, timedOut = output.timedOut, stoppedByUser = output.stoppedByUser, killedExternally = output.killedExternally)
+                        finish(endedRecord,handle)
                         if(!started.isCompleted) started.completeExceptionally(JobAccessException("JOB_STOPPED","任务在进程启动前被停止。"))
                     } catch (failure:Exception) {
                         val terminal=current.copy(state=if(failure is CancellationException) "INTERRUPTED" else "FAILED",endedAtMillis=now(),guidance=if(failure is JobAccessException) "${failure.code}：${failure.message}" else if(failure is com.promenar.infinity.domain.linux.LinuxUnavailableException) messages(RunModeMessage.LINUX_UNAVAILABLE) else "后台任务无法运行（${failure.javaClass.simpleName}），请检查执行后端和工作区。")
+                        emitJobEndDiagnostic(terminal, timedOut = false, stoppedByUser = handle.control.stopRequested, killedExternally = false)
                         withContext(NonCancellable) {
                             if(store.all().find{it.id==record.id}?.running==true) finish(terminal,handle)
                         }
@@ -397,6 +405,9 @@ class BackgroundJobManager(
                             )
                             store.put(terminal); publish(); handle.terminal.complete(Unit)
                             result.complete(safeValue)
+                            if (yielded.get()) {
+                                emitJobEndDiagnostic(terminal, timedOut = value.timedOut, stoppedByUser = value.errorCode == "EXEC_STOPPED", killedExternally = value.errorCode == "EXEC_PROCESS_KILLED")
+                            }
                             if (yielded.get() && sessionAllowed(record) && !handle.suppressCompletion) {
                                 try { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
                             }
@@ -404,7 +415,9 @@ class BackgroundJobManager(
                         }
                     } catch (failure: Throwable) {
                         withContext(NonCancellable) {
-                            store.put(record.copy(workspaceDirectory = directory?.path, lastOutputAtMillis = handle.lastOutputAtMillis, state = if (handle.control.stopRequested) "STOPPED" else if (failure is CancellationException) "INTERRUPTED" else "FAILED", endedAtMillis = now(), guidance = "命令执行失败（${failure.javaClass.simpleName}）。"))
+                            val failedRecord = record.copy(workspaceDirectory = directory?.path, lastOutputAtMillis = handle.lastOutputAtMillis, state = if (handle.control.stopRequested) "STOPPED" else if (failure is CancellationException) "INTERRUPTED" else "FAILED", endedAtMillis = now(), guidance = "命令执行失败（${failure.javaClass.simpleName}）。")
+                            if (yielded.get()) emitJobEndDiagnostic(failedRecord, timedOut = false, stoppedByUser = handle.control.stopRequested, killedExternally = false)
+                            store.put(failedRecord)
                             publish(); result.completeExceptionally(failure)
                             requestReconcile(record)
                         }
@@ -436,6 +449,7 @@ class BackgroundJobManager(
             if (completed != null) return completed
             // 无挂起区间先转移所有权，避免调用取消把已让出的进程停止。
             yielded.set(true)
+            emitJobStartDiagnostic(record, background = false, foregroundState = "YIELDED")
             withContext(NonCancellable) { store.updateIfPresent(record.id) { it.copy(workspaceDirectory = directory?.path) } }
             if (result.isCompleted) return result.await()
             val output = handle.control.outputSnapshot
@@ -1249,6 +1263,40 @@ class BackgroundJobManager(
                 gate.withLock{deletedSessions-=sessionId}
             }
         }
+    }
+
+    private fun emitJobStartDiagnostic(record: BackgroundJobRecord, background: Boolean, foregroundState: String) {
+        InfinityLogger.diagnostic("job.start", mapOf(
+            "sessionId" to record.sessionId,
+            "runner" to record.runner,
+            "background" to background,
+            "maxRuntimeMinutes" to record.maxRuntimeMinutes,
+            "foregroundState" to foregroundState,
+        ))
+    }
+
+    private fun emitJobEndDiagnostic(
+        record: BackgroundJobRecord,
+        timedOut: Boolean,
+        stoppedByUser: Boolean,
+        killedExternally: Boolean,
+    ) {
+        InfinityLogger.diagnostic("job.end", mapOf(
+            "sessionId" to record.sessionId,
+            "runner" to record.runner,
+            "state" to record.state,
+            "exitCode" to record.exitCode,
+            "timedOut" to timedOut,
+            "stoppedByUser" to stoppedByUser,
+            "killedExternally" to killedExternally,
+            "maxRuntimeMinutes" to record.maxRuntimeMinutes,
+            "elapsedMs" to ((record.endedAtMillis ?: now()) - record.startedAtMillis).coerceAtLeast(0L),
+        ))
+    }
+
+    companion object {
+        internal const val FOREGROUND_SERVICE_NOT_ALLOWED_GUIDANCE =
+            "本次系统未允许启动前台服务（应用在后台），离开应用后后台任务可能被系统暂停或回收；请回到前台或检查电池优化设置。"
     }
 }
 

@@ -226,6 +226,7 @@ class BuiltinExecServiceTest {
         private val stopOnStart: Boolean = false,
     ) : ExecKeepAlive {
         val runs = mutableListOf<ExecRunInfo>()
+        val updated = mutableListOf<ExecRunInfo>()
         var released = false
         override suspend fun <T> hold(run: ExecRunInfo, stop: () -> Unit, block: suspend () -> T): ExecHeld<T> {
             runs += run
@@ -235,6 +236,9 @@ class BuiltinExecServiceTest {
             } finally {
                 released = true
             }
+        }
+        override fun update(runId: String, transform: (ExecRunInfo) -> ExecRunInfo) {
+            runs.lastOrNull { it.id == runId }?.let { updated += transform(it) }
         }
     }
 
@@ -595,5 +599,23 @@ class BuiltinExecServiceTest {
             assertThat(nonces.resolve(env.getValue(GitRemoteBroker.ENV_NONCE))).isNull()
             assertThat(nonces.activeCount).isEqualTo(0)
         }
+    }
+
+    @Test
+    fun `前台命令让出后同步把保活登记升级为后台态并扩展超时`() = runBlocking<Unit> {
+        val keepAlive = RecordingKeepAlive(ExecForegroundState.STARTED)
+        val control = BuiltinCommandControl().apply { yieldedTimeoutSeconds = 7200 }
+        val attachment = LinuxExecAttachment(control, File(work, "yield.pgid"), File(work, "yield.log"))
+        val deferred = async(kotlinx.coroutines.Dispatchers.IO) {
+            service(keepAlive = keepAlive).runShell("root", "s", "sleep 2; echo done", null, 30, attachment = attachment)
+        }
+        withTimeout(5_000) { control.started.await() }
+        control.requestYield()
+        val result = withTimeout(10_000) { deferred.await() }
+        assertThat(result.exitCode).isEqualTo(0)
+        assertThat(keepAlive.runs.single().background).isFalse()
+        assertThat(keepAlive.updated).hasSize(1)
+        assertThat(keepAlive.updated.single().background).isTrue()
+        assertThat(keepAlive.updated.single().timeoutSeconds).isEqualTo(7200)
     }
 }

@@ -340,6 +340,14 @@ class BuiltinExecService(
         }
         val held = try {
             keepAlive.hold(run, control::requestStop) {
+                val yieldHandle = if (attachment != null) {
+                    control.yielded.invokeOnCompletion { cause ->
+                        if (cause == null) {
+                            keepAlive.update(run.id) { it.copy(background = true, timeoutSeconds = control.yieldedTimeoutSeconds) }
+                        }
+                    }
+                } else null
+                try {
                 if (directory != null || kind == ExecRunKind.LINUX) {
                     val root = directory?.root ?: sessionId?.let { sessionHome(it) }
                         ?: throw IllegalStateException("会话专用空间不可用")
@@ -353,6 +361,9 @@ class BuiltinExecService(
                     } catch (failure: IOException) {
                         null
                     }
+                }
+                } finally {
+                    yieldHandle?.dispose()
                 }
             }
         } catch (cancelled: CancellationException) {

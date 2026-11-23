@@ -36,7 +36,7 @@ data class BackgroundJobRecord(
     val isolatedWorkspace: Boolean = false,
     /** 无法确认旧writer已停止时保留原日志目录项，避免unlink后丢失追加输出。 */
     val logMigrationDeferred: Boolean = false,
-    /** 让出任务在原工作区持锁运行，由前台服务对账，不执行快照合入。 */
+    /** 让出任务在原工作区直接运行，结束后异步对账，不执行快照合入。 */
     val directWorkspace: Boolean = false,
     val commandResult: kotlinx.serialization.json.JsonObject? = null,
     /** SSH 任务的主机 ID；本地任务与旧记录为 null。 */

@@ -153,6 +153,8 @@ object DiagnosticRedactor {
         "linux.exec_start" to processFields,
         "linux.exec_end" to processFields,
         "linux.reconcile" to keys("sessionId elapsedMs"),
+        "job.start" to keys("sessionId runner background maxRuntimeMinutes foregroundState"),
+        "job.end" to keys("sessionId runner state exitCode timedOut stoppedByUser killedExternally maxRuntimeMinutes elapsedMs"),
         "file.op" to keys("sessionId toolName routeKind status errorCode"),
         "schedule.callback_failure" to keys("taskId stage exception cause"),
         "composer_queue.corrupt" to keys("discarded"),
@@ -196,11 +198,11 @@ object DiagnosticRedactor {
     private val correlationFields = keys("sessionId messageId callId traceId taskId targetId")
     private val projectedReference = Regex("~ref-[0-9a-f]{32}")
     private val numericFields = keys(
-        "httpStatus firstTokenMs elapsedMs retryAfterSec attempt exitCode elapsed_ms duration_ms decode_ms " +
+        "httpStatus firstTokenMs elapsedMs retryAfterSec attempt exitCode maxRuntimeMinutes elapsed_ms duration_ms decode_ms " +
             "audio_ms monotonicMs chars index calls rounds lag_ms max_backlog_ms hotword_count points segments " +
             "start_audio_ms segment_end_ms first_output_ms errno handle_errno path_errno component_count component_index",
     )
-    private val booleanFields = keys("sessionHeaderInjected timedOut retryable discarded delivered deleted path_attempted same_directory beam_search")
+    private val booleanFields = keys("sessionHeaderInjected timedOut retryable discarded delivered deleted path_attempted same_directory beam_search background stoppedByUser killedExternally")
     private val plainCredential = Regex("(?:[0-9]{10,}|[A-Za-z0-9_]{32,})")
     private val plainPathName = Regex("""[^/\\\s]{1,100}\.[A-Za-z0-9]{1,12}""")
     private val safeLedgerErrors = setOf(

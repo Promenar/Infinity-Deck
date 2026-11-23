@@ -119,5 +119,48 @@ class DiagnosticRedactorTest {
         assertThat(DiagnosticRedactor.snapshot("WORKSPACE_JOURNAL", deep).causes).hasSize(4)
     }
 
+    @Test
+    fun `后台任务诊断事件只保留白名单元字段并丢弃命令正文与秘密`() {
+        val started = DiagnosticRedactor.projectStructuredFields(
+            "job.start",
+            mapOf(
+                "sessionId" to kotlinx.serialization.json.JsonPrimitive("s1"),
+                "runner" to kotlinx.serialization.json.JsonPrimitive("LINUX"),
+                "background" to kotlinx.serialization.json.JsonPrimitive(true),
+                "maxRuntimeMinutes" to kotlinx.serialization.json.JsonPrimitive(120),
+                "foregroundState" to kotlinx.serialization.json.JsonPrimitive("STARTED"),
+                "command" to kotlinx.serialization.json.JsonPrimitive("codex login --secret sk-123"),
+            ),
+        )
+        assertThat(started["runner"]?.toString()).isEqualTo("\"LINUX\"")
+        assertThat(started["background"]?.toString()).isEqualTo("true")
+        assertThat(started["maxRuntimeMinutes"]?.toString()).isEqualTo("120")
+        assertThat(started["foregroundState"]?.toString()).isEqualTo("\"STARTED\"")
+        assertThat(started["command"]).isNull()
+
+        val ended = DiagnosticRedactor.projectStructuredFields(
+            "job.end",
+            mapOf(
+                "sessionId" to kotlinx.serialization.json.JsonPrimitive("s1"),
+                "runner" to kotlinx.serialization.json.JsonPrimitive("LINUX"),
+                "state" to kotlinx.serialization.json.JsonPrimitive("EXITED"),
+                "exitCode" to kotlinx.serialization.json.JsonPrimitive(0),
+                "timedOut" to kotlinx.serialization.json.JsonPrimitive(false),
+                "stoppedByUser" to kotlinx.serialization.json.JsonPrimitive(false),
+                "killedExternally" to kotlinx.serialization.json.JsonPrimitive(false),
+                "maxRuntimeMinutes" to kotlinx.serialization.json.JsonPrimitive(120),
+                "elapsedMs" to kotlinx.serialization.json.JsonPrimitive(81234),
+                "stdout" to kotlinx.serialization.json.JsonPrimitive("Bearer secret-token"),
+            ),
+        )
+        assertThat(ended["state"]?.toString()).isEqualTo("\"EXITED\"")
+        assertThat(ended["exitCode"]?.toString()).isEqualTo("0")
+        assertThat(ended["timedOut"]?.toString()).isEqualTo("false")
+        assertThat(ended["stoppedByUser"]?.toString()).isEqualTo("false")
+        assertThat(ended["killedExternally"]?.toString()).isEqualTo("false")
+        assertThat(ended["elapsedMs"]?.toString()).isEqualTo("81234")
+        assertThat(ended["stdout"]).isNull()
+    }
+
     private fun identityMismatch() = SecurityException("工作区根身份与数据库认领不一致")
 }

@@ -158,5 +158,11 @@ class RuntimeGuideBackgroundContractTest {
         val shell = ShellExecSkill(mockk(relaxed = true)).description
         assertThat(shell).contains("主命令须保持前台运行")
         assertThat(shell).contains("不要自行守护化")
+        val linuxGuidance = SystemPromptSections.LINUX_SHELL_GUIDANCE
+        listOf("不随本轮生成结束或取消而停止", "max_runtime_minutes", "主命令须保持前台运行", "browser_open", "不要在用户完成回调前调用 job_stop")
+            .forEach { assertWithMessage(it).that(linuxGuidance).contains(it) }
+        val linuxPrompt = SystemPromptSections.toolGuidance(setOf("shell_exec", "job_wait"), generic = false, runMode = SessionRunMode.LINUX)
+        assertThat(linuxPrompt).contains("不随本轮生成结束或取消而停止")
+        assertThat(linuxPrompt).doesNotContain("持锁运行")
     }
 }
