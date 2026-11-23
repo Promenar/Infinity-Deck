@@ -53,12 +53,13 @@ internal data class BuiltinRealPathContext(
     val privatePath: String = canonicalOrAbs(sessionPrivateRoot)
     val userSkillsPath: String = canonicalOrAbs(userSkillsRoot)
     val appDataPath: String = canonicalOrAbs(appDataDir)
-    val appDataAliasPath: String? = if (appDataPath.startsWith("/data/user/0/")) {
-        "/data/data/" + appDataPath.removePrefix("/data/user/0/")
-    } else null
+    val appDataAliasPaths: Set<String> = BuiltinRealPathPaths.appDataRoots(appDataPath, appDataDir.absolutePath) - appDataPath
     val normalizedRealMounts: List<Pair<ExternalMount, String>> = realMounts
         .map { (mount, dir) -> mount to canonicalOrAbs(dir) }
         .sortedByDescending { it.second.length }
+    val usesEmulatedPrimaryStorage: Boolean =
+        BuiltinRealPathPaths.isSameOrBelow(primaryPath, "/storage/emulated/0") ||
+            normalizedRealMounts.any { BuiltinRealPathPaths.isSameOrBelow(it.second, "/storage/emulated/0") }
 
     companion object {
         internal fun canonicalOrAbs(file: File): String =
@@ -128,25 +129,54 @@ internal object BuiltinRealPathPaths {
             }
         })
 
+    fun appDataRoots(appDataPath: String, rawAppDataPath: String? = null): Set<String> {
+        val clean = appDataPath.trimEnd('/').ifEmpty { "/" }
+        val seeds = linkedSetOf(clean)
+        rawAppDataPath?.trimEnd('/')?.ifEmpty { "/" }?.let(seeds::add)
+        val all = linkedSetOf<String>()
+        for (p in seeds) {
+            all.add(p)
+            when {
+                p.startsWith("/data/user/0/") -> all.add("/data/data/" + p.removePrefix("/data/user/0/"))
+                p.startsWith("/data/data/") -> all.add("/data/user/0/" + p.removePrefix("/data/data/"))
+            }
+        }
+        return all
+    }
+
+    fun canonicalizeAppDataAlias(path: String, appDataPath: String, rawAppDataPath: String? = null): String {
+        val cleanTarget = appDataPath.trimEnd('/').ifEmpty { "/" }
+        val aliases = appDataRoots(cleanTarget, rawAppDataPath) - cleanTarget
+        val matched = aliases.firstOrNull { isSameOrBelow(path, it) } ?: return path
+        return cleanTarget + path.removePrefix(matched)
+    }
+
     fun isSecretStorePath(path: String, appDataPath: String): Boolean {
-        val prefsRoot = "$appDataPath/shared_prefs"
-        if (!isSameOrBelow(path, prefsRoot)) return false
-        val name = path.removePrefix("$prefsRoot/").substringBefore('/')
-        return name == SECRET_PREF_PREFIX || name == "$SECRET_PREF_PREFIX.bak"
+        for (root in appDataRoots(appDataPath)) {
+            val prefsRoot = "$root/shared_prefs"
+            if (!isSameOrBelow(path, prefsRoot)) continue
+            if (path == prefsRoot) continue
+            val name = path.removePrefix("$prefsRoot/").substringBefore('/')
+            if (name == SECRET_PREF_PREFIX || name.startsWith("$SECRET_PREF_PREFIX.")) return true
+        }
+        return false
     }
 
     fun isProtectedRuntimeDataPath(path: String, appDataPath: String): Boolean {
-        val protectedDirs = listOf(
-            "$appDataPath/databases",
-            "$appDataPath/shared_prefs",
-            "$appDataPath/no_backup",
-            "$appDataPath/files/diag-keep",
-        )
-        val protectedFiles = setOf(
-            "$appDataPath/files/infinity_diagnostics.jsonl",
-            "$appDataPath/files/infinity_logs.txt",
-        )
-        return path in protectedFiles || protectedDirs.any { isSameOrBelow(path, it) }
+        for (root in appDataRoots(appDataPath)) {
+            val protectedDirs = listOf(
+                "$root/databases",
+                "$root/shared_prefs",
+                "$root/no_backup",
+                "$root/files/diag-keep",
+            )
+            val protectedFiles = setOf(
+                "$root/files/infinity_diagnostics.jsonl",
+                "$root/files/infinity_logs.txt",
+            )
+            if (path in protectedFiles || protectedDirs.any { isSameOrBelow(path, it) }) return true
+        }
+        return false
     }
 
     fun isSkillsMutationPath(path: String, ctx: BuiltinRealPathContext): Boolean {
@@ -268,13 +298,18 @@ internal object BuiltinRealPathPaths {
         if (parts.any { it == "." || it == ".." }) {
             fail("INVALID_PATH", "绝对路径不允许包含 . 或 .. 片段，请传入规范真实路径。")
         }
-        val collapsed = if (parts.isEmpty()) "/" else "/" + parts.joinToString("/")
-        val alias = ctx.appDataAliasPath
-        return if (alias != null && isSameOrBelow(collapsed, alias)) {
-            ctx.appDataPath + collapsed.removePrefix(alias)
-        } else {
-            collapsed
+        var collapsed = if (parts.isEmpty()) "/" else "/" + parts.joinToString("/")
+        val matchedAppAlias = ctx.appDataAliasPaths.firstOrNull { isSameOrBelow(collapsed, it) }
+        if (matchedAppAlias != null) {
+            collapsed = ctx.appDataPath + collapsed.removePrefix(matchedAppAlias)
+        } else if (ctx.usesEmulatedPrimaryStorage) {
+            collapsed = when {
+                isSameOrBelow(collapsed, "/sdcard") -> "/storage/emulated/0" + collapsed.removePrefix("/sdcard")
+                isSameOrBelow(collapsed, "/storage/self/primary") -> "/storage/emulated/0" + collapsed.removePrefix("/storage/self/primary")
+                else -> collapsed
+            }
         }
+        return collapsed
     }
 
     internal fun isSameOrBelow(path: String, root: String): Boolean {

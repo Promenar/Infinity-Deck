@@ -201,8 +201,12 @@ object ShellCommandSafetyClassifier {
             "files/agent_skills", "files/workspaces",
         )
         suffixes.forEach { extra.add("$clean/$it") }
-        if (clean.startsWith("/data/user/0/")) {
-            val alias = "/data/data/" + clean.removePrefix("/data/user/0/")
+        val alias = when {
+            clean.startsWith("/data/user/0/") -> "/data/data/" + clean.removePrefix("/data/user/0/")
+            clean.startsWith("/data/data/") -> "/data/user/0/" + clean.removePrefix("/data/data/")
+            else -> null
+        }
+        if (alias != null) {
             extra.add(alias)
             suffixes.forEach { extra.add("$alias/$it") }
         }

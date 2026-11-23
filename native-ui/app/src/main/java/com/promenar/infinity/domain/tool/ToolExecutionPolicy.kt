@@ -49,6 +49,23 @@ object ToolExecutionPolicy {
         }
     }
 
+    /**
+     * 标记已被运行时路径门禁确定会硬拒绝的文件目标（例如加密密钥存储或关键运行时只读自诊断目录），
+     * 跳过无意义的审批卡片，让工具立即返回明确的安全拒绝错误。
+     */
+    fun hardBlockedTarget(code: String): String =
+        kotlinx.serialization.json.JsonArray(
+            listOf(
+                kotlinx.serialization.json.JsonPrimitive("hard_blocked"),
+                kotlinx.serialization.json.JsonPrimitive(code),
+            ),
+        ).toString()
+
+    fun isHardBlockedTarget(target: String?): Boolean = runCatching {
+        val parts = kotlinx.serialization.json.Json.parseToJsonElement(target ?: return false) as? kotlinx.serialization.json.JsonArray
+        (parts?.firstOrNull() as? kotlinx.serialization.json.JsonPrimitive)?.content == "hard_blocked"
+    }.getOrDefault(false)
+
     fun requiresApproval(
         mode: ExecutionMode,
         toolName: String,
@@ -56,9 +73,11 @@ object ToolExecutionPolicy {
         arguments: String = "{}",
         resolvedTarget: String? = null,
         usesLinux: Boolean = false,
-    ): Boolean = (toolName == "browser_eval" && mode == ExecutionMode.WORKSPACE) ||
-        requiresNonGrantableApproval(toolName, risk, resolvedTarget) ||
-        grantCategory(mode, toolName, risk, arguments, resolvedTarget, usesLinux) != null
+    ): Boolean = !isHardBlockedTarget(resolvedTarget) && (
+        (toolName == "browser_eval" && mode == ExecutionMode.WORKSPACE) ||
+            requiresNonGrantableApproval(toolName, risk, resolvedTarget) ||
+            grantCategory(mode, toolName, risk, arguments, resolvedTarget, usesLinux) != null
+        )
 
     fun grantCategory(
         mode: ExecutionMode,
@@ -68,6 +87,7 @@ object ToolExecutionPolicy {
         resolvedTarget: String? = null,
         usesLinux: Boolean = false,
     ): ApprovalGrantCategory? {
+        if (isHardBlockedTarget(resolvedTarget)) return null
         // 页面脚本在风险审批档逐次确认，不受命令的限时授权影响。
         if (toolName == "browser_eval") return null
         if (requiresNonGrantableApproval(toolName, risk, resolvedTarget)) return null

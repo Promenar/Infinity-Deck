@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.72.1-beta] - 2026-11-23
+
+- **修复内置模式真机 `/data/data` ⇄ `/data/user/0` 双向路径别名安全绕过并优化受保护路径即时硬拒绝（[BuiltinRealPathPaths.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/BuiltinRealPathPaths.kt)、[BuiltinHostPathBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/BuiltinHostPathBackend.kt)、[WorkspaceFileTarget.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/WorkspaceFileTarget.kt)、[ShellCommandSafetyClassifier.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/tool/ShellCommandSafetyClassifier.kt)、[InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt)、[SessionToolTargetResolver.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/SessionToolTargetResolver.kt)、[ToolExecutionPolicy.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/tool/ToolExecutionPolicy.kt)）**：
+  - 将应用数据根路径别名归一化由单向（仅 `/data/user/0 -> /data/data`）改为双向（同时覆盖 Android 真机 `canonicalPath` 落在 `/data/data/<pkg>` 时调用方传入 `/data/user/0/<pkg>` 的场景），并同步支持 `/sdcard` 与 `/storage/self/primary` 归一至 `/storage/emulated/0`；确保密钥存储（`infinity_encrypted_secrets.xml*`）、关键运行时只读自诊断目录、用户技能目录 L2 审批、会话私有目录、ComfyUI 目录暂存与 `ShellCommandSafetyClassifier` 根目录硬拦截在任意真实别名写法下全部一致生效。
+  - 在 `BuiltinHostPathBackend` 中增加基于规范路径与父目录规范路径的双重校验，拦截通过符号链接指向加密密钥文件或受保护运行时数据的绕过路径。
+  - 在 `SessionToolTargetResolver` 与 `ToolExecutionPolicy` 中为确定会硬拒绝的密钥/受保护运行时目标引入 `hard_blocked` 标记，使 `write_file`、`delete_file` 等写删操作直接返回安全拒绝错误而不再弹出无意义的审批卡片；补充 `BuiltinRealPathWorkspaceAccessTest` 与 `ShellCommandSafetyClassifierTest` 双向别名与符号链接回归测试。
+
 ## [0.72.0-beta] - 2026-11-23
 
 - **统一内置模式真实 Android 路径体系、落地按命令风险分级审批模型与不可审批根目录硬拦截防线（[ShellCommandSafetyClassifier.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/tool/ShellCommandSafetyClassifier.kt)、[ToolExecutionPolicy.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/tool/ToolExecutionPolicy.kt)、[BuiltinRealPathPaths.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/BuiltinRealPathPaths.kt)、[BuiltinHostPathBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/BuiltinHostPathBackend.kt)、[BuiltinRealPathWorkspaceAccess.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/BuiltinRealPathWorkspaceAccess.kt)、[BuiltinExecService.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/BuiltinExecService.kt)、[DefaultWorkspaceMedia.kt](native-ui/app/src/main/java/com/promenar/infinity/data/media/DefaultWorkspaceMedia.kt)）**：

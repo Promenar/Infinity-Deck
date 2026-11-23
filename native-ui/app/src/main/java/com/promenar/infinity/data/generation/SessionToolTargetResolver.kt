@@ -59,7 +59,15 @@ suspend fun resolveSessionToolTarget(
         ) return linuxFiles?.executionTarget(session.id, tool, args)
         if (!usesLinux && builtinFiles != null && tool.mcpServerId == null && tool.sourceId == "builtin" &&
             tool.function.name in setOf("read_file", "write_file", "patch_file", "diff_file", "delete_file", "create_file", "create_directory", "move_file", "list_files", "search_files")
-        ) return builtinFiles.executionTarget(session.id, tool, args)
+        ) return try {
+            builtinFiles.executionTarget(session.id, tool, args)
+        } catch (denied: com.promenar.infinity.domain.storage.ExternalFolderException) {
+            if (denied.code in setOf("ACCESS_DENIED", "PROTECTED_RUNTIME_DATA")) {
+                com.promenar.infinity.domain.tool.ToolExecutionPolicy.hardBlockedTarget(denied.code)
+            } else {
+                null
+            }
+        }
         val visibleMounts = mounts?.visible(session.id).orEmpty()
         // 自选目录工作区以空别名挂载承载 `/`：路径授权绑定工作区身份，切换工作区后旧授权不再适用。
         val workspaceMount = mounts?.workspaceMount(session.id)

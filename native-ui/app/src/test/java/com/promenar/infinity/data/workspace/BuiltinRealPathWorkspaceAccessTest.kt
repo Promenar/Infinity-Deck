@@ -378,4 +378,128 @@ class BuiltinRealPathWorkspaceAccessTest {
         assertThat(ToolExecutionPolicy.grantCategory(ExecutionMode.FULL_ACCESS, "write_file", ToolRisk.FILE_WRITE, cacheArgs.toString(), cacheTarget, usesLinux = false))
             .isNull()
     }
+
+    @Test
+    fun `Android 双向 data 与 user-0 别名在路由、只读自诊断、密钥硬拒、技能保护和 sdcard 归一上全部生效`() {
+        // 场景 A：Android 真机上 canonicalPath 落在 /data/data/<pkg>，模型/工具传入 /data/user/0/<pkg>
+        val ctxDataCanonical = BuiltinRealPathContext(
+            primaryRoot = File("/data/data/com.promenar.infinity/files/session_workspaces/s1"),
+            primaryIsDirectory = false,
+            sessionPrivateRoot = File("/data/data/com.promenar.infinity/files/session_workspaces/s1"),
+            userSkillsRoot = File("/data/data/com.promenar.infinity/files/agent_skills"),
+            appDataDir = File("/data/data/com.promenar.infinity"),
+            realMounts = emptyList(),
+            virtualMounts = emptyList(),
+        )
+        assertThat(
+            BuiltinRealPathPaths.route("/data/user/0/com.promenar.infinity/shared_prefs/infinity_encrypted_secrets.xml", ctxDataCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.RUNTIME_DATA_SECRET)
+        assertThat(
+            BuiltinRealPathPaths.route("/data/user/0/com.promenar.infinity/shared_prefs/infinity_encrypted_secrets.xml.tmp", ctxDataCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.RUNTIME_DATA_SECRET)
+        assertThat(
+            BuiltinRealPathPaths.route("/data/user/0/com.promenar.infinity/files/infinity_diagnostics.jsonl", ctxDataCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.RUNTIME_DATA_PROTECTED)
+        assertThat(
+            BuiltinRealPathPaths.route("/data/user/0/com.promenar.infinity/databases/infinity.db", ctxDataCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.RUNTIME_DATA_PROTECTED)
+        assertThat(
+            BuiltinRealPathPaths.route("/data/user/0/com.promenar.infinity/files/agent_skills/demo/SKILL.md", ctxDataCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.USER_SKILLS)
+        assertThat(
+            BuiltinRealPathPaths.route("/data/user/0/com.promenar.infinity/files/session_workspaces/s1/probe.txt", ctxDataCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.PRIVATE)
+
+        // 场景 B：反向，canonicalPath 落在 /data/user/0/<pkg>，调用方传入 /data/data/<pkg>
+        val ctxUserCanonical = BuiltinRealPathContext(
+            primaryRoot = File("/storage/emulated/0/Download/Infinity/proj"),
+            primaryIsDirectory = true,
+            sessionPrivateRoot = File("/data/user/0/com.promenar.infinity/files/session_workspaces/s1"),
+            userSkillsRoot = File("/data/user/0/com.promenar.infinity/files/agent_skills"),
+            appDataDir = File("/data/user/0/com.promenar.infinity"),
+            realMounts = emptyList(),
+            virtualMounts = emptyList(),
+        )
+        assertThat(
+            BuiltinRealPathPaths.route("/data/data/com.promenar.infinity/shared_prefs/infinity_encrypted_secrets.xml", ctxUserCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.RUNTIME_DATA_SECRET)
+        assertThat(
+            BuiltinRealPathPaths.route("/data/data/com.promenar.infinity/files/infinity_diagnostics.jsonl", ctxUserCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.RUNTIME_DATA_PROTECTED)
+        assertThat(
+            BuiltinRealPathPaths.route("/data/data/com.promenar.infinity/files/agent_skills/demo/SKILL.md", ctxUserCanonical).kind,
+        ).isEqualTo(BuiltinRealPathKind.USER_SKILLS)
+
+        // 场景 C：/sdcard 与 /storage/self/primary 归一到 /storage/emulated/0 主工作区
+        val sdcardRoute = BuiltinRealPathPaths.route("/sdcard/Download/Infinity/proj/note.md", ctxUserCanonical)
+        assertThat(sdcardRoute.kind).isEqualTo(BuiltinRealPathKind.WORKSPACE)
+        assertThat(sdcardRoute.canonicalPath).isEqualTo("/storage/emulated/0/Download/Infinity/proj/note.md")
+    }
+
+    @Test
+    fun `受保护运行数据与密钥文件的硬阻断跳过无意义审批卡且宿主后端拦截符号链接绕过`() = runBlocking {
+        // 1. resolveSessionToolTarget 对受保护路径返回 hard_blocked，跳过审批卡（含 delete_file）
+        val session = com.promenar.infinity.data.model.Session(
+            id = "s1",
+            agentId = "agent",
+            title = "t",
+            workspaceRootUuid = "root-uuid",
+            runMode = SessionRunMode.BUILTIN,
+        )
+        val writeTool = FileWriteSkill(fileOpRepo, workspaceRepo).toProtocolTool()
+        val deleteTool = DeleteFileSkill(workspaceRepo).toProtocolTool()
+        val diagWriteArgs = buildJsonObject {
+            put("path", "${appDataDir.canonicalPath}/files/infinity_diagnostics.jsonl")
+            put("content", "tampered")
+            put("expectedHash", "abc")
+        }.toString()
+        val resolvedWrite = com.promenar.infinity.data.generation.resolveSessionToolTarget(
+            session = session,
+            tool = writeTool,
+            arguments = diagWriteArgs,
+            repository = workspaceRepo,
+            mounts = originalMounts,
+            builtinFiles = builtinAccess,
+        )
+        assertThat(ToolExecutionPolicy.isHardBlockedTarget(resolvedWrite)).isTrue()
+        assertThat(
+            ToolExecutionPolicy.requiresApproval(ExecutionMode.WORKSPACE, "write_file", ToolRisk.FILE_WRITE, diagWriteArgs, resolvedWrite, usesLinux = false),
+        ).isFalse()
+
+        val diagDeleteArgs = buildJsonObject {
+            put("path", "${appDataDir.canonicalPath}/databases/meta.txt")
+        }.toString()
+        val resolvedDelete = com.promenar.infinity.data.generation.resolveSessionToolTarget(
+            session = session,
+            tool = deleteTool,
+            arguments = diagDeleteArgs,
+            repository = workspaceRepo,
+            mounts = originalMounts,
+            builtinFiles = builtinAccess,
+        )
+        assertThat(ToolExecutionPolicy.isHardBlockedTarget(resolvedDelete)).isTrue()
+        assertThat(
+            ToolExecutionPolicy.requiresApproval(ExecutionMode.WORKSPACE, "delete_file", ToolRisk.DELETE, diagDeleteArgs, resolvedDelete, usesLinux = false),
+        ).isFalse()
+
+        // 2. cache 中指向密钥文件或受保护诊断文件的符号链接同样被 BuiltinHostPathBackend 硬阻断
+        val secretLink = File(appDataDir, "cache/sneaky_secret.xml")
+        val diagLink = File(appDataDir, "cache/sneaky_diag.jsonl")
+        Files.createSymbolicLink(secretLink.toPath(), File(appDataDir, "shared_prefs/infinity_encrypted_secrets.xml").toPath())
+        Files.createSymbolicLink(diagLink.toPath(), File(appDataDir, "files/infinity_diagnostics.jsonl").toPath())
+
+        val read = wrapped(FileReadSkill(fileOpRepo, workspaceRepo))
+        val write = wrapped(FileWriteSkill(fileOpRepo, workspaceRepo))
+        val secretLinkRead = read.execute(buildJsonObject { put("path", secretLink.absolutePath) }, ctx())
+        assertThat(secretLinkRead.status).isEqualTo("error")
+        assertThat(secretLinkRead.content).contains("密钥存储文件")
+
+        val diagLinkWrite = write.execute(buildJsonObject {
+            put("path", diagLink.absolutePath)
+            put("content", "tampered")
+            put("expectedHash", "abc")
+        }, ctx())
+        assertThat(diagLinkWrite.status).isEqualTo("error")
+        assertThat(diagLinkWrite.content).contains("只读自诊断")
+    }
 }

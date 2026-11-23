@@ -3598,7 +3598,12 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         if (trimmed.isEmpty() || "://" in trimmed) return@withContext false
 
         val userSkillsCanonical = runCatching { skillCatalog.userRoot.canonicalPath }.getOrDefault(skillCatalog.userRoot.absolutePath).trimEnd('/')
-        val normalizedInput = trimmed.replace(Regex("^/data/data/"), "/data/user/0/")
+        val appDataCanonical = runCatching { (filesDir.parentFile ?: java.io.File(applicationInfo.dataDir)).canonicalPath }
+            .getOrDefault((filesDir.parentFile ?: java.io.File(applicationInfo.dataDir)).absolutePath)
+            .trimEnd('/')
+        val normalizedInput = com.promenar.infinity.data.workspace.BuiltinRealPathPaths.canonicalizeAppDataAlias(
+            trimmed, appDataCanonical, (filesDir.parentFile ?: java.io.File(applicationInfo.dataDir)).absolutePath,
+        )
         val skillSubPath = when {
             trimmed.startsWith("/mnt/skills/") -> trimmed.removePrefix("/mnt/skills/")
             trimmed.startsWith("/skills/") -> trimmed.removePrefix("/skills/")

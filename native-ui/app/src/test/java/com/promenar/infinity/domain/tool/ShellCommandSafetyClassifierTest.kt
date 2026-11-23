@@ -190,4 +190,19 @@ class ShellCommandSafetyClassifierTest {
             assertThat(decision.verdict).isEqualTo(CommandSafetyVerdict.REQUIRES_APPROVAL)
         }
     }
+
+    @Test
+    fun `appDataDir 双向兼容 data-data 与 data-user-0 保护根目录硬拦截`() {
+        val fromDataAlias = ShellCommandSafetyClassifier.classifyShell(
+            "rm -rf /data/user/0/com.example.custom/files",
+            appDataDir = "/data/data/com.example.custom",
+        )
+        assertThat(fromDataAlias.verdict).isEqualTo(CommandSafetyVerdict.BLOCKED_CATASTROPHIC)
+
+        val fromUserAlias = ShellCommandSafetyClassifier.classifyShell(
+            "rm -rf /data/data/com.example.custom/files",
+            appDataDir = "/data/user/0/com.example.custom",
+        )
+        assertThat(fromUserAlias.verdict).isEqualTo(CommandSafetyVerdict.BLOCKED_CATASTROPHIC)
+    }
 }

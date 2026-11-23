@@ -71,7 +71,7 @@ internal class BuiltinHostPathBackend(
         names.mapNotNull { name ->
             currentCoroutineContext().ensureActive()
             val childPath = BuiltinRealPathPaths.joinPath(clean, "/$name")
-            if (BuiltinRealPathPaths.isSecretStorePath(childPath, appDataPath)) return@mapNotNull null
+            if (isSecretTarget(childPath)) return@mapNotNull null
             try {
                 val childFile = File(childPath)
                 val childAttrs = readAttributesOrNull(childFile) ?: return@mapNotNull null
@@ -246,22 +246,41 @@ internal class BuiltinHostPathBackend(
 
     fun isWritable(path: String): Boolean {
         val clean = runCatching { normalizeAbs(path) }.getOrNull() ?: return false
-        if (BuiltinRealPathPaths.isSecretStorePath(clean, appDataPath)) return false
-        if (BuiltinRealPathPaths.isProtectedRuntimeDataPath(clean, appDataPath)) return false
+        if (isSecretTarget(clean) || isProtectedRuntimeTarget(clean)) return false
         val file = File(clean)
         val target = if (file.exists()) file else file.parentFile ?: return false
         return runCatching { target.canWrite() }.getOrDefault(false)
     }
 
+    private fun isSecretTarget(clean: String): Boolean =
+        resolvedCandidates(clean).any { BuiltinRealPathPaths.isSecretStorePath(it, appDataPath) }
+
+    private fun isProtectedRuntimeTarget(clean: String): Boolean =
+        resolvedCandidates(clean).any { BuiltinRealPathPaths.isProtectedRuntimeDataPath(it, appDataPath) }
+
+    private fun resolvedCandidates(clean: String): List<String> {
+        val file = File(clean)
+        val resolved = runCatching {
+            val canonical = if (file.exists()) {
+                file.canonicalPath
+            } else {
+                val parentCanonical = file.parentFile?.canonicalPath ?: return@runCatching null
+                BuiltinRealPathPaths.joinPath(parentCanonical, "/${file.name}")
+            }
+            BuiltinRealPathPaths.canonicalizeAppDataAlias(canonical, appDataPath, appDataDir.absolutePath)
+        }.getOrNull()
+        return if (resolved != null && resolved != clean) listOf(clean, resolved) else listOf(clean)
+    }
+
     private fun requireNotSecret(clean: String) {
-        if (BuiltinRealPathPaths.isSecretStorePath(clean, appDataPath)) {
+        if (isSecretTarget(clean)) {
             fail("ACCESS_DENIED", "加密密钥存储文件不可通过文件工具访问：$clean")
         }
     }
 
     private fun requireWritableHostPath(clean: String) {
         requireNotSecret(clean)
-        if (BuiltinRealPathPaths.isProtectedRuntimeDataPath(clean, appDataPath)) {
+        if (isProtectedRuntimeTarget(clean)) {
             fail("PROTECTED_RUNTIME_DATA", "应用关键运行时数据目录仅开放只读自诊断，禁止通过文件工具修改或删除：$clean")
         }
     }
@@ -283,9 +302,11 @@ internal class BuiltinHostPathBackend(
         fail("ACCESS_DENIED", "系统权限不允许访问：${file.path}")
     }
 
-    private fun normalizeAbs(raw: String): String =
-        ShellCommandSafetyClassifier.normalizeLexicalPath(raw)
+    private fun normalizeAbs(raw: String): String {
+        val lexical = ShellCommandSafetyClassifier.normalizeLexicalPath(raw)
             ?: fail("INVALID_PATH", "本机真实路径必须为绝对路径：$raw")
+        return BuiltinRealPathPaths.canonicalizeAppDataAlias(lexical, appDataPath, appDataDir.absolutePath)
+    }
 
     private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) { block() }
     private fun fail(code: String, message: String): Nothing = throw ExternalFolderException(code, message)

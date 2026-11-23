@@ -117,13 +117,8 @@ internal class WorkspaceFileTargetResolver(
 
     private fun canonicalizeAppAlias(path: String): String {
         val appDataCanonical = appDataRootPath()
-        if (appDataCanonical.startsWith("/data/user/0/")) {
-            val alias = "/data/data/" + appDataCanonical.removePrefix("/data/user/0/")
-            if (BuiltinRealPathPaths.isSameOrBelow(path, alias)) {
-                return appDataCanonical + path.removePrefix(alias)
-            }
-        }
-        return path
+        if (appDataCanonical.isEmpty()) return path
+        return BuiltinRealPathPaths.canonicalizeAppDataAlias(path, appDataCanonical)
     }
 
     private suspend fun matchesBuiltinRealRoot(sessionId: String, path: String): Boolean {
