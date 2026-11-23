@@ -17,10 +17,12 @@ enum class ComfyMediaCategory {
     IMAGE,
     VIDEO,
     AUDIO,
-    POST_PROCESS;
+    POST_PROCESS,
+    MODEL_3D,
+    FILE;
 
     fun toMediaGroup(): MediaGroup = when (this) {
-        IMAGE -> MediaGroup.IMAGE
+        IMAGE, MODEL_3D, FILE -> MediaGroup.IMAGE
         VIDEO, POST_PROCESS -> MediaGroup.VIDEO
         AUDIO -> MediaGroup.AUDIO
     }
@@ -59,11 +61,16 @@ enum class FieldValueType {
     IMAGE_FILE,
     VIDEO_FILE,
     AUDIO_FILE,
+    ANY_FILE,
+    DIRECTORY,
     FILE_LIST,
     TIMED_FILES;
 
     val isMediaFileType: Boolean
         get() = this in setOf(IMAGE_FILE, VIDEO_FILE, AUDIO_FILE, FILE_LIST, TIMED_FILES)
+
+    val isWorkspacePathType: Boolean
+        get() = isMediaFileType || this in setOf(ANY_FILE, DIRECTORY)
 }
 
 @Serializable
@@ -91,6 +98,14 @@ enum class CliArgMode {
     BOOL_FLAG,
     TEXT_FILE,
     JSON,
+    TEMPLATE,
+}
+
+@Serializable
+enum class SeedPolicy {
+    CALLER,
+    RANDOM_EACH_RUN,
+    FIXED,
 }
 
 @Serializable
@@ -107,7 +122,11 @@ data class WorkflowFieldSpec(
     val max: Double? = null,
     val semanticRole: FieldSemanticRole = FieldSemanticRole.NONE,
     val cliFlag: String? = null,
+    val cliFalseFlag: String? = null,
     val cliMode: CliArgMode = CliArgMode.VALUE,
+    val cliValueTemplate: String? = null,
+    val stageParentDirectory: Boolean = false,
+    val seedPolicy: SeedPolicy = SeedPolicy.CALLER,
     val nodeId: String? = null,
     val inputKey: String? = null,
     val uploadNodeId: String? = null,
@@ -146,6 +165,21 @@ data class WorkflowFieldSpec(
         cliFlag?.let { flag ->
             require(flag.isNotBlank() && flag.none { it <= ' ' || it == '\u007f' }) {
                 "field.$key.cliFlag: 命令行标志不能包含空白或控制字符"
+            }
+        }
+        cliFalseFlag?.let { flag ->
+            require(flag.isNotBlank() && flag.none { it <= ' ' || it == '\u007f' }) {
+                "field.$key.cliFalseFlag: 布尔假值标志不能包含空白或控制字符"
+            }
+        }
+        cliValueTemplate?.let { tpl ->
+            require(tpl.isNotBlank() && '\u0000' !in tpl) {
+                "field.$key.cliValueTemplate: 参数模板不能为空或包含空字符"
+            }
+        }
+        if (cliMode == CliArgMode.TEMPLATE) {
+            require(!cliValueTemplate.isNullOrBlank()) {
+                "field.$key.cliValueTemplate: cliMode=TEMPLATE 必须提供 cliValueTemplate"
             }
         }
         if (defaultValue != null && defaultValue != JsonNull) {
@@ -196,19 +230,32 @@ data class WorkflowFieldSpec(
                 require(choice in options) { "字段 $key 的值 '$choice' 不在允许选项内" }
             }
             FieldValueType.JSON -> Unit
-            FieldValueType.IMAGE_FILE, FieldValueType.VIDEO_FILE, FieldValueType.AUDIO_FILE -> {
+            FieldValueType.IMAGE_FILE, FieldValueType.VIDEO_FILE, FieldValueType.AUDIO_FILE,
+            FieldValueType.ANY_FILE, FieldValueType.DIRECTORY, -> {
                 val path = (value as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
-                    ?: throw IllegalArgumentException("字段 $key 需要媒体文件路径字符串")
+                    ?: throw IllegalArgumentException("字段 $key 需要工作区路径字符串")
                 if (!isDefaultCheck || path.isNotEmpty()) {
-                    require(path.isNotBlank()) { "字段 $key 的媒体路径不能为空" }
+                    require(path.isNotBlank()) { "字段 $key 的路径不能为空" }
                 }
             }
             FieldValueType.FILE_LIST -> {
                 val array = value as? JsonArray
                     ?: throw IllegalArgumentException("字段 $key 需要文件路径数组")
                 array.forEachIndexed { idx, item ->
-                    val path = (item as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
-                    require(!path.isNullOrBlank()) { "字段 $key[$idx] 需要非空路径字符串" }
+                    when (item) {
+                        is JsonPrimitive -> {
+                            val path = item.takeIf { it.isString }?.contentOrNull
+                            require(!path.isNullOrBlank()) { "字段 $key[$idx] 需要非空路径字符串" }
+                        }
+                        is JsonObject -> {
+                            require(!cliValueTemplate.isNullOrBlank()) {
+                                "字段 $key[$idx] 为对象时须声明 cliValueTemplate"
+                            }
+                            val path = extractPathFromObject(item)
+                            require(!path.isNullOrBlank()) { "字段 $key[$idx] 缺少文件路径（file/path/image_path/video/audio）" }
+                        }
+                        else -> throw IllegalArgumentException("字段 $key[$idx] 需要非空路径字符串")
+                    }
                 }
             }
             FieldValueType.TIMED_FILES -> {
@@ -280,6 +327,11 @@ data class WorkflowFieldSpec(
         is JsonArray -> element.joinToString(",", "[", "]") { canonicalJsonString(it) }
         else -> element.toString()
     }
+
+    internal fun extractPathFromObject(obj: JsonObject): String? =
+        listOf("file", "path", "image_path", "video", "audio").firstNotNullOfOrNull { k ->
+            (obj[k] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotBlank() }
+        }
 }
 
 @Serializable
@@ -364,18 +416,27 @@ data class StatefulChainSpec(
     val readLatentDirFlag: String = "",
     val writeLatentDirFlag: String = "",
     val dryRunFlag: String = "--dry-run",
+    val sidecarSuffixes: List<String> = emptyList(),
 ) {
     init {
         require(stages.isNotEmpty() && stages.all { it.isNotBlank() }) { "chainSpec.stages 不能为空" }
+        sidecarSuffixes.forEach { suffix ->
+            require(
+                suffix.startsWith('.') &&
+                    suffix.length in 2..64 &&
+                    '/' !in suffix &&
+                    '\\' !in suffix &&
+                    ".." !in suffix &&
+                    suffix.none { it <= ' ' || it == '\u007f' },
+            ) { "chainSpec.sidecarSuffixes 项无效：$suffix" }
+        }
     }
 
-    /** 仅当脚本协议或独立读写目录/分支标志真实支持物理分支隔离时返回 true。 */
+    /** 仅当脚本协议或成对读写目录标志真实支持“读父写子”物理分支隔离时返回 true。 */
     fun supportsPhysicalBranchIsolation(protocol: SubmitterInvocationProtocol?): Boolean =
         supportsIsolatedBranchDir && (
             protocol == SubmitterInvocationProtocol.PAYLOAD_JSON ||
-                (readLatentDirFlag.isNotBlank() && writeLatentDirFlag.isNotBlank()) ||
-                writeLatentDirFlag.isNotBlank() ||
-                branchIdFlag.isNotBlank()
+                (readLatentDirFlag.isNotBlank() && writeLatentDirFlag.isNotBlank())
             )
 }
 
@@ -398,6 +459,16 @@ data class ComfyWorkflow(
     val outputDirFlag: String = "--output-dir",
     val dryRunFlag: String = "--dry-run",
     val receiptFlag: String? = "--receipt",
+    val emitWorkflowFlag: String? = null,
+    val emitWorkflowTakesPath: Boolean = true,
+    val preflightOnlyFlag: String? = null,
+    val promptIdPattern: String? = null,
+    val timeoutSeconds: Int? = null,
+    val allowEmptyOutputs: Boolean = false,
+    val backfillOutputsFromHistory: Boolean = true,
+    val historyOutputFields: List<String> = emptyList(),
+    val requiredTools: List<String> = emptyList(),
+    val requiredPlatforms: List<String> = emptyList(),
     val fps: Double? = null,
     val frameBase: Int = 1,
     val frameStep: Int = 1,
@@ -415,6 +486,32 @@ data class ComfyWorkflow(
         require(capabilities.modes.isNotEmpty()) { "capabilities.modes 至少包含一种生成模式" }
         require(submitterScriptId != null || rawWorkflowJson != null) {
             "工作流须绑定提交器脚本或提供 API Format 工作流 JSON"
+        }
+        emitWorkflowFlag?.let { flag ->
+            require(flag.isNotBlank() && flag.none { it <= ' ' || it == '\u007f' }) {
+                "emitWorkflowFlag 不能包含空白或控制字符"
+            }
+        }
+        preflightOnlyFlag?.let { flag ->
+            require(flag.isNotBlank() && flag.none { it <= ' ' || it == '\u007f' }) {
+                "preflightOnlyFlag 不能包含空白或控制字符"
+            }
+        }
+        promptIdPattern?.let { pattern ->
+            require(pattern.isNotBlank() && pattern.length <= 256) { "promptIdPattern 长度须在 1～256" }
+            runCatching { Regex(pattern) }.getOrElse {
+                throw IllegalArgumentException("promptIdPattern 正则无效：${it.message}")
+            }
+        }
+        require(timeoutSeconds == null || timeoutSeconds in 10..7200) { "工作流超时须在 10～7200 秒" }
+        requiredTools.forEach { tool ->
+            require(tool.matches(Regex("[A-Za-z0-9._-]{1,64}"))) { "requiredTools 项无效：$tool" }
+        }
+        requiredPlatforms.forEach { platform ->
+            require(platform.matches(Regex("[a-z0-9_-]{1,32}"))) { "requiredPlatforms 项须为小写标识：$platform" }
+        }
+        historyOutputFields.forEach { field ->
+            require(field.matches(Regex("[A-Za-z0-9_.-]{1,64}"))) { "historyOutputFields 项无效：$field" }
         }
         require(fps == null || (fps.isFinite() && fps > 0.0 && fps <= 240.0)) { "fps 须在 0～240 之间" }
         require(frameBase > 0 && frameStep > 0 && (maxFrames == null || maxFrames >= frameBase)) {
@@ -699,6 +796,9 @@ data class StatefulChainNode(
     val contentInputsJson: JsonObject = JsonObject(emptyMap()),
     val fixedOverridesJson: JsonObject = JsonObject(emptyMap()),
     val continuationStateJson: JsonObject = JsonObject(emptyMap()),
+    val assignedReadLatentDir: String? = null,
+    val assignedWriteLatentDir: String? = null,
+    val isolationWarning: String? = null,
     val serverLatentSlotKey: String? = null,
     val stateValidity: ChainNodeValidity = ChainNodeValidity.ACTIVE,
     val createdAt: Long = 0L,
@@ -806,18 +906,28 @@ object StatefulChainDag {
         }
         require(existing.node(newNode.nodeId) == null) { "节点 ${newNode.nodeId} 已存在" }
 
+        val ancestorIds = buildSet {
+            var cur: String? = parentId
+            while (cur != null && add(cur)) {
+                cur = existing.node(cur)?.parentNodeId
+            }
+        }
         val invalidatedIds = mutableSetOf<String>()
-        if (newNode.branchPolicy == StatefulBranchPolicy.IN_PLACE_OVERWRITE && !newNode.serverLatentSlotKey.isNullOrBlank()) {
+        val slotKey = newNode.serverLatentSlotKey?.takeIf { it.isNotBlank() }
+        if (slotKey != null) {
             val directOverwritten = existing.nodes.filter {
-                it.serverLatentSlotKey == newNode.serverLatentSlotKey && it.stateValidity == ChainNodeValidity.ACTIVE
+                it.nodeId !in ancestorIds &&
+                    it.serverLatentSlotKey == slotKey &&
+                    it.stateValidity == ChainNodeValidity.ACTIVE
             }.mapTo(mutableSetOf()) { it.nodeId }
             invalidatedIds += directOverwritten
-            // 同时失效所有依赖于被覆写兄弟节点潜空间的后继分支，防止用旧链节点继续接出废片。
+            // 同时失效所有依赖于被覆写兄弟节点潜空间的后继分支，防止用旧链节点继续接出废片；绝不误杀父/祖先链。
             var added: Boolean
             do {
                 added = false
                 existing.nodes.forEach { candidate ->
-                    if (candidate.parentNodeId in invalidatedIds &&
+                    if (candidate.nodeId !in ancestorIds &&
+                        candidate.parentNodeId in invalidatedIds &&
                         candidate.stateValidity == ChainNodeValidity.ACTIVE &&
                         invalidatedIds.add(candidate.nodeId)
                     ) {
@@ -826,17 +936,24 @@ object StatefulChainDag {
                 }
             } while (added)
         }
+        val effectiveNode = if (invalidatedIds.isNotEmpty() && newNode.branchPolicy == StatefulBranchPolicy.ISOLATED_DIR) {
+            val note = "检测到与既有活跃兄弟节点槽位冲突（$slotKey），已诚实降级为 IN_PLACE_OVERWRITE 并失效：${invalidatedIds.sorted().joinToString("、")}"
+            val mergedWarning = listOfNotNull(newNode.isolationWarning?.takeIf { it.isNotBlank() }, note).distinct().joinToString("；")
+            newNode.copy(branchPolicy = StatefulBranchPolicy.IN_PLACE_OVERWRITE, isolationWarning = mergedWarning)
+        } else {
+            newNode
+        }
 
         val updatedNodes = existing.nodes.map { old ->
             if (old.nodeId in invalidatedIds) old.copy(stateValidity = ChainNodeValidity.OVERWRITTEN_BY_SIBLING) else old
-        } + newNode
+        } + effectiveNode
 
         val nextRecord = existing.copy(
-            activeTipNodeId = newNode.nodeId,
+            activeTipNodeId = effectiveNode.nodeId,
             nodes = updatedNodes,
-            updatedAt = newNode.createdAt,
+            updatedAt = effectiveNode.createdAt,
         )
-        return StatefulChainAppendResult(nextRecord, newNode, invalidatedIds.toList())
+        return StatefulChainAppendResult(nextRecord, effectiveNode, invalidatedIds.toList())
     }
 
     fun setActiveTip(record: StatefulChainRecord, targetNodeId: String, now: Long): StatefulChainRecord {

@@ -23,7 +23,7 @@
 
 **Infinity Deck** 是一个面向 Android 12+ 的开源 AI 工作台，将多智能体编排、本机代码与命令执行环境、私有网络接入、离线语音转写、文档知识库与音视频生成工具整合在单应用中：
 
-- **本地执行层**：内置免 Root 的 Alpine Linux（`arm64-v8a`，含 git、ripgrep、Python、Node.js、FFmpeg）及轻量 Python / QuickJS 隔离沙箱，可在设备端直接运行脚本、构建项目与处理文件，不依赖远程桌面主机在线。
+- **本地执行层**：内置免 Root 的 Alpine Linux（`arm64-v8a`，含 git、ripgrep、Python、Node.js、FFmpeg）及内置 Python 3.14 / QuickJS / 精简 `arm64-v8a` FFmpeg 与 ffprobe 工具链，可在设备端直接运行脚本、处理音视频、构建项目与转换文件，不依赖远程桌面主机在线。
 - **模型与端侧推理**：支持通过自有 API Key 接入主流大模型服务商与各类 Coding Plan 接口；内置基于 `llama.cpp` 的 GGUF 本地推理引擎（支持主对话、Embedding、Rerank 三槽位与 `16K / 8K / 4K` Prefix KV Cache）及基于 `sherpa-onnx` 的离线语音管线（X-ASR 流式转写、SenseVoice 二遍校准、说话人分段与声纹识别）。
 - **私有网络与远程运维**：内置用户态 Tailscale 节点（兼容自建 Headscale），不占用 Android 系统 VPN 槽位，使 SSH、私有模型端点、ComfyUI、MCP 服务与内置浏览器直达 `tailnet` 内网。
 - **知识库与创作工作台**：支持外部目录挂载与 `read_only / read_write` 分级受管读写、文档切片检索与实体知识图谱查询、离线录音富格式整理（表格 / Mermaid / ECharts / LaTeX 与长图 PNG/PDF 导出）、可交互多屏网页画布、图像局部重绘，以及集成离线 `Three.js` 3D 白模预演与剧本/资产/分镜/粗剪导出的制作面板。
@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.71.4-beta`（versionCode `202`），在 `v0.71.3-beta`（`201`）基础上为 Infinity Deck 完成 ComfyUI 全链路 6 类系统性修复与长等待状态行收敛：新增 Tailnet 代理预认证拦截器与可重放溢出文件上传彻底消除 `407` 失败；为通用 JSON 工作流补齐声明式多静态槽位、动态参考图扩展与未使用上传节点拓扑裁剪；推出保留目录结构的零改写 `skill_import`、行切片 `read_skill_file`、默认摘要版 `comfy_list_workflows` 与 Python 字节码隔离；完善 `STATEFUL_CHAIN` 首段与续接宿主托管及读写目录物理隔离 / 单目录诚实降级策略；落地 `ComfyErrorDiagnostics` 结构化节点与子进程错误诊断；移除会话流超过 30 秒后的虚假“无响应”标签与行尾冗余“停止”按钮（保留全部既有生成状态动画与真实退避重试徽章）。前序 `v0.71.0-beta`（`198`）在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上将云端默认媒体模型（图像/视频/音频独立单选或留空）与设置首页独立的「ComfyUI」兼容层彻底解耦，上线无限自定义内容/固定字段与多文件入参工作流框架、由本机 `127.0.0.1` 回环鉴权代理守护的内部 `PackagedPython` 3.14 提交器沙箱、14 个一等 `comfy_*` 智能体工具与固定参数单次实验 Diff 审批、`STATEFUL_CHAIN` 有状态链式 DAG 任意中段分支重跑能力，并修复 `SaveVideo` `.mp4` 产物漏判、云端默认图像模型被覆写与多卡审批队列聚焦错位问题。前序 `v0.70.5-beta`（`197`）交付了 ComfyUI/L2VA/分镜规划 8 项修复及声纹/SenseVoice 不可变官方源校验；`v0.70.4-beta` 累计交付离线 `three.js` 3D 白模分镜预演与 Beauty/Depth 抽帧及硬件 MP4 导出、全视觉参考资产双模与已锁定项 AI 改写审批、全站黑曜石熏黑毛玻璃与「环境光」省电实底及根级悬浮通知胶囊、全站 46 项常驻控件与布局稳定性改造、多图滑切查看器（1×–5× 与 90° 旋转）、录音富格式整理、已发送消息编辑重生成及 `2 MiB` 滚动诊断导出。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
+- **当前版本**：`v0.71.5-beta`（versionCode `203`），在 `v0.71.4-beta`（`202`）基础上将 ComfyUI 兼容层升级为零硬编码全能可配置提交器框架，并上线双执行环境自动切换与内置 `arm64-v8a` 精简 FFmpeg 9.1 / ffprobe：会话启用 Linux 模式且环境就绪时自动切换至 Linux 虚拟环境运行提交器（双向换算 `/mnt/comfy_run` 与 `/mnt/comfy_stage`），内置 Python 模式则开箱附带精简共享库版 FFmpeg/ffprobe + 8-bit `libx264`（仅 `+2.69 MiB` APK 增量，16KB 页对齐，遵循 GPL-3.0）；新增 10 类通用可配置能力（参数模板、布尔反标、任意文件与父目录树/整目录暂存、随机种子策略、`/system_stats` 主机版本动态插值、多行 JSON 与正则 `prompt_id` 提取、3D/通用文件 `/history` 自动补拉、`emit_workflow`/`preflight_only` 审阅模式、链式前段工作流与 `.segment.json` 逐字节还原、以及工具与平台声明式预检）；全面闭合 `STATEFUL_CHAIN` 物理槽位执行后回验、祖先节点保护与链状态可观测性 3 处缺口。前序 `v0.71.4-beta`（`202`）完成了 Tailnet 预认证与可重放上传、通用 JSON 多槽位/动态槽位与裁剪、`skill_import` 与 `ComfyErrorDiagnostics` 以及 `LiveStep` 平静等待态 6 类系统修复；`v0.71.0-beta`（`198`）在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上落地独立 ComfyUI 兼容层与 14 个一等 `comfy_*` 工具。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
 
 ### 从源码构建
 

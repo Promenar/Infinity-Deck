@@ -115,6 +115,19 @@ class BuiltinExecEnvironmentTest {
         listOf("python3()", "python()", "git()", "pip()", "pip3()").forEach { assertThat(prelude).contains(it) }
         assertThat(prelude).contains("-m infinity_git")
         assertThat(prelude).contains("-m infinity_pip")
+        assertThat(prelude).doesNotContain("ffmpeg()")
+    }
+
+    @Test fun `存在内置 FFmpeg 库时暴露环境变量与 shell 函数`() {
+        File(pythonDir, PackagedPython.FFMPEG).writeText("elf")
+        File(pythonDir, PackagedPython.FFPROBE).writeText("elf")
+        val envObj = environment(null)
+        val env = envObj.forWorkspace(File(work, "ws"))
+        assertThat(env["INFINITY_FFMPEG"]).isEqualTo(File(pythonDir, PackagedPython.FFMPEG).path)
+        assertThat(env["INFINITY_FFPROBE"]).isEqualTo(File(pythonDir, PackagedPython.FFPROBE).path)
+        val prelude = envObj.shellPrelude()
+        assertThat(prelude).contains("ffmpeg()")
+        assertThat(prelude).contains("ffprobe()")
     }
 
     @Test fun `内置 Tailscale 未运行时不设置任何代理变量`() {

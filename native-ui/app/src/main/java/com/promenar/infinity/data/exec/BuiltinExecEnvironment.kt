@@ -54,6 +54,10 @@ class BuiltinExecEnvironment(
             environment.putAll(python.environment() - "LD_LIBRARY_PATH")
             environment["PYTHONUTF8"] = "1"
             environment["INFINITY_PYTHON"] = python.launcher.path
+            if (python.ffmpegAvailable) {
+                environment["INFINITY_FFMPEG"] = python.ffmpeg.path
+                environment["INFINITY_FFPROBE"] = python.ffprobe.path
+            }
             caBundle()?.let { environment["SSL_CERT_FILE"] = it.path }
             userPackages?.let { packages ->
                 environment.remove("PYTHONNOUSERSITE")
@@ -99,8 +103,12 @@ class BuiltinExecEnvironment(
      * 函数只在本次命令的 shell 中有效，子 shell 与 Python 的 subprocess 找不到它们。
      */
     fun shellPrelude(): String = if (python.isAvailable) {
-        "python3() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_PYTHON\" \"\$@\"; }; python() { python3 \"\$@\"; }; " +
+        val base = "python3() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_PYTHON\" \"\$@\"; }; python() { python3 \"\$@\"; }; " +
             "git() { python3 -m infinity_git \"\$@\"; }; pip() { python3 -m infinity_pip \"\$@\"; }; pip3() { pip \"\$@\"; }"
+        if (python.ffmpegAvailable) {
+            "$base; ffmpeg() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_FFMPEG\" \"\$@\"; }; " +
+                "ffprobe() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_FFPROBE\" \"\$@\"; }"
+        } else base
     } else {
         listOf("python3", "git", "pip").joinToString("; ") { name ->
             "$name() { echo \"$name: $PYTHON_UNAVAILABLE_SHORT\" >&2; return 127; }"

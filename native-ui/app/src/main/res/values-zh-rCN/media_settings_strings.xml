@@ -204,6 +204,8 @@
     <string name="media_settings_tab_host_config">主机设置</string>
     <string name="media_settings_cat_all">全部</string>
     <string name="media_settings_cat_post_process">后处理</string>
+    <string name="media_settings_cat_model_3d">3D 模型</string>
+    <string name="media_settings_cat_file">文件</string>
     <string name="media_settings_exec_single">单次提交</string>
     <string name="media_settings_exec_chain">链式接续</string>
     <string name="media_settings_add_workflow">新建工作流</string>

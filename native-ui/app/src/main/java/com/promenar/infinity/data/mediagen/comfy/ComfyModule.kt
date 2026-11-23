@@ -18,6 +18,8 @@ class ComfyModule(
     appFilesDir: File = File("/tmp/infinity_comfy_files"),
     appCacheDir: File = File("/tmp/infinity_comfy_cache"),
     packagedPython: PackagedPython? = null,
+    linuxBridge: ComfyLinuxSubmitterBridge? = null,
+    stageWorkspaceDirectory: (suspend (sessionId: String, virtualDirPath: String, destDir: File) -> Boolean)? = null,
 ) {
     private val credentials = ComfyCredentials(secrets)
     private val http = OkHttpComfyHttp(client, credentials, File(appCacheDir, "comfy_upload_spill"))
@@ -33,6 +35,7 @@ class ComfyModule(
         submitterFiles = submitterFiles,
         scratchRoot = File(appCacheDir, "comfy_submitter_runs"),
         launchProvider = { packagedPython?.let { SubmitterPythonLaunch.packaged(it) } },
+        linuxBridge = linuxBridge,
     )
     val executionEngine = ComfyWorkflowExecutionEngine(
         repository = repository,
@@ -44,6 +47,7 @@ class ComfyModule(
         resolver = resolver,
         store = store,
         scratchRoot = File(appCacheDir, "comfy_workflow_exec"),
+        stageWorkspaceDirectory = stageWorkspaceDirectory,
     )
     val backend = ComfyBackend(repository, http, resolver, store, WebSocketComfyProgress(client, credentials))
     val channels: ComfyTemplateChannelSource get() = repository

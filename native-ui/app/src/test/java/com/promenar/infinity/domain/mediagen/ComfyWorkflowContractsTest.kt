@@ -132,4 +132,55 @@ class ComfyWorkflowContractsTest {
             StatefulChainDag.appendNode(overwriteRes.record, "s1", "h3_motion", "main", "chain_a", null, blocked)
         }
     }
+
+    @Test fun `cliPhysicalBranchIsolationRequiresPairedReadWriteFlagsAndDagNeverKillsAncestors`() {
+        // 1. CLI_ARGS 仅在 readLatentDirFlag + writeLatentDirFlag 成对声明时才判定支持真物理分支隔离
+        assertFalse(StatefulChainSpec().supportsPhysicalBranchIsolation(SubmitterInvocationProtocol.CLI_ARGS))
+        assertFalse(StatefulChainSpec(branchIdFlag = "--branch-id").supportsPhysicalBranchIsolation(SubmitterInvocationProtocol.CLI_ARGS))
+        assertFalse(StatefulChainSpec(writeLatentDirFlag = "--write-latent-dir").supportsPhysicalBranchIsolation(SubmitterInvocationProtocol.CLI_ARGS))
+        assertTrue(
+            StatefulChainSpec(
+                readLatentDirFlag = "--read-latent-dir",
+                writeLatentDirFlag = "--write-latent-dir",
+            ).supportsPhysicalBranchIsolation(SubmitterInvocationProtocol.CLI_ARGS),
+        )
+        assertTrue(StatefulChainSpec().supportsPhysicalBranchIsolation(SubmitterInvocationProtocol.PAYLOAD_JSON))
+
+        // 2. 复现 Scenario C 缺陷场景：若脚本在 ISOLATED_DIR 下回报碰撞槽位 main::clip_0（且连父节点也撞），
+        //    DAG 必须诚实降级为 IN_PLACE_OVERWRITE、将兄弟节点 seg_02_v1 标为 OVERWRITTEN_BY_SIBLING，且绝不误杀父节点 seg_01_v1！
+        val seg1 = StatefulChainNode(
+            nodeId = "seg_01_v1", parentNodeId = null, stage = "first", segmentIndex = 1, attemptLabel = "v1",
+            branchId = "main", branchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
+            outputMediaPath = "m/1.png",
+            serverLatentSlotKey = "main::clip_0",
+            createdAt = 10L,
+        )
+        val r1 = StatefulChainDag.appendNode(null, "s1", "chain_live_test", "main", "c1", null, seg1).record
+
+        val seg2Main = StatefulChainNode(
+            nodeId = "seg_02_v1", parentNodeId = "seg_01_v1", stage = "next", segmentIndex = 2, attemptLabel = "v1",
+            branchId = "main", branchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
+            outputMediaPath = "m/2.png",
+            serverLatentSlotKey = "main::clip_0",
+            createdAt = 20L,
+        )
+        val r2 = StatefulChainDag.appendNode(r1, "s1", "chain_live_test", "main", "c1", null, seg2Main)
+        assertTrue("父节点 seg_01_v1 不得被子节点误杀", r2.invalidatedNodeIds.isEmpty())
+        assertEquals(ChainNodeValidity.ACTIVE, r2.record.node("seg_01_v1")!!.stateValidity)
+
+        val seg2Fork = StatefulChainNode(
+            nodeId = "seg_02_v2", parentNodeId = "seg_01_v1", stage = "next", segmentIndex = 2, attemptLabel = "v2",
+            branchId = "b_01_v1_9999", branchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
+            outputMediaPath = "m/3.png",
+            serverLatentSlotKey = "main::clip_0",
+            createdAt = 30L,
+        )
+        val r3 = StatefulChainDag.appendNode(r2.record, "s1", "chain_live_test", "main", "c1", null, seg2Fork)
+        assertEquals(listOf("seg_02_v1"), r3.invalidatedNodeIds)
+        assertEquals(ChainNodeValidity.ACTIVE, r3.record.node("seg_01_v1")!!.stateValidity)
+        assertEquals(ChainNodeValidity.OVERWRITTEN_BY_SIBLING, r3.record.node("seg_02_v1")!!.stateValidity)
+        assertEquals(ChainNodeValidity.ACTIVE, r3.record.node("seg_02_v2")!!.stateValidity)
+        assertEquals(StatefulBranchPolicy.IN_PLACE_OVERWRITE, r3.appendedNode.branchPolicy)
+        assertTrue(r3.appendedNode.isolationWarning.orEmpty().contains("main::clip_0"))
+    }
 }

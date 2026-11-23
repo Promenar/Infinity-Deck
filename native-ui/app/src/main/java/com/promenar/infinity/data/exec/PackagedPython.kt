@@ -13,9 +13,14 @@ class PackagedPython(private val nativeLibraryDir: File) {
     val launcher: File get() = File(nativeLibraryDir, LAUNCHER)
     val stdlib: File get() = File(nativeLibraryDir, STDLIB)
     val site: File get() = File(nativeLibraryDir, SITE)
+    val ffmpeg: File get() = File(nativeLibraryDir, FFMPEG)
+    val ffprobe: File get() = File(nativeLibraryDir, FFPROBE)
 
     /** 官方包只有 arm64-v8a 与 x86_64；其它 ABI 的设备上没有打包 Python。 */
     val isAvailable: Boolean get() = launcher.isFile && stdlib.isFile
+
+    /** 精简内置 FFmpeg/ffprobe 随 arm64-v8a 打包。 */
+    val ffmpegAvailable: Boolean get() = ffmpeg.isFile && ffprobe.isFile
 
     /** 解释器自身需要的环境变量；HOME、TMPDIR、证书等由执行后端另行设置。 */
     fun environment(): Map<String, String> = linkedMapOf(
@@ -31,6 +36,8 @@ class PackagedPython(private val nativeLibraryDir: File) {
         const val LAUNCHER = "libnxpython.so"
         const val STDLIB = "libpystdlib.so"
         const val SITE = "libpysite.so"
+        const val FFMPEG = "libnxffmpeg.so"
+        const val FFPROBE = "libnxffprobe.so"
 
         fun from(context: Context) = PackagedPython(File(context.applicationInfo.nativeLibraryDir))
     }

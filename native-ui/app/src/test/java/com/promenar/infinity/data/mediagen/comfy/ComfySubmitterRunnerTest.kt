@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.mediagen.comfy
 
+import com.promenar.infinity.domain.linux.LinuxProcessLaunch
+import com.promenar.infinity.domain.media.MediaKind
 import com.promenar.infinity.domain.mediagen.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
@@ -96,7 +98,7 @@ class ComfySubmitterRunnerTest {
             assertEquals("pid-77", res.promptId)
             assertEquals("helper-rain", res.summary)
             assertEquals(1, res.outputs.size)
-            assertEquals(InputKind.VIDEO, res.outputs.single().kind)
+            assertEquals(MediaKind.VIDEO, res.outputs.single().kind)
             assertEquals("video/mp4", res.outputs.single().mimeType)
             assertEquals("shot_01::clip_2", res.serverLatentSlotKey)
             assertEquals(1, progressEvents.size)
@@ -178,7 +180,7 @@ class ComfySubmitterRunnerTest {
             assertTrue(res.success)
             assertEquals("q-1", res.promptId)
             assertEquals(1, res.outputs.size)
-            assertEquals(InputKind.IMAGE, res.outputs.single().kind)
+            assertEquals(MediaKind.IMAGE, res.outputs.single().kind)
             ComfySubmitterRunner.cleanupRunDirectory(res.continuationState)
         } finally {
             temp.deleteRecursively()
@@ -467,6 +469,280 @@ class ComfySubmitterRunnerTest {
             assertNotNull(failEx)
             assertTrue(failEx!!.message, failEx.message!!.contains("FlashVSRNodeAdv"))
             assertTrue(failEx.message, failEx.message!!.contains("TypeError"))
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
+
+    @Test fun supportsTemplatesBoolFalseHostMetaMultilineJsonPromptRegexModesSidecarsAndLinuxBridge() = runBlocking {
+        assumeTrue(systemPythonAvailable())
+        val temp = Files.createTempDirectory("runner-universal").toFile()
+        try {
+            val fileStore = FileComfySubmitterFileStore(File(temp, "submitters"))
+            val stagedRoot = File(temp, "staged").apply { mkdirs() }
+            val refA = File(stagedRoot, "a.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+            val guideB = File(stagedRoot, "mid.png").apply { writeBytes(byteArrayOf(4, 5, 6)) }
+
+            val scriptCode = """
+                import argparse, json
+                from pathlib import Path
+
+                p = argparse.ArgumentParser()
+                p.add_argument("--host", default=None)
+                p.add_argument("--output-dir", default=None)
+                p.add_argument("--load-file", action="append", default=[])
+                p.add_argument("--guide", action="append", default=[])
+                p.add_argument("--set", action="append", default=[])
+                p.add_argument("--free-after", action=argparse.BooleanOptionalAction, default=True)
+                p.add_argument("--comfyui-version", default="")
+                p.add_argument("--emit-workflow", type=Path, default=None)
+                p.add_argument("--preflight-only", action="store_true")
+                p.add_argument("--previous-workflow", type=Path, default=None)
+                args = p.parse_args()
+
+                if args.emit_workflow:
+                    graph = {
+                        "1": {"class_type": "Demo", "inputs": {
+                            "loads": args.load_file,
+                            "guides": args.guide,
+                            "sets": args.set,
+                            "free_after": args.free_after,
+                            "ver": args.comfyui_version,
+                        }}
+                    }
+                    args.emit_workflow.write_text(json.dumps(graph), encoding="utf-8")
+                    print(json.dumps({"workflow": str(args.emit_workflow)}))
+                    raise SystemExit(0)
+
+                if args.preflight_only:
+                    print(json.dumps({"preflight": {"ok": True, "host": args.host, "ver": args.comfyui_version}}, indent=2))
+                    raise SystemExit(0)
+
+                if args.previous_workflow:
+                    sidecar = args.previous_workflow.with_suffix(".segment.json")
+                    assert sidecar.is_file(), f"missing sidecar: {sidecar}"
+                    assert json.loads(sidecar.read_text(encoding="utf-8"))["proof"] == "ok-seg1"
+
+                out_dir = Path(args.output_dir)
+                out_dir.mkdir(parents=True, exist_ok=True)
+                glb = out_dir / "mesh.glb"
+                glb.write_bytes(b"glTF_BYTES")
+                wf_file = out_dir / "saved_wf.json"
+                wf_file.write_text(json.dumps({"1": {"class_type": "Demo", "inputs": {}}}), encoding="utf-8")
+                wf_file.with_suffix(".segment.json").write_text(json.dumps({"proof": "ok-seg1"}), encoding="utf-8")
+                print("log line before json")
+                print("prompt_id=zimg-99887766")
+                print(json.dumps({
+                    "status": "success",
+                    "downloaded": [str(glb)],
+                    "reconstruction": {"workflow": str(wf_file)},
+                    "extra": {"loads": args.load_file, "guides": args.guide, "sets": args.set, "free": args.free_after, "ver": args.comfyui_version},
+                }, indent=2))
+            """.trimIndent()
+            val sha = fileStore.saveFiles("main", "univ_cli", "submit_univ.py", scriptCode)
+            val sub = ComfySubmitterScript(
+                scriptId = "univ_cli",
+                hostId = "main",
+                fileName = "submit_univ.py",
+                protocol = SubmitterInvocationProtocol.CLI_ARGS,
+                sha256 = sha,
+            )
+            val wf = ComfyWorkflow(
+                workflowId = "wf_univ",
+                hostId = "main",
+                name = "Universal",
+                mediaCategory = ComfyMediaCategory.MODEL_3D,
+                submitterScriptId = "univ_cli",
+                executionMode = WorkflowExecutionMode.STATEFUL_CHAIN,
+                chainSpec = StatefulChainSpec(
+                    stageFlag = "",
+                    latentDirFlag = "",
+                    sidecarSuffixes = listOf(".segment.json"),
+                ),
+                receiptFlag = null,
+                emitWorkflowFlag = "--emit-workflow",
+                preflightOnlyFlag = "--preflight-only",
+                cliBaseArgs = listOf("--comfyui-version", "{host.comfyui_version}"),
+                fields = listOf(
+                    WorkflowFieldSpec(
+                        key = "load_files", label = "文件绑定", valueType = FieldValueType.FILE_LIST,
+                        cliFlag = "--load-file", cliMode = CliArgMode.TEMPLATE, cliValueTemplate = "{node}={file}",
+                    ),
+                    WorkflowFieldSpec(
+                        key = "guides", label = "时间锚点", valueType = FieldValueType.TIMED_FILES,
+                        cliFlag = "--guide", cliMode = CliArgMode.TEMPLATE, cliValueTemplate = "{frame_idx}:{file}",
+                    ),
+                    WorkflowFieldSpec(
+                        key = "scalars", label = "标量覆写", valueType = FieldValueType.JSON,
+                        cliFlag = "--set", cliMode = CliArgMode.TEMPLATE, cliValueTemplate = "{node}.{input}={json}",
+                    ),
+                    WorkflowFieldSpec(
+                        key = "free_after", label = "释放显存", valueType = FieldValueType.BOOL,
+                        cliFlag = "--free-after", cliFalseFlag = "--no-free-after", cliMode = CliArgMode.BOOL_FLAG,
+                    ),
+                ),
+            )
+            val runner = ComfySubmitterRunner(fileStore, File(temp, "scratch"), ::testLaunch)
+            val inputs = mapOf(
+                "load_files" to Json.parseToJsonElement("""[{"node":"1","file":"/workspace/a.png"}]"""),
+                "guides" to Json.parseToJsonElement("""[{"frame_idx":60,"path":"/workspace/mid.png"}]"""),
+                "scalars" to Json.parseToJsonElement("""[{"node":"10","input":"prompt","value":"hello world"}]"""),
+                "free_after" to JsonPrimitive(false),
+            )
+            val stagedMap = mapOf("/workspace/a.png" to refA, "/workspace/mid.png" to guideB)
+            val hostMeta = mapOf("comfyui_version" to "0.41.3", "id" to "main", "name" to "MAIN")
+
+            // 1. EMIT_WORKFLOW 模式：不提交 GPU，直接返回结构化图
+            val emitted = runner.execute(
+                SubmitterRunRequest(
+                    submitter = sub,
+                    workflow = wf,
+                    proxyBaseUrl = null,
+                    runMode = ComfyWorkflowRunMode.EMIT_WORKFLOW,
+                    resolvedInputs = inputs,
+                    stagedFilesByPath = stagedMap,
+                    stagedRootDir = stagedRoot,
+                    hostMetadata = hostMeta,
+                ),
+            )
+            assertTrue(emitted.success)
+            val demoInputs = emitted.emittedWorkflowJson!!["1"]!!.jsonObject["inputs"]!!.jsonObject
+            assertEquals(listOf("1=${refA.path}"), demoInputs["loads"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(listOf("60:${guideB.path}"), demoInputs["guides"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(listOf("""10.prompt="hello world""""), demoInputs["sets"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertFalse(demoInputs["free_after"]!!.jsonPrimitive.boolean)
+            assertEquals("0.41.3", demoInputs["ver"]!!.jsonPrimitive.content)
+            ComfySubmitterRunner.cleanupRunDirectory(emitted.continuationState)
+
+            // 2. PREFLIGHT_ONLY 模式：解析多行缩进 JSON
+            val preflight = runner.execute(
+                SubmitterRunRequest(
+                    submitter = sub,
+                    workflow = wf,
+                    proxyBaseUrl = "http://127.0.0.1:4321/p/n",
+                    runMode = ComfyWorkflowRunMode.PREFLIGHT_ONLY,
+                    resolvedInputs = inputs,
+                    stagedFilesByPath = stagedMap,
+                    stagedRootDir = stagedRoot,
+                    hostMetadata = hostMeta,
+                ),
+            )
+            assertEquals("0.41.3", preflight.preflightReport!!["preflight"]!!.jsonObject["ver"]!!.jsonPrimitive.content)
+
+            // 3. EXECUTE 模式：验证多行 JSON + 纯文本正则提取 prompt_id + .glb MediaKind.FILE + .segment.json sidecar 保存
+            val exec1 = runner.execute(
+                SubmitterRunRequest(
+                    submitter = sub,
+                    workflow = wf,
+                    proxyBaseUrl = "http://127.0.0.1:4321/p/n",
+                    resolvedInputs = inputs,
+                    stagedFilesByPath = stagedMap,
+                    stagedRootDir = stagedRoot,
+                    hostMetadata = hostMeta,
+                    stage = "first",
+                    segmentIndex = 1,
+                ),
+            )
+            assertEquals("zimg-99887766", exec1.promptId)
+            assertEquals(MediaKind.FILE, exec1.outputs.single().kind)
+            assertEquals("model/gltf-binary", exec1.outputs.single().mimeType)
+            val sidecarsObj = exec1.continuationState["__sidecar_files"]!!.jsonObject
+            assertTrue(sidecarsObj[".segment.json"]!!.jsonPrimitive.content.contains("ok-seg1"))
+            val prevWfFile = File(temp, "prev_wf.json").apply { writeText("""{"1":{"class_type":"Demo","inputs":{}}}""") }
+            ComfySubmitterRunner.cleanupRunDirectory(exec1.continuationState)
+
+            // 4. 续段还原 sidecar
+            val exec2 = runner.execute(
+                SubmitterRunRequest(
+                    submitter = sub,
+                    workflow = wf,
+                    proxyBaseUrl = "http://127.0.0.1:4321/p/n",
+                    resolvedInputs = inputs,
+                    stagedFilesByPath = stagedMap,
+                    stagedRootDir = stagedRoot,
+                    hostMetadata = hostMeta,
+                    stage = "next",
+                    segmentIndex = 2,
+                    previousWorkflowFile = prevWfFile,
+                    previousSidecars = mapOf(".segment.json" to sidecarsObj[".segment.json"]!!.jsonPrimitive.content),
+                ),
+            )
+            assertTrue(exec2.success)
+            ComfySubmitterRunner.cleanupRunDirectory(exec2.continuationState)
+
+            // 5. 平台与工具前置门禁（如 macOS 专属流程 / 缺失 ffmpeg）提前拒绝
+            val macOnlyWf = wf.copy(workflowId = "wf_mac", requiredPlatforms = listOf("macos"))
+            val macErr = runCatching {
+                runner.execute(SubmitterRunRequest(submitter = sub, workflow = macOnlyWf, proxyBaseUrl = null))
+            }.exceptionOrNull()
+            assertTrue(macErr is ComfyFailure && macErr.message!!.contains("macos"))
+
+            val missingToolWf = wf.copy(workflowId = "wf_tool", requiredTools = listOf("nonexistent_tool_xyz_0715"))
+            val toolErr = runCatching {
+                runner.execute(SubmitterRunRequest(submitter = sub, workflow = missingToolWf, proxyBaseUrl = null))
+            }.exceptionOrNull()
+            assertTrue(toolErr is ComfyFailure && toolErr.message!!.contains("nonexistent_tool_xyz_0715"))
+
+            // 6. 双执行环境：模拟 Linux 桥接（验证 /mnt/comfy_run 与 /mnt/comfy_stage 双向换算，并自动选中 LINUX 运行时）
+            var capturedGuestArgv: List<String> = emptyList()
+            var capturedGuestEnv: Map<String, String> = emptyMap()
+            val fakeLinuxBridge = object : ComfyLinuxSubmitterBridge {
+                override fun isReady(): Boolean = true
+                override suspend fun shouldUseLinux(sessionId: String?): Boolean = sessionId == "linux_sess"
+                override suspend fun prepareLaunch(
+                    runDir: File,
+                    guestRunRoot: String,
+                    stagedRoot: File?,
+                    guestStagedRoot: String?,
+                    argv: List<String>,
+                    workingDirectoryGuest: String,
+                    environment: Map<String, String>,
+                ): LinuxProcessLaunch {
+                    capturedGuestArgv = argv
+                    capturedGuestEnv = environment
+                    // 将 guest 路径翻回宿主机路径在 JVM 宿主 python3 执行，完整验证真实双向路径换算
+                    fun translateBack(s: String): String {
+                        var r = s.replace(guestRunRoot, runDir.canonicalPath)
+                        if (stagedRoot != null && guestStagedRoot != null) {
+                            r = r.replace(guestStagedRoot, stagedRoot.canonicalPath)
+                        }
+                        return r
+                    }
+                    return LinuxProcessLaunch(
+                        executable = "python3",
+                        arguments = argv.drop(1).map(::translateBack),
+                        environment = environment.mapValues { (_, v) -> translateBack(v) } + mapOf(
+                            "PATH" to (System.getenv("PATH") ?: "/usr/bin:/bin"),
+                        ),
+                        hostWorkingDirectory = File(translateBack(workingDirectoryGuest)),
+                    )
+                }
+                override suspend fun checkTools(tools: List<String>): Map<String, Boolean> =
+                    tools.associateWith { it == "ffmpeg" }
+            }
+            val dualRunner = ComfySubmitterRunner(fileStore, File(temp, "scratch2"), ::testLaunch, linuxBridge = fakeLinuxBridge)
+            assertEquals(ComfySubmitterRuntime.LINUX, dualRunner.resolveRuntime("linux_sess"))
+            assertEquals(ComfySubmitterRuntime.BUILTIN_PYTHON, dualRunner.resolveRuntime("builtin_sess"))
+
+            val linuxWf = wf.copy(workflowId = "wf_linux", requiredTools = listOf("ffmpeg"))
+            val linuxRes = dualRunner.execute(
+                SubmitterRunRequest(
+                    submitter = sub,
+                    workflow = linuxWf,
+                    proxyBaseUrl = "http://127.0.0.1:4321/p/n",
+                    sessionId = "linux_sess",
+                    runMode = ComfyWorkflowRunMode.EMIT_WORKFLOW,
+                    resolvedInputs = inputs,
+                    stagedFilesByPath = stagedMap,
+                    stagedRootDir = stagedRoot,
+                    hostMetadata = hostMeta,
+                ),
+            )
+            assertEquals(ComfySubmitterRuntime.LINUX, linuxRes.runtime)
+            assertTrue(capturedGuestArgv.any { it.startsWith("${ComfySubmitterRunner.GUEST_RUN_ROOT}/script/") })
+            assertTrue(capturedGuestArgv.any { it.contains("1=${ComfySubmitterRunner.GUEST_STAGED_ROOT}/a.png") })
+            assertEquals("127.0.0.1,localhost", capturedGuestEnv["NO_PROXY"])
+            ComfySubmitterRunner.cleanupRunDirectory(linuxRes.continuationState)
         } finally {
             temp.deleteRecursively()
         }

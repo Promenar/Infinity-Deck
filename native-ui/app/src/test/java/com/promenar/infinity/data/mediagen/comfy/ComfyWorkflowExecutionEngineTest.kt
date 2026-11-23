@@ -9,6 +9,7 @@ import com.promenar.infinity.domain.mediagen.FieldMutability
 import com.promenar.infinity.domain.mediagen.FieldValueType
 import com.promenar.infinity.domain.mediagen.GenerationMode
 import com.promenar.infinity.domain.mediagen.MediaCapabilities
+import com.promenar.infinity.domain.mediagen.SeedPolicy
 import com.promenar.infinity.domain.mediagen.StatefulBranchPolicy
 import com.promenar.infinity.domain.mediagen.StatefulChainSpec
 import com.promenar.infinity.domain.mediagen.SubmitterInvocationProtocol
@@ -401,6 +402,322 @@ class ComfyWorkflowExecutionEngineTest {
             val writeDir2b = p2b.appendedNode!!.continuationStateJson["latent_dir"]!!.jsonPrimitive.content
             assertTrue(readDir2b.endsWith("/main"))
             assertNotEquals(readDir2b, writeDir2b)
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
+
+    @Test fun statefulChainPostVerifiesUnisolatedPayloadScriptDowngradesAndProtectsAncestors() = runBlocking {
+        assumeTrue(systemPythonAvailable())
+        val temp = Files.createTempDirectory("engine-scenarioc").toFile()
+        try {
+            val f = ComfyFixture()
+            val store = FileComfySubmitterFileStore(File(temp, "sub"))
+            val repo = ComfyRepository(f.storage, ComfyCredentials(f.secrets), f.http, submitterFiles = store)
+            repo.saveHost(f.host)
+            val chainStore = InMemoryStatefulChainStore()
+            val runner = ComfySubmitterRunner(store, File(temp, "run"), ::testLaunch)
+            val engine = ComfyWorkflowExecutionEngine(
+                repository = repo,
+                chainStore = chainStore,
+                credentials = ComfyCredentials(f.secrets),
+                http = f.http,
+                proxyClient = OkHttpClient(),
+                runner = runner,
+                resolver = f.media,
+                store = f.media,
+                scratchRoot = File(temp, "scratch"),
+            )
+
+            // 模拟 Scenario C 中无视 write_latent_dir 且固定回报 latent_dir="main", clip_index=0 的有缺陷脚本
+            val buggyCode = """
+                import argparse, json
+                from pathlib import Path
+
+                p = argparse.ArgumentParser()
+                p.add_argument("--payload", required=True)
+                args = p.parse_args()
+                payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+                out = Path(payload["output_dir"]) / "out.mp4"
+                out.write_bytes(b"MP4")
+                Path(payload["result_path"]).write_text(json.dumps({
+                    "prompt_id": f"bug-{payload['segment_index']}",
+                    "continuation_state": {"latent_dir": "main", "clip_index": 0},
+                }), encoding="utf-8")
+            """.trimIndent()
+            repo.saveSubmitter(
+                hostId = f.host.id,
+                scriptId = "buggy_chain_py",
+                fileName = "buggy_chain.py",
+                displayName = "buggy_chain",
+                description = "",
+                sourceKind = SubmitterSourceKind.AGENT_AUTHORED,
+                protocol = SubmitterInvocationProtocol.PAYLOAD_JSON,
+                sourceText = buggyCode,
+                supportFiles = emptyMap(),
+            )
+            val wf = ComfyWorkflow(
+                workflowId = "wf_buggy_chain",
+                hostId = f.host.id,
+                name = "BuggyChain",
+                mediaCategory = ComfyMediaCategory.VIDEO,
+                submitterScriptId = "buggy_chain_py",
+                executionMode = WorkflowExecutionMode.STATEFUL_CHAIN,
+                chainSpec = StatefulChainSpec(),
+                fields = listOf(WorkflowFieldSpec("prompt", "提示词")),
+                capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)),
+            )
+            repo.saveWorkflow(wf, runPreflight = false)
+
+            val seg1 = engine.execute(ComfyWorkflowExecutionRequest("sessC", "wf_buggy_chain", stage = "first", outputDir = "out"))
+            val chainId = seg1.chainRecord!!.chainId
+            assertTrue(seg1.appendedNode!!.assignedWriteLatentDir?.endsWith("/main") == true)
+            assertEquals("main::clip_0", seg1.appendedNode!!.serverLatentSlotKey)
+
+            // 续接段同样回报 main::clip_0：不得误杀父节点 seg_01_v1，必须发出祖先重合告警
+            val seg2a = engine.execute(ComfyWorkflowExecutionRequest("sessC", "wf_buggy_chain", stage = "next", outputDir = "out"))
+            assertTrue("续接段不得误杀父节点", seg2a.invalidatedNodeIds.isEmpty())
+            assertEquals(ChainNodeValidity.ACTIVE, seg2a.chainRecord!!.node("seg_01_v1")!!.stateValidity)
+            assertEquals(ChainNodeValidity.ACTIVE, seg2a.chainRecord!!.node("seg_02_v1")!!.stateValidity)
+            assertTrue("应发出祖先槽位重合告警", seg2a.warnings.any { "祖先" in it || "clip_index" in it })
+
+            // 从 seg_01_v1 分叉：宿主分配隔离目录，但脚本依然写回 main::clip_0 -> 诚实降级、失效 seg_02_v1、保留 seg_01_v1
+            val seg2b = engine.execute(
+                ComfyWorkflowExecutionRequest(
+                    sessionId = "sessC",
+                    workflowId = "wf_buggy_chain",
+                    stage = "next",
+                    chainId = chainId,
+                    parentNodeId = "seg_01_v1",
+                    branchPolicy = StatefulBranchPolicy.ISOLATED_DIR,
+                    outputDir = "out",
+                ),
+            )
+            assertEquals(StatefulBranchPolicy.IN_PLACE_OVERWRITE, seg2b.appendedNode!!.branchPolicy)
+            assertEquals(listOf("seg_02_v1"), seg2b.invalidatedNodeIds)
+            assertEquals(ChainNodeValidity.ACTIVE, seg2b.chainRecord!!.node("seg_01_v1")!!.stateValidity)
+            assertEquals(ChainNodeValidity.OVERWRITTEN_BY_SIBLING, seg2b.chainRecord!!.node("seg_02_v1")!!.stateValidity)
+            assertEquals(ChainNodeValidity.ACTIVE, seg2b.chainRecord!!.node("seg_02_v2")!!.stateValidity)
+            assertEquals("main", seg2b.appendedNode!!.assignedReadLatentDir)
+            assertTrue(seg2b.appendedNode!!.assignedWriteLatentDir?.contains("/b_") == true)
+            assertTrue("应记录隔离回验告警", !seg2b.appendedNode!!.isolationWarning.isNullOrBlank())
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
+
+    @Test fun engineSupportsDirectoryStagingSeedPolicyHostVersionHistoryGlbBackfillAndInspectionModes() = runBlocking {
+        assumeTrue(systemPythonAvailable())
+        val temp = Files.createTempDirectory("engine-universal").toFile()
+        try {
+            val f = ComfyFixture()
+            val store = FileComfySubmitterFileStore(File(temp, "sub"))
+            val repo = ComfyRepository(f.storage, ComfyCredentials(f.secrets), f.http, submitterFiles = store)
+            repo.saveHost(f.host)
+
+            val fakeWorkspaceDir = File(temp, "ws").apply { mkdirs() }
+            val planDir = File(fakeWorkspaceDir, "plans/demo").apply { mkdirs() }
+            File(planDir, "plan.json").writeText("""{"clip":"sibling.mp4"}""", Charsets.UTF_8)
+            File(planDir, "sibling.mp4").writeBytes(byteArrayOf(7, 8, 9))
+            val assetsDir = File(fakeWorkspaceDir, "assets_pack").apply { mkdirs() }
+            File(assetsDir, "tex.png").writeBytes(byteArrayOf(4, 5, 6))
+
+            val runner = ComfySubmitterRunner(store, File(temp, "run"), ::testLaunch)
+            val engine = ComfyWorkflowExecutionEngine(
+                repository = repo,
+                chainStore = InMemoryStatefulChainStore(),
+                credentials = ComfyCredentials(f.secrets),
+                http = f.http,
+                proxyClient = OkHttpClient(),
+                runner = runner,
+                resolver = f.media,
+                store = f.media,
+                scratchRoot = File(temp, "scratch"),
+                stageWorkspaceDirectory = { _, virtualDirPath, destDir ->
+                    val src = File(fakeWorkspaceDir, virtualDirPath.trimStart('/'))
+                    if (!src.isDirectory) false
+                    else {
+                        src.copyRecursively(destDir, overwrite = true)
+                        true
+                    }
+                },
+            )
+
+            // 1. ANY_FILE(stageParentDirectory=true) + DIRECTORY + SeedPolicy.RANDOM_EACH_RUN + {host.comfyui_version} + /history 补拉 SaveGLB
+            val glbSubmitterCode = """
+                import argparse, json
+                from pathlib import Path
+
+                p = argparse.ArgumentParser()
+                p.add_argument("--host", default=None)
+                p.add_argument("--output-dir", default=None)
+                p.add_argument("--receipt", default=None)
+                p.add_argument("--plan", required=True)
+                p.add_argument("--assets", required=True)
+                p.add_argument("--seed", type=int, required=True)
+                p.add_argument("--tag", required=True)
+                p.add_argument("--emit-workflow", default=None)
+                p.add_argument("--preflight-only", action="store_true")
+                args = p.parse_args()
+
+                plan_path = Path(args.plan)
+                sibling = plan_path.parent / "sibling.mp4"
+                tex = Path(args.assets) / "tex.png"
+                assert plan_path.is_file(), f"missing plan: {plan_path}"
+                assert sibling.is_file(), f"missing sibling: {sibling}"
+                assert tex.is_file(), f"missing asset: {tex}"
+                assert args.tag == "ver-test", f"unexpected host version tag: {args.tag}"
+
+                if args.emit_workflow:
+                    Path(args.emit_workflow).write_text(json.dumps({
+                        "1": {"class_type": "SaveGLB", "inputs": {"seed": args.seed, "tag": args.tag}}
+                    }), encoding="utf-8")
+                    raise SystemExit(0)
+                if args.preflight_only:
+                    print(json.dumps({"ok": True, "tag": args.tag, "seed": args.seed}))
+                    raise SystemExit(0)
+
+                # 模拟 --submit-only：不下载本地文件，仅输出 prompt_id，交由宿主 /history 补拉 3D GLB
+                print("submitted job prompt_id=pid-glb-1")
+            """.trimIndent()
+            repo.saveSubmitter(
+                hostId = f.host.id,
+                scriptId = "glb_cli_py",
+                fileName = "submit_glb.py",
+                displayName = "glb_cli",
+                description = "",
+                sourceKind = SubmitterSourceKind.DESKTOP_IMPORT,
+                protocol = SubmitterInvocationProtocol.CLI_ARGS,
+                sourceText = glbSubmitterCode,
+                supportFiles = emptyMap(),
+            )
+            val wfGlb = ComfyWorkflow(
+                workflowId = "wf_glb_universal",
+                hostId = f.host.id,
+                name = "GLB Universal",
+                mediaCategory = ComfyMediaCategory.MODEL_3D,
+                submitterScriptId = "glb_cli_py",
+                emitWorkflowFlag = "--emit-workflow",
+                preflightOnlyFlag = "--preflight-only",
+                backfillOutputsFromHistory = true,
+                timeoutSeconds = 60,
+                fields = listOf(
+                    WorkflowFieldSpec(
+                        key = "plan",
+                        label = "计划文件",
+                        valueType = FieldValueType.ANY_FILE,
+                        cliFlag = "--plan",
+                        stageParentDirectory = true,
+                    ),
+                    WorkflowFieldSpec(
+                        key = "assets",
+                        label = "资源目录",
+                        valueType = FieldValueType.DIRECTORY,
+                        cliFlag = "--assets",
+                    ),
+                    WorkflowFieldSpec(
+                        key = "seed",
+                        label = "种子",
+                        valueType = FieldValueType.INT,
+                        cliFlag = "--seed",
+                        seedPolicy = SeedPolicy.RANDOM_EACH_RUN,
+                        min = 100.0,
+                        max = 999999.0,
+                        required = false,
+                    ),
+                    WorkflowFieldSpec(
+                        key = "tag",
+                        label = "版本标记",
+                        valueType = FieldValueType.TEXT,
+                        cliFlag = "--tag",
+                        defaultValue = JsonPrimitive("ver-{host.comfyui_version}"),
+                        mutability = FieldMutability.FIXED,
+                    ),
+                ),
+                capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)),
+            )
+            repo.saveWorkflow(wfGlb, runPreflight = false)
+
+            // 1a. EMIT_WORKFLOW 模式：不调用 GPU，返回工作流 JSON 且保存文件，并生成随机种子
+            val emitted = engine.execute(
+                ComfyWorkflowExecutionRequest(
+                    sessionId = "sessU",
+                    workflowId = "wf_glb_universal",
+                    runMode = ComfyWorkflowRunMode.EMIT_WORKFLOW,
+                    outputDir = "out",
+                    contentInputs = mapOf(
+                        "plan" to JsonPrimitive("plans/demo/plan.json"),
+                        "assets" to JsonPrimitive("assets_pack"),
+                    ),
+                ),
+            )
+            assertEquals(ComfyWorkflowRunMode.EMIT_WORKFLOW, emitted.runMode)
+            assertTrue(emitted.savedMedia.isEmpty())
+            assertTrue(!emitted.emittedWorkflowPath.isNullOrBlank())
+            val emittedSeed = emitted.appliedSeeds["seed"]!!
+            assertTrue(emittedSeed in 100L..999999L)
+            assertEquals(
+                "ver-test",
+                emitted.emittedWorkflowJson!!["1"]!!.jsonObject["inputs"]!!.jsonObject["tag"]!!.jsonPrimitive.content,
+            )
+
+            // 1b. PREFLIGHT_ONLY 模式
+            val preflight = engine.execute(
+                ComfyWorkflowExecutionRequest(
+                    sessionId = "sessU",
+                    workflowId = "wf_glb_universal",
+                    runMode = ComfyWorkflowRunMode.PREFLIGHT_ONLY,
+                    outputDir = "out",
+                    contentInputs = mapOf(
+                        "plan" to JsonPrimitive("plans/demo/plan.json"),
+                        "assets" to JsonPrimitive("assets_pack"),
+                    ),
+                ),
+            )
+            assertEquals(ComfyWorkflowRunMode.PREFLIGHT_ONLY, preflight.runMode)
+            assertEquals(true, preflight.preflightReport!!["ok"]!!.jsonPrimitive.content.toBooleanStrict())
+
+            // 1c. EXECUTE 模式 + /history/{prompt_id} 自动补拉 SaveGLB 的 3d 产物
+            f.http.history = Json.parseToJsonElement(
+                """{"pid-glb-1":{"status":{"completed":true,"status_str":"success"},"outputs":{"10":{"3d":[{"filename":"hero.glb","subfolder":"","type":"output"}]}}}}""",
+            ).jsonObject
+            val exec = engine.execute(
+                ComfyWorkflowExecutionRequest(
+                    sessionId = "sessU",
+                    workflowId = "wf_glb_universal",
+                    runMode = ComfyWorkflowRunMode.EXECUTE,
+                    outputDir = "out",
+                    contentInputs = mapOf(
+                        "plan" to JsonPrimitive("plans/demo/plan.json"),
+                        "assets" to JsonPrimitive("assets_pack"),
+                    ),
+                ),
+            )
+            assertEquals("pid-glb-1", exec.promptId)
+            assertEquals(1, exec.savedMedia.size)
+            assertTrue(exec.savedMedia.single().path.endsWith(".glb"))
+            assertTrue(exec.appliedSeeds["seed"]!! in 100L..999999L)
+
+            // 2. allowEmptyOutputs = true 且禁用 history 补拉时允许零文件成功
+            val wfEmptyOk = wfGlb.copy(
+                workflowId = "wf_empty_ok",
+                backfillOutputsFromHistory = false,
+                allowEmptyOutputs = true,
+            )
+            repo.saveWorkflow(wfEmptyOk, runPreflight = false)
+            val emptyRes = engine.execute(
+                ComfyWorkflowExecutionRequest(
+                    sessionId = "sessU",
+                    workflowId = "wf_empty_ok",
+                    outputDir = "out",
+                    contentInputs = mapOf(
+                        "plan" to JsonPrimitive("plans/demo/plan.json"),
+                        "assets" to JsonPrimitive("assets_pack"),
+                    ),
+                ),
+            )
+            assertTrue(emptyRes.savedMedia.isEmpty())
+            assertEquals("pid-glb-1", emptyRes.promptId)
         } finally {
             temp.deleteRecursively()
         }

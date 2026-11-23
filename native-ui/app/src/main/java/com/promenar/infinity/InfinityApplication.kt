@@ -1955,6 +1955,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             appFilesDir = filesDir,
             appCacheDir = cacheDir,
             packagedPython = com.promenar.infinity.data.exec.PackagedPython.from(this),
+            linuxBridge = com.promenar.infinity.data.mediagen.comfy.DefaultComfyLinuxSubmitterBridge(
+                linuxRuntime = linux.runtime,
+                sessionRunModeProvider = sessionRunModes::modeFor,
+            ),
+            stageWorkspaceDirectory = ::stageComfyWorkspaceDirectory,
         )
     }
 
@@ -3564,6 +3569,73 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     /** 把生图、MCP、下载等来源的媒体写入会话工作区。 */
     val workspaceMediaStore: com.promenar.infinity.domain.media.WorkspaceMediaStore by lazy {
         workspaceMediaResolver as com.promenar.infinity.domain.media.WorkspaceMediaStore
+    }
+
+    /** 为 ComfyUI 工作流按会话工作区或已启用技能虚拟目录安全暂存整个目录树（保留相对层级、上限 256 文件 / 512 MiB）。 */
+    private suspend fun stageComfyWorkspaceDirectory(
+        sessionId: String,
+        virtualDirPath: String,
+        destDir: java.io.File,
+    ): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val trimmed = virtualDirPath.trim().trimEnd('/')
+        if (trimmed.isEmpty() || "://" in trimmed) return@withContext false
+
+        val skillSubPath = when {
+            trimmed.startsWith("/mnt/skills/") -> trimmed.removePrefix("/mnt/skills/")
+            trimmed.startsWith("/skills/") -> trimmed.removePrefix("/skills/")
+            else -> null
+        }
+        val sourcePair: Pair<java.io.File, java.io.File>? = if (skillSubPath != null) {
+            val skillName = skillSubPath.substringBefore('/').takeIf { it.isNotBlank() } ?: return@withContext false
+            val relRaw = skillSubPath.substringAfter('/', "")
+            val userSkill = skillCatalog.scan(null).user.firstOrNull { it.name == skillName } ?: return@withContext false
+            if (userSkill.status != com.promenar.infinity.data.skills.SkillStatus.ENABLED) return@withContext false
+            val root = java.io.File(skillCatalog.userRoot, skillName).canonicalFile
+            val target = if (relRaw.isBlank()) root else java.io.File(root, relRaw).canonicalFile
+            val prefix = root.path.trimEnd(java.io.File.separatorChar) + java.io.File.separatorChar
+            if (target != root && !target.path.startsWith(prefix)) return@withContext false
+            root to target
+        } else {
+            val workspaceDir = sessionWorkspaceResolver.resolve(sessionId) as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory
+                ?: return@withContext false
+            val root = workspaceDir.root.canonicalFile
+            val rel = when {
+                trimmed == "/workspace" -> ""
+                trimmed.startsWith("/workspace/") -> trimmed.removePrefix("/workspace/")
+                trimmed.startsWith("/") -> trimmed.removePrefix("/")
+                else -> trimmed
+            }
+            if (rel.split('/').any { it == ".." }) return@withContext false
+            val target = if (rel.isBlank()) root else java.io.File(root, rel).canonicalFile
+            val prefix = root.path.trimEnd(java.io.File.separatorChar) + java.io.File.separatorChar
+            if (target != root && !target.path.startsWith(prefix)) return@withContext false
+            root to target
+        }
+        val (boundaryRoot, sourceDir) = sourcePair ?: return@withContext false
+        if (!sourceDir.isDirectory) return@withContext false
+
+        val boundaryPrefix = boundaryRoot.path.trimEnd(java.io.File.separatorChar) + java.io.File.separatorChar
+        val basePath = sourceDir.toPath()
+        var filesCopied = 0
+        var bytesCopied = 0L
+        destDir.mkdirs()
+        sourceDir.walkTopDown().maxDepth(4).forEach { file ->
+            if (file == sourceDir || file.isDirectory) return@forEach
+            val name = file.name
+            if (name == ".git" || name == "__pycache__" || name.endsWith(".pyc")) return@forEach
+            val canon = runCatching { file.canonicalFile }.getOrNull() ?: return@forEach
+            if (canon != boundaryRoot && !canon.path.startsWith(boundaryPrefix)) return@forEach
+            val rel = runCatching { basePath.relativize(file.toPath()).toString() }.getOrNull() ?: return@forEach
+            if (rel.startsWith("..") || filesCopied >= 256) return@forEach
+            val size = canon.length()
+            if (bytesCopied + size > 512L * 1024L * 1024L) return@forEach
+            val out = java.io.File(destDir, rel)
+            out.parentFile?.mkdirs()
+            canon.copyTo(out, overwrite = true)
+            filesCopied++
+            bytesCopied += size
+        }
+        true
     }
 
     /** 为 `comfy_save_submitter` 按会话工作区虚拟路径或已启用用户技能路径读取提交器脚本及配套模块（上限 4 MiB）。 */

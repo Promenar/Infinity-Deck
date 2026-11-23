@@ -50,4 +50,110 @@ class ComfyConfigurationCodecTest {
         val error = assertThrows(IllegalArgumentException::class.java) { ComfyConfigurationCodec.decodeTemplate(raw) }
         assertEquals("params[1].default: 不在 options 内", error.message)
     }
+
+    @Test fun versionThreeDecodesLegacyWorkflowWithoutNewFieldsAndRoundTripsUniversalConfig() {
+        val f = ComfyFixture()
+        // 1. 兼容旧版 v3 持久化 JSON（不含 cliFalseFlag/cliValueTemplate/seedPolicy/sidecarSuffixes/requiredTools 等新增字段）
+        val legacyV3 = """
+            {
+              "version": 3,
+              "hosts": [
+                {"id": "host", "name": "测试主机", "baseUrl": "http://comfy.test:8188"}
+              ],
+              "templates": [],
+              "submitters": [],
+              "workflows": [
+                {
+                  "workflow": {
+                    "workflowId": "wf_legacy",
+                    "hostId": "host",
+                    "name": "Legacy",
+                    "mediaCategory": "VIDEO",
+                    "submitterScriptId": "sub_legacy",
+                    "executionMode": "STATEFUL_CHAIN",
+                    "chainSpec": {"stageFlag": "--stage"},
+                    "fields": [
+                      {"key": "prompt", "label": "提示词", "valueType": "TEXT", "cliFlag": "--prompt", "cliMode": "VALUE"}
+                    ],
+                    "capabilities": {"modes": ["TEXT"]}
+                  },
+                  "status": "PASS"
+                }
+              ]
+            }
+        """.trimIndent()
+        val decodedLegacy = ComfyConfigurationCodec.decode(legacyV3)
+        val legacyWf = decodedLegacy.workflows.single().workflow
+        assertEquals("wf_legacy", legacyWf.workflowId)
+        assertTrue(legacyWf.backfillOutputsFromHistory)
+        assertFalse(legacyWf.allowEmptyOutputs)
+        assertTrue(legacyWf.requiredTools.isEmpty())
+        assertTrue(legacyWf.requiredPlatforms.isEmpty())
+        assertEquals(SeedPolicy.CALLER, legacyWf.fields.single().seedPolicy)
+        assertNull(legacyWf.fields.single().cliFalseFlag)
+        assertTrue(legacyWf.chainSpec!!.sidecarSuffixes.isEmpty())
+
+        // 2. 全量通用配置字段往返编解码无损
+        val richWf = ComfyWorkflow(
+            workflowId = "wf_universal",
+            hostId = f.host.id,
+            name = "Universal",
+            mediaCategory = ComfyMediaCategory.MODEL_3D,
+            submitterScriptId = "sub_universal",
+            emitWorkflowFlag = "--dry-run",
+            emitWorkflowTakesPath = false,
+            preflightOnlyFlag = "--preflight-only",
+            promptIdPattern = """prompt_id=([A-Za-z0-9_-]+)""",
+            timeoutSeconds = 1800,
+            allowEmptyOutputs = true,
+            backfillOutputsFromHistory = true,
+            historyOutputFields = listOf("3d", "glb"),
+            requiredTools = listOf("ffmpeg", "ffprobe"),
+            requiredPlatforms = listOf("android", "linux"),
+            chainSpec = StatefulChainSpec(
+                readLatentDirFlag = "--read-latent-dir",
+                writeLatentDirFlag = "--write-latent-dir",
+                sidecarSuffixes = listOf(".segment.json"),
+            ),
+            fields = listOf(
+                WorkflowFieldSpec(
+                    key = "ref",
+                    label = "参考",
+                    valueType = FieldValueType.JSON,
+                    cliFlag = "--bind",
+                    cliMode = CliArgMode.TEMPLATE,
+                    cliValueTemplate = "{node}={file}",
+                ),
+                WorkflowFieldSpec(
+                    key = "plan",
+                    label = "计划",
+                    valueType = FieldValueType.ANY_FILE,
+                    cliFlag = "--plan",
+                    stageParentDirectory = true,
+                ),
+                WorkflowFieldSpec(
+                    key = "free_after",
+                    label = "回收显存",
+                    valueType = FieldValueType.BOOL,
+                    cliFlag = "--free-after",
+                    cliFalseFlag = "--no-free-after",
+                    cliMode = CliArgMode.BOOL_FLAG,
+                ),
+                WorkflowFieldSpec(
+                    key = "seed",
+                    label = "种子",
+                    valueType = FieldValueType.INT,
+                    cliFlag = "--seed",
+                    seedPolicy = SeedPolicy.RANDOM_EACH_RUN,
+                ),
+            ),
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)),
+        )
+        val config = ComfyConfiguration(
+            hosts = listOf(f.host),
+            workflows = listOf(ComfyWorkflowState(richWf)),
+        )
+        val roundTripped = ComfyConfigurationCodec.decode(ComfyConfigurationCodec.encode(config))
+        assertEquals(richWf, roundTripped.workflows.single().workflow)
+    }
 }

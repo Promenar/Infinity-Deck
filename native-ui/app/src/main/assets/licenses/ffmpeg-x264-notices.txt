@@ -1,0 +1,11 @@
+内置音视频处理组件（Android arm64-v8a）
+
+FFmpeg 9.1 · GNU General Public License v3.0 (GPL-3.0)
+上游源码：https://ffmpeg.org/releases/ffmpeg-9.1.tar.xz
+SHA-256：1a4d394ae63d190a526cd052eb4415c156b5c5e2df37efab41a7de0b8fde2433
+说明：本应用随包分发精简编译的 libnxffmpeg.so、libnxffprobe.so 及对应 libav*_nxff.so 共享库，启用 --enable-gpl 与 --enable-libx264，与 Infinity Deck 整体 GPL-3.0 协议一致。完整构建脚本与参数清单见仓库 native-ui/app/ffmpeg/build-android-ffmpeg.sh 与 native-ui/app/ffmpeg/ffmpeg-android.properties。
+
+x264 (commit 0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee) · GNU General Public License v2.0 or later (GPL-2.0-or-later)
+上游源码：https://code.videolan.org/videolan/x264/-/archive/0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee/x264-0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee.tar.gz
+SHA-256：d0967a1348c85dfde363bb52610403be898171493100561efa0dd05d5fd1ae50
+说明：仅编译 8-bit 静态编码库并静态链接至 libavcodec_nxff.so，用于端侧 H.264 编码与视频预处理。

@@ -1,10 +1,12 @@
 import com.android.compose.screenshot.tasks.PreviewScreenshotUpdateTask
 import com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask
+import com.promenar.infinity.buildlogic.BuildPackagedFfmpeg
 import com.promenar.infinity.buildlogic.BuildTailnetBinary
 import com.promenar.infinity.buildlogic.BuildLinuxRuntime
 import com.promenar.infinity.buildlogic.FetchVerifiedFile
 import com.android.build.api.variant.BuildConfigField
 import com.promenar.infinity.buildlogic.GenerateLauncherIcons
+import com.promenar.infinity.buildlogic.PackagedFfmpegInputs
 import com.promenar.infinity.buildlogic.PackagedPythonRelease
 import com.promenar.infinity.buildlogic.PackagedPythonWheels
 import com.promenar.infinity.buildlogic.PreparePackagedPython
@@ -256,6 +258,37 @@ val preparePackagedSite = packagedPythonAbis.keys.associateWith { abi ->
     }
 }
 
+// 内置精简 FFmpeg/ffprobe（arm64-v8a，8 个共享库合计约 2.7 MiB APK 增量，遵循 GPL-3.0）：
+// 下载固定上游源码包并校验 SHA-256，编译产物按输入指纹缓存于 ~/.gradle/caches/infinity-ffmpeg/built。
+// -Pinfinity.ffmpeg=false 可临时跳过（发行校验会拒绝缺少内置 FFmpeg 的 arm64-v8a APK）。
+val ffmpegEnabled = providers.gradleProperty("infinity.ffmpeg").map(String::toBoolean).getOrElse(true)
+val packagedFfmpegInputs = PackagedFfmpegInputs.load(file("ffmpeg/ffmpeg-android.properties").toPath())
+val packagedFfmpegCacheDir = providers.gradleProperty("infinity.ffmpegCacheDir")
+    .map { File(it) }
+    .orElse(provider { File(gradle.gradleUserHomeDir, "caches/infinity-ffmpeg") })
+val fetchPackagedFfmpeg = tasks.register<FetchVerifiedFile>("fetchPackagedFfmpeg") {
+    description = "下载并校验 FFmpeg ${packagedFfmpegInputs.getProperty("ffmpeg.version")} 源码归档。"
+    url.set(packagedFfmpegInputs.getProperty("ffmpeg.url"))
+    sha256.set(packagedFfmpegInputs.getProperty("ffmpeg.sha256"))
+    outputFile.set(layout.file(packagedFfmpegCacheDir.map { File(it, "ffmpeg-${packagedFfmpegInputs.getProperty("ffmpeg.version")}.tar.xz") }))
+}
+val fetchPackagedX264 = tasks.register<FetchVerifiedFile>("fetchPackagedX264") {
+    description = "下载并校验 x264 固定提交源码归档。"
+    url.set(packagedFfmpegInputs.getProperty("x264.url"))
+    sha256.set(packagedFfmpegInputs.getProperty("x264.sha256"))
+    outputFile.set(layout.file(packagedFfmpegCacheDir.map { File(it, "x264-${packagedFfmpegInputs.getProperty("x264.version")}.tar.gz") }))
+}
+val buildPackagedFfmpegArm64V8a = tasks.register<BuildPackagedFfmpeg>("buildPackagedFfmpegArm64V8a") {
+    ffmpegArchive.set(fetchPackagedFfmpeg.flatMap { it.outputFile })
+    x264Archive.set(fetchPackagedX264.flatMap { it.outputFile })
+    buildScript.set(layout.projectDirectory.file("ffmpeg/build-android-ffmpeg.sh"))
+    abi.set("arm64-v8a")
+    apiLevel.set(android.defaultConfig.minSdk ?: 31)
+    ndkDirectory.set(androidComponents.sdkComponents.ndkDirectory)
+    cacheDirectory.set(layout.dir(packagedFfmpegCacheDir.map { File(it, "built") }))
+    outputDirectory.set(layout.buildDirectory.dir("generated/packagedFfmpeg/arm64-v8a"))
+}
+
 // 内置 Tailscale 节点（tsnet）：app/tailnet 的 Go 程序以固定 Go 版本与 go.sum 编译为 libnxtailnet.so，随两个渠道打包。
 // 宿主需要 Go 1.21 及以上（GOTOOLCHAIN 精确切换到登记版本）；-Pinfinity.goExecutable 指定 go，
 // -Pinfinity.tailnet=false 跳过（运行时报告不可用，发行校验会拒绝缺少该库的 APK）。
@@ -353,6 +386,10 @@ androidComponents.onVariants { variant ->
             variant.sources.jniLibs?.addGeneratedSourceDirectory(build, BuildTailnetBinary::getOutputDirectory)
         }
     }
+    // 内置精简 FFmpeg/ffprobe（arm64-v8a），随内置 Python 一起提供音视频剪辑与探测能力。
+    if (ffmpegEnabled && "arm64-v8a" in pythonAbis) {
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(buildPackagedFfmpegArm64V8a, BuildPackagedFfmpeg::getOutputDirectory)
+    }
     val generateIcons = tasks.register<GenerateLauncherIcons>("generate${capitalizedName}InfinityLauncherIcons") {
         masterSvg.set(rootProject.layout.projectDirectory.file("../assets/branding/infinity-dots-master.svg"))
         foregroundRasters.set(rootProject.layout.projectDirectory.dir("../assets/branding/launcher-foreground"))
@@ -380,8 +417,8 @@ android {
         applicationId = "com.promenar.infinity"
         minSdk = 31
         targetSdk = 36
-        versionCode = 202
-        versionName = "0.71.4-beta"
+        versionCode = 203
+        versionName = "0.71.5-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "PACKAGED_PYTHON_VERSION", "\"$packagedPythonVersion\"")

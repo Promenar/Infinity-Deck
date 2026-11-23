@@ -111,6 +111,18 @@ APP_DEX_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
 # ELF e_machine：发行 APK 中每个带打包 Python 的 ABI 都须有对应架构的 libnxtailnet.so。
 TAILNET_ELF_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
 
+# 精简内置 FFmpeg/ffprobe 共享库清单（随 arm64-v8a 发行）。
+PACKAGED_FFMPEG_LIBRARIES: tuple[str, ...] = (
+    "libnxffmpeg.so",
+    "libnxffprobe.so",
+    "libavcodec_nxff.so",
+    "libavfilter_nxff.so",
+    "libavformat_nxff.so",
+    "libavutil_nxff.so",
+    "libswresample_nxff.so",
+    "libswscale_nxff.so",
+)
+
 # 打包 Python 须带构建期预编译的哈希 pyc：缺少时每次启动解释器都重新编译，内置 git 与 Git 面板在真机上慢约十倍。
 PYTHON_BYTECODE_MODULES: dict[str, tuple[str, ...]] = {
     "libpystdlib.so": ("os.pyc", "encodings/__init__.pyc", "sitecustomize.pyc"),
@@ -372,6 +384,35 @@ def verify_tailnet_binary(apk: Path) -> None:
         raise VerificationError("内置 Tailscale 校验失败：" + "；".join(problems))
 
 
+def verify_packaged_ffmpeg(apk: Path) -> None:
+    """确认 arm64-v8a 发行包带有完整的内置精简 FFmpeg/ffprobe 共享库，且均为 AArch64 ELF。"""
+    has_arm64_python = False
+    headers: dict[str, bytes] = {}
+    with zipfile.ZipFile(apk) as archive:
+        for info in archive.infolist():
+            name = info.filename.replace("\\", "/")
+            if name in {"lib/arm64-v8a/libpystdlib.so", "lib/arm64-v8a/libpysite.so"}:
+                has_arm64_python = True
+            if name.startswith("lib/arm64-v8a/"):
+                basename = name.rsplit("/", 1)[-1]
+                if basename in PACKAGED_FFMPEG_LIBRARIES:
+                    with archive.open(info) as stream:
+                        headers[basename] = stream.read(20)
+    if not has_arm64_python and not headers:
+        return
+    problems: list[str] = []
+    for lib in PACKAGED_FFMPEG_LIBRARIES:
+        header = headers.get(lib)
+        if header is None:
+            problems.append(f"arm64-v8a 缺少 {lib}")
+        elif len(header) < 20 or header[:4] != b"\x7fELF":
+            problems.append(f"arm64-v8a/{lib} 不是 ELF 二进制文件")
+        elif int.from_bytes(header[18:20], "little") != TAILNET_ELF_MACHINES["arm64-v8a"]:
+            problems.append(f"arm64-v8a/{lib} 的架构不是 arm64-v8a")
+    if problems:
+        raise VerificationError("内置 FFmpeg 校验失败：" + "；".join(problems))
+
+
 def parse_badging(output: str) -> dict[str, str]:
     package_lines = [line for line in output.splitlines() if line.startswith("package: ")]
     if len(package_lines) != 1:
@@ -528,6 +569,7 @@ def main() -> int:
     verify_recording_artifacts(apk)
     verify_packaged_python_bytecode(apk)
     verify_tailnet_binary(apk)
+    verify_packaged_ffmpeg(apk)
     verify_linux_runtime(apk, args.distribution)
     verify_badging(apk, args.expected_package, args.expected_version_code, args.expected_version_name)
     verify_signature(apk, args.expected_cert_sha256)

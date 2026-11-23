@@ -136,6 +136,13 @@ OAuth App 不勾选 “Expire user access tokens”，令牌没有固定有效�
 
 设备回归类：`com.promenar.infinity.data.linux.LinuxRuntimeDeviceTest`（安装、诊断、工作区读写、重置、卸载）、`LinuxTerminalDeviceTest`（PTY 输出与进程组清理）、`LinuxFileIoDeviceTest`（fd 固定、不覆盖移动）。
 
+## 内置精简 FFmpeg / ffprobe（arm64-v8a）
+
+两个渠道打包 `arm64-v8a` 时均附带精简共享库版 **FFmpeg 9.1 + 8-bit `libx264`**（共 8 个 `.so`：`libnxffmpeg.so`、`libnxffprobe.so` 与 6 个 `libav*_nxff.so`，压缩后 APK 净增量约 `2.70 MiB`，遵循 GPL-3.0），源码地址与 SHA-256 锁定在 `native-ui/app/ffmpeg/ffmpeg-android.properties`，交叉编译脚本位于 `native-ui/app/ffmpeg/build-android-ffmpeg.sh`。
+
+- Gradle 任务 `buildPackagedFfmpegArm64V8a` 按输入指纹将产物缓存到 `~/.gradle/caches/infinity-ffmpeg/built/`，主工作树与长期发行工作树复用同一缓存；可用 `-Pinfinity.ffmpeg=false` 临时跳过（发行校验 `scripts/verify-release-apk.py` 会拒绝缺少全部 8 个库的 `arm64-v8a` APK）。
+- 编译过程通过编译器包装脚本剥离构建机前缀并直接写入 `RUNPATH=$ORIGIN`，`scripts/verify-release-apk.py` 零豁免通过敏感路径扫描。运行时内置 Python 提交器与内置执行环境自动提供 `ffmpeg`/`ffprobe` 能力；许可与源码声明位于 `native-ui/app/src/main/assets/licenses/ffmpeg-x264-notices.txt`。
+
 ## 16 KB 页大小
 
 两个渠道的 64 位原生库（arm64-v8a、x86_64）全部按不小于 16 KB 的 PT_LOAD 段对齐链接，16 KB 页设备无需兼容模式，4 KB 页设备上调试包也不再弹出“Android 应用兼容性”对话框。原生库以 `useLegacyPackaging` 解压安装，系统只检查解压后的 ELF 段对齐，不要求 APK 内 ZIP 偏移对齐。
@@ -145,6 +152,7 @@ OAuth App 不勾选 “Expire user access tokens”，令牌没有固定有效�
 | `libinfinity_workspace_fs.so`、`libtermux.so`，推理开启时的 llama/ggml | `app/src/main/cpp/CMakeLists.txt` | 全局 `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384`，覆盖 FetchContent 子工程 |
 | `libnxproot.so`、`libnxproot-loader.so` | `app/linux/CMakeLists.txt` | 各目标 `-z,max-page-size=16384` |
 | `libnxpython.so` | `python/pylauncher.c` | `-Wl,-z,max-page-size=16384` |
+| `libnxffmpeg.so`、`libnxffprobe.so`、`libav*_nxff.so` | `app/ffmpeg/build-android-ffmpeg.sh` | `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384` 且脚本内置 `llvm-readelf` 强检 |
 | `libnxtailnet.so` | Go 内部链接器（`CGO_ENABLED=0`） | `-ldflags=-R 0x10000`，64 KB |
 | `libpython3.*.so`、`libpyext_*.so` 等 | python.org 官方 Android 预编译包 | 上游已 16 KB 对齐，无法重链，由下方检查兜底 |
 | AndroidX 等依赖 AAR 自带库 | Maven 依赖 | 由下方检查兜底 |

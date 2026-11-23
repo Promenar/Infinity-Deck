@@ -545,6 +545,34 @@ class TailnetBinaryTest(ApkFixtureTestCase):
                     verify_release_apk.scan_sensitive_content(self.make_apk(entries))
 
 
+class PackagedFfmpegTest(ApkFixtureTestCase):
+    """内置精简 FFmpeg/ffprobe：含 arm64-v8a 打包 Python 时必须带齐 8 个 AArch64 ELF 共享库。"""
+
+    def full_ffmpeg_entries(self) -> dict[str, bytes]:
+        entries = {"lib/arm64-v8a/libpystdlib.so": b"zip"}
+        for lib in verify_release_apk.PACKAGED_FFMPEG_LIBRARIES:
+            entries[f"lib/arm64-v8a/{lib}"] = elf(183)
+        return entries
+
+    def test_accepts_complete_arm64_ffmpeg_set_and_skips_x86_only_apk(self) -> None:
+        verify_release_apk.verify_packaged_ffmpeg(self.make_apk(self.full_ffmpeg_entries()))
+        verify_release_apk.verify_packaged_ffmpeg(self.make_apk({"lib/x86_64/libpystdlib.so": b"zip"}))
+
+    def test_rejects_missing_non_elf_or_wrong_arch_ffmpeg_library(self) -> None:
+        missing_one = self.full_ffmpeg_entries()
+        del missing_one["lib/arm64-v8a/libnxffprobe.so"]
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "arm64-v8a 缺少 libnxffprobe.so"):
+            verify_release_apk.verify_packaged_ffmpeg(self.make_apk(missing_one))
+
+        wrong_arch = self.full_ffmpeg_entries() | {"lib/arm64-v8a/libnxffmpeg.so": elf(62)}
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "架构不是 arm64-v8a"):
+            verify_release_apk.verify_packaged_ffmpeg(self.make_apk(wrong_arch))
+
+        non_elf = self.full_ffmpeg_entries() | {"lib/arm64-v8a/libavcodec_nxff.so": b"#!/bin/sh"}
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "不是 ELF"):
+            verify_release_apk.verify_packaged_ffmpeg(self.make_apk(non_elf))
+
+
 class ChecksumVerificationTest(ApkFixtureTestCase):
     def test_writes_standard_checksum_with_apk_basename(self) -> None:
         apk = self.make_apk({"AndroidManifest.xml": b"manifest"})

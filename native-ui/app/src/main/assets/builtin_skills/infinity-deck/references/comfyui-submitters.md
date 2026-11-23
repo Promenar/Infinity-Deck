@@ -1,71 +1,67 @@
-# ComfyUI 受控 Python 3.14 提交器与有状态链协议
+# ComfyUI 通用提交器框架与有状态链协议
 
-本参考说明适用于通过 `comfy_save_submitter` 编写或更新 `AGENT_AUTHORED` 脚本，以及在 `comfy_save_workflow` 中绑定 `CLI_ARGS` / `PAYLOAD_JSON` 工作流。
+本参考说明适用于把任意用户技能脚本接入 `comfy_save_submitter` / `comfy_save_workflow`，以及编写或运行 `CLI_ARGS`、`PAYLOAD_JSON` 与内置 API JSON 工作流。
 
-## 运行隔离与安全边界
+## 双执行环境与安全边界
 
-- 所有提交器均在应用打包的独立 Python 3.14 环境与一过性运行目录（`run_<id>/`）中执行，仅依赖 Python 标准库，不调用系统包管理器或外部持久化虚拟环境。
-- 不向提交器传递任何 ComfyUI 主机密钥、Cookie 或令牌；宿主机在本地启动 `127.0.0.1` 回环代理，脚本只需将请求发往传入的本地代理基地址，由宿主自动注入主机鉴权头。
+- **自动环境路由**：
+  - 当前会话激活 **Linux 运行模式** 且内置 Linux 环境就绪时，干跑校验与正式执行均自动在 **Linux 虚拟环境**（`python3`）中运行，可直接消费 Linux 内已安装的 `ffmpeg`、`ffprobe` 与第三方 Python 包。
+  - 其它情况（内置模式、Linux 未就绪、制作面板等无会话触发）均在应用打包的独立 **内置 Python 3.14** 中运行。
+  - 干跑自检与正式运行始终使用同一执行环境，并在 `comfy_list_hosts`、`comfy_save_submitter`、`comfy_preflight_workflow`、`comfy_run_workflow` 中返回 `execution_runtime`（`LINUX` 或 `BUILTIN_PYTHON`）与工具探测状态 `available_tools`。
+- **路径隔离与零凭据暴露**：
+  - 宿主机在一过性运行目录内隔离执行提交器；在 Linux 模式下通过 `/mnt/comfy_run` 与 `/mnt/comfy_stage` 自动完成宿主机与 guest 路径双向换算，并默认设置 `PYTHONDONTWRITEBYTECODE=1`（防止向技能目录写入 `.pyc`）。
+  - 主机密钥、Cookie 与令牌永不进入脚本进程。宿主机启动 `127.0.0.1` 本地回环鉴权代理并配置 `NO_PROXY=127.0.0.1,localhost`，脚本只需访问传入的回环地址即可透明鉴权。
 
-## 零改写导入已启用技能包（推荐用于桌面验证脚本）
+## 标准接入流程（零改写适配任意外部技能）
 
-- 禁止将 `$INFINITY_SKILLS/<skill>/scripts/*.py` 手工抄录到工作区或内联其中的 `assets/` JSON。
-- 调用 `comfy_save_submitter` 时直接传入：
-  - `skill_import: { "skill_name": "<已启用技能名>", "entry_path": "scripts/<入口脚本>.py" }`（可选 `include_paths`，省略时自动导入主脚本同级目录模块及 `assets/` 目录，完整保留相对层级并跳过 `__pycache__`/`.pyc`）；
-  - 使用 `skill_import` 时可省略 `file_name`（默认沿用 `entry_path`，如 `scripts/submit_h3.py`），也可同时通过 `support_paths` 传入 `/skills/...` 或 `/mnt/skills/...` 下的附加文件。
+1. **查看环境与主机**：调用 `comfy_list_hosts` 确认目标 `host_id`、当前 `execution_runtime` 与 `available_tools`（例如 `ffmpeg` / `ffprobe`）。
+2. **零改写导入脚本包**：调用 `comfy_save_submitter`，使用 `skill_import: { "skill_name": "<技能名>", "entry_path": "scripts/<入口>.py" }`（可省略 `file_name`，自动保留同级模块与 `assets/` 相对目录并跳过 `__pycache__`/`.pyc`）；不手工抄录源码或内联 JSON 到工作区。
+3. **阅读脚本参数并映射工作流配置**：通过 `read_skill_file` 阅读脚本的 `argparse` 参数与输出方式，将全部参数配置为 `comfy_save_workflow` 字段：
+   - **固定/日常分离**：提示词、输入素材、随机种子归入 `CONTENT`；模型名、采样步数、分辨率、服务端版本等基线参数归入 `FIXED`。
+   - **参数格式模板（`cliMode: "TEMPLATE"` + `cliValueTemplate`）**：表达组合参数，如 `--load-file 1=/path/a.png` 配 `"{node}={file}"`、`--guide 60:/path/mid.png` 配 `"{frame_idx}:{file}"`、`--set 10.prompt="hi"` 配 `"{node}.{input}={json}"`。`{file}` 自动暂存工作区文件并完成 Linux 路径换算，`{json}` 自动 JSON 序列化。
+   - **布尔反向标志（`cliFalseFlag`）**：适配 `argparse.BooleanOptionalAction`，`true` 传 `cliFlag`，`false` 传 `cliFalseFlag`（如 `--no-free-after`）。
+   - **任意文件与目录（`ANY_FILE` / `DIRECTORY` / `stageParentDirectory`）**：用于传入工作流 JSON、切片计划 JSON 或整目录输入。若计划文件内部按相对路径引用同级切片文件，把 `stageParentDirectory` 设为 `true`，宿主会自动暂存整个父目录树。
+   - **种子策略（`seedPolicy`）**：设为 `"RANDOM_EACH_RUN"` 时，调用方省略种子即可每次自动生成独立正整数随机种子，实际种子写入 `applied_seeds` 与链节点上下文。
+   - **主机元数据插值**：在 `cliBaseArgs`、字段默认值或字符串入参中使用 `{host.comfyui_version}`、`{host.id}`、`{host.name}`，运行时自动读取 `/system_stats` 填入真实版本，免去硬编码版本号。
+   - **输出解析与历史补拉**：
+     - 脚本无 `--receipt` 参数时把 `receiptFlag` 设为 `null` 或 `""`；宿主自动解析 stdout 尾部单行或多行缩进 JSON，并支持用 `promptIdPattern` 从纯文本提取 `prompt_id`。
+     - 产物支持 `IMAGE`、`VIDEO`、`AUDIO`、`MODEL_3D`（`.glb`/`.gltf`/`.obj`/`.stl` 等）与通用 `FILE`。当脚本采用 `--submit-only` 或未下载服务端产物（如 `SaveGLB`）时，默认开启 `backfillOutputsFromHistory: true`，宿主会自动按 `prompt_id` 轮询 `/history` 并补拉至工作区；仅产生服务端中间包而无本地输出的工作流可声明 `allowEmptyOutputs: true`。
+   - **外部工具与平台依赖（`requiredTools` / `requiredPlatforms`）**：如实声明脚本依赖的外部命令（如 `["ffmpeg", "ffprobe"]`）或平台限制（如仅 macOS 可用的脚本声明 `["macos"]`）。执行前若不满足，宿主直接失败关闭并给出明确安装或切换提示。
+   - **单工作流超时（`timeoutSeconds`）**：长视频或高步数任务可单独设置 `10～7200` 秒。
+4. **先导图 / 预检再真跑**：配置 `emitWorkflowFlag`（如 `"--emit-workflow"` 搭配默认 `emitWorkflowTakesPath: true`，或 `"--dry-run"` 搭配 `emitWorkflowTakesPath: false`）或 `preflightOnlyFlag`（如 `"--preflight-only"`）后，调用 `comfy_run_workflow(run_mode="emit_workflow")` 导出完整 API 图核对参数接线，或用 `run_mode="preflight_only"` 仅做主机预检，确认无误后再用 `run_mode="execute"` 提交 GPU。
 
-## `PAYLOAD_JSON` 协议（推荐用于新编写或自编脚本）
+## `PAYLOAD_JSON` 协议（自编提交器规范）
 
-宿主执行命令：`<entry>.py --payload <payload.json>`。
+宿主执行：`<entry>.py --payload <payload.json>`。
 
-### 输入 JSON 字段（`<payload.json>`）
+### 输入字段（`<payload.json>`）
+- `dry_run`（boolean）、`run_mode`（`"execute" | "emit_workflow" | "preflight_only"`）、`stage`（`"single" | "first" | "next" | "dry_run"`）
+- `branch_id`、`branch_policy`（`"ISOLATED_DIR" | "IN_PLACE_OVERWRITE"`）、`segment_index`、`parent_node_id`
+- `read_latent_dir`、`write_latent_dir`、`latent_dir`：有状态链宿主统一托管的服务端读取目录与本段写入目录
+- `output_dir`、`result_path`、`emit_workflow_path`（导图模式可选）、`previous_workflow`（续段可选）
+- `host_proxy_url`（与环境变量 `COMFY_HOST_URL` 一致）、`workflow_id`、`host`（`{id, name, comfyui_version}`）
+- `inputs`（所有工作区路径已替换为当前运行时可读的暂存路径）、`inherited_state`
 
-- `dry_run`（boolean）：干跑自检时为 `true`；脚本应校验标准库导入、参数解析或图构造逻辑后以退出码 `0` 返回，不得访问真实网络或提交 GPU 任务。
-- `stage`（string）：单次执行为 `"single"`；有状态链为 `"first"` 或 `"next"`；干跑为 `"dry_run"`。
-- `branch_id`（string）：主链为 `"main"`；分叉续接段为宿主机分配的分支标识（如 `"b_01_v1_a1b2"`）。
-- `branch_policy`（string）：`"ISOLATED_DIR"`（支持真物理分支隔离时默认）或 `"IN_PLACE_OVERWRITE"`（原地覆写；单目录耦合 CLI 脚本分叉时宿主自动诚实降级为此策略）。
-- `segment_index`（int）：当前段落序号（`1` 起步，逐段递增）。
-- `parent_node_id`（string，可选）：`stage == "next"` 时为父节点 ID（如 `"seg_01_v1"`）。
-- `read_latent_dir` / `write_latent_dir` / `latent_dir`（string，有状态链可选）：由宿主机自首段起统一托管的 ComfyUI 服务端潜空间读取目录与本段写入目录（分叉真隔离时 `write_latent_dir` 指向独立分支目录）。
-- `output_dir`（string）：本地下载目录绝对路径；脚本须将生成结果（PNG/MP4/WAV 等）下载到此目录。
-- `result_path`（string）：结构化结果回执 JSON 写入路径；建议同时写入该文件，或在 stdout 最后一行输出单行 JSON。
-- `host_proxy_url`（string，可选）：本地回环 ComfyUI 代理根地址（与环境变量 `COMFY_HOST_URL` 相同），仅在 `dry_run == false` 时提供，如 `"http://127.0.0.1:43210/p/<nonce>"`。请求直接拼 `/prompt`、`/history/<prompt_id>`、`/view?...`、`/upload/image`。
-- `workflow_id`（string，可选）：所属工作流 ID。
-- `inputs`（object）：已合并 `CONTENT` 与 `FIXED`（含 `fixed_overrides`）后的最终字段映射；媒体文件字段值已替换为沙箱内可读的本地暂存文件绝对路径。
-- `inherited_state`（object，可选）：有状态链 `stage == "next"` 时来自父节点的继承只读上下文（包含 `latent_dir`、`clip_index`、前序脚本返回的自定义键值及可选 `workflow_snapshot`）。
-
-同时提供环境变量：`COMFY_HOST_URL`、`COMFY_OUTPUT_DIR`、`COMFY_RESULT_PATH`、`COMFY_PAYLOAD_PATH`。
-
-### 输出 JSON 格式（写入 `result_path`）
-
+### 输出格式（写入 `result_path` 或输出至 stdout 末尾 JSON）
 ```json
 {
   "prompt_id": "comfyui-prompt-uuid",
   "summary": "简短执行摘要（可选）",
-  "outputs": [
-    {"path": "/abs/or/relative/to/output_dir/result.png", "kind": "IMAGE"}
-  ],
+  "outputs": [{"path": "/abs/or/relative/output.png", "kind": "IMAGE"}],
   "continuation_state": {
-    "latent_dir": "comfy_chain/shot_01/main",
-    "clip_index": 1,
-    "custom_key": "value"
+    "latent_dir": "comfy_chain/wf/chain_xxx/main",
+    "clip_index": 1
   }
 }
 ```
+- 进度行：向 stdout 输出 `{"type":"progress","percent":50,"message":"sampling"}` 可实时刷新进度。
+- 编写支持 `ISOLATED_DIR` 分叉隔离的 `PAYLOAD_JSON` 脚本时，必须从 `read_latent_dir` 读取前段潜空间、向 `write_latent_dir` 写入当前段潜空间，并在 `continuation_state` 中如实回传 `latent_dir = payload["write_latent_dir"]` 与 `clip_index = payload["segment_index"]`。
 
-- `outputs`：`kind` 可选 `"IMAGE"`、`"VIDEO"`、`"AUDIO"` 或 `"FILE"`；若未声明 `outputs`，宿主也会自动扫描 `output_dir` 中全部非空媒体文件。
-- 进度行：向 stdout 输出 `{"type":"progress","percent":50,"message":"sampling"}` 可实时更新制作/任务进度。
+## `STATEFUL_CHAIN` 分支隔离、回验与配套证明
 
-## `CLI_ARGS` 协议（适配桌面端现成脚本）
-
-- 干跑自检执行 `<entry>.py --help`；运行按工作流字段声明拼接 `cliBaseArgs`、各字段 `cliFlag`（`VALUE` / `REPEAT` / `BOOL_FLAG` / `TEXT_FILE` / `JSON`）及宿主通用标志（`hostFlag` 默认 `--host`、`outputDirFlag` 默认 `--output-dir`、`receiptFlag` 默认 `--receipt`）。
-- 若脚本不支持 `--receipt`（例如 `submit_music3.py` 等将结果 JSON 打到 stdout 并直接写文件到 `--output-dir` 的脚本），保存工作流时把 `receiptFlag` 设为 `null` 或 `""`：宿主**无需包装脚本**即会自动解析 stdout 末行 JSON 并扫描 `--output-dir` 回收媒体产物。
-- 启用 `STATEFUL_CHAIN` 时：
-  - 宿主自首段 `stage=first` 起自动分配 `chain_id` 与服务端安全目录 `comfy_chain/<workflow_id>/<chain_id>/main`，无需把 `latent_dir` 塞进 `CONTENT`；单活跃链下后续 `stage=next` 亦可省略 `chain_id` 由宿主自动续接。
-  - 首段与续段均按 `chainSpec` 自动注入 `stageFlag`（默认 `--stage`）、`latentDirFlag`（默认 `--latent-dir`）、可选 `segmentIndexFlag`（如 `--clip-index`）及续段 `previousWorkflowFlag`（默认 `--previous-workflow`）。
-  - 若脚本支持分离父读目录与分支写目录（声明 `readLatentDirFlag` 与 `writeLatentDirFlag`）或声明 `branchIdFlag` / 使用 `PAYLOAD_JSON`，分叉执行真正隔离的分支目录并各自保持 `ACTIVE`；若仅为单 `--latent-dir` 耦合脚本（如 `submit_h3_motion.py`），分叉时宿主会自动诚实降级为 `IN_PLACE_OVERWRITE`，并依据实际写入目录与段号把被覆写的兄弟及下游段标为 `OVERWRITTEN_BY_SIBLING`。
-
-## `STATEFUL_CHAIN` 续接与分支约定
-
-- `latent_dir` **必须使用 ComfyUI 服务端相对目录**（如 `"comfy_chain/shot_01/chain_abc/main"`）或语义命名目录，**禁止将本地一过性 `output_dir` / `run_<id>` 路径回填为 `latent_dir`**（运行目录会在落盘后清理）。
-- 从 `inherited_state` 读取 `latent_dir` 等继承键；宿主机已将 `lockedInheritedKeys` 锁定，并保证 `server_latent_slot_key` 严格反映实际物理写入目录与段号。
+- **严格真隔离判定**：`CLI_ARGS` 提交器仅在同时声明成对 `readLatentDirFlag` 与 `writeLatentDirFlag` 时才允许执行 `ISOLATED_DIR`；仅配置单 `--latent-dir`（即使含 `branchIdFlag`）在分叉前即诚实降级为 `IN_PLACE_OVERWRITE`。
+- **执行后物理槽位回验与 DAG 守卫**：
+  - 每次执行后宿主都会核对「宿主分配目录与段号」vs「脚本实际回报 `reported_latent_dir`、`clip_index` 与 `server_latent_slot_key`」。
+  - 若脚本未遵守隔离目录导致实际槽位与既有非祖先 `ACTIVE` 兄弟节点碰撞，宿主自动将本节点降级为 `IN_PLACE_OVERWRITE`，并将冲突兄弟及其后继标为 `OVERWRITTEN_BY_SIBLING`，同时绝不误杀父/祖先链并给出 `isolation_warning`。
+- **链状态完全可观测**：`comfy_run_workflow` 与 `comfy_get_chain_state` 均返回 `assigned_read_latent_dir`、`assigned_write_latent_dir`、`reported_latent_dir`、`clip_index`、`server_latent_slot_key`、`has_workflow_snapshot`、`isolation_warning` 及精简 `continuation_summary`。
+- **续段配套文件（`sidecarSuffixes`）**：声明如 `[".segment.json"]` 后，宿主自动按原始字节保存前段工作流与同名配套证明文件并在下一段运行前逐字节还原至 `previous_workflow.json` 同目录，保证 SHA-256 来源校验一致。

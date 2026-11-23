@@ -505,6 +505,61 @@ class ComfySkillsTest {
             val detailItem = detailJson["workflows"]!!.jsonArray.single().jsonObject
             assertTrue("content_fields" in detailItem)
             assertTrue("fixed_fields" in detailItem)
+
+            // 5. comfy_get_chain_state 暴露完整宿主分配目录、实际回报目录、槽位、快照标记与隔离告警（且过滤 workflow_snapshot）
+            val chains = InMemoryStatefulChainStore()
+            chains.save(
+                StatefulChainRecord(
+                    chainId = "chain_obs",
+                    sessionId = context.sessionId,
+                    workflowId = "wf_music_summary",
+                    hostId = f.host.id,
+                    rootNodeId = "seg_01_v1",
+                    activeTipNodeId = "seg_02_v2",
+                    nodes = listOf(
+                        StatefulChainNode(
+                            nodeId = "seg_01_v1",
+                            stage = "first",
+                            segmentIndex = 1,
+                            attemptLabel = "v1",
+                            branchId = "main",
+                            outputMediaPath = "m/1.png",
+                            assignedReadLatentDir = "comfy_chain/wf/c/main",
+                            assignedWriteLatentDir = "comfy_chain/wf/c/main",
+                            continuationStateJson = buildJsonObject {
+                                put("latent_dir", "main")
+                                put("clip_index", 0)
+                                put("workflow_snapshot", buildJsonObject { put("1", buildJsonObject { put("class_type", "Demo") }) })
+                                put("__run_dir_cleanup", "/tmp/secret_run")
+                            },
+                            serverLatentSlotKey = "main::clip_0",
+                            isolationWarning = "脚本回报 latent_dir=main，偏离宿主分配目录",
+                        ),
+                    ),
+                ),
+            )
+            val chainTools = comfyTools(repository = f.repository, chainStore = chains, submitterRunner = runner)
+            val obsRes = chainTools.single { it.name == "comfy_get_chain_state" }
+                .execute(buildJsonObject { put("chain_id", "chain_obs") }, context)
+            val obsNode = Json.parseToJsonElement(obsRes.content).jsonObject["chains"]!!.jsonArray.single()
+                .jsonObject["nodes"]!!.jsonArray.single().jsonObject
+            assertEquals("comfy_chain/wf/c/main", obsNode["assigned_read_latent_dir"]!!.jsonPrimitive.content)
+            assertEquals("comfy_chain/wf/c/main", obsNode["assigned_write_latent_dir"]!!.jsonPrimitive.content)
+            assertEquals("main", obsNode["reported_latent_dir"]!!.jsonPrimitive.content)
+            assertEquals(0, obsNode["clip_index"]!!.jsonPrimitive.int)
+            assertEquals("main::clip_0", obsNode["server_latent_slot_key"]!!.jsonPrimitive.content)
+            assertTrue(obsNode["has_workflow_snapshot"]!!.jsonPrimitive.boolean)
+            assertTrue(obsNode["isolation_warning"]!!.jsonPrimitive.content.contains("偏离"))
+            val summary = obsNode["continuation_summary"]!!.jsonObject
+            assertFalse("workflow_snapshot" in summary)
+            assertFalse("__run_dir_cleanup" in summary)
+            assertEquals("main", summary["latent_dir"]!!.jsonPrimitive.content)
+
+            // 6. comfy_list_hosts 返回 execution_runtime 与 available_runtimes
+            val hostsRes2 = chainTools.single { it.name == "comfy_list_hosts" }.execute(JsonObject(emptyMap()), context)
+            val hostsJson2 = Json.parseToJsonElement(hostsRes2.content).jsonObject
+            assertEquals("BUILTIN_PYTHON", hostsJson2["execution_runtime"]!!.jsonPrimitive.content)
+            assertTrue(hostsJson2["available_runtimes"]!!.jsonArray.any { it.jsonPrimitive.content == "BUILTIN_PYTHON" })
         } finally {
             temp.deleteRecursively()
         }

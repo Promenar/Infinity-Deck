@@ -204,6 +204,8 @@
     <string name="media_settings_tab_host_config">Host settings</string>
     <string name="media_settings_cat_all">All</string>
     <string name="media_settings_cat_post_process">Post-process</string>
+    <string name="media_settings_cat_model_3d">3D</string>
+    <string name="media_settings_cat_file">File</string>
     <string name="media_settings_exec_single">Single run</string>
     <string name="media_settings_exec_chain">Stateful chain</string>
     <string name="media_settings_add_workflow">New workflow</string>

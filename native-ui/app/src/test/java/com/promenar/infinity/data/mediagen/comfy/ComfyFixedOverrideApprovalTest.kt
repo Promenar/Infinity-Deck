@@ -128,7 +128,7 @@ class ComfyFixedOverrideApprovalTest {
         setupWorkflow(f)
         val scratch = Files.createTempDirectory("comfy-override-exec").toFile()
         try {
-            val runner = ComfySubmitterRunner(InMemoryComfySubmitterFileStore(), scratch) { null }
+            val runner = ComfySubmitterRunner(InMemoryComfySubmitterFileStore(), scratch, launchProvider = { null })
             val chainStore = InMemoryStatefulChainStore()
             val engine = ComfyWorkflowExecutionEngine(
                 repository = f.repository,
