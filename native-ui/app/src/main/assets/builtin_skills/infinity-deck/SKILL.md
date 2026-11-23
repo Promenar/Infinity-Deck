@@ -11,10 +11,10 @@ description: 管理或创建技能、编辑技能文件、管理智能体规则�
 
 | 项目 | 内置模式 | Linux 模式 |
 |---|---|---|
-| shell_exec | Android 系统 /system/bin/sh，不能安装系统软件包 | 应用内 proot + Alpine（musl），包管理器 apk；不可用时请用户处理环境或切换模式，不自动回退 |
-| python_exec | 应用打包 Python；可安装用户 pip 包 | Linux python3，需要安装对应软件包；不是打包 Python |
-| 文件工具工作区 | `/`；命令以真实工作目录运行，起点由 `INFINITY_WORKSPACE` 给出 | 普通工作区为 `/workspace`，私有会话另有 `/home/session` 别名；Linux 目录工作区及分支工作树使用绑定路径；命令起点见 `INFINITY_WORKSPACE` |
-| 外部挂载 | 文件工具使用 `/mnt/<别名>`；SAF 授权目录供文件工具访问，命令不能把它当作普通目录 | 仅真实路径挂载出现在 `/mnt/<别名>`；SAF 挂载不可见 |
+| `shell_exec` | Android `/system/bin/sh`（不可装系统包；临时文件用 `$TMPDIR`，输出物理路径脱敏为 `$INFINITY_WORKSPACE`） | proot + Alpine（musl，`apk` 装包）；不可用时由用户处理或切模式，不自动回退 |
+| `python_exec` | 打包 Python 3.14（可装纯 Python pip）；arm64 内置精简 FFmpeg/ffprobe 已进 `PATH` | Linux `python3` 与 `apk` 工具，不混用 Android 打包二进制 |
+| 文件工具工作区 | `/`；命令起点为 `$INFINITY_WORKSPACE` | 普通工作区 `/workspace`，私有会话另有 `/home/session`；Linux/分支目录用绑定路径 |
+| 外部挂载与资料库 | `/mnt/<别名>`（含 SAF 与经 `request_knowledge_access` 授权的 `/mnt/knowledge`）；命令不可直访 SAF/资料库 | 文件工具见真实路径与 `/mnt/knowledge`；Linux shell 仅见真实路径，资料经 `copy_knowledge_to_linux` 拷入 `/home/session/inbox` |
 | 用户级技能 | 文件工具 `/skills/<名称>`；命令 `$INFINITY_SKILLS/<名称>` | 文件工具和命令 `/mnt/skills/<名称>`，`INFINITY_SKILLS=/mnt/skills` |
 | 项目级技能 | 目录型工作区 `/.agents/skills/<名称>` | `<当前工作区路径>/.agents/skills/<名称>`；普通目录工作区通常为 `/workspace/.agents/skills/<名称>` |
 | 技能读取工具 | `activate_skill` 与 `read_skill_file` 的用户/项目虚拟路径固定为 `/skills/<名称>`、`/.agents/skills/<名称>` | 与内置模式相同；这是技能选择路径，不是 Linux 文件工具路径 |
@@ -25,7 +25,7 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 
 私有会话不扫描项目级技能。切换目录工作区后，项目技能按新的工作区重新扫描。`Termux` 是另一个 Android 应用：`termux_exec` 只在内置模式且用户已安装、授权并启用集成时可用，以 Termux 身份执行。SSH 工具在用户配置的远端主机执行，与本地运行模式相互独立。`exec_js`、`run_script`、`python_sandbox` 是应用提供的隔离脚本入口，在 Linux 会话隐藏。
 
-内置命令及 Linux 进程均以本应用的 Android 用户身份运行，能访问应用数据；“工作区”权限档是审批策略，不是进程路径沙箱。隔离脚本与文件工具有各自的工作区边界。Linux 中的 `/root` 不进入备份，重置会清空；`/home/session` 在 rootfs 之外。Codex CLI、Claude Code 及 `~/.codex`、`~/.claude`、`/root/AGENTS.md` 等规则属于第三方工具，修改它们不会修改本智能体的提示词或权限。
+内置命令及 Linux 进程均以本应用 Android 用户运行；“工作区”权限档是审批策略，不是进程路径沙盒。完整四层隔离分级、路径可见性矩阵、`$TMPDIR`/`$INFINITY_WORKSPACE` 脱敏及 FFmpeg 边界见 `references/runtime-isolation.md`。Linux 中 `/root` 不入备份且重置清空，`/home/session` 在 rootfs 外。Codex CLI、Claude Code 及 `~/.codex`、`~/.claude`、`/root/AGENTS.md` 属第三方工具，不改变本智能体配置。
 
 ## 五级权限边界
 
@@ -79,11 +79,11 @@ Linux 安装时的可选包为 git、ripgrep（`rg`）、Python 3 与 pip、Node
 | `termux_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `write_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;Linux根目录=免,免,批,免 |
 
-技能目录变更与 SSH 主机配置始终逐次审批；Linux rootfs 的文件变更在工作区档审批、完全访问档免批。命令的审批分类不会解析命令文本来单独识别技能目录，因此不要用命令修改用户技能，改用经技能目录审批的文件工具。修改项目技能前也应明确说明目标，沿用执行工具的审批。定时任务仅创建需执行审批，列表、暂停、恢复和取消免执行审批。SSH 的远端 `sftp_write` 目前免执行审批，`sftp_upload`、`sftp_download` 属命令类；`sftp_download` 向用户/项目技能目录下载被直接拒绝，审批不能放行，改用经技能目录审批的文件工具创建或编辑。首次主机信任、变更的主机指纹及秘密输入仍可能需要用户处理。
+技能目录变更与 SSH 主机配置始终逐次审批；Linux rootfs 变更在工作区档审批、完全访问档免批。命令审批不解析命令文本识别技能目录，勿用命令改用户技能，改用文件工具；改项目技能前先说明目标。定时任务仅创建需审批。远端 `sftp_write` 免批，`sftp_upload`/`sftp_download` 属命令类；`sftp_download` 写入技能目录直接拒绝，改用文件工具。首次主机信任、指纹变更与秘密输入仍由用户处理。
 
-MCP 工具由用户连接的服务器动态提供，名称不是固定内置清单的一部分：风险为 SCHEDULE、ACCESS_GRANT 或 AGENT_CONFIG 的工具需逐次审批，其它按实际工具名、参数目标和会话权限规则判定；连接不代表可以越过外部服务权限。自定义数据库/脚本 Skill 当前没有隔离执行器，不向模型暴露执行。`request_secret` 和 `show_secret` 免工具执行审批，但其保密卡需要用户输入或查看；不要让用户把秘密贴进聊天。`capture_secret` 是命令参数机制，不是独立模型工具。
+MCP 工具由已连服务器动态提供：风险为 SCHEDULE、ACCESS_GRANT 或 AGENT_CONFIG 须逐次审批，其余按工具名、参数目标与会话规则判定；连接不越过外部权限。自定义数据库/脚本 Skill 无隔离执行器，不暴露执行。`request_secret`/`show_secret` 免审批，秘密由卡片输入/查看，勿让用户贴进聊天；`capture_secret` 是命令参数机制。
 
-ComfyUI 主机与云端默认媒体模型相互独立：在“设置 → ComfyUI”配置；云端默认图像/视频模型留空时亦可调用 ComfyUI 工作流。`comfy_list_hosts`、`comfy_probe`、`comfy_list_submitters`、`comfy_list_workflows`、`comfy_preflight_workflow`、`comfy_get_chain_state` 与 `comfy_templates` 免审批。`comfy_save_submitter`、`comfy_delete_submitter`、`comfy_save_workflow`、`comfy_delete_workflow` 与 `comfy_define_template` 属配置变更，每次均需审批且不可限时免批；提交器仅在受控 Python 3.14 运行，仅见回环代理地址、零接触密钥。`comfy_run_workflow` 日常传 `content_inputs` 时免固定参数审批；传入 `fixed_overrides` 时弹出 Diff 卡请求一次性批准，绝不修改基线。`comfy_set_chain_tip` 免审批切换末端。自编或调试提交器前先读 `references/comfyui-submitters.md`。
+ComfyUI 在“设置 → ComfyUI”配置，与云端默认媒体模型独立（云端留空亦可调用）。只读与查询类工具（`comfy_list_*`/`comfy_probe`/`comfy_preflight_workflow`/`comfy_get_chain_state`/`comfy_templates`）及 `comfy_set_chain_tip` 免审批；配置变更（`comfy_save_*`/`comfy_delete_*`/`comfy_define_template`）每次逐次审批且不可限时免批。提交器随会话模式自动选用 Linux 虚拟环境或内置 Python 3.14，仅见回环代理地址、零接触密钥。`comfy_run_workflow` 日常传 `content_inputs` 免审批，传 `fixed_overrides` 弹 Diff 卡一次性批准、不改基线。开发或调试提交器前先读 `references/comfyui-submitters.md`。
 
 ### 仅用户可操作的配置
 
@@ -110,10 +110,11 @@ SSH 主机配置存在 `ssh_host_save`、`ssh_host_delete`、`ssh_host_install_k
 
 细节按需用 `read_skill_file` 读取，`name` 传 `infinity-deck`，`path` 传下列相对路径：
 
-- `references/background-processes.md`：后台任务的启动参数、状态与日志、存活条件、定时任务、`infinity-wake`、SSH 远端长期服务。
-- `references/comfyui-submitters.md`：ComfyUI Python 3.14 提交器 `PAYLOAD_JSON`/`CLI_ARGS` 与有状态链契约。
-- `references/command-execution.md`：各命令工具的分工与环境差异（起始目录、身份、终端、时限、输出上限）、结果字段、错误码与下一步。
-- `references/production-previs.md`：离线 3D 白模分镜预演（`production_previs`）的坐标系、DSL 结构、机位/走位与构图/深度/视频导出说明。
+- `references/background-processes.md`：后台任务、保活条件、定时任务、`infinity-wake` 与 SSH 远端长期服务。
+- `references/comfyui-submitters.md`：ComfyUI 双运行时提交器（Linux/内置 Python）、`CLI_ARGS`/`PAYLOAD_JSON` 与有状态链契约。
+- `references/command-execution.md`：各命令工具分工与环境差异、结果字段、错误码与下一步。
+- `references/production-previs.md`：离线 3D 白模分镜预演（`production_previs`）坐标系与 Previs DSL v1 规范。
+- `references/runtime-isolation.md`：全站四层隔离模型、路径/挂载可见性矩阵、资料库读写与 FFmpeg 边界。
 
 ## 创建与编辑技能
 
@@ -185,7 +186,7 @@ false 表示不自动匹配调用，仍可由用户 `$my-skill` 或 `/my-skill` 
 
 权限档、运行模式、当前会话工作区绑定、头像和删除由用户在界面操作，入口见上表。Agent 默认工作区可通过 defaultWorkspaceId 设置，供新建会话继承。Agent.skills 运行时未启用，不能通过配置工具写入。
 
-用户要求长期改变回答规则时，依据其目标选择智能体提示词或会话提示词，说明影响并提交审批。长期记忆由所有非私密智能体共享，每轮作为资料进入上下文，适合保存用户要求记住的事实与偏好。
+用户要求长期改变回答规则时，依据其目标选择智能体提示词或会话提示词，说明影响并提交审批。主动记忆按本会话设置使用共享池或本会话隔离池，每轮作为资料进入上下文，适合保存用户要求记住的事实与偏好。
 
 ## 审批被拒后的做法
 

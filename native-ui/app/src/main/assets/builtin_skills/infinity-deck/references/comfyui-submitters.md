@@ -5,9 +5,10 @@
 ## 双执行环境与安全边界
 
 - **自动环境路由**：
-  - 当前会话激活 **Linux 运行模式** 且内置 Linux 环境就绪时，干跑校验与正式执行均自动在 **Linux 虚拟环境**（`python3`）中运行，可直接消费 Linux 内已安装的 `ffmpeg`、`ffprobe` 与第三方 Python 包。
-  - 其它情况（内置模式、Linux 未就绪、制作面板等无会话触发）均在应用打包的独立 **内置 Python 3.14** 中运行。
+  - 当前会话激活 **Linux 运行模式** 且内置 Linux 环境就绪时，干跑校验与正式执行均自动在 **Linux 虚拟环境**（`python3`）中运行，直接消费 Linux 内通过 `apk add` 安装的 `ffmpeg`、`ffprobe` 与第三方 Python 包（Alpine 为 musl ABI，不混用 Android 打包二进制）。
+  - 其它情况（内置模式、Linux 未就绪、制作面板等无会话触发）均在应用打包的独立 **内置 Python 3.14** 中运行；`arm64-v8a` 已内置精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，不含 `lavfi` 虚拟输入），并通过 `runDir/bin` 符号链接前置进 `PATH`，脚本与子进程可直接调用。
   - 干跑自检与正式运行始终使用同一执行环境，并在 `comfy_list_hosts`、`comfy_save_submitter`、`comfy_preflight_workflow`、`comfy_run_workflow` 中返回 `execution_runtime`（`LINUX` 或 `BUILTIN_PYTHON`）与工具探测状态 `available_tools`。
+  - 耗时超过 20 秒的 `comfy_run_workflow` 会自动转入后台任务（支持 `run_in_background: true`），后续可用 `job_wait` / `job_status` / `job_stop` 管理。
 - **路径隔离与零凭据暴露**：
   - 宿主机在一过性运行目录内隔离执行提交器；在 Linux 模式下通过 `/mnt/comfy_run` 与 `/mnt/comfy_stage` 自动完成宿主机与 guest 路径双向换算，并默认设置 `PYTHONDONTWRITEBYTECODE=1`（防止向技能目录写入 `.pyc`）。
   - 主机密钥、Cookie 与令牌永不进入脚本进程。宿主机启动 `127.0.0.1` 本地回环鉴权代理并配置 `NO_PROXY=127.0.0.1,localhost`，脚本只需访问传入的回环地址即可透明鉴权。
@@ -25,7 +26,7 @@
    - **主机元数据插值**：在 `cliBaseArgs`、字段默认值或字符串入参中使用 `{host.comfyui_version}`、`{host.id}`、`{host.name}`，运行时自动读取 `/system_stats` 填入真实版本，免去硬编码版本号。
    - **输出解析与历史补拉**：
      - 脚本无 `--receipt` 参数时把 `receiptFlag` 设为 `null` 或 `""`；宿主自动解析 stdout 尾部单行或多行缩进 JSON，并支持用 `promptIdPattern` 从纯文本提取 `prompt_id`。
-     - 产物支持 `IMAGE`、`VIDEO`、`AUDIO`、`MODEL_3D`（`.glb`/`.gltf`/`.obj`/`.stl` 等）与通用 `FILE`。当脚本采用 `--submit-only` 或未下载服务端产物（如 `SaveGLB`）时，默认开启 `backfillOutputsFromHistory: true`，宿主会自动按 `prompt_id` 轮询 `/history` 并补拉至工作区；仅产生服务端中间包而无本地输出的工作流可声明 `allowEmptyOutputs: true`。
+     - 产物支持 `IMAGE`、`VIDEO`、`AUDIO`、`MODEL_3D`（`.glb`/`.gltf`/`.obj`/`.stl` 等）与通用 `FILE`。当脚本采用 `--submit-only` 或未下载服务端产物（如 `SaveGLB`）时，默认开启 `backfillOutputsFromHistory: true`，宿主会自动按 `prompt_id` 轮询 `/history` 并补拉至工作区；仅产生服务端中间包而无本地输出的工作流可声明 `allowEmptyOutputs: true`（若脚本输出的是不会进入远端 `/history` 的合成或只提交不等待的 `prompt_id`，须同时把 `backfillOutputsFromHistory` 设为 `false`，避免无效轮询直至超时）。
    - **外部工具与平台依赖（`requiredTools` / `requiredPlatforms`）**：如实声明脚本依赖的外部命令（如 `["ffmpeg", "ffprobe"]`）或平台限制（如仅 macOS 可用的脚本声明 `["macos"]`）。执行前若不满足，宿主直接失败关闭并给出明确安装或切换提示。
    - **单工作流超时（`timeoutSeconds`）**：长视频或高步数任务可单独设置 `10～7200` 秒。
 4. **先导图 / 预检再真跑**：配置 `emitWorkflowFlag`（如 `"--emit-workflow"` 搭配默认 `emitWorkflowTakesPath: true`，或 `"--dry-run"` 搭配 `emitWorkflowTakesPath: false`）或 `preflightOnlyFlag`（如 `"--preflight-only"`）后，调用 `comfy_run_workflow(run_mode="emit_workflow")` 导出完整 API 图核对参数接线，或用 `run_mode="preflight_only"` 仅做主机预检，确认无误后再用 `run_mode="execute"` 提交 GPU。

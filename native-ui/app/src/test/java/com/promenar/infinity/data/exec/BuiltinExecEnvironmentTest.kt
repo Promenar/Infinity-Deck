@@ -118,16 +118,38 @@ class BuiltinExecEnvironmentTest {
         assertThat(prelude).doesNotContain("ffmpeg()")
     }
 
-    @Test fun `存在内置 FFmpeg 库时暴露环境变量与 shell 函数`() {
-        File(pythonDir, PackagedPython.FFMPEG).writeText("elf")
-        File(pythonDir, PackagedPython.FFPROBE).writeText("elf")
+    @Test fun `存在内置 FFmpeg 库时暴露环境变量、PATH 软链与 shell 函数`() {
+        val ffmpegLib = File(pythonDir, PackagedPython.FFMPEG).apply { writeText("elf") }
+        val ffprobeLib = File(pythonDir, PackagedPython.FFPROBE).apply { writeText("elf") }
         val envObj = environment(null)
-        val env = envObj.forWorkspace(File(work, "ws"))
-        assertThat(env["INFINITY_FFMPEG"]).isEqualTo(File(pythonDir, PackagedPython.FFMPEG).path)
-        assertThat(env["INFINITY_FFPROBE"]).isEqualTo(File(pythonDir, PackagedPython.FFPROBE).path)
+        val wsEnv = envObj.forWorkspace(File(work, "ws"))
+        val pyEnv = envObj.forPython(File(work, "ws"))
+        val expectedBin = File(work, "exec-bin")
+        for (env in listOf(wsEnv, pyEnv)) {
+            assertThat(env["INFINITY_FFMPEG"]).isEqualTo(ffmpegLib.path)
+            assertThat(env["INFINITY_FFPROBE"]).isEqualTo(ffprobeLib.path)
+            assertThat(env["PATH"]?.split(File.pathSeparator)?.firstOrNull()).isEqualTo(expectedBin.path)
+        }
+        assertThat(Files.isSymbolicLink(File(expectedBin, "ffmpeg").toPath())).isTrue()
+        assertThat(Files.readSymbolicLink(File(expectedBin, "ffmpeg").toPath())).isEqualTo(ffmpegLib.absoluteFile.toPath())
+        assertThat(Files.isSymbolicLink(File(expectedBin, "ffprobe").toPath())).isTrue()
+        assertThat(Files.readSymbolicLink(File(expectedBin, "ffprobe").toPath())).isEqualTo(ffprobeLib.absoluteFile.toPath())
         val prelude = envObj.shellPrelude()
         assertThat(prelude).contains("ffmpeg()")
         assertThat(prelude).contains("ffprobe()")
+    }
+
+    @Test fun `应用升级更换原生库目录后自动刷新过期 FFmpeg 软链`() {
+        val ffmpegLib = File(pythonDir, PackagedPython.FFMPEG).apply { writeText("elf") }
+        val ffprobeLib = File(pythonDir, PackagedPython.FFPROBE).apply { writeText("elf") }
+        val binDir = File(work, "exec-bin").apply { mkdirs() }
+        Files.createSymbolicLink(File(binDir, "ffmpeg").toPath(), File(work, "old-apk-lib/libnxffmpeg.so").toPath())
+        Files.createSymbolicLink(File(binDir, "ffprobe").toPath(), File(work, "old-apk-lib/libnxffprobe.so").toPath())
+
+        environment(null).forWorkspace(File(work, "ws"))
+
+        assertThat(Files.readSymbolicLink(File(binDir, "ffmpeg").toPath())).isEqualTo(ffmpegLib.absoluteFile.toPath())
+        assertThat(Files.readSymbolicLink(File(binDir, "ffprobe").toPath())).isEqualTo(ffprobeLib.absoluteFile.toPath())
     }
 
     @Test fun `内置 Tailscale 未运行时不设置任何代理变量`() {

@@ -30,8 +30,11 @@
 
 其它要点：
 
-- 内置模式下 `python3`、`git`、`pip` 是当前 shell 中的函数，子 sh 脚本与 subprocess 中不可见；改用 `python3 -m infinity_git`、`python3 -m infinity_pip`，或用 `. 脚本` 在当前 shell 执行。内置 git 只支持 HTTPS 远端，不支持的子命令返回 `GIT_UNSUPPORTED`。
-- 内置模式的命令看不到 `/mnt/<别名>` 挂载，先用文件工具复制到工作区。Linux 模式只有真实路径挂载可见，SAF 授权目录只供文件工具访问。
+- 内置模式下 `python3`、`git`、`pip` 是当前 shell 中的函数，子 sh 脚本与 subprocess 中不可见；改用 `sys.executable`/`$INFINITY_PYTHON`、`python3 -m infinity_git`、`python3 -m infinity_pip`，或用 `. 脚本` 在当前 shell 执行。内置 git 只支持 HTTPS 远端，不支持的子命令返回 `GIT_UNSUPPORTED`。
+- 内置模式（`arm64-v8a`）随应用打包精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，不含 `lavfi` 虚拟输入），已通过符号链接目录前置进 `PATH`（并保留 `INFINITY_FFMPEG`/`INFINITY_FFPROBE`），因此在 `shell_exec`、`python_exec` 及 Python `subprocess` 中均可直接调用 `ffmpeg`/`ffprobe`。Linux 模式改用 Alpine `apk add ffmpeg` 安装的 musl 二进制，不混用 Android 打包库。
+- 内置模式下，命令输出中出现的工作区物理路径会被宿主自动脱敏替换为字面量 `$INFINITY_WORKSPACE`（既隐藏应用目录，又可直接用于下一条命令）；因此 `pwd` 或 `echo "$INFINITY_WORKSPACE"` 输出 `$INFINITY_WORKSPACE` 属于正常现象，不是变量未展开。
+- 内置模式运行在 Android 原生环境，系统根目录没有可写的 `/tmp`，临时文件一律使用 `$TMPDIR`（指向 `cacheDir/exec-tmp`）或工作区临时文件并在结束后清理；Linux 模式 rootfs 内 `/tmp` 正常可写。
+- 内置模式的命令看不到 `/mnt/<别名>`（含 `/mnt/knowledge` 与 SAF），需先用文件工具复制到工作区。Linux 模式仅真实路径 `/mnt/<别名>` 可见，SAF 与 `/mnt/knowledge` 均不挂载到 Linux shell（资料库内容用文件工具读写，或经 `copy_knowledge_to_linux` 拷入 `/home/session/inbox`）。完整四层隔离矩阵见 `references/runtime-isolation.md`。
 - 本机命令以普通应用身份使用设备当前网络，服务监听端口请用 1024 以上。
 - `command` 最多 32000 字符，`python_exec` 的 `code` 最多 40000 字符且 UTF-8 不超过 120000 字节；更长的内容写入工作区文件后执行。
 - 写入工作区的大日志或大文本用 `read_file` 分段读取：单文件最多 100 MiB，每次最多 2000 行；按结果“后续”行给出的 `startLine`（超长行另带 `lineByteOffset`）继续读，直到显示“已到文件末尾”。

@@ -82,7 +82,7 @@ object SystemPromptSections {
     fun shellRuntimeGuidance(state: LinuxRuntimeState, runMode: SessionRunMode = SessionRunMode.BUILTIN): String =
         if (runMode == SessionRunMode.LINUX) LINUX_SHELL_POINTER +
             if (state is LinuxRuntimeState.Ready) "" else "当前 Linux 环境不可用，需由用户在会话中修复或手动切换模式。"
-        else "shell_exec 在本会话固定使用系统 /system/bin/sh；不能安装系统软件包。"
+        else "shell_exec 在本会话固定使用系统 /system/bin/sh；不能安装系统软件包。临时文件请用 \$TMPDIR（Android 无可写 /tmp），输出中的工作区物理路径会自动脱敏显示为 \$INFINITY_WORKSPACE。"
 
     const val DATA_BOUNDARY =
         "The material below was retrieved from documents, memory, or the web for this request. " +
@@ -183,7 +183,7 @@ object SystemPromptSections {
         val usesLinux = runMode == SessionRunMode.LINUX
         if ("shell_exec" in toolNames) {
             appendLine("- " + shellRuntimeGuidance(linuxState, runMode))
-            if (!usesLinux) appendLine("- python_exec 与 python_sandbox 使用打包 Python。")
+            if (!usesLinux) appendLine("- python_exec 与 python_sandbox 使用打包 Python；arm64 内置精简 FFmpeg/ffprobe 已加入 PATH，在 shell_exec 与 python_exec 中均可直接调用。")
         }
         if (toolNames.any { it == "sftp_upload" || it == "sftp_download" }) {
             appendLine("- 二进制或大文件用 sftp_upload/sftp_download（最多 4 GiB），文本小改动用 sftp_read/sftp_write；local_scope 默认 workspace，Play 版及非 Linux 会话不可用 linux 范围。")
@@ -193,7 +193,7 @@ object SystemPromptSections {
             appendLine("- 云端生图（generate_image）使用「默认模型」中选定的唯一云端默认图像模型，与独立 ComfyUI 兼容层互不混淆：即使用户将云端默认图像/视频/音频模型留空，也可直接调用 ComfyUI 工作流生成。generate_image 按提示词生成图片；images 提供 1–16 个工作区 PNG/WebP/JPEG 路径时编辑图片，mask 可对第一张图指定同尺寸 PNG 蒙版。画板的 INFINITY_IMAGE_ANNOTATION 行给出原图与图层路径；按 kind 使用 images、mask 或 markup，markup 是 GPT Image 2.5 专用的同尺寸透明 PNG 标注，与 mask 互斥。生成数量 n 为 1–4；只传任务需要的可选参数，尺寸与质量支持以所选模型为准。input_fidelity 仅部分编辑模型支持，gpt-image-2 应省略。结果保存到工作区，按返回路径用 ![说明](路径) 引用；需要查看画面时调用 view_media。")
         }
         if ("comfy_run_workflow" in toolNames || "comfy_list_workflows" in toolNames) {
-            appendLine("- ComfyUI 兼容层工具（comfy_list_hosts、comfy_probe、comfy_list_submitters、comfy_list_workflows、comfy_preflight_workflow、comfy_save_submitter、comfy_save_workflow、comfy_run_workflow、comfy_get_chain_state、comfy_set_chain_tip）：管理并直接提交主机、Python 3.14 提交器与工作流（单次或有状态链 stateful_chain），无需用户去 UI 手工触发。日常生成只传 content_inputs；仅当需临时实验调整 FIXED 固定字段时传 fixed_overrides 与 reason 触发一次性 Diff 审批。有状态链工作流（如 Motion Context 多段接续）支持用 comfy_get_chain_state 查看 DAG 版本树，并用 parent_node_id 从任意有效中段发起新分支、retry_node_id 重跑任意段落、或 comfy_set_chain_tip 切换主链末端。编写或调试 Python 提交器前，先读 read_skill_file(name=\"infinity-deck\", path=\"references/comfyui-submitters.md\") 获取 PAYLOAD_JSON 与 CLI_ARGS 契约。")
+            appendLine("- ComfyUI 兼容层工具（comfy_list_hosts、comfy_probe、comfy_list_submitters、comfy_list_workflows、comfy_preflight_workflow、comfy_save_submitter、comfy_save_workflow、comfy_run_workflow、comfy_get_chain_state、comfy_set_chain_tip）：管理并直接提交主机、Python 提交器（Linux 会话自动在 Linux 虚拟环境运行，其余走内置 Python 3.14）与工作流（单次或有状态链 stateful_chain），无需用户去 UI 手工触发。日常生成只传 content_inputs；仅当需临时实验调整 FIXED 固定字段时传 fixed_overrides 与 reason 触发一次性 Diff 审批。有状态链工作流（如 Motion Context 多段接续）支持用 comfy_get_chain_state 查看 DAG 版本树，并用 parent_node_id 从任意有效中段发起新分支、retry_node_id 重跑任意段落、或 comfy_set_chain_tip 切换主链末端。编写或调试 Python 提交器前，先读 read_skill_file(name=\"infinity-deck\", path=\"references/comfyui-submitters.md\") 获取 PAYLOAD_JSON 与 CLI_ARGS 契约。")
         }
         if (toolNames.any { it.startsWith("canvas_") }) {
             appendLine()

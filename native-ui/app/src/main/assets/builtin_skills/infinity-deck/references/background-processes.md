@@ -38,7 +38,7 @@
 - 返回 `job_id`、`state`、`runner`、`started_at`、`launch_confirmed`、`guidance`。`launch_confirmed` 为 false（SSH 任务始终如此，Termux 在拿到进程号之前如此）表示启动结果尚未确认，先用 `job_status` 确认，不要直接重发命令。
 - 同时运行的任务数有会话上限与全局上限，超出返回 `JOB_SESSION_LIMIT` 或 `JOB_GLOBAL_LIMIT`，`guidance` 给出当前上限；先等待或停止已有任务。
 
-Linux 模式的前台 `shell_exec` 与 `ssh_exec` 默认在 15 秒后自动让出：返回 `state: "running"` 与 `job_id`，进程继续运行，后续操作与 `background: true` 启动的任务相同。`yield_after_seconds: 0` 关闭自动让出，等待到 `timeout_seconds`。内置模式的 `shell_exec` 与两种模式的 `python_exec` 不自动让出，超时即终止。
+Linux 模式的前台 `shell_exec` 与 `ssh_exec` 默认在 15 秒后自动让出：返回 `state: "running"` 与 `job_id`，进程继续运行，后续操作与 `background: true` 启动的任务相同。`yield_after_seconds: 0` 关闭自动让出，等待到 `timeout_seconds`。内置模式的 `shell_exec` 与两种模式的 `python_exec` 不自动让出，超时即终止。`comfy_run_workflow` 运行超过 20 秒也会自动转入后台任务（默认 `on_exit: "wake"`，也支持 `run_in_background: true`），后续统一用 `job_status`/`job_wait`/`job_stop`/`job_list` 跟踪。
 
 ## 查询、等待、输入、停止
 

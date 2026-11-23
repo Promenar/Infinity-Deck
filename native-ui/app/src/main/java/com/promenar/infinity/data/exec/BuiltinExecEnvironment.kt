@@ -27,6 +27,7 @@ class BuiltinExecEnvironment(
     /** 内置 Tailscale 运行时的代理变量（含 NO_PROXY）；未启用时为空，不改变子进程网络。 */
     private val tailnetEnvironment: () -> Map<String, String> = { InstalledTailnetRouting.routing.subprocessEnvironment() },
     private val skillsDirectory: File = File(homeDirectory.parentFile, "agent_skills"),
+    private val binDirectory: File = File(tempDirectory.parentFile ?: tempDirectory, "exec-bin"),
 ) {
     val pythonAvailable: Boolean get() = python.isAvailable
 
@@ -57,6 +58,10 @@ class BuiltinExecEnvironment(
             if (python.ffmpegAvailable) {
                 environment["INFINITY_FFMPEG"] = python.ffmpeg.path
                 environment["INFINITY_FFPROBE"] = python.ffprobe.path
+                ensureBundledToolShims()?.let { shimsDir ->
+                    val currentPath = environment["PATH"].orEmpty()
+                    environment["PATH"] = if (currentPath.isBlank()) shimsDir.path else "${shimsDir.path}${File.pathSeparator}$currentPath"
+                }
             }
             caBundle()?.let { environment["SSL_CERT_FILE"] = it.path }
             userPackages?.let { packages ->
@@ -71,6 +76,34 @@ class BuiltinExecEnvironment(
             }
         }
         return environment.withLegacyWorkspaceAliases()
+    }
+
+    /** 维护指向打包工具（ffmpeg/ffprobe）的符号链接目录并前置进 PATH，使 shell_exec、python_exec 及子进程行为与 ComfyUI 提交器一致。 */
+    private fun ensureBundledToolShims(): File? {
+        if (!python.ffmpegAvailable) return null
+        if (!binDirectory.isDirectory && !binDirectory.mkdirs()) return null
+        val shims = listOf("ffmpeg" to python.ffmpeg, "ffprobe" to python.ffprobe)
+        var anyReady = false
+        for ((name, target) in shims) {
+            if (!target.isFile) continue
+            val link = File(binDirectory, name).toPath()
+            val targetPath = target.absoluteFile.toPath()
+            runCatching {
+                val upToDate = Files.isSymbolicLink(link) && Files.readSymbolicLink(link) == targetPath
+                if (!upToDate) {
+                    if (Files.exists(link, NOFOLLOW_LINKS) && Files.isDirectory(link, NOFOLLOW_LINKS)) {
+                        logger.warning("exec-bin/$name 为普通目录，保留现状")
+                        return@runCatching
+                    }
+                    Files.deleteIfExists(link)
+                    Files.createSymbolicLink(link, targetPath)
+                }
+                anyReady = true
+            }.onFailure {
+                logger.warning("无法维护内置工具符号链接 exec-bin/$name：${it.message}")
+            }
+        }
+        return binDirectory.takeIf { anyReady }
     }
 
     /** 链接冲突只记录状态；保留用户已有文件、目录与符号链接。 */
@@ -101,6 +134,8 @@ class BuiltinExecEnvironment(
     /**
      * sh 不能 execve 数据目录中的包装脚本，`python3`/`python`、`git`（dulwich）与 `pip` 以 shell 函数提供；
      * 函数只在本次命令的 shell 中有效，子 shell 与 Python 的 subprocess 找不到它们。
+     * 打包的 `ffmpeg`/`ffprobe` 已通过指向 nativeLibraryDir 的符号链接前置进 PATH（子进程与 python_exec 可直接调用），
+     * 此处仍保留带 LD_LIBRARY_PATH 的 shell 函数作为旧版动态链接器兜底。
      */
     fun shellPrelude(): String = if (python.isAvailable) {
         val base = "python3() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_PYTHON\" \"\$@\"; }; python() { python3 \"\$@\"; }; " +
@@ -131,6 +166,7 @@ class BuiltinExecEnvironment(
                 homeDirectory = File(context.filesDir, "exec-home"),
                 tempDirectory = File(context.cacheDir, "exec-tmp"),
                 skillsDirectory = skillsDirectory,
+                binDirectory = File(context.cacheDir, "exec-bin"),
                 caBundle = bundle::ensure,
                 userPackages = if (pipEnabled) {
                     PythonUserPackages(

@@ -91,7 +91,7 @@
 
 ## 生成、派生、尾帧衔接与外部编排
 
-制作面板负责审核、建议、批准、取消以及可选快捷重试；智能体通过制作工具与 ComfyUI 工作流工具独立完成全流程编排。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生工作流及参数表。对于 ComfyUI 兼容层的工作流、Python 3.14 提交器与有状态链（`stateful_chain`，如 Motion Context 多段接续），可直接用 `comfy_list_workflows`、`comfy_run_workflow`、`comfy_get_chain_state` 与 `comfy_set_chain_tip` 编排，包括从任意 `ACTIVE` 中段传入 `parent_node_id` 发起分支或传入 `retry_node_id` 重跑任意中间段，无需依赖用户手工点击面板按钮。请求不可用时按错误返回的可用项调整规划。
+制作面板负责审核、建议、批准、取消以及可选快捷重试；智能体通过制作工具与 ComfyUI 工作流工具独立完成全流程编排。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生工作流及参数表。对于 ComfyUI 兼容层的工作流、Python 提交器（自动适配 Linux / 内置 Python 3.14）与有状态链（`stateful_chain`，如 Motion Context 多段接续），可直接用 `comfy_list_workflows`、`comfy_run_workflow`、`comfy_get_chain_state` 与 `comfy_set_chain_tip` 编排，包括从任意 `ACTIVE` 中段传入 `parent_node_id` 发起分支或传入 `retry_node_id` 重跑任意中间段，无需依赖用户手工点击面板按钮。请求不可用时按错误返回的可用项调整规划。
 
 - `production_plan` 预览当前镜头输入和通道；`production_generate(episode_id, shot_code, params?)` 提交一次生成。`params` 为工作流参数 key 对应的字符串、数值或布尔值对象，省略时取工作流缺省值。
 - `production_derive(episode_id, shot_code, take_id, operation_id, params?)` 把候选视频交给 DERIVE 工作流；`operation_id` 是工作流 id。结果作为新候选登记，并保存直接来源、操作、实际参数、工作流指纹和文件实际规格；派生候选可作为新的来源。

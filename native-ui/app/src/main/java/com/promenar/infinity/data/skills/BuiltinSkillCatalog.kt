@@ -109,6 +109,7 @@ class BuiltinSkillCatalog(
             "references/command-execution.md",
             "references/production-previs.md",
             "references/production.md",
+            "references/runtime-isolation.md",
         )
 
         fun isVirtualPath(path: String): Boolean {

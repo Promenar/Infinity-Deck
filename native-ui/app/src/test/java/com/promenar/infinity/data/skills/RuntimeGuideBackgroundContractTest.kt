@@ -109,9 +109,26 @@ class RuntimeGuideBackgroundContractTest {
             "error_code", "guidance", "exit_code", "timed_out", "truncated", "head_removed", "paused_ms", "workspace_changes",
             "EXEC_STOPPED", "EXEC_INTERRUPTED", "EXEC_LINUX_UNAVAILABLE", "EXEC_MODE_CHANGED", "EXEC_WORKSPACE_UNAVAILABLE",
             "EXEC_PYTHON_UNAVAILABLE", "TERMUX_TIMEOUT", "TERMUX_INTEGRATION_DISABLED", "SSH_HOST_KEY_UNTRUSTED",
-            "SECRET_CAPTURE_BACKGROUND_UNSUPPORTED", "JOB_NOT_FOUND", "JOB_UNAVAILABLE")
+            "SECRET_CAPTURE_BACKGROUND_UNSUPPORTED", "JOB_NOT_FOUND", "JOB_UNAVAILABLE",
+            "\$TMPDIR", "\$INFINITY_WORKSPACE", "ffmpeg", "ffprobe", "/mnt/knowledge", "references/runtime-isolation.md")
             .forEach { assertWithMessage(it).that(reference).contains(it) }
         assertThat(reference.length).isAtMost(8_000)
+    }
+
+    @Test fun `运行时隔离契约参考覆盖四层隔离与路径边界并同步首屏内置提示`() {
+        val isolationRef = "references/runtime-isolation.md"
+        assertThat(BuiltinSkillCatalog.REFERENCE_FILES).contains(isolationRef)
+        val content = guideDirectory.resolve(isolationRef).readText()
+        listOf("isolatedProcess", ":script_runtime", "/mnt/knowledge", "copy_knowledge_to_linux",
+            "/mnt/comfy_run", "/mnt/comfy_stage", "\$INFINITY_WORKSPACE", "\$TMPDIR", "ffmpeg", "ffprobe", "PATH")
+            .forEach { assertWithMessage(it).that(content).contains(it) }
+        assertThat(content.length).isAtMost(8_000)
+
+        val builtinGuidance = SystemPromptSections.toolGuidance(setOf("shell_exec", "comfy_run_workflow"), generic = false, runMode = SessionRunMode.BUILTIN)
+        assertThat(builtinGuidance).contains("\$TMPDIR")
+        assertThat(builtinGuidance).contains("\$INFINITY_WORKSPACE")
+        assertThat(builtinGuidance).contains("FFmpeg/ffprobe 已加入 PATH")
+        assertThat(builtinGuidance).contains("Linux 虚拟环境")
     }
 
     @Test fun `系统提示在有命令工具与任务工具时给出一行选用规则并指向参考文件`() {
