@@ -173,35 +173,59 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
         FileSettingsBrowseBar(state, actions, modifier)
         return
     }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = HeaderMinHeight)
-            .padding(horizontal = InfinitySpacing.XSmall, vertical = InfinitySpacing.XSmall)
-            .testTag(UiTags.FM_HEADER),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        FileManagerLeadingButton(host.leading)
-        val gitBranch = state.gitHeaderBranch(host)
-        val onOpenGit = host.onOpenGit
-        if (gitBranch != null && onOpenGit != null) {
-            FileGitHeader(gitBranch, state.location?.gitChangeCount, onOpenGit, Modifier.weight(1f))
-        } else {
-            FileHeaderTitle(state, actions, Modifier.weight(1f))
-        }
-        // 内屏的合集信息在标题下的信息行里，外屏用小标签。
-        host.folderBadge?.takeUnless { host.leading.isInnerScreen }?.let { HostBadge(it) }
-        IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
-            Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.fm_search))
-        }
-        var open by remember { mutableStateOf(false) }
-        Box {
-            IconButton(onClick = { open = true }, modifier = Modifier.testTag(UiTags.FM_MORE)) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.fm_more))
+    val inInspector = com.promenar.infinity.ui.common.LocalInfinityPanePresentation.current ==
+        com.promenar.infinity.ui.common.InfinityPanePresentation.Inspector
+    val hasLeading = host.leading != FileManagerLeading.None
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (inInspector) Modifier
+                        .padding(top = com.promenar.infinity.ui.common.InspectorPanelTopGap)
+                        .heightIn(min = com.promenar.infinity.ui.common.InspectorPanelHeaderHeight)
+                        .padding(
+                            start = if (hasLeading) InfinitySpacing.XSmall else InfinitySpacing.ScreenHorizontal,
+                            end = InfinitySpacing.XSmall,
+                        )
+                    else Modifier
+                        .heightIn(min = HeaderMinHeight)
+                        .padding(horizontal = InfinitySpacing.XSmall, vertical = InfinitySpacing.XSmall),
+                )
+                .testTag(UiTags.FM_HEADER),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!inInspector || hasLeading) {
+                FileManagerLeadingButton(host.leading)
             }
-            InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                FolderMoreMenu(state, actions) { open = false }
+            val gitBranch = state.gitHeaderBranch(host)
+            val onOpenGit = host.onOpenGit
+            if (gitBranch != null && onOpenGit != null) {
+                FileGitHeader(gitBranch, state.location?.gitChangeCount, onOpenGit, Modifier.weight(1f))
+            } else {
+                FileHeaderTitle(state, actions, Modifier.weight(1f), inInspector = inInspector)
             }
+            // 内屏的合集信息在标题下的信息行里，外屏用小标签。
+            host.folderBadge?.takeUnless { host.leading.isInnerScreen || inInspector }?.let { HostBadge(it) }
+            IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
+                Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.fm_search))
+            }
+            var open by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { open = true }, modifier = Modifier.testTag(UiTags.FM_MORE)) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.fm_more))
+                }
+                InfinityDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    FolderMoreMenu(state, actions) { open = false }
+                }
+            }
+        }
+        if (inInspector) {
+            val chrome = com.promenar.infinity.ui.common.LocalFrostedChromeMaterial.current
+            androidx.compose.material3.HorizontalDivider(
+                color = chrome?.edgeDivider?.let { it.copy(alpha = it.alpha * 0.7f) }
+                    ?: MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            )
         }
     }
 }
@@ -345,7 +369,12 @@ private fun FileGitHeader(branch: String, changes: Int?, onOpen: () -> Unit, mod
  * 以及位置根目录的剩余空间；子文件夹的位置名由页头下方的路径条给出。
  */
 @Composable
-private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
+private fun FileHeaderTitle(
+    state: FileManagerUiState,
+    actions: FileManagerUiActions,
+    modifier: Modifier,
+    inInspector: Boolean = false,
+) {
     val host = actions.host
     val title = host.title ?: state.currentFolderTitle()
     val switchable = host.allowLocationSwitch && state.locations.size > 1
@@ -358,8 +387,8 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
         else -> null
     }
     var open by remember { mutableStateOf(false) }
-    val inner = host.leading.isInnerScreen
-    // 内屏右列：16sp 标题，合集信息或位置副标题放在信息行；整块点按打开合集设置。
+    val inner = host.leading.isInnerScreen || inInspector
+    // 内屏右列与会话检视器：统一 16sp 标题（B 档轻页头），合集信息或位置副标题放在信息行；整块点按打开合集设置。
     val badge = host.folderBadge?.takeIf { inner }
     val badgeClick = badge?.onClick
     Box(modifier) {
@@ -375,7 +404,7 @@ private fun FileHeaderTitle(state: FileManagerUiState, actions: FileManagerUiAct
                         else -> Modifier
                     },
                 )
-                .padding(horizontal = InfinitySpacing.Small)
+                .padding(horizontal = if (inInspector) 0.dp else InfinitySpacing.Small)
                 .testTag(UiTags.FM_TITLE),
             verticalArrangement = Arrangement.Center,
         ) {

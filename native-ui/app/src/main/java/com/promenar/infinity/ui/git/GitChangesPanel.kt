@@ -177,15 +177,14 @@ fun GitChangesPage(
     )
 }
 
-/** Git 页的边距外壳：检视器是会话内的浮动卡片，不贴系统栏；整页时避开系统栏。视觉实验室的 Git 版本复用同一外壳。 */
+/** Git 页的边距外壳：检视器由内层页头与正文各自控制 16dp 基线；整页时避开系统栏。视觉实验室的 Git 版本复用同一外壳。 */
 @Composable
 internal fun gitPageModifier(): Modifier = Modifier
     .fillMaxSize()
     .then(
-        if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) Modifier.padding(top = InfinitySpacing.XSmall)
+        if (LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector) Modifier
         else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
     )
-    .padding(horizontal = InfinitySpacing.ScreenHorizontal)
 
 /** 无状态的面板内容；父容器必须给出有界高度（差异视图以 `Dp.Infinity` 视口填满剩余高度）。 */
 @Composable
@@ -197,16 +196,11 @@ fun GitChangesPanel(
 ) {
     val readyStatus = (state.status as? GitLoad.Ready)?.value
     Column(modifier = modifier.testTag(GitPanelTags.ROOT)) {
-        GitPanelHeader(state, actions)
-        AnimatedVisibility(visible = state.detail == null && readyStatus != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-            readyStatus?.let { BranchSyncRows(it, nowMillis) }
-        }
-        Spacer(modifier = Modifier.height(InfinitySpacing.Small))
+        GitPanelHeader(state, readyStatus, nowMillis, actions)
         // 列表、文件差异、提交详情、提交内文件差异之间按层级做共享 X 轴切换；同一页内的数据刷新不触发切换。
         AnimatedContent(
             targetState = state,
             contentKey = { it.detail.pageKey },
-            // 不裁剪：列表页的二级页签向两侧伸到面板边缘。
             transitionSpec = { hierarchicalTransition { it.detail.depth } using SizeTransform(clip = false) },
             modifier = Modifier.weight(1f).fillMaxWidth(),
             label = "git_panel_page",
@@ -231,7 +225,7 @@ fun GitChangesPanel(
                         ),
                         selected = shown.tab,
                         onSelect = actions.onSelectTab,
-                        bleed = InfinitySpacing.ScreenHorizontal,
+                        contentInset = InfinitySpacing.ScreenHorizontal,
                         pagerState = pagerState,
                     )
                     Spacer(modifier = Modifier.height(InfinitySpacing.Small))
@@ -239,7 +233,7 @@ fun GitChangesPanel(
                         state = pagerState,
                         key = { tabs[it] },
                         verticalAlignment = Alignment.Top,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = InfinitySpacing.ScreenHorizontal),
                     ) { pageIndex ->
                         when (tabs[pageIndex]) {
                             GitPanelTab.CHANGES -> ChangesContent(shown.status, actions)
@@ -248,8 +242,10 @@ fun GitChangesPanel(
                         }
                     }
                 }
-                is GitPanelDetail.Change -> DiffContent(detail.diff, actions.onRefresh)
-                is GitPanelDetail.Commit -> {
+                is GitPanelDetail.Change -> Box(Modifier.fillMaxSize().padding(horizontal = InfinitySpacing.ScreenHorizontal)) {
+                    DiffContent(detail.diff, actions.onRefresh)
+                }
+                is GitPanelDetail.Commit -> Box(Modifier.fillMaxSize().padding(horizontal = InfinitySpacing.ScreenHorizontal)) {
                     val file = detail.file
                     if (file != null) DiffContent(file.diff, actions.onRefresh) else CommitDetailContent(detail, actions)
                 }
@@ -299,15 +295,28 @@ private fun countBadge(status: GitStatus): String =
     if (status.truncated) "${status.changeCount}+" else status.changeCount.toString()
 
 @Composable
-private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions) {
+private fun GitPanelHeader(
+    state: GitPanelUiState,
+    readyStatus: GitStatus?,
+    nowMillis: Long?,
+    actions: GitPanelActions,
+) {
     val detail = state.detail
+    val showBack = detail != null || actions.onExit != null
+    val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
-        // 页头可能多行：返回与刷新按钮对齐首行，不随整块居中。
-        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = if (inInspector) com.promenar.infinity.ui.common.InspectorPanelTopGap else 0.dp)
+            .heightIn(min = com.promenar.infinity.ui.common.InspectorPanelHeaderHeight)
+            .padding(
+                start = if (showBack) InfinitySpacing.XSmall else InfinitySpacing.ScreenHorizontal,
+                end = InfinitySpacing.XSmall,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         AnimatedVisibility(
-            visible = detail != null || actions.onExit != null,
+            visible = showBack,
             enter = expandHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) + fadeIn(),
             exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
         ) {
@@ -324,40 +333,132 @@ private fun GitPanelHeader(state: GitPanelUiState, actions: GitPanelActions) {
             modifier = Modifier.weight(1f),
             label = "git_panel_title",
         ) { shown ->
-            val detail = shown.detail
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.RowTwoLineGap, Alignment.CenterVertically),
-            ) {
-                when (detail) {
-                    null -> RepositoryTitle((shown.status as? GitLoad.Ready)?.value?.repositoryName)
-                    is GitPanelDetail.Change -> HeaderTitles(
-                        title = detail.change.path,
-                        subtitle = stringResource(
-                            when (detail.group) {
-                                GitChangeGroup.STAGED -> R.string.git_panel_diff_staged
-                                GitChangeGroup.UNSTAGED -> R.string.git_panel_diff_unstaged
-                                GitChangeGroup.UNTRACKED -> R.string.git_panel_diff_untracked
-                            },
-                        ),
-                        identifier = true,
+            val currentDetail = shown.detail
+            when (currentDetail) {
+                null -> {
+                    val status = (shown.status as? GitLoad.Ready)?.value ?: readyStatus
+                    val title = status?.repositoryName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.git_panel_title)
+                    com.promenar.infinity.ui.common.InfinityPaneHeaderTitle(
+                        title = title,
+                        modifier = Modifier.fillMaxWidth(),
+                        meta = status?.let { { GitHeaderBranchMeta(it, nowMillis) } },
                     )
-                    is GitPanelDetail.Commit -> {
-                        val file = detail.file
-                        if (file != null) {
-                            HeaderTitles(
-                                title = file.change.path,
-                                subtitle = stringResource(R.string.git_panel_diff_commit, detail.summary.shortSha),
-                                identifier = true,
-                            )
-                        } else {
-                            HeaderTitles(title = detail.summary.title, subtitle = detail.summary.shortSha, identifier = false)
-                        }
+                }
+                is GitPanelDetail.Change -> HeaderTitles(
+                    title = currentDetail.change.path,
+                    subtitle = stringResource(
+                        when (currentDetail.group) {
+                            GitChangeGroup.STAGED -> R.string.git_panel_diff_staged
+                            GitChangeGroup.UNSTAGED -> R.string.git_panel_diff_unstaged
+                            GitChangeGroup.UNTRACKED -> R.string.git_panel_diff_untracked
+                        },
+                    ),
+                    identifier = true,
+                )
+                is GitPanelDetail.Commit -> {
+                    val file = currentDetail.file
+                    if (file != null) {
+                        HeaderTitles(
+                            title = file.change.path,
+                            subtitle = stringResource(R.string.git_panel_diff_commit, currentDetail.summary.shortSha),
+                            identifier = true,
+                        )
+                    } else {
+                        HeaderTitles(title = currentDetail.summary.title, subtitle = currentDetail.summary.shortSha, identifier = false)
                     }
                 }
             }
         }
         RefreshButton(refreshing = state.refreshing, onClick = actions.onRefresh)
+    }
+}
+
+/** 合并进 56dp 页头第二行的单行分支与同步摘要，消除 360dp ↔ 560dp 切换时 TAB 栏高度跳变。 */
+@Composable
+private fun GitHeaderBranchMeta(status: GitStatus, nowMillis: Long?) {
+    val ticking by produceState(System.currentTimeMillis(), status.lastFetchSeconds, nowMillis) {
+        if (nowMillis != null || status.lastFetchSeconds == null) return@produceState
+        while (true) {
+            delay(GIT_FETCH_AGE_TICK_MILLIS)
+            value = System.currentTimeMillis()
+        }
+    }
+    val now = nowMillis ?: ticking
+    val tracking = status.tracking
+    val upstream = tracking.upstream
+    val missing = tracking.upstreamMissing == true && upstream != null
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val separatorColor = MaterialTheme.colorScheme.outline
+    val label = branchLabel(status.branch, status.detached, status.head?.take(7), status.unborn)
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.testTag(GitPanelTags.TRACKING),
+    ) {
+        Icon(
+            imageVector = if (status.detached) Icons.Rounded.Commit else Icons.Rounded.AccountTree,
+            contentDescription = null,
+            tint = muted,
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            text = label,
+            style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            softWrap = false,
+        )
+        when {
+            status.detached -> Unit
+            missing -> {
+                GitTrackingSeparator(separatorColor)
+                Text(
+                    text = stringResource(R.string.git_panel_upstream_missing, upstream),
+                    style = InfinityTypography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+            upstream == null -> {
+                GitTrackingSeparator(separatorColor)
+                Text(
+                    text = stringResource(R.string.git_panel_no_upstream),
+                    style = InfinityTypography.labelMedium,
+                    color = muted,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+            else -> {
+                Text(
+                    text = "→ ${gitUpstreamLabel(status.branch, upstream)}",
+                    style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace, fontWeight = FontWeight.Normal),
+                    color = muted,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                val fetchAge = gitFetchAge(status.lastFetchSeconds, now)
+                val ahead = gitTrackingCount(tracking.ahead, tracking.truncated)
+                val behind = gitTrackingCount(tracking.behind, tracking.truncated)
+                val synced = ahead == null && behind == null && !tracking.countsUnknown
+                if (!(synced && fetchAge == GitFetchAge.Never)) {
+                    GitTrackingSeparator(separatorColor)
+                    when {
+                        tracking.countsUnknown -> SyncCount(Icons.AutoMirrored.Rounded.HelpOutline, stringResource(R.string.git_panel_tracking_unknown), muted)
+                        synced -> SyncCount(Icons.Rounded.Check, stringResource(R.string.git_panel_synced), muted)
+                        else -> {
+                            behind?.let { SyncCount(Icons.Rounded.ArrowDownward, stringResource(R.string.git_panel_behind, it), MaterialTheme.infinityDomainColors.warning) }
+                            if (behind != null && ahead != null) GitTrackingSeparator(separatorColor)
+                            ahead?.let { SyncCount(Icons.Rounded.ArrowUpward, stringResource(R.string.git_panel_ahead, it), MaterialTheme.colorScheme.primary) }
+                        }
+                    }
+                }
+                GitTrackingSeparator(separatorColor)
+                Text(fetchAgeLabel(fetchAge), style = InfinityTypography.labelMedium, color = muted, maxLines = 1, softWrap = false)
+            }
+        }
     }
 }
 

@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material3.LinearProgressIndicator
@@ -119,8 +121,8 @@ fun ResourceExplorerPage(
         hasLoadError = loadError != null,
         onRetryLoad = viewModel::retryLoadSession,
         onBack = onBack,
-        // 整页覆盖时自行避开状态栏；检视器根层沿用检视器顶部间隔。
-        modifier = if (onBack == null) Modifier.padding(top = inspectorTopGap()) else Modifier.statusBarsPadding(),
+        // 整页覆盖时避开完整系统安全区（含底部导航栏）；检视器与竖屏上滑抽屉由内层统一 56dp 页头承担 4dp 顶距。
+        modifier = if (onBack == null) Modifier else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         FileManagerPane(
             controller = controller,

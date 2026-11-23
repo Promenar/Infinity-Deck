@@ -157,9 +157,11 @@ private fun frostedRenderEffect(radiusPx: Float): RenderEffect {
 /** 使用统一熏黑毛玻璃 / 环境光材质体系的界面角色。 */
 enum class FrostedChromeRole {
     TOP_BAR,
+    DOCKED_INSPECTOR,
     FLOATING_INSPECTOR,
     FLOATING_STRIP,
     FLOATING_DRAWER,
+    PORTRAIT_DRAWER,
 }
 
 /**
@@ -191,8 +193,36 @@ internal fun resolveFrostedChromeMaterial(
 ): FrostedChromeMaterial {
     fun hairline(color: Color, alpha: Float, width: Dp = 1.dp) = BorderStroke(width, color.copy(alpha = alpha))
 
+    if (role == FrostedChromeRole.DOCKED_INSPECTOR) {
+        // 固定分栏底面无动态内容，无论毛玻璃或环境光档均走零模糊熏黑实底，视觉与浮岛和扩大抽屉无缝衔接且零模糊开销。
+        return if (dark) {
+            FrostedChromeMaterial(
+                container = InfinityObsidianSolidContainer,
+                frostedTint = null,
+                border = hairline(InfinityPureWhite, 0.12f),
+                topHighlight = InfinityPureWhite.copy(alpha = 0.14f),
+                innerCard = InfinityObsidianSolidChip,
+                innerCardBorder = hairline(InfinityPureWhite, 0.08f, 0.5.dp),
+                edgeDivider = InfinityPureWhite.copy(alpha = 0.10f),
+                isFrosted = false,
+            )
+        } else {
+            FrostedChromeMaterial(
+                container = scheme.surfaceContainerLowest,
+                frostedTint = null,
+                border = hairline(scheme.outlineVariant, 0.56f),
+                topHighlight = null,
+                innerCard = scheme.surfaceContainerLow,
+                innerCardBorder = hairline(scheme.outlineVariant, 0.45f, 0.5.dp),
+                edgeDivider = scheme.outlineVariant.copy(alpha = 0.50f),
+                isFrosted = false,
+            )
+        }
+    }
+
     if (surface == ComposerSurfaceStyle.FROSTED) {
         return when (role) {
+            FrostedChromeRole.DOCKED_INSPECTOR -> error("unreachable")
             FrostedChromeRole.TOP_BAR -> if (dark) {
                 FrostedChromeMaterial(
                     container = Color.Transparent,
@@ -284,6 +314,30 @@ internal fun resolveFrostedChromeMaterial(
                     topHighlight = InfinityPureWhite.copy(alpha = 0.92f),
                     innerCard = scheme.onSurface.copy(alpha = 0.06f),
                     innerCardBorder = hairline(scheme.outlineVariant, 0.45f, 0.5.dp),
+                    edgeDivider = scheme.outlineVariant.copy(alpha = 0.45f),
+                    isFrosted = true,
+                )
+            }
+
+            FrostedChromeRole.PORTRAIT_DRAWER -> if (dark) {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.84f),
+                    border = hairline(InfinityPureWhite, 0.12f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.15f),
+                    innerCard = InfinityPureWhite.copy(alpha = 0.07f),
+                    innerCardBorder = hairline(InfinityPureWhite, 0.08f, 0.5.dp),
+                    edgeDivider = InfinityPureWhite.copy(alpha = 0.10f),
+                    isFrosted = true,
+                )
+            } else {
+                FrostedChromeMaterial(
+                    container = Color.Transparent,
+                    frostedTint = InfinityPureWhite.copy(alpha = 0.84f),
+                    border = hairline(scheme.outlineVariant, 0.48f),
+                    topHighlight = InfinityPureWhite.copy(alpha = 0.92f),
+                    innerCard = scheme.onSurface.copy(alpha = 0.05f),
+                    innerCardBorder = hairline(scheme.outlineVariant, 0.42f, 0.5.dp),
                     edgeDivider = scheme.outlineVariant.copy(alpha = 0.45f),
                     isFrosted = true,
                 )
@@ -428,6 +482,34 @@ fun FrostedChromeBackdropLayer(
                         }
                     }
                 },
+        )
+    }
+}
+
+/**
+ * 全站熏黑弹窗、弹出面板、Popover 与审批卡共用的顶缘 0.75dp 镜面渐变细高光。
+ * 浅色或透明颜色时不绘制，保持纯零开销。
+ */
+internal fun Modifier.obsidianTopGlint(
+    color: Color,
+    cornerRadius: Dp,
+    strokeWidth: Dp = 0.75.dp,
+): Modifier = if (color.alpha <= 0f) this else drawWithCache {
+    val inset = cornerRadius.toPx() * 0.45f
+    val stroke = strokeWidth.toPx()
+    val brush = Brush.horizontalGradient(
+        0f to Color.Transparent,
+        0.18f to color,
+        0.82f to color,
+        1f to Color.Transparent,
+    )
+    onDrawWithContent {
+        drawContent()
+        drawLine(
+            brush = brush,
+            start = Offset(inset, stroke / 2f),
+            end = Offset((size.width - inset).coerceAtLeast(inset), stroke / 2f),
+            strokeWidth = stroke,
         )
     }
 }

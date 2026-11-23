@@ -26,7 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
@@ -46,6 +48,8 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import kotlin.math.roundToInt
 
@@ -265,18 +269,30 @@ fun InfinityPopover(
             exit = fadeOut(tween(PopoverExitMillis)) +
                 scaleOut(tween(PopoverExitMillis, easing = InfinityMotion.EmphasizedAccelerate), targetScale = 0.96f, transformOrigin = origin),
         ) {
+            val scheme = MaterialTheme.colorScheme
+            val dark = scheme.surface.luminance() < 0.5f
             Surface(
                 shape = PopoverShape,
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                shadowElevation = 8.dp,
+                color = if (dark) InfinityObsidianDialogContainer else scheme.surfaceContainerLowest,
+                contentColor = scheme.onSurface,
+                border = BorderStroke(
+                    1.dp,
+                    if (dark) InfinityPureWhite.copy(alpha = 0.13f) else scheme.outlineVariant.copy(alpha = 0.55f),
+                ),
+                shadowElevation = 12.dp,
                 modifier = modifier
                     .width(popoverWidth)
                     .heightIn(max = maxHeight)
                     .then(if (title != null) Modifier.semantics { paneTitle = title } else Modifier)
                     .testTag(InfinityPopoverTags.POPOVER),
             ) {
-                Column(content = content)
+                Column(
+                    modifier = Modifier.obsidianTopGlint(
+                        color = if (dark) InfinityPureWhite.copy(alpha = 0.15f) else Color.Transparent,
+                        cornerRadius = 16.dp,
+                    ),
+                    content = content,
+                )
             }
         }
     }

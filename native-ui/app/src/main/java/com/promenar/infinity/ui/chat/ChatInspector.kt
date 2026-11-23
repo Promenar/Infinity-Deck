@@ -3,29 +3,39 @@ package com.promenar.infinity.ui.chat
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,11 +48,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloseFullscreen
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowLeft
 import androidx.compose.material.icons.rounded.KeyboardDoubleArrowRight
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.runtime.rememberCoroutineScope
+import com.promenar.infinity.ui.common.FrostedChromeMaterial
+import com.promenar.infinity.ui.theme.InfinityPureWhite
+import com.promenar.infinity.ui.theme.infinityDomainColors
+import kotlinx.coroutines.launch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -151,7 +167,10 @@ internal fun ChatInspectorCard(
 ) {
     val paneLabel = stringResource(R.string.chat_inspector_label)
     val haptics = LocalInfinityHaptics.current
-    val chrome = if (floating) rememberFrostedChromeMaterial(FrostedChromeRole.FLOATING_INSPECTOR) else null
+    // 固定分栏采用零模糊熏黑实底（DOCKED_INSPECTOR），扩大/覆盖态启用实时熏黑毛玻璃（FLOATING_INSPECTOR）。
+    val chrome: FrostedChromeMaterial? = rememberFrostedChromeMaterial(
+        if (floating) FrostedChromeRole.FLOATING_INSPECTOR else FrostedChromeRole.DOCKED_INSPECTOR,
+    )
     Surface(
         modifier = modifier.semantics { paneTitle = paneLabel }.testTag(InfinityPaneTags.INSPECTOR),
         shape = InspectorShape,
@@ -161,12 +180,12 @@ internal fun ChatInspectorCard(
             else -> chrome.container
         },
         border = chrome?.border ?: inspectorBorder(),
-        shadowElevation = 8.dp,
+        shadowElevation = if (floating) 10.dp else 4.dp,
     ) {
         Box(Modifier.fillMaxSize()) {
             if (chrome != null) {
                 FrostedChromeBackdropLayer(
-                    source = backdrop,
+                    source = if (floating) backdrop else null,
                     material = chrome,
                     highlightHeight = 56.dp,
                     cornerRadius = InspectorCornerRadius,
@@ -591,12 +610,158 @@ private fun InspectorEmpty(icon: ImageVector, title: String, detail: String? = n
     }
 }
 
+/**
+ * 竖屏同窗口 93% 全高熏黑毛玻璃上滑抽屉：
+ * - 与宽屏检视器共享同一份面板正文、两档坐标契约与底栏 8 页签；
+ * - 顶部居中拖拽把手区独占下滑关闭手势（内部列表、WebView、终端滚动不抢拖关闭）；
+ * - 弹起软键盘或推入栈式子页时自动平滑折叠底部页签条，把完整垂直空间让给终端/输入区。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ChatPortraitObsidianDrawer(
+    root: ChatPage,
+    entries: List<PanelHubEntry>,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    showBottomBar: Boolean = true,
+    backdrop: BackdropSource? = null,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val paneLabel = stringResource(R.string.chat_inspector_label)
+    val haptics = LocalInfinityHaptics.current
+    val chrome = rememberFrostedChromeMaterial(FrostedChromeRole.PORTRAIT_DRAWER)
+    val dark = MaterialTheme.infinityDomainColors.isDark
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val dragOffsetY = remember { Animatable(0f) }
+    val dismissThresholdPx = with(density) { 110.dp.toPx() }
+    val imeVisible = WindowInsets.isImeVisible
+    val drawerShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+
+    Surface(
+        modifier = modifier
+            .offset { IntOffset(0, dragOffsetY.value.roundToInt().coerceAtLeast(0)) }
+            .semantics { paneTitle = paneLabel }
+            .testTag(ChatInspectorTags.PORTRAIT_DRAWER),
+        shape = drawerShape,
+        color = if (chrome.frostedTint != null) Color.Transparent else chrome.container,
+        border = chrome.border,
+        shadowElevation = 14.dp,
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            FrostedChromeBackdropLayer(
+                source = backdrop,
+                material = chrome,
+                highlightHeight = 56.dp,
+                cornerRadius = 24.dp,
+                modifier = Modifier.matchParentSize(),
+            )
+            CompositionLocalProvider(LocalFrostedChromeMaterial provides chrome) {
+                Column(Modifier.fillMaxSize()) {
+                    // 仅顶部拖拽把手条响应下滑关闭手势，避免内容列表/WebView/终端误关面板。
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(onClose) {
+                                detectVerticalDragGestures(
+                                    onVerticalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        scope.launch {
+                                            dragOffsetY.snapTo((dragOffsetY.value + dragAmount).coerceAtLeast(0f))
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        scope.launch {
+                                            if (dragOffsetY.value >= dismissThresholdPx) {
+                                                haptics.toggle(false)
+                                                onClose()
+                                                dragOffsetY.snapTo(0f)
+                                            } else {
+                                                dragOffsetY.animateTo(
+                                                    0f,
+                                                    spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        scope.launch {
+                                            dragOffsetY.animateTo(
+                                                0f,
+                                                spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                            .padding(top = 10.dp, bottom = 6.dp)
+                            .testTag(ChatInspectorTags.PORTRAIT_HANDLE),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .background(
+                                    if (dark) InfinityPureWhite.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant,
+                                    CircleShape,
+                                ),
+                        )
+                    }
+                    CompositionLocalProvider(LocalInfinityPanePresentation provides InfinityPanePresentation.Inspector) {
+                        Box(Modifier.weight(1f).fillMaxWidth(), content = content)
+                    }
+                    AnimatedVisibility(
+                        visible = showBottomBar && !imeVisible,
+                        enter = expandVertically(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+                        exit = shrinkVertically(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+                    ) {
+                        Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                            HorizontalDivider(color = chrome.edgeDivider.copy(alpha = chrome.edgeDivider.alpha * 0.7f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                InspectorTabRow(
+                                    entries = entries,
+                                    root = root,
+                                    onSelect = { entry -> haptics.select(entry.page == root); entry.onOpen() },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 2.dp)
+                                        .width(1.dp)
+                                        .height(20.dp)
+                                        .background(chrome.edgeDivider.copy(alpha = chrome.edgeDivider.alpha * 0.55f)),
+                                )
+                                IconButton(
+                                    onClick = { haptics.toggle(false); onClose() },
+                                    modifier = Modifier.testTag(ChatInspectorTags.COLLAPSE),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Close,
+                                        contentDescription = stringResource(R.string.chat_inspector_collapse),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 internal object ChatInspectorTags {
     const val WIDEN = "chat_inspector_widen"
     const val COLLAPSE = "chat_inspector_collapse"
     const val EXPAND = "chat_inspector_expand"
     const val APPROVAL = "chat_inspector_approval"
     const val SCRIM = "chat_inspector_scrim"
+    const val PORTRAIT_DRAWER = "chat_portrait_drawer"
+    const val PORTRAIT_HANDLE = "chat_portrait_drawer_handle"
     fun tab(page: ChatPage) = "chat_inspector_tab_${page.token}"
     fun stripItem(page: ChatPage) = "chat_inspector_strip_${page.token}"
 }

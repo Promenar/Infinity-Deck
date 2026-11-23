@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.ColumnScope
@@ -7,12 +8,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.SheetState
 import androidx.compose.ui.graphics.Color
+import com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer
+import com.promenar.infinity.ui.theme.InfinityPureBlack
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -70,6 +75,13 @@ enum class InfinitySheetHeight { Full, Content }
  * 点外部与返回按 [properties] 关闭，没有拖动关闭。
  * 给出 [popover] 且已量到触发控件位置时，宽窗口改为贴着控件的弹出层（[InfinityPopover]），窄窗口不受影响。
  */
+/** 弹出面板默认底色：深色采用黑曜石 L1 熏黑实底（[InfinityObsidianSolidContainer]），浅色采用通透冷白最低表面。 */
+@Composable
+internal fun infinitySheetContainerColor(): Color {
+    val scheme = MaterialTheme.colorScheme
+    return if (scheme.surface.luminance() < 0.5f) InfinityObsidianSolidContainer else scheme.surfaceContainerLowest
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InfinityModalSheet(
@@ -84,10 +96,11 @@ fun InfinityModalSheet(
      */
     contentDragsSheet: Boolean = true,
     properties: ModalBottomSheetProperties = ModalBottomSheetProperties(),
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
+    containerColor: Color = infinitySheetContainerColor(),
     popover: InfinityPopoverSpec? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     when (infinitySheetPresentation(rememberInfinityWideWindow(), popover?.anchor?.bounds != null)) {
         InfinitySheetPresentation.Popover -> {
             val spec = requireNotNull(popover)
@@ -119,9 +132,24 @@ fun InfinityModalSheet(
         modifier = modifier,
         sheetState = sheetState,
         sheetGesturesEnabled = sheetGesturesEnabled,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         containerColor = containerColor,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        scrimColor = InfinityPureBlack.copy(alpha = if (dark) 0.60f else 0.32f),
         properties = properties,
-        dragHandle = { InfinitySheetDragHandle() },
+        dragHandle = {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .obsidianTopGlint(
+                        color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                        cornerRadius = 24.dp,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                InfinitySheetDragHandle()
+            }
+        },
     ) {
         InfinityWindowBackScope {
             val handoff = if (contentDragsSheet) Modifier else Modifier.nestedScroll(NoSheetHandoff)
@@ -181,9 +209,17 @@ private fun InfinityCenteredSheet(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
+                val scheme = MaterialTheme.colorScheme
+                val dark = scheme.surface.luminance() < 0.5f
                 Surface(
-                    shape = RoundedCornerShape(28.dp),
+                    shape = RoundedCornerShape(26.dp),
                     color = containerColor,
+                    contentColor = scheme.onSurface,
+                    border = BorderStroke(
+                        1.dp,
+                        if (dark) InfinityPureWhite.copy(alpha = 0.12f) else scheme.outlineVariant.copy(alpha = 0.56f),
+                    ),
+                    shadowElevation = 12.dp,
                     modifier = modifier
                         .padding(horizontal = 32.dp)
                         .widthIn(max = 640.dp)
@@ -195,6 +231,10 @@ private fun InfinityCenteredSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(if (height == InfinitySheetHeight.Full) Modifier.fillMaxHeight() else Modifier)
+                            .obsidianTopGlint(
+                                color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                                cornerRadius = 26.dp,
+                            )
                             .padding(top = 20.dp),
                         content = content,
                     )
@@ -210,12 +250,16 @@ object InfinitySheetTags {
 
 @Composable
 private fun InfinitySheetDragHandle() {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     Box(
         modifier = Modifier
-            .padding(vertical = 16.dp)
-            .width(40.dp)
+            .padding(vertical = 14.dp)
+            .width(38.dp)
             .height(4.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant, CircleShape)
+            .background(
+                if (dark) InfinityPureWhite.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant,
+                CircleShape,
+            )
     )
 }
 

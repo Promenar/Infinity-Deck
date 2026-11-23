@@ -91,13 +91,16 @@ fun InfinitySettingsPageLayout(
         return
     }
     // 标准顶栏在毛玻璃材质下录进背景来源，从顶栏下滚过时透出熏黑模糊内容；环境光档关闭录制并切至熏黑实底。主标签页自定义页头不参与。
+    val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
+    val pageInsets = if (inInspector) WindowInsets(0) else WindowInsets.systemBars
+    val topBarInsets = if (inInspector) WindowInsets(0) else TopAppBarDefaults.windowInsets
     val frosted = (if (header != null) headerFrosted else showTopBar) &&
         LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED
     val backdrop = rememberBackdropSource(enabled = frosted)
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = if (LocalFrostedChromeMaterial.current != null) Color.Transparent else MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets.systemBars,
+        contentWindowInsets = pageInsets,
         topBar = {
             if (header != null) {
                 if (headerFrosted) FrostedTopBar(backdrop, bottomEdgeAlpha = 1f) { header() } else header()
@@ -108,6 +111,7 @@ fun InfinitySettingsPageLayout(
                     onBack = onBack,
                     actions = actions,
                     containerColor = Color.Transparent,
+                    windowInsets = topBarInsets,
                 ) else TopAppBar(
                 title = {
                     InfinityHeaderTitle(
@@ -123,6 +127,7 @@ fun InfinitySettingsPageLayout(
                     }
                 },
                 actions = actions,
+                windowInsets = topBarInsets,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,
@@ -131,7 +136,7 @@ fun InfinitySettingsPageLayout(
                     actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
             )
-            } else {
+            } else if (!inInspector) {
                 // 无顶栏时用页面背景色垫住状态栏，滚动内容不会从状态栏图标下方穿过。
                 Spacer(
                     Modifier

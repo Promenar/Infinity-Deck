@@ -59,6 +59,7 @@ fun InfinitySearchTopBar(
     search: InfinityPageSearch?,
     onBack: (() -> Unit)? = null,
     containerColor: Color = MaterialTheme.colorScheme.background,
+    windowInsets: androidx.compose.foundation.layout.WindowInsets = TopAppBarDefaults.windowInsets,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -126,6 +127,7 @@ fun InfinitySearchTopBar(
                 actions()
             }
         },
+        windowInsets = windowInsets,
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = containerColor,
             scrolledContainerColor = containerColor,

@@ -244,11 +244,10 @@ internal fun RemotePageContent(
             },
             selected = segment,
             onSelect = onSelectSegment,
-            contentInset = InfinitySpacing.Large,
-            // 检视器顶端与其它面板对齐：页签文字在 48dp 行内约有 12dp 上留白。
+            contentInset = InfinitySpacing.ScreenHorizontal,
+            // A 档纯吸顶 TAB 根页：顶部固定 4dp（y=4..52dp），与产物页严格齐平。
             modifier = Modifier.padding(
-                top = if (onBack == null) inspectorTopGap(InfinitySpacing.XSmall, visualInset = InfinitySpacing.Medium) else InfinitySpacing.XSmall,
-                bottom = InfinitySpacing.XSmall,
+                top = if (onBack == null) com.promenar.infinity.ui.common.InspectorPanelTopGap else 0.dp,
             ),
             pagerState = pagerState,
         )

@@ -23,13 +23,14 @@ class InfinityDropdownMenuContractTest {
     ).readText()
 
     @Test
-    fun `InfinityDropdownMenu 使用 14dp 同心圆角、随明暗切换的容器底色与半透明分组线`() {
+    fun `InfinityDropdownMenu 使用 14dp 同心圆角、深色黑曜石 L3 底色与浅色冷白底色及半透明分组线`() {
         val source = commonSource("InfinityDropdownMenu")
         // 外圆角 14dp = 内衬 6dp + 菜单项 8dp。
         assertThat(source).contains("MenuCornerRadius = 14.dp")
         assertThat(source).contains("RoundedCornerShape(8.dp)")
         assertThat(source).contains("scheme.surfaceContainerLowest")
-        assertThat(source).contains("scheme.surfaceContainerHighest")
+        assertThat(source).contains("InfinityObsidianMenuContainer")
+        assertThat(source).contains("InfinityObsidianMenuSelected")
         assertThat(source).contains("outlineVariant.copy(alpha = 0.5f)")
         assertThat(source).contains("minWidth: Dp = 160.dp")
         assertThat(source).contains("Popup(")

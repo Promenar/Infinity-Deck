@@ -215,13 +215,16 @@ private fun BrowserUrlBar(
     BackHandler(enabled = editing) { editing = false }
     val showClose = onBack != null && !editing
     val showNav = !editing && state != null
-    // 地址框高 40dp、栏高 56dp，上下各留 8dp；两侧没有按钮时同样留 8dp，与上边距一致。
-    // 两侧是图标按钮时只留 4dp，按钮自带的触控留白补足视觉间距。
+    val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
+    // 检视器与竖屏上滑抽屉下对齐 B 档 56dp 页头坐标（top=4dp, height=56dp, 无左侧按钮时左起 16dp）。
+    val noButtonStart = if (inInspector) InfinitySpacing.ScreenHorizontal else BrowserBarInset
+    val noButtonEnd = if (inInspector) InfinitySpacing.ScreenHorizontal else BrowserBarInset
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .padding(start = if (showClose) 4.dp else BrowserBarInset, end = if (showNav || editing) 4.dp else BrowserBarInset),
+            .then(if (inInspector) Modifier.padding(top = com.promenar.infinity.ui.common.InspectorPanelTopGap) else Modifier)
+            .heightIn(min = com.promenar.infinity.ui.common.InspectorPanelHeaderHeight)
+            .padding(start = if (showClose) 4.dp else noButtonStart, end = if (showNav || editing) 4.dp else noButtonEnd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 离开浏览器用关闭图标，和网页内的“后退”箭头区分开。
@@ -440,59 +443,68 @@ private fun BrowserNotice(title: String, detail: String, action: Pair<String, ()
 }
 
 /**
- * 一行标签栏：当前标签高亮并带关闭按钮，其余标签单行截断；末尾新建标签与手机/桌面切换。
- * 标签多时横向滚动，栏高固定。
+ * 一行标签栏：高度 48dp 与 [com.promenar.infinity.ui.common.InfinityPanelTabs] 对齐，底部通栏细线（y=108dp）；
+ * 当前标签高亮并带关闭按钮，其余标签单行截断；末尾新建标签与手机/桌面切换。
  */
 @Composable
 private fun BrowserTabStrip(state: BrowserUiState, actions: BrowserTabActions) {
     val scheme = MaterialTheme.colorScheme
-    Row(
-        Modifier.fillMaxWidth().height(40.dp).padding(start = 8.dp, end = 8.dp).testTag(BrowserTags.TABS),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LazyRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+    val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
+    val horizontalPad = if (inInspector) InfinitySpacing.ScreenHorizontal else 8.dp
+    val chrome = LocalFrostedChromeMaterial.current
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().height(InfinitySpacing.MinimumTouchTarget).padding(horizontal = horizontalPad).testTag(BrowserTags.TABS),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            items(state.tabs, key = { it.id }) { tab ->
-                val current = tab.id == state.currentTabId
-                Row(
-                    modifier = Modifier
-                        .widthIn(max = 160.dp)
-                        .height(32.dp)
-                        .background(if (current) scheme.surfaceContainerHigh else Color.Transparent, RoundedCornerShape(8.dp))
-                        .clickable(role = Role.Tab) { if (!current) actions.onSelect(tab.id) }
-                        .padding(start = 10.dp, end = if (current && state.tabs.size > 1) 2.dp else 10.dp)
-                        .testTag(BrowserTags.TAB),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        tab.title.ifBlank { displayUrl(tab.url) }.ifBlank { stringResource(R.string.browser_tab_untitled) },
-                        style = InfinityTypography.labelMedium,
-                        color = when {
-                            current -> scheme.onSurface
-                            tab.released -> scheme.outline
-                            else -> scheme.onSurfaceVariant
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (current && state.tabs.size > 1) {
-                        IconButton(onClick = { actions.onClose(tab.id) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Rounded.Close, stringResource(R.string.browser_cd_close_tab), tint = scheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+            LazyRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items(state.tabs, key = { it.id }) { tab ->
+                    val current = tab.id == state.currentTabId
+                    Row(
+                        modifier = Modifier
+                            .widthIn(max = 160.dp)
+                            .height(32.dp)
+                            .background(if (current) scheme.surfaceContainerHigh else Color.Transparent, RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Tab) { if (!current) actions.onSelect(tab.id) }
+                            .padding(start = 10.dp, end = if (current && state.tabs.size > 1) 2.dp else 10.dp)
+                            .testTag(BrowserTags.TAB),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            tab.title.ifBlank { displayUrl(tab.url) }.ifBlank { stringResource(R.string.browser_tab_untitled) },
+                            style = InfinityTypography.labelMedium,
+                            color = when {
+                                current -> scheme.onSurface
+                                tab.released -> scheme.outline
+                                else -> scheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (current && state.tabs.size > 1) {
+                            IconButton(onClick = { actions.onClose(tab.id) }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Rounded.Close, stringResource(R.string.browser_cd_close_tab), tint = scheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
-            }
-            item {
-                IconButton(onClick = actions.onNew, modifier = Modifier.size(32.dp).testTag(BrowserTags.NEW_TAB)) {
-                    Icon(Icons.Rounded.Add, stringResource(R.string.browser_cd_new_tab), tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                item {
+                    IconButton(onClick = actions.onNew, modifier = Modifier.size(32.dp).testTag(BrowserTags.NEW_TAB)) {
+                        Icon(Icons.Rounded.Add, stringResource(R.string.browser_cd_new_tab), tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
                 }
             }
+            BrowserDisplayModeToggle(state.displayMode, actions.onDisplayMode)
         }
-        BrowserDisplayModeToggle(state.displayMode, actions.onDisplayMode)
+        androidx.compose.material3.HorizontalDivider(
+            color = chrome?.edgeDivider?.let { it.copy(alpha = it.alpha * 0.7f) }
+                ?: scheme.outlineVariant.copy(alpha = 0.7f),
+        )
     }
 }
 

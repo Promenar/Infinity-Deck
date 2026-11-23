@@ -194,31 +194,19 @@ internal fun ProductionTopBar(
     metaAccent: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    // 无返回键或处于检视器宿主中时按检视器规范留白：根页顶部 14dp 呼吸间距 + 16dp 左基线对齐，次级页顶部 10dp；
-    // 窄屏整屏面板（有返回键且不在检视器内）保留 56dp 高度并向全站通知宿主张报顶部 Header 底沿偏移。
+    // 检视器与竖屏上滑抽屉统一 B 档 56dp 轻页头（top=4dp, height=56dp, 无返回左起 16dp，有返回 4dp+48dp+4dp=56dp），
+    // 消除根页 74dp 与子页 68dp 的高度跳变；非检视器独立整屏保留 56dp 并向通知宿主张报 Header 底沿。
     val inInspectorHost = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
     val inPane = onBack == null
     Row(
         modifier
             .reportInfinityNoticeHeaderBottom(gap = 8.dp, enabled = !inInspectorHost)
             .fillMaxWidth()
-            .then(
-                when {
-                    inPane -> Modifier
-                        .heightIn(min = ProductionPaneHeaderMinHeight)
-                        .padding(
-                            start = InfinitySpacing.Large,
-                            end = InfinitySpacing.XSmall,
-                            top = 14.dp,
-                            bottom = InfinitySpacing.XSmall,
-                        )
-                    inInspectorHost -> Modifier
-                        .heightIn(min = 58.dp)
-                        .padding(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 2.dp)
-                    else -> Modifier
-                        .heightIn(min = 56.dp)
-                        .padding(start = 4.dp, end = 4.dp)
-                },
+            .then(if (inInspectorHost) Modifier.padding(top = com.promenar.infinity.ui.common.InspectorPanelTopGap) else Modifier)
+            .heightIn(min = com.promenar.infinity.ui.common.InspectorPanelHeaderHeight)
+            .padding(
+                start = if (inPane) InfinitySpacing.ScreenHorizontal else InfinitySpacing.XSmall,
+                end = InfinitySpacing.XSmall,
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -56,5 +56,21 @@ class InfinityInspectorLayoutTest {
         assertThat(inspector).doesNotContain("rememberChatInspectorPinned")
         assertThat(chatScreen).doesNotContain("ChatTopBarInspector")
         assertThat(chatScreen).contains("ChatInspectorTags.SCRIM")
+        assertThat(inspector).contains("FrostedChromeRole.DOCKED_INSPECTOR")
+        assertThat(inspector).contains("FrostedChromeRole.PORTRAIT_DRAWER")
+        assertThat(chatScreen).contains("ChatPortraitObsidianDrawer(")
+        assertThat(chatScreen).contains("androidx.compose.foundation.pager.HorizontalPager(")
+    }
+
+    @Test fun `设置子页在检视器内屏蔽系统栏安全区且两档面板页头坐标常量统一`() {
+        val settingsLayout = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/common/InfinitySettingsPageLayout.kt"))
+        val paneHeader = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/common/InfinityPaneHeader.kt"))
+        val runDetail = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/chat/components/RunDetailSheet.kt"))
+
+        assertThat(settingsLayout).contains("LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector")
+        assertThat(settingsLayout).contains("if (inInspector) WindowInsets(0) else WindowInsets.systemBars")
+        assertThat(paneHeader).contains("val InspectorPanelTopGap = 4.dp")
+        assertThat(paneHeader).contains("val InspectorPanelHeaderHeight = 56.dp")
+        assertThat(runDetail).contains("contentInset = InfinitySpacing.ScreenHorizontal")
     }
 }

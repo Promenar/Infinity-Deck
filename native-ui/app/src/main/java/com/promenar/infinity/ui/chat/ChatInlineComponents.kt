@@ -77,8 +77,12 @@ import com.promenar.infinity.ui.chat.components.resolve
 import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityMetaSeparator
 import com.promenar.infinity.ui.common.MarkdownText
+import com.promenar.infinity.ui.common.obsidianTopGlint
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityElevation
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogChip
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -985,8 +989,14 @@ internal fun ApprovalKindBand(
     val comfyOverride = isComfyFixedOverride(toolName, executionTarget)
     val comfyManagement = isComfyManagementTool(toolName)
     val scheme = MaterialTheme.colorScheme
+    val dark = MaterialTheme.infinityDomainColors.isDark
     val accent = if (backend != null) scheme.primary else scheme.onSurfaceVariant
-    val band = if (backend != null) scheme.primary.copy(alpha = 0.10f).compositeOver(scheme.surfaceContainerLow) else scheme.surfaceContainerHigh
+    val band = when {
+        dark && backend != null -> scheme.primary.copy(alpha = 0.12f).compositeOver(InfinityObsidianDialogContainer)
+        dark -> InfinityObsidianDialogChip
+        backend != null -> scheme.primary.copy(alpha = 0.10f).compositeOver(scheme.surfaceContainerLow)
+        else -> scheme.surfaceContainerHigh
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -1362,9 +1372,15 @@ internal fun ApprovalTextBlock(text: String, initiallyExpanded: Boolean = false,
         fontSize = 12.sp,
         lineHeight = 18.sp,
     )
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Surface(
-        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = if (dark) InfinityObsidianDialogChip else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(
+            0.5.dp,
+            if (dark) InfinityPureWhite.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+        ),
     ) {
         Column(Modifier.padding(10.dp)) {
             if (expanded) {
@@ -1438,6 +1454,7 @@ fun ApprovalCard(
     var queueExpanded by remember(first?.name, first?.executionTarget, first?.argumentsSummary, calls.size) {
         mutableStateOf(false)
     }
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -1445,11 +1462,20 @@ fun ApprovalCard(
             .animateContentSize()
             .testTag(UiTags.CHAT_APPROVAL_CARD),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        color = if (dark) InfinityObsidianDialogContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(
+            1.dp,
+            if (dark) InfinityPureWhite.copy(alpha = 0.13f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+        ),
         tonalElevation = InfinityElevation.Level0,
     ) {
-        Column {
+        Column(
+            modifier = Modifier.obsidianTopGlint(
+                color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                cornerRadius = 20.dp,
+            ),
+        ) {
             ApprovalKindBand(
                 toolName = first?.name ?: toolName,
                 where = first?.let { approvalCallWhere(it) },
@@ -1535,11 +1561,15 @@ private fun ApprovalQueuedCallsSection(
     val toggleLabel = stringResource(
         if (expanded) R.string.chat_inline_approval_queue_collapse else R.string.chat_inline_approval_queue_expand,
     )
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Surface(
         modifier = Modifier.fillMaxWidth().testTag(UiTags.CHAT_APPROVAL_QUEUE_SECTION),
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        color = if (dark) InfinityObsidianDialogChip else MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(
+            1.dp,
+            if (dark) InfinityPureWhite.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        ),
     ) {
         Column {
             Row(

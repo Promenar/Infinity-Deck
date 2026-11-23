@@ -101,6 +101,13 @@ import com.promenar.infinity.ui.common.InfinityPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogChip
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
+import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.common.obsidianTopGlint
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import androidx.compose.foundation.layout.PaddingValues
@@ -473,6 +480,7 @@ internal fun SubagentApprovalContent(
     request: SubagentApproval,
     sessionTitle: String?,
 ) {
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Column(
         modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()).testTag("SUBAGENT_APPROVAL"),
         verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
@@ -480,7 +488,10 @@ internal fun SubagentApprovalContent(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp))
+                .background(
+                    if (dark) InfinityObsidianDialogChip else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    RoundedCornerShape(12.dp),
+                )
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -490,7 +501,11 @@ internal fun SubagentApprovalContent(
         Column(
             Modifier
                 .clip(RoundedCornerShape(14.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), RoundedCornerShape(14.dp)),
+                .border(
+                    1.dp,
+                    if (dark) InfinityPureWhite.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                    RoundedCornerShape(14.dp),
+                ),
         ) {
             SubagentApprovalBand(request)
             Box(Modifier.padding(12.dp)) { SubagentApprovalBody(request) }
@@ -546,11 +561,23 @@ internal fun SubagentApprovalGroup(
 ) {
     val head = requests.firstOrNull() ?: return
     val name = subagentName(head.subagentPreset, head.subagentIndex)
+    val dark = MaterialTheme.infinityDomainColors.isDark
+    val groupShape = RoundedCornerShape(20.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = InfinitySpacing.Small)
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(20.dp))
+            .background(
+                if (dark) InfinityObsidianSolidContainer else MaterialTheme.colorScheme.surfaceContainer,
+                groupShape,
+            )
+            .then(
+                if (dark) {
+                    Modifier.border(1.dp, InfinityPureWhite.copy(alpha = 0.10f), groupShape)
+                } else {
+                    Modifier
+                },
+            )
             .padding(start = 10.dp, end = 10.dp, top = 12.dp, bottom = 10.dp)
             .testTag(UiTags.CHAT_SUBAGENT_APPROVAL),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -591,13 +618,22 @@ private fun SubagentApprovalCard(request: SubagentApproval, onResolve: (String, 
     var submitted by remember(request.id) { mutableStateOf(false) }
     val tool = approvalToolTitle(request.toolName)
     val risk = approvalRiskLabel(request.risk.name.lowercase())
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        color = if (dark) InfinityObsidianDialogContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
+        border = BorderStroke(
+            1.dp,
+            if (dark) InfinityPureWhite.copy(alpha = 0.13f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+        ),
         modifier = Modifier.fillMaxWidth().testTag(UiTags.subagentApproval(request.id)),
     ) {
-        Column {
+        Column(
+            modifier = Modifier.obsidianTopGlint(
+                color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                cornerRadius = 16.dp,
+            ),
+        ) {
             SubagentApprovalBand(request)
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SubagentApprovalBody(request)

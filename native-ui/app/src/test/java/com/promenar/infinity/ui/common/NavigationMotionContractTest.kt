@@ -184,19 +184,19 @@ class NavigationMotionContractTest {
         assertThat(chat).doesNotContain("TaskFloatingPanel(")
         assertThat(chat).doesNotContain("StateBoardPanel(")
         assertThat(chat).contains("RunDockRow(")
-        assertThat(chat).contains("RunDetailSheet(")
         // 用时取生成任务自身的开始时间；用户消息时间可能早于本次运行（定时触发、继续处理、旧会话）。
         assertThat(chat).contains("state.generationStartedAt?.takeIf { uiState.isGenerating }")
         assertThat(source("chat/ChatRoute.kt")).contains("generationStartedAt = generationProgress?.startedAt")
         // 生成中输入框仍可编辑。
         assertThat(chat).contains("enabled = true")
-        // 宽窗口运行详情在浮动检视器的“运行”页签，浮岛照样显示运行坞，点按打开检视器运行页；检视器与运行详情面板共用同一份运行详情正文。
+        // 宽屏检视器与竖屏 93% 熏黑上滑抽屉共用同一份 RunDetailContent 与外层 HorizontalPager 大页签左右滑动。
         assertThat(chat).contains("com.promenar.infinity.ui.common.LocalInfinityInspectorLayout.current")
         assertThat(chat).contains("runDockVisible = dock != null,")
         assertThat(chat).contains("actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))")
         assertThat(chat).contains("ChatInspectorCard(")
+        assertThat(chat).contains("ChatPortraitObsidianDrawer(")
         assertThat(chat).contains("RunDetailContent(")
-        assertThat(chat.split("RunDetailSheet(").size - 1).isEqualTo(1)
+        assertThat(chat).contains("HorizontalPager(")
     }
 
     @Test
@@ -204,6 +204,7 @@ class NavigationMotionContractTest {
         fun readPkg(relative: String) = Files.readAllBytes(Path.of("app/src/main/java/com/promenar/infinity/$relative")).toString(Charsets.UTF_8)
         mapOf(
             "git/GitChangesPanel.kt" to listOf("label = \"git_panel_page\"", "rememberPanelTabPagerState(", "HorizontalPager(", "label = \"git_panel_title\"", "GitLoadContent("),
+            "canvas/ArtifactsContent.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager(", "InfinityPanelTabs("),
             "chat/components/RagDetailsSheet.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager("),
             "chat/components/RunDetailSheet.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager("),
             "hub/AgentAvatarPickerSheet.kt" to listOf("rememberPanelTabPagerState(", "HorizontalPager(", "AnimatedVisibility("),

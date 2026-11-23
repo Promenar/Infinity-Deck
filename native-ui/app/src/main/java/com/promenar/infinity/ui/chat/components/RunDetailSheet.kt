@@ -27,7 +27,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -261,10 +263,9 @@ internal fun RunDetailContent(
 private enum class RunStatus { RUNNING, DONE, PAUSED }
 
 /**
- * 状态卡，固定两行：
- * - 第一行：状态标签、标题（单行省略）、更多菜单（隐藏或清除计划）；
- * - 第二行：摘要（第 N / M 步 · 后台任务数 · 用时）与同行右侧的细进度条。
- * 没有状态、菜单或进度时对应部分直接省略，不留空位。
+ * B 档统一 56dp 轻页头（y=4..60dp, x=16dp）：
+ * - 第一行：标题与右侧更多菜单（隐藏或清除计划），严格对齐全站 16dp 左基线；
+ * - 第二行元信息：状态圆点 + 状态文案 · 第 N / M 步 · 后台任务数 · 等宽用时。
  */
 @Composable
 private fun RunDetailHeader(
@@ -284,6 +285,13 @@ private fun RunDetailHeader(
     val jobs = activity?.jobs.orEmpty()
     val groups = backgroundJobGroups(jobs)
     val summary = listOfNotNull(
+        status?.let {
+            when (it) {
+                RunStatus.RUNNING -> stringResource(R.string.run_detail_status_running)
+                RunStatus.DONE -> stringResource(R.string.run_detail_status_done)
+                RunStatus.PAUSED -> stringResource(R.string.run_detail_status_paused)
+            }
+        },
         plan?.let { runPlanStepSummary(it) }?.let {
             when (it) {
                 is RunPlanStepSummary.AtStep -> stringResource(R.string.run_detail_step_of, it.position, it.total)
@@ -293,70 +301,67 @@ private fun RunDetailHeader(
         groups.running.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.run_detail_jobs_running, it, it) },
         groups.finished.size.takeIf { it > 0 }?.let { stringResource(R.string.run_detail_jobs_finished, it) },
     )
-    val progress = plan?.takeIf { it.totalCount > 0 }?.let { it.doneCount.toFloat() / it.totalCount }
     val hasMenu = onHidePlan != null || onClearPlan != null
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        // 与下方页签同为 16dp 页边距；在检视器里是首块内容，距顶也取 16dp。
-        modifier = Modifier.fillMaxWidth()
-            .padding(start = InfinitySpacing.ScreenHorizontal, end = InfinitySpacing.ScreenHorizontal, top = inspectorTopGap(8.dp))
-            .testTag(UiTags.CHAT_RUN_STATUS_CARD),
-    ) {
-        // 固定首行 48dp 最小高、统一边距与 48dp 菜单槽，避免有无菜单切态时标题与第二行基线跳动。
-        Column(
-            Modifier
-                .animateContentSize(InfinityMotion.contentSizeSpec())
-                .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 10.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AnimatedContent(
-                    targetState = status,
-                    transitionSpec = { InfinityMotion.fadeThrough() },
-                    label = "run_status_pill",
-                ) { activeStatus ->
-                    activeStatus?.let { RunStatusPill(it) }
-                }
-                Text(
-                    text = plan?.title?.takeIf(String::isNotBlank) ?: stringResource(R.string.run_detail_title_default),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                val menuAlpha by animateFloatAsState(
-                    targetValue = if (hasMenu) 1f else 0f,
-                    animationSpec = tween(InfinityMotion.DurationShort),
-                    label = "run_header_menu_alpha",
-                )
-                Box(
-                    modifier = Modifier
-                        .size(InfinitySpacing.MinimumTouchTarget)
-                        .graphicsLayer { alpha = menuAlpha }
-                        .then(if (hasMenu) Modifier else Modifier.clearAndSetSemantics {}),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (hasMenu) RunDetailMenu(onHidePlan, onClearPlan)
-                }
-            }
-            val clock = elapsedMillis?.let { runClockText(it) }
-            val spokenClock = elapsedMillis?.let { runElapsedText(it) }
-            if (summary.isNotEmpty() || clock != null || progress != null) {
-                RunCardMetaRow(
-                    summary = summary.joinToString(" $InfinityMetaSeparator ").takeIf(String::isNotEmpty),
-                    clock = clock,
-                    spokenClock = spokenClock,
-                    progress = progress,
-                    modifier = Modifier.padding(top = 2.dp, end = 10.dp),
-                )
-            }
-        }
+    val clock = elapsedMillis?.let { runClockText(it) }
+    val spokenClock = elapsedMillis?.let { runElapsedText(it) }
+    val statusDotColor = when (status) {
+        RunStatus.RUNNING -> MaterialTheme.infinityDomainColors.signalOn
+        RunStatus.DONE -> MaterialTheme.infinityDomainColors.success
+        RunStatus.PAUSED -> MaterialTheme.colorScheme.outline
+        null -> null
     }
+    val dotAlpha = if (status == RunStatus.RUNNING) {
+        val transition = rememberInfiniteTransition(label = "run_status_dot")
+        transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.3f,
+            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+            label = "run_status_dot_alpha",
+        ).value
+    } else 1f
+    val title = plan?.title?.takeIf(String::isNotBlank) ?: stringResource(R.string.run_detail_title_default)
+
+    com.promenar.infinity.ui.common.InfinityInspectorTopBar(
+        title = title,
+        modifier = Modifier.testTag(UiTags.CHAT_RUN_STATUS_CARD),
+        meta = if (summary.isNotEmpty() || clock != null) {
+            {
+                statusDotColor?.let { dotColor ->
+                    Box(
+                        Modifier
+                            .size(7.dp)
+                            .graphicsLayer { alpha = dotAlpha }
+                            .background(dotColor, CircleShape),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                if (summary.isNotEmpty()) {
+                    Text(
+                        text = summary.joinToString(" $InfinityMetaSeparator "),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+                if (summary.isNotEmpty() && clock != null) {
+                    Text(" $InfinityMetaSeparator ", maxLines = 1, softWrap = false, modifier = Modifier.clearAndSetSemantics { })
+                }
+                clock?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelMedium.copy(fontFamily = InfinityMonospace, fontFeatureSettings = "tnum"),
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.semantics { spokenClock?.let { spoken -> contentDescription = spoken } },
+                    )
+                }
+            }
+        } else null,
+        actions = {
+            if (hasMenu) {
+                RunDetailMenu(onHidePlan, onClearPlan)
+            }
+        },
+    )
 }
 
 @Composable
@@ -525,8 +530,7 @@ private fun RunDetailTabs(
         },
         selected = selected ?: tabs.first(),
         onSelect = onSelect,
-        contentInset = 20.dp,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+        contentInset = InfinitySpacing.ScreenHorizontal,
         pagerState = pagerState,
     )
 }
@@ -549,7 +553,7 @@ private fun ColumnScope.RunPlanFooter(
         Column(Modifier.fillMaxWidth()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Row(
-                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 16.dp),
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(start = InfinitySpacing.ScreenHorizontal, end = InfinitySpacing.ScreenHorizontal, top = 12.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 OutlinedButton(
@@ -579,10 +583,30 @@ private fun RunPlanTab(
     val groups = remember(plan.steps) { runPlanGroups(plan.steps) }
     // 与状态卡“第 N / M 步”同一来源，避免清单的“当前”与卡片步数各说各话。
     val currentStepId = runPlanCurrentStepId(plan)
+    val progress = plan.takeIf { it.totalCount > 0 }?.let { it.doneCount.toFloat() / it.totalCount }
     Column(Modifier.fillMaxSize()) {
+        if (progress != null) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = 10.dp)
+                    .height(4.dp)
+                    .clip(CircleShape),
+                strokeCap = StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {},
+                trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+            )
+        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f).testTag(UiTags.CHAT_TASK_STEP_LIST),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = InfinitySpacing.ScreenHorizontal,
+                end = InfinitySpacing.ScreenHorizontal,
+                top = if (progress != null) 2.dp else 8.dp,
+                bottom = 12.dp,
+            ),
         ) {
             groups.forEachIndexed { index, group ->
                 group.title?.let { title ->

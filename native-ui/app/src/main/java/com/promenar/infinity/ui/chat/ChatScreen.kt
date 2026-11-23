@@ -347,6 +347,8 @@ data class ChatScreenState(
     val remote: RemoteDot? = null,
     /** 远程面板等处请求打开后台任务列表的次数；每次加一，打开运行详情的“后台”页。 */
     val backgroundJobsRequest: Int = 0,
+    /** 竖屏上滑抽屉在阻断式生成确认弹窗期间暂时让出，弹窗结束后自动恢复。 */
+    val portraitDrawerSuspended: Boolean = false,
 )
 
 data class ChatScreenActions(
@@ -475,6 +477,8 @@ fun ChatScreenContent(
     attachmentMenuExpandedState: MutableState<Boolean> = remember { mutableStateOf(false) },
     /** 宽窗口检视器“文件”“Git”页签的内容：由路由层承载资源管理器与 Git 变更的层级。 */
     inspectorPageContent: @Composable BoxScope.() -> Unit = {},
+    /** 供三形态检视器大页签 [androidx.compose.foundation.pager.HorizontalPager] 按页签按需渲染的页面槽位。 */
+    inspectorPageSlot: (@Composable (ChatPage, (() -> Unit)?) -> Unit)? = null,
 ) {
     val uiState = state.uiState
     val inputText = state.inputText
@@ -865,14 +869,17 @@ fun ChatScreenContent(
         val fallbackComposerReserve = if (density.fontScale >= 1.8f) 176.dp else 136.dp
         val fallbackMaximumBottom = rootHeightPx - with(density) { fallbackComposerReserve.toPx() }
 
-        // 宽窗口（折叠屏内屏、平板）：运行、文件、Git 与画布收进右侧浮动检视器；层级为空时检视器收起。
+        // 宽窗口（折叠屏内屏、平板）：固定分栏与扩大抽屉；竖屏：同窗口 93% 全高熏黑毛玻璃上滑抽屉。
+        // 三形态共享同一份 state.inspectorPages 层级，折叠开合瞬间无缝衔接且零状态丢失。
         val inspectorMode = com.promenar.infinity.ui.common.LocalInfinityInspectorLayout.current
-        val inspectorRoot = state.inspectorPages.firstOrNull()?.takeIf { inspectorMode }
+        val activeInspectorRoot = state.inspectorPages.firstOrNull()
+        val inspectorRoot = activeInspectorRoot?.takeIf { inspectorMode }
+        val portraitDrawerOpen = !inspectorMode && activeInspectorRoot != null && !state.portraitDrawerSuspended
         val toggleInspectorPage: (ChatPage) -> Unit = { page ->
             actions.onSetInspectorPages(toggleChatInspector(state.inspectorPages, page))
         }
         var lastInspectorRoot by rememberSaveable(uiState.session?.id) { mutableStateOf<String?>(null) }
-        SideEffect { inspectorRoot?.let { lastInspectorRoot = it.token } }
+        SideEffect { activeInspectorRoot?.let { lastInspectorRoot = it.token } }
         var inspectorWidened by rememberSaveable { mutableStateOf(false) }
         // 浏览器页签加宽时铺满会话区，只留左侧一条边距，再按一次恢复。
         val inspectorWidth = if (inspectorWidened && inspectorRoot == ChatPage.Browser) maxWidth - BrowserMaximizedInset
@@ -918,24 +925,17 @@ fun ChatScreenContent(
             delay(delayMs)
             hiddenPlanSignature = taskPanel?.visibilitySignature()
         }
-        // 运行坞：计划、生成、审批、后台任务与状态面板合成一行，清单收进运行详情，统计挂在回复下方。
-        var runSheetTab by remember(uiState.session?.id) { mutableStateOf<com.promenar.infinity.ui.chat.components.RunDetailTab?>(null) }
-        var runSheetOpen by remember(uiState.session?.id) { mutableStateOf(false) }
-        // 窄窗口制作面板以整屏上滑面板打开；宽窗口在检视器“制作”页签。
-        // 后台任务只有运行详情“后台”页一份列表：宽窗口切到检视器“运行”页签，窄窗口打开运行详情。
-        // 记下已处理的请求，重新进入组合时不再重复打开。
+        // 运行坞：计划、生成、审批、后台任务与状态面板合成一行，清单收进统一任务页签，统计挂在回复下方。
+        var requestedRunTab by remember(uiState.session?.id) { mutableStateOf<com.promenar.infinity.ui.chat.components.RunDetailTab?>(null) }
+        // 后台任务只有运行详情“后台”页一份列表：宽窗口与竖屏统一打开“任务”页签的后台子页。
         var handledJobsRequest by remember { mutableIntStateOf(state.backgroundJobsRequest) }
         LaunchedEffect(state.backgroundJobsRequest) {
             if (state.backgroundJobsRequest == handledJobsRequest) return@LaunchedEffect
             handledJobsRequest = state.backgroundJobsRequest
-            if (inspectorMode) {
-                actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))
-            } else {
-                runSheetTab = com.promenar.infinity.ui.chat.components.RunDetailTab.BACKGROUND
-                runSheetOpen = true
-            }
+            requestedRunTab = com.promenar.infinity.ui.chat.components.RunDetailTab.BACKGROUND
+            actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))
         }
-        val agentActivity = com.promenar.infinity.ui.chat.components.rememberAgentActivityState(fastTick = runSheetOpen || inspectorRoot == ChatPage.Run)
+        val agentActivity = com.promenar.infinity.ui.chat.components.rememberAgentActivityState(fastTick = activeInspectorRoot == ChatPage.Run)
         val activitySummary = agentActivity?.summary
         val boardTitle = state.stateBoard?.board?.title
         val pendingApprovals = (uiState.approvalRequest?.takeUnless { uiState.isApprovalSubmitting }?.calls?.size?.coerceAtLeast(1) ?: 0) +
@@ -982,22 +982,10 @@ fun ChatScreenContent(
             ChatPage.State to boardTitle,
             ChatPage.Production to state.production.title,
         )
-        // 宽窗口切换检视器页签；窄窗口运行与状态面板打开运行详情，其余整页打开。
+        // 宽窗口（右侧固定/扩大抽屉）与竖屏（底部 93% 熏黑上滑抽屉）统一走同一套页签层级。
         val openHubPage: (ChatPage) -> Unit = { page ->
-            if (inspectorMode) {
-                actions.onSetInspectorPages(openChatPageRoot(page))
-            } else when (page) {
-                ChatPage.Run, ChatPage.State -> {
-                    runSheetTab = com.promenar.infinity.ui.chat.components.RunDetailTab.STATE.takeIf { page == ChatPage.State }
-                    runSheetOpen = true
-                }
-                ChatPage.Explorer -> actions.onOpenWorkspace()
-                ChatPage.Git -> actions.onOpenGit()
-                ChatPage.Browser -> actions.onOpenBrowser()
-                ChatPage.Remote -> actions.onOpenRemote()
-                ChatPage.Canvas -> canvasSession?.openList?.invoke()
-                ChatPage.Production -> actions.onOpenProduction()
-            }
+            if (page == ChatPage.Run) requestedRunTab = null
+            actions.onSetInspectorPages(openChatPageRoot(page))
         }
         val hubEntries = chatPanelHubEntries(
             signals = ChatPanelHubSignals(
@@ -1588,11 +1576,11 @@ fun ChatScreenContent(
                                         state = shown,
                                         onOpen = { tab ->
                                             hiddenPlanSignature = null
-                                            if (inspectorMode) {
-                                                actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))
+                                            if (tab == com.promenar.infinity.ui.chat.components.RunDetailTab.STATE) {
+                                                actions.onSetInspectorPages(openChatPageRoot(ChatPage.State))
                                             } else {
-                                                runSheetTab = tab
-                                                runSheetOpen = true
+                                                requestedRunTab = tab
+                                                actions.onSetInspectorPages(openChatPageRoot(ChatPage.Run))
                                             }
                                         },
                                         startedAt = turnStartedAt,
@@ -1796,6 +1784,141 @@ fun ChatScreenContent(
             }
 
             }
+            // 三形态共用的可左右滑动检视器正文：大页签之间由 HorizontalPager 跟手滑动切换，页内边界自动接力；
+            // 存在栈式子页（如制作定位文件）时锁定外层横滑并叠放子页。
+            val availableInspectorPages = remember(hubEntries) {
+                hubEntries.filter { it.available }.map { it.page }.ifEmpty { listOf(ChatPage.Run) }
+            }
+            val stackedInspectorPage = state.inspectorPages.lastOrNull()?.takeIf { state.inspectorPages.size > 1 }
+            val renderInspectorBody: @Composable (ChatPage, Boolean) -> Unit = { shownRoot, collapseOnAction ->
+                val activeRoot = shownRoot.takeIf { it in availableInspectorPages } ?: availableInspectorPages.first()
+                val outerPagerState = com.promenar.infinity.ui.common.rememberPanelTabPagerState(
+                    tabs = availableInspectorPages,
+                    selected = activeRoot,
+                    onSelect = { page ->
+                        if (page != state.inspectorPages.firstOrNull()) {
+                            actions.onSetInspectorPages(openChatPageRoot(page))
+                        }
+                    },
+                    key = uiState.session?.id,
+                )
+                Box(Modifier.fillMaxSize()) {
+                    androidx.compose.foundation.pager.HorizontalPager(
+                        state = outerPagerState,
+                        beyondViewportPageCount = 0,
+                        userScrollEnabled = stackedInspectorPage == null,
+                        key = { availableInspectorPages[it].token },
+                        modifier = Modifier.fillMaxSize(),
+                    ) { pageIndex ->
+                        val page = availableInspectorPages[pageIndex]
+                        Box(Modifier.fillMaxSize()) {
+                            when (page) {
+                                ChatPage.Run -> ChatInspectorRunTab(
+                                    pendingApprovals = pendingApprovals,
+                                    onJumpToApproval = {
+                                        if (collapseOnAction) actions.onSetInspectorPages(emptyList())
+                                        else if (inspectorFloats) dismissOverlayInspector()
+                                        jumpToApproval()
+                                    },
+                                    hasRunContent = hasRunContent,
+                                ) {
+                                    key(state.backgroundJobsRequest, requestedRunTab) {
+                                        com.promenar.infinity.ui.chat.components.RunDetailContent(
+                                            initialTab = requestedRunTab ?: com.promenar.infinity.ui.chat.components.RunDetailTab.BACKGROUND.takeIf { state.backgroundJobsRequest > 0 },
+                                            plan = sidePlan,
+                                            isGenerating = uiState.isGenerating,
+                                            turnStartedAt = turnStartedAt,
+                                            activity = agentActivity,
+                                            // 独立“状态”大页签已常驻底栏，任务页签内不再重复嵌套 STATE 子页签。
+                                            stateBoard = null,
+                                            onDismiss = {
+                                                if (collapseOnAction) actions.onSetInspectorPages(emptyList())
+                                            },
+                                            onContinue = actions.onContinueTask,
+                                            onComplete = actions.onCompleteTask,
+                                            onHidePlan = { hiddenPlanSignature = sidePlan?.visibilitySignature() },
+                                            onClearPlan = actions.onClearCompletedTask,
+                                            onEditState = actions.onEditState,
+                                            onRemoveState = actions.onRemoveState,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                }
+                                ChatPage.Canvas -> if (sideArtifacts.isEmpty() && sideCandidates.isEmpty()) {
+                                    ChatInspectorCanvasEmpty()
+                                } else {
+                                    com.promenar.infinity.ui.canvas.ArtifactsContent(
+                                        artifacts = sideArtifacts,
+                                        candidates = sideCandidates,
+                                        onOpen = { artifact -> canvasSession?.openArtifact?.invoke(artifact) },
+                                        onClaim = { candidate -> canvasSession?.claimCandidate?.invoke(candidate) },
+                                        onIgnore = { candidate -> canvasSession?.ignoreCandidate?.invoke(candidate) },
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                ChatPage.State -> if (sideBoard == null) {
+                                    ChatInspectorStateEmpty()
+                                } else {
+                                    com.promenar.infinity.ui.chat.components.StateBoardContent(
+                                        snapshot = sideBoard,
+                                        isGenerating = uiState.isGenerating,
+                                        onEdit = actions.onEditState,
+                                        onRemove = actions.onRemoveState,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                                ChatPage.Production -> {
+                                    val sessionId = uiState.session?.id
+                                    val source = state.productionSource
+                                    if (sessionId == null || source == null) {
+                                        ChatInspectorProductionEmpty()
+                                    } else {
+                                        com.promenar.infinity.ui.production.ProductionPanel(
+                                            sessionId = sessionId,
+                                            source = source,
+                                            services = com.promenar.infinity.ui.production.rememberProductionPanelServices(
+                                                sessionId,
+                                                source,
+                                                openRoute = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openRoute,
+                                                sendPanelMessage = actions.onSendProductionReview,
+                                            ),
+                                            onLocate = actions.onLocateWorkspacePath,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
+                                }
+                                ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote -> {
+                                    if (inspectorPageSlot != null) inspectorPageSlot(page, null)
+                                    else inspectorPageContent()
+                                }
+                            }
+                        }
+                    }
+                    // 栈式推入的二级覆盖页（如制作页内定位工作区文件）叠在大页签之上。
+                    val heldStacked = rememberLastNonNull(stackedInspectorPage, key = "inspector-stacked-page")
+                    AnimatedVisibility(
+                        visible = stackedInspectorPage != null && heldStacked != null,
+                        enter = InfinityMotion.sharedAxisXEnter(forward = true),
+                        exit = InfinityMotion.sharedAxisXExit(forward = false),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        heldStacked?.let { stacked ->
+                            val chrome = com.promenar.infinity.ui.common.LocalFrostedChromeMaterial.current
+                            Surface(
+                                color = chrome?.let { it.frostedTint?.copy(alpha = 0.96f) ?: it.container }
+                                    ?: MaterialTheme.colorScheme.background,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                Box(Modifier.fillMaxSize()) {
+                                    if (inspectorPageSlot != null) inspectorPageSlot(stacked, actions.onInspectorBack)
+                                    else inspectorPageContent()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (inspectorMode) {
                 val composerReserve = with(density) { composerHeightPx.toDp() }
                 // 固定分栏与全高覆盖抽屉统一从顶栏下方起、贴右缘 8dp 并铺到底部 8dp，不截短检视器高度。
@@ -1863,85 +1986,7 @@ fun ChatScreenContent(
                             backdrop = chatBackdrop,
                             onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
                         ) {
-                            // 跨组换页签整体横向过渡；同组（文件、Git、浏览器）由页面层自己过渡，页面层只组合一份。
-                            AnimatedContent(
-                                targetState = shownRoot,
-                                contentKey = { it.inspectorGroup },
-                                transitionSpec = { InfinityMotion.sharedAxisX(forward = inspectorTabForward(initialState, targetState)) },
-                                label = "inspector_tab",
-                                modifier = Modifier.fillMaxSize(),
-                            ) { root ->
-                            Box(Modifier.fillMaxSize()) {
-                            when (root) {
-                                ChatPage.Run -> ChatInspectorRunTab(
-                                    pendingApprovals = pendingApprovals,
-                                    onJumpToApproval = {
-                                        if (inspectorFloats) dismissOverlayInspector()
-                                        jumpToApproval()
-                                    },
-                                    hasRunContent = hasRunContent,
-                                ) {
-                                    key(state.backgroundJobsRequest) {
-                                    com.promenar.infinity.ui.chat.components.RunDetailContent(
-                                        initialTab = com.promenar.infinity.ui.chat.components.RunDetailTab.BACKGROUND.takeIf { state.backgroundJobsRequest > 0 },
-                                        plan = sidePlan,
-                                        isGenerating = uiState.isGenerating,
-                                        turnStartedAt = turnStartedAt,
-                                        activity = agentActivity,
-                                        stateBoard = sideBoard,
-                                        onDismiss = {},
-                                        onContinue = actions.onContinueTask,
-                                        onComplete = actions.onCompleteTask,
-                                        onHidePlan = { hiddenPlanSignature = sidePlan?.visibilitySignature() },
-                                        onClearPlan = actions.onClearCompletedTask,
-                                        onEditState = actions.onEditState,
-                                        onRemoveState = actions.onRemoveState,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                    }
-                                }
-                                ChatPage.Canvas -> if (sideArtifacts.isEmpty() && sideCandidates.isEmpty()) {
-                                    ChatInspectorCanvasEmpty()
-                                } else {
-                                    com.promenar.infinity.ui.canvas.ArtifactsContent(
-                                        artifacts = sideArtifacts,
-                                        candidates = sideCandidates,
-                                        onOpen = { artifact -> canvasSession?.openArtifact?.invoke(artifact) },
-                                        onClaim = { candidate -> canvasSession?.claimCandidate?.invoke(candidate) },
-                                        onIgnore = { candidate -> canvasSession?.ignoreCandidate?.invoke(candidate) },
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
-                                ChatPage.State -> if (sideBoard == null) {
-                                    ChatInspectorStateEmpty()
-                                } else {
-                                    com.promenar.infinity.ui.chat.components.StateBoardContent(
-                                        snapshot = sideBoard,
-                                        isGenerating = uiState.isGenerating,
-                                        onEdit = actions.onEditState,
-                                        onRemove = actions.onRemoveState,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
-                                ChatPage.Production -> {
-                                    val sessionId = uiState.session?.id
-                                    val source = state.productionSource
-                                    if (sessionId == null || source == null) {
-                                        ChatInspectorProductionEmpty()
-                                    } else {
-                                        com.promenar.infinity.ui.production.ProductionPanel(
-                                            sessionId = sessionId,
-                                            source = source,
-                                            services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openRoute, sendPanelMessage = actions.onSendProductionReview),
-                                            onLocate = actions.onLocateWorkspacePath,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    }
-                                }
-                                ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote -> inspectorPageContent()
-                            }
-                            }
-                            }
+                            renderInspectorBody(shownRoot, false)
                         }
                     }
                     // 收起后右缘常驻边缘条，是检视器唯一的开合入口；正文列表末端已让出它的宽度。长按可上下拖动。
@@ -1978,31 +2023,60 @@ fun ChatScreenContent(
                     }
                     }
                 }
+            } else {
+                // 竖屏形态：全部 8 个面板统一收敛为同窗口 93% 全高熏黑毛玻璃上滑抽屉（复用 chatBackdrop 实时模糊与同一份状态）。
+                val scrimDark = MaterialTheme.infinityDomainColors.isDark
+                val scrimInteraction = remember { MutableInteractionSource() }
+                val collapseLabel = stringResource(R.string.chat_inspector_collapse)
+                AnimatedVisibility(
+                    visible = portraitDrawerOpen,
+                    enter = fadeIn(tween(InfinityMotion.DurationShort)),
+                    exit = fadeOut(tween(InfinityMotion.DurationShort)),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = if (scrimDark) 0.56f else 0.22f))
+                            .clickable(
+                                interactionSource = scrimInteraction,
+                                indication = null,
+                                role = Role.Button,
+                                onClickLabel = collapseLabel,
+                                onClick = { actions.onSetInspectorPages(emptyList()) },
+                            )
+                            .testTag(ChatInspectorTags.SCRIM),
+                    )
+                }
+                Box(Modifier.fillMaxSize().imePadding()) {
+                    AnimatedVisibility(
+                        visible = portraitDrawerOpen,
+                        enter = androidx.compose.animation.slideInVertically(
+                            tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
+                        ) { it / 2 } + fadeIn(tween(InfinityMotion.DurationShort)),
+                        exit = androidx.compose.animation.slideOutVertically(
+                            tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate),
+                        ) { it / 2 } + fadeOut(tween(InfinityMotion.DurationShort)),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .fillMaxHeight(0.93f),
+                    ) {
+                        BackHandler(enabled = portraitDrawerOpen, onBack = actions.onInspectorBack)
+                        val shownRoot = activeInspectorRoot ?: lastInspectorRoot?.let { restoreChatPages(it).firstOrNull() } ?: ChatPage.Run
+                        ChatPortraitObsidianDrawer(
+                            root = shownRoot,
+                            entries = hubEntries,
+                            onClose = { actions.onSetInspectorPages(emptyList()) },
+                            showBottomBar = stackedInspectorPage == null,
+                            backdrop = chatBackdrop,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            renderInspectorBody(shownRoot, true)
+                        }
+                    }
+                }
             }
-            }
-            if (runSheetOpen) {
-                val sheetPlan = taskPanel ?: lastVisiblePlan
-                com.promenar.infinity.ui.chat.components.RunDetailSheet(
-                    initialTab = runSheetTab,
-                    plan = sheetPlan,
-                    isGenerating = uiState.isGenerating,
-                    turnStartedAt = turnStartedAt,
-                    activity = agentActivity,
-                    stateBoard = state.stateBoard?.takeIf { it.board != null },
-                    onDismiss = { runSheetOpen = false },
-                    onContinue = actions.onContinueTask,
-                    onComplete = actions.onCompleteTask,
-                    onHidePlan = {
-                        runSheetOpen = false
-                        hiddenPlanSignature = sheetPlan?.visibilitySignature()
-                    },
-                    onClearPlan = {
-                        runSheetOpen = false
-                        actions.onClearCompletedTask()
-                    },
-                    onEditState = actions.onEditState,
-                    onRemoveState = actions.onRemoveState,
-                )
             }
         }
 

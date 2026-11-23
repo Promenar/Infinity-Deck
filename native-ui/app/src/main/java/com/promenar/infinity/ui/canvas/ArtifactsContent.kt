@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
@@ -58,19 +60,21 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.artifact.ArtifactCandidate
 import com.promenar.infinity.data.artifact.ArtifactKind
 import com.promenar.infinity.data.artifact.ArtifactSummary
+import com.promenar.infinity.ui.common.InfinityPanePresentation
+import com.promenar.infinity.ui.common.InfinityPanelTab
+import com.promenar.infinity.ui.common.InfinityPanelTabs
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
-import com.promenar.infinity.ui.common.InfinitySegment
-import com.promenar.infinity.ui.common.InfinitySegmentedControl
-import com.promenar.infinity.ui.common.InfinitySegmentTrackInset
-import com.promenar.infinity.ui.common.inspectorTopGap
+import com.promenar.infinity.ui.common.InspectorPanelTopGap
+import com.promenar.infinity.ui.common.LocalInfinityPanePresentation
+import com.promenar.infinity.ui.common.rememberPanelTabPagerState
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 
 /**
- * 产物页正文：顶部分类筛选，原型以卡片网格在前，页面、文档、图片、其它分组列出；
- * “全部”视图末尾是工作区里未收录的新文件，可收录或忽略。
+ * 产物页正文：A 档纯吸顶分类页签（[InfinityPanelTabs] + [HorizontalPager]，与远程/Git/任务/制作完全同款同坐标），
+ * 原型以卡片网格在前，页面、文档、图片、其它分组列出；“全部”视图末尾是工作区里未收录的新文件，可收录或忽略。
  */
 @Composable
 internal fun ArtifactsContent(
@@ -81,72 +85,104 @@ internal fun ArtifactsContent(
     onIgnore: (ArtifactCandidate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (artifacts.isEmpty() && candidates.isEmpty()) {
+        LazyColumn(
+            modifier = modifier.fillMaxWidth().testTag(UiTags.CANVAS_LIST),
+            contentPadding = PaddingValues(bottom = InfinitySpacing.XLarge),
+        ) {
+            item(key = "empty") { ArtifactsEmpty() }
+        }
+        return
+    }
+    if (artifacts.isEmpty()) {
+        LazyColumn(
+            modifier = modifier.fillMaxWidth().testTag(UiTags.CANVAS_LIST),
+            contentPadding = PaddingValues(top = InfinitySpacing.Small, bottom = InfinitySpacing.XLarge),
+        ) {
+            item(key = "candidates") { CandidatesSection(candidates, onClaim, onIgnore) }
+        }
+        return
+    }
     var selected by rememberSaveable { mutableStateOf(ArtifactFilter.ALL) }
     val filter = effectiveArtifactFilter(selected, artifacts)
-    val view = artifactSections(artifacts, filter, candidates.size)
-    LazyColumn(
-        modifier = modifier.fillMaxWidth().testTag(UiTags.CANVAS_LIST),
-        contentPadding = PaddingValues(bottom = InfinitySpacing.XLarge),
-    ) {
-        if (artifacts.isEmpty() && candidates.isEmpty()) {
-            item(key = "empty") { ArtifactsEmpty() }
-            return@LazyColumn
-        }
-        if (artifacts.isNotEmpty()) item(key = "filters") {
-            InfinitySegmentedControl(
-                segments = artifactFilters(artifacts).map { (option, count) ->
-                    InfinitySegment(option, stringResource(option.labelRes), tag = UiTags.artifactFilter(option.name), count = count)
-                },
-                selected = filter,
-                onSelect = { selected = it },
-                contentPadding = PaddingValues(
-                    start = InfinitySpacing.Large,
-                    end = InfinitySpacing.Large,
-                    top = inspectorTopGap(InfinitySpacing.Small, visualInset = InfinitySegmentTrackInset),
-                    bottom = InfinitySpacing.XSmall,
-                ),
-            )
-        }
-        if (view.prototypes.isNotEmpty()) {
-            item(key = "prototype-header") { SectionHeader(stringResource(R.string.artifact_section_prototype), stringResource(R.string.artifact_prototype_hint)) }
-            view.prototypes.chunked(2).forEachIndexed { row, pair ->
-                item(key = "prototype-row-$row-${pair.first().id}") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall),
-                        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
-                    ) {
-                        pair.forEach { prototype -> PrototypeCard(prototype, onClick = { onOpen(prototype) }, modifier = Modifier.weight(1f)) }
-                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+    val filters = artifactFilters(artifacts)
+    val filterValues = filters.map { it.first }
+    val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
+    val pagerState = rememberPanelTabPagerState(tabs = filterValues, selected = filter, onSelect = { selected = it })
+
+    Column(modifier.fillMaxSize()) {
+        InfinityPanelTabs(
+            tabs = filters.map { (option, count) ->
+                InfinityPanelTab(
+                    value = option,
+                    label = stringResource(option.labelRes),
+                    count = count.toString(),
+                    testTag = UiTags.artifactFilter(option.name),
+                )
+            },
+            selected = filter,
+            onSelect = { selected = it },
+            contentInset = InfinitySpacing.ScreenHorizontal,
+            // A 档纯吸顶 TAB 根页：顶部固定 4dp（y=4..52dp），与远程页完全对齐。
+            modifier = Modifier.padding(top = if (inInspector) InspectorPanelTopGap else 0.dp),
+            pagerState = pagerState,
+        )
+        HorizontalPager(
+            state = pagerState,
+            key = { filterValues[it].name },
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        ) { pageIndex ->
+            val pageFilter = filterValues[pageIndex]
+            val view = artifactSections(artifacts, pageFilter, candidates.size)
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (pageFilter == filter) Modifier.testTag(UiTags.CANVAS_LIST) else Modifier),
+                contentPadding = PaddingValues(top = InfinitySpacing.Small, bottom = InfinitySpacing.XLarge),
+            ) {
+                if (view.prototypes.isNotEmpty()) {
+                    item(key = "prototype-header") { SectionHeader(stringResource(R.string.artifact_section_prototype), stringResource(R.string.artifact_prototype_hint)) }
+                    view.prototypes.chunked(2).forEachIndexed { row, pair ->
+                        item(key = "prototype-row-$row-${pair.first().id}") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall),
+                                horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+                            ) {
+                                pair.forEach { prototype -> PrototypeCard(prototype, onClick = { onOpen(prototype) }, modifier = Modifier.weight(1f)) }
+                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
-            }
-        }
-        view.sections.forEach { section ->
-            item(key = "section-${section.kind}") {
-                SectionHeader(stringResource(section.kind.sectionRes), section.items.size.toString())
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large),
-                ) {
-                    Column {
-                        section.items.forEach { artifact -> ArtifactRow(artifact, onClick = { onOpen(artifact) }) }
+                view.sections.forEach { section ->
+                    item(key = "section-${section.kind}") {
+                        SectionHeader(stringResource(section.kind.sectionRes), section.items.size.toString())
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large),
+                        ) {
+                            Column {
+                                section.items.forEach { artifact -> ArtifactRow(artifact, onClick = { onOpen(artifact) }) }
+                            }
+                        }
                     }
                 }
+                if (view.prototypes.isEmpty() && view.sections.isEmpty()) item(key = "category-empty") {
+                    Text(
+                        text = stringResource(R.string.artifact_category_empty),
+                        style = InfinityTypography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.XXLarge),
+                    )
+                }
+                if (view.showCandidates) item(key = "candidates") {
+                    CandidatesSection(candidates, onClaim, onIgnore)
+                }
             }
-        }
-        if (view.prototypes.isEmpty() && view.sections.isEmpty() && artifacts.isNotEmpty()) item(key = "category-empty") {
-            Text(
-                text = stringResource(R.string.artifact_category_empty),
-                style = InfinityTypography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.XXLarge),
-            )
-        }
-        if (view.showCandidates || (artifacts.isEmpty() && candidates.isNotEmpty())) item(key = "candidates") {
-            CandidatesSection(candidates, onClaim, onIgnore)
         }
     }
 }

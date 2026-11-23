@@ -70,6 +70,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.window.PopupProperties
 import com.promenar.infinity.ui.theme.InfinityMotion
+import com.promenar.infinity.ui.theme.InfinityObsidianMenuContainer
+import com.promenar.infinity.ui.theme.InfinityObsidianMenuSelected
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import kotlin.math.roundToInt
@@ -344,7 +347,7 @@ fun InfinityDropdownMenu(
             Surface(
                 shape = shape,
                 color = colors.container,
-                border = BorderStroke(0.5.dp, colors.edge),
+                border = BorderStroke(0.75.dp, colors.edge),
                 shadowElevation = MenuKeyShadowElevation,
                 modifier = modifier
                     .graphicsLayer {
@@ -390,13 +393,14 @@ fun InfinityDropdownMenu(
     }
 }
 
-/** 菜单底色、描边、高光与阴影色；深浅色按当前配色方案的明暗判断，跟随种子配色。 */
+/** 菜单底色、描边、高光、选中芯片与阴影色；深色收敛至黑曜石 L3（[InfinityObsidianMenuContainer]），浅色保持冷白容器。 */
 @Immutable
 internal data class InfinityMenuColors(
     val container: Color,
     val edge: Color,
     val highlight: Color,
     val shadow: Color,
+    val selectedContainer: Color = Color.Transparent,
 )
 
 @Composable
@@ -405,10 +409,11 @@ internal fun infinityMenuColors(): InfinityMenuColors {
     val dark = scheme.surface.luminance() < 0.5f
     return if (dark) {
         InfinityMenuColors(
-            container = scheme.surfaceContainerHighest,
-            edge = scheme.onSurface.copy(alpha = 0.08f),
-            highlight = scheme.onSurface.copy(alpha = 0.07f),
+            container = InfinityObsidianMenuContainer,
+            edge = InfinityPureWhite.copy(alpha = 0.14f),
+            highlight = InfinityPureWhite.copy(alpha = 0.16f),
             shadow = scheme.scrim,
+            selectedContainer = InfinityObsidianMenuSelected,
         )
     } else {
         InfinityMenuColors(
@@ -416,6 +421,7 @@ internal fun infinityMenuColors(): InfinityMenuColors {
             edge = scheme.onSurface.copy(alpha = 0.10f),
             highlight = Color.Transparent,
             shadow = scheme.scrim.copy(alpha = 0.55f),
+            selectedContainer = scheme.primaryContainer.copy(alpha = 0.45f),
         )
     }
 }
@@ -510,6 +516,7 @@ fun InfinityMenuItem(
             }
         }
     }
+    val menuColors = infinityMenuColors()
     // 按压反馈跟随当前内容色：危险项按下时用错误色高亮。
     CompositionLocalProvider(LocalContentColor provides textColor) {
         Row(
@@ -518,6 +525,7 @@ fun InfinityMenuItem(
                 .fillMaxWidth()
                 .sizeIn(minWidth = 112.dp, maxWidth = MenuMaxWidth, minHeight = MenuItemMinHeight)
                 .clip(MenuItemShape)
+                .then(if (selected == true) Modifier.background(menuColors.selectedContainer) else Modifier)
                 .then(
                     if (selected != null) {
                         Modifier.selectable(selected = selected, enabled = enabled, role = Role.Button) {
@@ -554,13 +562,15 @@ fun InfinityMenuItem(
 /** 菜单内的分组线，左右与菜单项文字区对齐。 */
 @Composable
 fun InfinityMenuDivider() {
+    val scheme = MaterialTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
     Box(
         Modifier
             .infinityMenuStaggerEnter()
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 5.dp)
             .height(0.5.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            .background(if (dark) InfinityPureWhite.copy(alpha = 0.08f) else scheme.outlineVariant.copy(alpha = 0.5f)),
     )
 }
 

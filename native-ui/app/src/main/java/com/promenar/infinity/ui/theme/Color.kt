@@ -84,10 +84,15 @@ val InfinityTouchLockWarning = Color(0xFFFAC775)
 internal val InfinityPureWhite = Color(0xFFFFFFFF)
 internal val InfinityPureBlack = Color(0xFF000000)
 
-// 熏黑浮岛材质基底：深色毛玻璃熏黑底色、环境光实底与内部芯片底，统一收口于主题 token 文件。
+// 熏黑浮岛与全站浮层 4 级黑曜石纵深基底，统一收口于主题 token 文件：
+// L1：固定侧边栏 / 底部弹层 / 居中面板；L2：对话框 / Popover / 审批卡；L3：悬浮菜单。
 internal val InfinityObsidianGlassTint = Color(0xFF050508)
 internal val InfinityObsidianSolidContainer = Color(0xFF070709)
 internal val InfinityObsidianSolidChip = Color(0xFF111217)
+internal val InfinityObsidianDialogContainer = Color(0xFF0A0B0F)
+internal val InfinityObsidianDialogChip = Color(0xFF13151C)
+internal val InfinityObsidianMenuContainer = Color(0xFF0E1016)
+internal val InfinityObsidianMenuSelected = Color(0xFF191C26)
 
 /** 引导页星空的星色：冷白为主，少量偏暖。 */
 internal val InfinityStarCold = Color(0xFFE9E8FF)

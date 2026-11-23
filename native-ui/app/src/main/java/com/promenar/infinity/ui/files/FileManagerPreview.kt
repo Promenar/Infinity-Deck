@@ -133,12 +133,21 @@ internal fun FileCompactPreviewPage(
 ) {
     val controller = actions.controller
     val inner = actions.host.leading.isInnerScreen
+    val inInspector = com.promenar.infinity.ui.common.LocalInfinityPanePresentation.current ==
+        com.promenar.infinity.ui.common.InfinityPanePresentation.Inspector
     Column(modifier.testTag(UiTags.FM_PREVIEW)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .padding(horizontal = InfinitySpacing.XSmall, vertical = InfinitySpacing.XSmall),
+                .then(
+                    if (inInspector) Modifier
+                        .padding(top = com.promenar.infinity.ui.common.InspectorPanelTopGap)
+                        .heightIn(min = com.promenar.infinity.ui.common.InspectorPanelHeaderHeight)
+                        .padding(horizontal = InfinitySpacing.XSmall)
+                    else Modifier
+                        .heightIn(min = 64.dp)
+                        .padding(horizontal = InfinitySpacing.XSmall, vertical = InfinitySpacing.XSmall),
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (inner) {
@@ -148,12 +157,15 @@ internal fun FileCompactPreviewPage(
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.fm_preview_back))
                 }
             }
-            if (inner) {
-                // 内屏右列：16sp 标题，下面是大小与修改时间。
+            if (inner || inInspector) {
+                // 内屏右列与会话检视器：统一 16sp 标题，下面是大小与修改时间或所在路径。
                 InfinityPaneHeaderTitle(
                     title = item.name,
-                    modifier = Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small),
-                    meta = { InfinityMetaLine(fileMetaSegments(item), maxLines = 1) },
+                    modifier = Modifier.weight(1f).padding(horizontal = InfinitySpacing.XSmall),
+                    meta = {
+                        if (inner) InfinityMetaLine(fileMetaSegments(item), maxLines = 1)
+                        else Text(locationPathText(state), maxLines = 1, softWrap = false)
+                    },
                 )
             } else Column(Modifier.weight(1f).padding(horizontal = InfinitySpacing.Small)) {
                 InfinityHeaderTitle(

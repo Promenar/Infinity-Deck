@@ -17,12 +17,13 @@ class FrostedChromeMaterialTest {
     private val lightScheme = lightColorScheme()
 
     @Test
-    fun `深色熏黑毛玻璃四角色与浮岛材质基准及透明阶梯对齐`() {
+    fun `深色熏黑毛玻璃实时角色与浮岛材质基准及透明阶梯对齐`() {
         val expectedAlphas = mapOf(
             FrostedChromeRole.TOP_BAR to 0.76f,
             FrostedChromeRole.FLOATING_INSPECTOR to 0.82f,
             FrostedChromeRole.FLOATING_STRIP to 0.78f,
             FrostedChromeRole.FLOATING_DRAWER to 0.82f,
+            FrostedChromeRole.PORTRAIT_DRAWER to 0.84f,
         )
 
         expectedAlphas.forEach { (role, expectedAlpha) ->
@@ -45,6 +46,35 @@ class FrostedChromeMaterialTest {
                 assertThat(spec.topHighlight).isNotNull()
             }
             assertThat(spec.innerCardBorder).isNotNull()
+        }
+    }
+
+    @Test
+    fun `固定分栏侧边栏无论材质档位均走零模糊熏黑实底`() {
+        listOf(ComposerSurfaceStyle.FROSTED, ComposerSurfaceStyle.AMBIENT).forEach { style ->
+            val darkSpec = resolveFrostedChromeMaterial(
+                role = FrostedChromeRole.DOCKED_INSPECTOR,
+                scheme = darkScheme,
+                dark = true,
+                surface = style,
+            )
+            assertThat(darkSpec.isFrosted).isFalse()
+            assertThat(darkSpec.frostedTint).isNull()
+            assertThat(darkSpec.container).isEqualTo(InfinityObsidianSolidContainer)
+            assertThat(darkSpec.innerCard).isEqualTo(InfinityObsidianSolidChip)
+            assertThat(darkSpec.border).isNotNull()
+            assertThat(darkSpec.topHighlight).isNotNull()
+
+            val lightSpec = resolveFrostedChromeMaterial(
+                role = FrostedChromeRole.DOCKED_INSPECTOR,
+                scheme = lightScheme,
+                dark = false,
+                surface = style,
+            )
+            assertThat(lightSpec.isFrosted).isFalse()
+            assertThat(lightSpec.frostedTint).isNull()
+            assertThat(lightSpec.container).isEqualTo(lightScheme.surfaceContainerLowest)
+            assertThat(lightSpec.border).isNotNull()
         }
     }
 
@@ -79,6 +109,7 @@ class FrostedChromeMaterialTest {
             FrostedChromeRole.FLOATING_INSPECTOR to 0.82f,
             FrostedChromeRole.FLOATING_STRIP to 0.78f,
             FrostedChromeRole.FLOATING_DRAWER to 0.82f,
+            FrostedChromeRole.PORTRAIT_DRAWER to 0.84f,
         )
 
         expectedLightAlphas.forEach { (role, expectedAlpha) ->

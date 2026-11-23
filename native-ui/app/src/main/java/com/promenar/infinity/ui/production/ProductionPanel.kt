@@ -506,8 +506,7 @@ fun ProductionPanelContent(
                                 ),
                                 selected = tab,
                                 onSelect = { tab = it },
-                                contentInset = InfinitySpacing.Large,
-                                modifier = Modifier.padding(bottom = InfinitySpacing.XSmall),
+                                contentInset = InfinitySpacing.ScreenHorizontal,
                                 pagerState = pagerState,
                             )
                             HorizontalPager(

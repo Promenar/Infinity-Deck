@@ -839,102 +839,44 @@ fun ChatRoute(
     val tailnetState by application.tailnetManager.state.collectAsStateWithLifecycle()
     val remoteDotState = remoteDot(remoteUsage.active, com.promenar.infinity.ui.remote.tailscaleNeedsAttention(tailnetState.phase))
     val settingsNavigation = LocalSessionSettingsNavigation.current
-    // 资源管理器、Git 变更、浏览器与远程的层级：窄窗口整页覆盖会话，宽窗口作为检视器页签的内容。
-    val chatPageLevels: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {
-        // 检视器根层由页签与收起按钮离开，不再显示返回。
-        val inInspector = com.promenar.infinity.ui.common.LocalInfinityPanePresentation.current ==
-            com.promenar.infinity.ui.common.InfinityPanePresentation.Inspector
-        // 检视器换页签时按底栏顺序横向过渡；推入、弹出仍是层级过渡。方向在下次换页签前保持不变，退场动画中途不改向。
-        var trackedPages by remember { mutableStateOf(shownChatPages) }
-        var rootSwitch by remember { mutableStateOf<InspectorRootSwitch?>(null) }
-        if (trackedPages != shownChatPages) {
-            rootSwitch = inspectorRootSwitch(trackedPages, shownChatPages)
-            trackedPages = shownChatPages
+    // 供三形态统一检视器（内屏固定/扩大抽屉与竖屏 93% 熏黑上滑抽屉）按页签按需渲染的页面槽位。
+    val inspectorPageSlot: @Composable (ChatPage, (() -> Unit)?) -> Unit = { page, back ->
+        when (page) {
+            ChatPage.Explorer -> ResourceExplorerPage(
+                onBack = back,
+                // 三形态底部均已有 Git 页签，直接切到 Git 根页。
+                onOpenGit = { setChatPages(openChatPageRoot(ChatPage.Git)) },
+                gitRefreshKey = gitRefresh,
+                sessionId = sessionId,
+                chatViewModel = chatViewModel,
+                initialFolderPath = workspaceLocatePath,
+            )
+            ChatPage.Git -> com.promenar.infinity.ui.git.GitChangesPage(
+                sessionId = sessionId,
+                onExit = back,
+            )
+            ChatPage.Browser -> com.promenar.infinity.ui.browser.BrowserPage(
+                sessionId = sessionId,
+                onBack = back,
+            )
+            ChatPage.Remote -> com.promenar.infinity.ui.remote.RemotePage(
+                sessionId = sessionId,
+                usage = remoteUsage,
+                linuxMode = runModeStatus?.mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
+                onBack = back,
+                onOpenSettings = settingsNavigation?.openRemoteSettings,
+                onOpenBackgroundJobs = { backgroundJobsRequest++ },
+            )
+            ChatPage.Canvas, ChatPage.Production, ChatPage.Run, ChatPage.State -> Unit
         }
-        val tabSwitch = rootSwitch.takeIf { inInspector }
-        // 按层级顺序叠放；刚弹出的页排在最上，退场动画盖在下层之上。
-        chatPageStack(ChatPage.entries, paneInspector)
-            .sortedBy { page -> shownChatPages.indexOf(page).let { if (it < 0) Int.MAX_VALUE else it } }
-            .forEach { page ->
-                androidx.compose.runtime.key(page) {
-                    InfinityPaneLevel(
-                        key = page.token,
-                        visible = page in shownChatPages,
-                        top = page == shownChatPages.lastOrNull(),
-                        enter = if (tabSwitch != null && page == shownChatPages.firstOrNull()) {
-                            com.promenar.infinity.ui.theme.InfinityMotion.sharedAxisXEnter(forward = tabSwitch.forward)
-                        } else {
-                            com.promenar.infinity.ui.theme.InfinityMotion.sharedAxisXEnter(forward = true)
-                        },
-                        exit = com.promenar.infinity.ui.theme.InfinityMotion.sharedAxisXExit(
-                            forward = tabSwitch?.takeIf { page in it.leaving }?.forward ?: false,
-                        ),
-                    ) {
-                        when (page) {
-                            ChatPage.Explorer -> ResourceExplorerPage(
-                                onBack = closeTopChatPage.takeUnless { inInspector },
-                                // 检视器里直接切到“Git”页签；整页时叠一层带返回的 Git 页。
-                                onOpenGit = {
-                                    setChatPages(
-                                        if (inInspector) openChatPageRoot(ChatPage.Git)
-                                        else pushChatPage(restoreChatPages(chatPagesToken), ChatPage.Git),
-                                    )
-                                },
-                                gitRefreshKey = gitRefresh,
-                                sessionId = sessionId,
-                                chatViewModel = chatViewModel,
-                                initialFolderPath = workspaceLocatePath,
-                            )
-                            ChatPage.Git -> com.promenar.infinity.ui.git.GitChangesPage(
-                                sessionId = sessionId,
-                                onExit = closeTopChatPage.takeUnless { inInspector && shownChatPages.size == 1 },
-                            )
-                            ChatPage.Browser -> com.promenar.infinity.ui.browser.BrowserPage(
-                                sessionId = sessionId,
-                                onBack = closeTopChatPage.takeUnless { inInspector },
-                            )
-                            ChatPage.Remote -> com.promenar.infinity.ui.remote.RemotePage(
-                                sessionId = sessionId,
-                                usage = remoteUsage,
-                                linuxMode = runModeStatus?.mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
-                                onBack = closeTopChatPage.takeUnless { inInspector },
-                                onOpenSettings = settingsNavigation?.openRemoteSettings,
-                                onOpenBackgroundJobs = {
-                                    // 窄窗口先收起整页远程面板；宽窗口由会话页把检视器切到“运行”页签。
-                                    if (!inInspector) closeTopChatPage()
-                                    backgroundJobsRequest++
-                                },
-                            )
-                            ChatPage.Canvas -> com.promenar.infinity.ui.canvas.CanvasListPage(
-                                onBack = closeTopChatPage.takeUnless { inInspector },
-                            )
-                            ChatPage.Production -> {
-                                val source = chatViewModel.productionSource
-                                com.promenar.infinity.ui.production.ProductionPanel(
-                                    sessionId = sessionId,
-                                    source = source,
-                                    services = com.promenar.infinity.ui.production.rememberProductionPanelServices(sessionId, source, openRoute = settingsNavigation?.openRoute, sendPanelMessage = sendProductionReview),
-                                    // 在资源管理器中定位时叠在制作页之上，返回仍回到制作页。
-                                    onLocate = { path ->
-                                        workspaceLocatePath = path
-                                        setChatPages(pushChatPage(restoreChatPages(chatPagesToken), ChatPage.Explorer))
-                                    },
-                                    onBack = closeTopChatPage.takeUnless { inInspector },
-                                    modifier = Modifier.fillMaxSize().windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.safeDrawing),
-                                )
-                            }
-                            ChatPage.Run, ChatPage.State -> Unit
-                        }
-                    }
-                }
-            }
     }
-    // 窄窗口整页二级页面，生成中待用户处理时让出；宽窗口不覆盖，由会话页的检视器承载。
+    // 窗口宽度判定仍交由 InfinityAdaptivePaneHost 统一提供 LocalInfinityInspectorLayout，
+    // 竖屏二级内容改由会话同窗口 93% 熏黑毛玻璃上滑抽屉承载，折叠开合瞬间状态零重建。
     com.promenar.infinity.ui.common.InfinityAdaptivePaneHost(
-        paneVisible = pageStack.isNotEmpty(),
+        paneVisible = false,
         onBack = closeTopChatPage,
         coverSuspended = hasGenerationInteraction,
-        pane = chatPageLevels,
+        pane = {},
     ) {
     val hostInspector = com.promenar.infinity.ui.common.LocalInfinityInspectorLayout.current
     SideEffect { paneInspector = hostInspector }
@@ -1052,6 +994,7 @@ fun ChatRoute(
                 browser = browserState,
                 remote = remoteDotState,
                 backgroundJobsRequest = backgroundJobsRequest,
+                portraitDrawerSuspended = hasGenerationInteraction,
             ),
             actions = ChatScreenActions(
                 onOpenStartupIssues = { showStartupIssues = true },
@@ -1221,7 +1164,7 @@ fun ChatRoute(
             ),
             snackbarHostState = snackbarHostState,
             snackbarData = snackbarData,
-            inspectorPageContent = chatPageLevels,
+            inspectorPageSlot = inspectorPageSlot,
         )
     }
     }

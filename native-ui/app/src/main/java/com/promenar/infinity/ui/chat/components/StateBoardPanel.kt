@@ -156,19 +156,14 @@ fun StateBoardDetails(
     val lastUpdated = board.fields.maxOfOrNull { it.updatedAt }?.takeIf { it > 0 }
     val time = lastUpdated?.let { remember(it) { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it)) } }
     val manual = board.manualKeys.toSet()
+    val chrome = com.promenar.infinity.ui.common.LocalFrostedChromeMaterial.current
+    val dividerColor = chrome?.edgeDivider?.let { it.copy(alpha = it.alpha * 0.7f) }
+        ?: MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     Column(modifier.fillMaxWidth().testTag(UiTags.CHAT_STATE_SHEET)) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(40.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.TableChart, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(board.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        // B 档统一 56dp 轻页头（y=4..60dp, x=16dp），去除独有 40dp 方块图标与 20dp 错位边距。
+        com.promenar.infinity.ui.common.InfinityInspectorTopBar(
+            title = board.title,
+            meta = {
                 InfinityMetaLine(
                     segments = listOfNotNull(
                         stringResource(R.string.state_board_maintained_by_agent),
@@ -178,24 +173,27 @@ fun StateBoardDetails(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            var menu by remember { mutableStateOf(false) }
-            Box {
-                IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag(UiTags.CHAT_STATE_MENU)) {
-                    Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.state_board_more))
+            },
+            actions = {
+                var menu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(48.dp).testTag(UiTags.CHAT_STATE_MENU)) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.state_board_more))
+                    }
+                    InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        InfinityMenuItem(
+                            text = { Text(stringResource(R.string.state_remove), color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                            onClick = { menu = false; onRemove() },
+                            modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.CHAT_STATE_REMOVE),
+                        )
+                    }
                 }
-                InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    InfinityMenuItem(
-                        text = { Text(stringResource(R.string.state_remove), color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-                        onClick = { menu = false; onRemove() },
-                        modifier = Modifier.heightIn(min = 48.dp).testTag(UiTags.CHAT_STATE_REMOVE),
-                    )
-                }
-            }
-        }
+            },
+        )
+        HorizontalDivider(color = dividerColor)
         Column(
-            Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             stateFieldRows(board.fields).forEach { row ->
@@ -217,12 +215,12 @@ fun StateBoardDetails(
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        HorizontalDivider(color = dividerColor)
         Text(
             text = stringResource(if (manual.isNotEmpty()) R.string.state_board_manual_note else R.string.state_board_edit_note),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
         )
     }
 }

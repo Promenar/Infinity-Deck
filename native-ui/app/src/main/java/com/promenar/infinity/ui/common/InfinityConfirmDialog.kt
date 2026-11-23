@@ -6,8 +6,14 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogChip
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -161,21 +167,29 @@ internal fun InfinityConfirmDialogCard(
     content: @Composable (() -> Unit)? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
     val accent = if (isDestructive) scheme.error else scheme.primary
     val badge = icon ?: Icons.Rounded.WarningAmber.takeIf { isDestructive }
+    val cardColor = if (dark) InfinityObsidianDialogContainer.copy(alpha = 0.96f) else scheme.surfaceContainerLowest
+    val borderColor = if (dark) InfinityPureWhite.copy(alpha = 0.13f) else scheme.outlineVariant.copy(alpha = 0.56f)
     Surface(
         modifier = modifier
             .clip(InfinityShapes.extraLarge)
-            .border(0.5.dp, scheme.outlineVariant, InfinityShapes.extraLarge),
-        color = scheme.surfaceContainerHigh.copy(alpha = DIALOG_CARD_ALPHA),
+            .border(1.dp, borderColor, InfinityShapes.extraLarge),
+        color = cardColor,
         // 半透明底色不是主题里的颜色，contentColorFor 推不出对应内容色，会沿用对话框窗口的默认黑色；
         // content 槽里的文字、图标都继承这里，必须显式给出。
         contentColor = scheme.onSurface,
         shape = InfinityShapes.extraLarge,
+        shadowElevation = 12.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .obsidianTopGlint(
+                    color = if (dark) InfinityPureWhite.copy(alpha = 0.15f) else Color.Transparent,
+                    cornerRadius = 28.dp,
+                )
                 .padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 16.dp),
         ) {
             if (badge != null) {
@@ -293,12 +307,17 @@ private fun DialogButtons(
         }
         val cancel: @Composable (Modifier) -> Unit = { slot ->
             if (cancelText != null) {
+                val dark = scheme.surface.luminance() < 0.5f
                 Button(
                     onClick = onCancel,
                     enabled = cancelEnabled,
                     modifier = slot.height(DIALOG_BUTTON_HEIGHT).then(cancelButtonModifier),
+                    border = BorderStroke(
+                        0.75.dp,
+                        if (dark) InfinityPureWhite.copy(alpha = 0.14f) else scheme.outlineVariant.copy(alpha = 0.65f),
+                    ),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = scheme.onSurface.copy(alpha = 0.08f),
+                        containerColor = if (dark) InfinityObsidianDialogChip else scheme.onSurface.copy(alpha = 0.06f),
                         contentColor = scheme.onSurface,
                     ),
                     shape = CircleShape,
