@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.73.1-beta] - 2026-11-24
+
+- **修复竖屏 `93%` 熏黑毛玻璃上滑抽屉位于 `Scaffold` 内容层之下被 `ChatTopBar` 遮挡顶部圆角、拖拽把手与页头的问题（[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[InfinityInspectorLayoutTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/InfinityInspectorLayoutTest.kt)）**：
+  - 将 `renderInspectorBody` 与 `jumpToApproval` 提升至 `Scaffold` 外层，把 `!inspectorMode` 竖屏暗幕与 `ChatPortraitObsidianDrawer` 移至 `Scaffold` 同级上层并补充 `statusBarsPadding()`，使抽屉完整叠在 `ChatTopBar` 之上且严守系统状态栏边界，同时补充 `InfinityInspectorLayoutTest` 层叠与状态栏避让契约回归断言。
+
 ## [0.73.0-beta] - 2026-11-24
 
 - **统一检视器三形态与 8 页两档顶栏/吸顶页签坐标系、新增大页签左右滑动切页、竖屏收口为 93% 熏黑毛玻璃上滑抽屉并落地全站 4 级黑曜石熏黑浮层体系（[Color.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/Color.kt)、[FrostedBackdrop.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/FrostedBackdrop.kt)、[InfinityPaneHeader.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityPaneHeader.kt)、[InfinityBottomSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityBottomSheet.kt)、[InfinityConfirmDialog.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityConfirmDialog.kt)、[InfinityDropdownMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityDropdownMenu.kt)、[InfinityPopover.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityPopover.kt)、[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[ChatRoute.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatRoute.kt)、[ChatInlineComponents.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInlineComponents.kt)、[SubagentViews.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/SubagentViews.kt)）**：

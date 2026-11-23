@@ -60,6 +60,16 @@ class InfinityInspectorLayoutTest {
         assertThat(inspector).contains("FrostedChromeRole.PORTRAIT_DRAWER")
         assertThat(chatScreen).contains("ChatPortraitObsidianDrawer(")
         assertThat(chatScreen).contains("androidx.compose.foundation.pager.HorizontalPager(")
+        // 竖屏 93% 熏黑抽屉必须位于 Scaffold（含 ChatTopBar）之外的上层并避让状态栏，避免顶部把手与页头被顶栏遮挡。
+        val inspectorBranchIdx = chatScreen.indexOf("if (inspectorMode) {")
+        val portraitBranchIdx = chatScreen.indexOf("if (!inspectorMode) {")
+        val attachmentAnchorIdx = chatScreen.indexOf("val attachmentPositionsReady =")
+        assertThat(inspectorBranchIdx).isGreaterThan(0)
+        assertThat(portraitBranchIdx).isGreaterThan(inspectorBranchIdx)
+        assertThat(attachmentAnchorIdx).isGreaterThan(portraitBranchIdx)
+        val portraitSection = chatScreen.substring(portraitBranchIdx, attachmentAnchorIdx)
+        assertThat(portraitSection).contains("Modifier.fillMaxSize().statusBarsPadding().imePadding()")
+        assertThat(portraitSection).contains("ChatPortraitObsidianDrawer(")
     }
 
     @Test fun `设置子页在检视器内屏蔽系统栏安全区且两档面板页头坐标常量统一`() {
