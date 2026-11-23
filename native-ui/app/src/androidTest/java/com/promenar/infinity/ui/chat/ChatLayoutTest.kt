@@ -123,7 +123,7 @@ class ChatLayoutTest {
         rule.runOnIdle { assertThat(renamed).isTrue() }
     }
 
-    @Test fun wideTopBarKeepsOnlyInspectorPinAndMenuWhileNarrowShowsPanelHubBesideMenu() {
+    @Test fun wideTopBarKeepsOnlyOptionsMenuWhileNarrowShowsPanelHubBesideMenu() {
         val resources = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.resources
         var wide by mutableStateOf(true)
         val entries = chatPanelHubEntries(ChatPanelHubSignals(), summary = { null }, onOpen = {})
@@ -133,18 +133,15 @@ class ChatLayoutTest {
                     ChatTopBar(
                         "会话", {}, {}, {}, onClearHistory = {}, onRename = {}, onDeleteSession = {},
                         panelHub = entries.takeUnless { wide },
-                        inspector = if (wide) ChatTopBarInspector(pinned = true, canPin = true, onTogglePin = {}) else null,
                     )
                 }
             }
         }
-        rule.onNodeWithTag(ChatInspectorTags.PIN).assertIsDisplayed()
         rule.onNodeWithTag(UiTags.CHAT_OPTIONS).assertIsDisplayed()
         rule.onAllNodesWithTag(PanelHubTags.BUTTON).assertCountEquals(0)
 
         wide = false
         // 窄窗口顶栏是功能面板入口与选项菜单；功能面板不再出现在选项菜单里，运行模式只在状态行切换。
-        rule.onAllNodesWithTag(ChatInspectorTags.PIN).assertCountEquals(0)
         rule.onNodeWithTag(PanelHubTags.BUTTON).assertIsDisplayed()
         val hub = rule.onNodeWithTag(PanelHubTags.BUTTON).getUnclippedBoundsInRoot()
         val options = rule.onNodeWithTag(UiTags.CHAT_OPTIONS).getUnclippedBoundsInRoot()

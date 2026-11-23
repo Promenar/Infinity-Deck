@@ -82,13 +82,10 @@ internal val InfinityInspectorMinWindowHeight = 480.dp
 internal val InfinityInspectorWidth = 360.dp
 internal val InfinityInspectorWideWidth = 560.dp
 
-/**
- * 固定的检视器距窗口右缘的距离，也是让位时主内容在检视器宽度之外多让出的宽度。
- * 主内容与检视器之间不再另留间距：输入浮岛自带 12dp 水平内边距，左右两侧与相邻边缘的距离因此相等。
- */
+/** 检视器距窗口右缘的距离，也是固定分栏让位时主内容在检视器宽度之外多让出的宽度。 */
 internal val InfinityInspectorGutter = 8.dp
 
-/** 让位后主内容至少保留的宽度（约一台手机的会话列）；折叠屏内屏默认宽度可让位，加宽后达不到时检视器浮在主内容之上。 */
+/** 让位后主内容至少保留的宽度（约一台手机的会话列）；折叠屏内屏默认宽度采用固定分栏，加宽或窄宽窗达不到时以贴右缘全高抽屉覆盖。 */
 internal val InfinityInspectorMinMainWidth = 320.dp
 
 enum class InfinityInspectorPlacement { Shift, Float }
@@ -100,12 +97,12 @@ fun infinityInspectorAvailable(windowWidth: Dp, windowHeight: Dp): Boolean =
 fun infinityInspectorWidth(windowWidth: Dp, widened: Boolean): Dp =
     if (!widened) InfinityInspectorWidth else minOf(InfinityInspectorWideWidth, windowWidth - 48.dp).coerceAtLeast(InfinityInspectorWidth)
 
-/** 让位后主内容仍有 [InfinityInspectorMinMainWidth] 时才能固定；能固定时按 [pinned]（用户的图钉偏好）决定固定还是浮动。 */
-fun infinityInspectorPlacement(windowWidth: Dp, inspectorWidth: Dp, pinned: Boolean = true): InfinityInspectorPlacement =
-    if (pinned && infinityInspectorCanPin(windowWidth, inspectorWidth)) InfinityInspectorPlacement.Shift
+/** 让位后主内容仍有 [InfinityInspectorMinMainWidth] 时采用固定分栏（Shift），否则以贴右缘全高抽屉覆盖（Float）。 */
+fun infinityInspectorPlacement(windowWidth: Dp, inspectorWidth: Dp): InfinityInspectorPlacement =
+    if (infinityInspectorCanDock(windowWidth, inspectorWidth)) InfinityInspectorPlacement.Shift
     else InfinityInspectorPlacement.Float
 
-fun infinityInspectorCanPin(windowWidth: Dp, inspectorWidth: Dp): Boolean =
+fun infinityInspectorCanDock(windowWidth: Dp, inspectorWidth: Dp): Boolean =
     windowWidth - inspectorWidth - InfinityInspectorGutter >= InfinityInspectorMinMainWidth
 
 /** 收起后的边缘条占用的右侧宽度：48dp 条身、距右缘 8dp，再与正文留 8dp。 */
@@ -119,13 +116,6 @@ fun infinityInspectorStripInset(windowWidth: Dp, contentMaxWidth: Dp, contentEnd
     val margin = ((windowWidth - contentMaxWidth) / 2).coerceAtLeast(0.dp)
     return (InfinityInspectorStripSpan - margin - contentEndPadding).coerceAtLeast(0.dp)
 }
-
-/**
- * 浮动检视器距窗口右缘的距离，与输入浮岛右缘对齐：浮岛所在列限宽 [contentMaxWidth] 居中，
- * 浮岛再自带 [islandHorizontalPadding] 的水平内边距。
- */
-fun infinityInspectorFloatEnd(windowWidth: Dp, contentMaxWidth: Dp, islandHorizontalPadding: Dp): Dp =
-    ((windowWidth - contentMaxWidth) / 2).coerceAtLeast(0.dp) + islandHorizontalPadding
 
 object InfinityPaneTags {
     const val PAGE = "infinity_secondary_page"

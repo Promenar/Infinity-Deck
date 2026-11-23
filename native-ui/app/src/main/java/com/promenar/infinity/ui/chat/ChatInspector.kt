@@ -52,7 +52,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -180,7 +179,8 @@ internal fun ChatInspectorCard(
                         Box(Modifier.weight(1f).fillMaxWidth(), content = content)
                     }
                     HorizontalDivider(
-                        color = chrome?.edgeDivider?.copy(alpha = 0.7f)
+                        // edgeDivider 自身已含基础透明度，用乘法收敛避免覆写为高不透明纯白线。
+                        color = chrome?.edgeDivider?.let { it.copy(alpha = it.alpha * 0.7f) }
                             ?: MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
                     )
                     // 页签与操作都在底栏：展开的内屏双手持握时拇指在下方，不必伸到屏幕顶部；收起留在最右，与边缘条底部的展开按钮同处。
@@ -200,7 +200,10 @@ internal fun ChatInspectorCard(
                                 .padding(horizontal = 2.dp)
                                 .width(1.dp)
                                 .height(20.dp)
-                                .background((chrome?.edgeDivider ?: MaterialTheme.colorScheme.outlineVariant).copy(alpha = 0.55f)),
+                                .background(
+                                    chrome?.edgeDivider?.let { it.copy(alpha = it.alpha * 0.55f) }
+                                        ?: MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                                ),
                         )
                         // 宽窗口没有运行坞，生成中的触摸锁放在检视器底栏；使用水平折叠与退场回调缓存避免挤跳页签。
                         val heldLock = rememberLastNonNull(onLockTouch, key = "inspector-card-lock")
@@ -507,24 +510,6 @@ internal fun Modifier.inspectorStripDrag(maxLiftPx: Float): Modifier {
         }
 }
 
-/**
- * 检视器图钉：按下时检视器固定在会话右侧、会话让位；松开时浮在会话之上。
- * 全局共用一份偏好，默认固定；视觉实验室沙箱里只在内存中切换。
- */
-@Composable
-internal fun rememberChatInspectorPinned(): MutableState<Boolean> {
-    val context = LocalContext.current
-    val sandboxed = com.promenar.infinity.ui.common.LocalLabSandbox.current
-    val prefs = remember(context, sandboxed) {
-        if (sandboxed) null else context.applicationContext.getSharedPreferences("infinity_ui_state", Context.MODE_PRIVATE)
-    }
-    val state = remember(prefs) { mutableStateOf(prefs?.getBoolean(CHAT_INSPECTOR_PINNED_KEY, true) ?: true) }
-    LaunchedEffect(prefs, state.value) { prefs?.edit()?.putBoolean(CHAT_INSPECTOR_PINNED_KEY, state.value)?.apply() }
-    return state
-}
-
-private const val CHAT_INSPECTOR_PINNED_KEY = "chat_inspector_pinned"
-
 /** 运行页签：有待批准的操作时先给出跳转入口；没有运行内容时显示空状态。 */
 @Composable
 internal fun ChatInspectorRunTab(
@@ -611,7 +596,7 @@ internal object ChatInspectorTags {
     const val COLLAPSE = "chat_inspector_collapse"
     const val EXPAND = "chat_inspector_expand"
     const val APPROVAL = "chat_inspector_approval"
-    const val PIN = "chat_inspector_pin"
+    const val SCRIM = "chat_inspector_scrim"
     fun tab(page: ChatPage) = "chat_inspector_tab_${page.token}"
     fun stripItem(page: ChatPage) = "chat_inspector_strip_${page.token}"
 }

@@ -2,6 +2,8 @@ package com.promenar.infinity.ui.common
 
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.Test
 
 class InfinityInspectorLayoutTest {
@@ -22,22 +24,15 @@ class InfinityInspectorLayoutTest {
         assertThat(infinityInspectorWidth(380.dp, widened = true)).isEqualTo(360.dp)
     }
 
-    @Test fun `折叠屏内屏默认宽度让位，加宽后会话不足 320dp 时浮在会话之上`() {
+    @Test fun `折叠屏内屏默认宽度固定分栏，仅加宽或窄宽窗不足 320dp 时转为覆盖抽屉`() {
+        assertThat(infinityInspectorCanDock(814.dp, 360.dp)).isTrue()
         assertThat(infinityInspectorPlacement(814.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
+        assertThat(infinityInspectorCanDock(814.dp, 560.dp)).isFalse()
         assertThat(infinityInspectorPlacement(814.dp, 560.dp)).isEqualTo(InfinityInspectorPlacement.Float)
         assertThat(infinityInspectorPlacement(1280.dp, 560.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
         // 会话宽 = 窗口 − 检视器 − 右缘 8dp，至少 320dp。
         assertThat(infinityInspectorPlacement(688.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Shift)
         assertThat(infinityInspectorPlacement(687.dp, 360.dp)).isEqualTo(InfinityInspectorPlacement.Float)
-    }
-
-    @Test fun `图钉松开时总是浮动，按下时只在会话够宽时固定`() {
-        assertThat(infinityInspectorPlacement(814.dp, 360.dp, pinned = false)).isEqualTo(InfinityInspectorPlacement.Float)
-        assertThat(infinityInspectorPlacement(1280.dp, 360.dp, pinned = false)).isEqualTo(InfinityInspectorPlacement.Float)
-        assertThat(infinityInspectorPlacement(814.dp, 360.dp, pinned = true)).isEqualTo(InfinityInspectorPlacement.Shift)
-        // 加宽后会话不足 320dp：图钉不可用，按下也只能浮动。
-        assertThat(infinityInspectorCanPin(814.dp, 560.dp)).isFalse()
-        assertThat(infinityInspectorPlacement(814.dp, 560.dp, pinned = true)).isEqualTo(InfinityInspectorPlacement.Float)
     }
 
     @Test fun `边缘条常驻时正文右缘距窗口右缘至少 64dp，两侧空白够时不加`() {
@@ -51,11 +46,15 @@ class InfinityInspectorLayoutTest {
         assertThat(infinityInspectorStripInset(700.dp, 720.dp, 20.dp)).isEqualTo(44.dp)
     }
 
-    @Test fun `浮动检视器右缘与输入浮岛右缘对齐`() {
-        // 窗口 800dp：浮岛列限宽 720dp 居中，右侧空白 40dp，再加浮岛自带的 12dp。
-        assertThat(infinityInspectorFloatEnd(800.dp, 720.dp, 12.dp)).isEqualTo(52.dp)
-        assertThat(infinityInspectorFloatEnd(1280.dp, 720.dp, 12.dp)).isEqualTo(292.dp)
-        // 窗口比限宽还窄时浮岛铺满，只剩自带的内边距。
-        assertThat(infinityInspectorFloatEnd(700.dp, 720.dp, 12.dp)).isEqualTo(12.dp)
+    @Test fun `检视器覆盖抽屉底栏分割线采用透明度相乘且顶栏无图钉切换`() {
+        val inspector = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt"))
+        val chatScreen = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt"))
+
+        assertThat(inspector).contains("chrome?.edgeDivider?.let { it.copy(alpha = it.alpha * 0.7f) }")
+        assertThat(inspector).contains("chrome?.edgeDivider?.let { it.copy(alpha = it.alpha * 0.55f) }")
+        assertThat(inspector).doesNotContain("edgeDivider?.copy(alpha = 0.7f)")
+        assertThat(inspector).doesNotContain("rememberChatInspectorPinned")
+        assertThat(chatScreen).doesNotContain("ChatTopBarInspector")
+        assertThat(chatScreen).contains("ChatInspectorTags.SCRIM")
     }
 }

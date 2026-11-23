@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.72.4-beta] - 2026-11-24
+
+- **重构宽窗口检视器为纯固定分栏与贴右缘全高覆盖抽屉，并修复覆盖态底栏分割线刺眼纯白缺陷（[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[InfinityAdaptivePane.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityAdaptivePane.kt)、[InfinityInspectorLayoutTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/InfinityInspectorLayoutTest.kt)）**：
+  - **修复底栏分割线纯白 Bug**：修复 `ChatInspectorCard` 在覆盖抽屉毛玻璃态对 `chrome.edgeDivider`（`InfinityPureWhite.copy(alpha = 0.10f)`）直接调用 `.copy(alpha = 0.7f)` / `.copy(alpha = 0.55f)` 覆写透明度导致横/竖分割线变成 70% / 55% 刺眼纯白线的问题，改为透明度相乘（`edgeDivider.alpha * 0.7f` 与 `* 0.55f`），与固定分栏柔和低对比度细线保持一致。
+  - **移除手动悬浮模式与顶栏图钉**：移除 `ChatTopBar` 右侧图钉开关、`ChatTopBarInspector`、`rememberChatInspectorPinned` 与废弃的 `infinityInspectorFloatEnd`（原右缘对齐输入浮岛空出 `39dp` 死带）；宽窗口默认 `360dp` 恒定采用固定分栏（会话与输入浮岛完整让位、贴右缘 `8dp`、通底 `8dp`），收起仍保留右缘胶囊条。
+  - **加宽与窄宽窗全高覆盖抽屉 + 暗幕交互**：仅当空间不足 `320dp`（点击 `↗` 加宽至 `560dp`、浏览器铺满或 `600–688dp` 窄宽窗）时，转为贴右缘 `8dp`、顶栏下方直达底部 `8dp` 的全高熏黑毛玻璃覆盖抽屉（不再被输入浮岛截短），并在顶栏下方铺设柔和暗幕（深色 `46%` / 浅色 `18%` 黑）；点按暗幕或新审批到来时，加宽态一键还原回 `360dp` 固定分栏，无法分栏的窄宽窗则收起为右缘胶囊条。
+  - **测试与基线同步**：清理 `chat_inspector_pin` / `chat_inspector_unpin` 废弃文案，更新 `InfinityInspectorLayoutTest`、`ChatLayoutTest` 与 2 张受影响的宽窗口检视器截图参考基线（含 1 条 Linux 覆盖清单）。
+
 ## [0.72.3-beta] - 2026-11-23
 
 - **统一全站设置页顶栏下方内容顶距（[InfinitySettingsPageLayout.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinitySettingsPageLayout.kt)、[SettingsVisualPrimitivesContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/SettingsVisualPrimitivesContractTest.kt)）**：

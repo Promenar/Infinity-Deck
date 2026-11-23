@@ -12,7 +12,6 @@ import com.promenar.infinity.ui.common.dimOnPress
 import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.ui.semantics.selected
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.SideEffect
@@ -117,7 +116,6 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Public
-import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -879,33 +877,29 @@ fun ChatScreenContent(
         // 浏览器页签加宽时铺满会话区，只留左侧一条边距，再按一次恢复。
         val inspectorWidth = if (inspectorWidened && inspectorRoot == ChatPage.Browser) maxWidth - BrowserMaximizedInset
         else com.promenar.infinity.ui.common.infinityInspectorWidth(maxWidth, inspectorWidened)
-        // 图钉按下且让位后会话仍够宽（折叠屏内屏、平板）时固定在右侧、会话让位；图钉松开或加宽后会话过窄时浮在会话之上。
-        var inspectorPinned by rememberChatInspectorPinned()
-        val inspectorCanPin = com.promenar.infinity.ui.common.infinityInspectorCanPin(maxWidth, inspectorWidth)
-        val inspectorFloats = com.promenar.infinity.ui.common.infinityInspectorPlacement(maxWidth, inspectorWidth, inspectorPinned) ==
+        // 让位后会话仍够宽（折叠屏内屏、平板默认 360dp）时固定分栏；加宽或窄宽窗放不下时以贴右缘全高抽屉覆盖。
+        val inspectorFloats = com.promenar.infinity.ui.common.infinityInspectorPlacement(maxWidth, inspectorWidth) ==
             com.promenar.infinity.ui.common.InfinityInspectorPlacement.Float
-        // 顶栏始终横跨全宽，检视器在顶栏下方。固定时会话列与输入浮岛整体收到检视器左侧；
+        val inspectorDockedOpen = inspectorRoot != null && !inspectorFloats
+        val inspectorOverlayOpen = inspectorRoot != null && inspectorFloats
+        val canRestoreToDocked = inspectorWidened &&
+            com.promenar.infinity.ui.common.infinityInspectorCanDock(maxWidth, com.promenar.infinity.ui.common.InfinityInspectorWidth)
+        val dismissOverlayInspector: () -> Unit = {
+            if (canRestoreToDocked) inspectorWidened = false else actions.onSetInspectorPages(emptyList())
+        }
+        // 顶栏始终横跨全宽，检视器在顶栏下方、统一贴右缘 8dp 并通底 8dp。固定分栏时会话列与输入浮岛整体收到检视器左侧；
         // 其余时候右缘常驻边缘条，只有正文列表在末端多留出边缘条的宽度，输入浮岛保持居中、左右对称。
-        val inspectorPinnedOpen = inspectorRoot != null && !inspectorFloats
         val chatEndReserved by animateDpAsState(
-            targetValue = if (inspectorMode && inspectorPinnedOpen) inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter else 0.dp,
+            targetValue = if (inspectorMode && inspectorDockedOpen) inspectorWidth + com.promenar.infinity.ui.common.InfinityInspectorGutter else 0.dp,
             animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
             label = "chat_inspector_reserved",
         )
         val chatStripInset by animateDpAsState(
-            targetValue = if (inspectorMode && !inspectorPinnedOpen) {
+            targetValue = if (inspectorMode && !inspectorDockedOpen) {
                 com.promenar.infinity.ui.common.infinityInspectorStripInset(maxWidth, InfinitySpacing.ChatMaxWidth, InfinitySpacing.ChatHorizontal)
             } else 0.dp,
             animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
             label = "chat_strip_inset",
-        )
-        // 固定时检视器贴右缘 8dp；浮动时右缘与输入浮岛右缘对齐。浏览器加宽铺满会话区，仍贴右缘。
-        val inspectorEnd by animateDpAsState(
-            targetValue = if (inspectorFloats && !(inspectorWidened && inspectorRoot == ChatPage.Browser)) {
-                com.promenar.infinity.ui.common.infinityInspectorFloatEnd(maxWidth, InfinitySpacing.ChatMaxWidth, ComposerIslandHorizontalPadding)
-            } else com.promenar.infinity.ui.common.InfinityInspectorGutter,
-            animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
-            label = "chat_inspector_end",
         )
         val taskPanel = state.taskPanel
         var hiddenPlanSignature by rememberSaveable(uiState.session?.id) { mutableStateOf<String?>(null) }
@@ -1046,12 +1040,6 @@ fun ChatScreenContent(
                     panelHub = hubEntries.takeUnless { inspectorMode },
                     git = state.gitSummary,
                     onOpenGit = if (inspectorMode) ({ toggleInspectorPage(ChatPage.Git) }) else actions.onOpenGit,
-                    inspector = if (inspectorMode && inspectorRoot != null) ChatTopBarInspector(
-                        pinned = inspectorPinned,
-                        canPin = inspectorCanPin,
-                        onTogglePin = { inspectorPinned = !inspectorPinned },
-                    ) else null,
-                    inspectorPinReserved = inspectorMode,
                     runMode = state.runMode,
                     onRunMode = actions.onOpenRunMode,
                     workspace = state.workspace,
@@ -1094,10 +1082,10 @@ fun ChatScreenContent(
             }
             // 收起后的边缘条贴右缘 8dp。
             val stripEnd = 8.dp
-            // 审批卡在会话列底部；检视器浮在会话之上时会盖住它，新审批到来时先收为边缘条（角标仍提示待批准）。
+            // 审批卡在会话列底部；覆盖抽屉会盖住它，新审批到来时优先还原为固定分栏（无法分栏时收为边缘条）。
             val hasPendingApproval = pendingApprovals > 0
-            LaunchedEffect(hasPendingApproval, inspectorFloats) {
-                if (hasPendingApproval && inspectorFloats && inspectorRoot != null) actions.onSetInspectorPages(emptyList())
+            LaunchedEffect(hasPendingApproval, inspectorOverlayOpen) {
+                if (hasPendingApproval && inspectorOverlayOpen) dismissOverlayInspector()
             }
             val jumpToApproval: () -> Unit = {
                 scope.launch {
@@ -1810,9 +1798,9 @@ fun ChatScreenContent(
             }
             if (inspectorMode) {
                 val composerReserve = with(density) { composerHeightPx.toDp() }
-                // 两种模式都从顶栏下方开始。浮动时夹在顶栏与输入区之间，不挡输入与审批；固定时铺到底部，会话与浮岛已收到左侧。
-                // 与会话列表的底部留白一样直接跟随输入区高度，不做动画，首帧量到高度前也不会先盖住输入区再滑开。
-                val inspectorBottom = if (inspectorFloats) composerReserve + 8.dp else 8.dp
+                // 固定分栏与全高覆盖抽屉统一从顶栏下方起、贴右缘 8dp 并铺到底部 8dp，不截短检视器高度。
+                val inspectorEnd = com.promenar.infinity.ui.common.InfinityInspectorGutter
+                val inspectorBottom = 8.dp
                 val inspectorTop = padding.calculateTopPadding()
                 val animatedInspectorWidth by animateDpAsState(
                     targetValue = inspectorWidth,
@@ -1823,6 +1811,32 @@ fun ChatScreenContent(
                     endOffset = animatedInspectorWidth + inspectorEnd + 12.dp,
                     enabled = inspectorRoot != null,
                 )
+                // 覆盖抽屉态（加宽或窄宽窗放不下双栏）在顶栏下方铺柔和暗幕，点按即还原为固定分栏或收起。
+                val scrimDark = MaterialTheme.infinityDomainColors.isDark
+                val scrimInteraction = remember { MutableInteractionSource() }
+                val scrimLabel = stringResource(
+                    if (canRestoreToDocked) R.string.chat_inspector_restore_width else R.string.chat_inspector_collapse,
+                )
+                AnimatedVisibility(
+                    visible = inspectorOverlayOpen,
+                    enter = fadeIn(tween(InfinityMotion.DurationShort)),
+                    exit = fadeOut(tween(InfinityMotion.DurationShort)),
+                    modifier = Modifier.fillMaxSize().padding(top = inspectorTop),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = if (scrimDark) 0.46f else 0.18f))
+                            .clickable(
+                                interactionSource = scrimInteraction,
+                                indication = null,
+                                role = Role.Button,
+                                onClickLabel = scrimLabel,
+                                onClick = dismissOverlayInspector,
+                            )
+                            .testTag(ChatInspectorTags.SCRIM),
+                    )
+                }
                 Box(Modifier.fillMaxSize().padding(top = inspectorTop, bottom = padding.calculateBottomPadding()).imePadding()) {
                     AnimatedVisibility(
                         visible = inspectorRoot != null,
@@ -1862,7 +1876,7 @@ fun ChatScreenContent(
                                 ChatPage.Run -> ChatInspectorRunTab(
                                     pendingApprovals = pendingApprovals,
                                     onJumpToApproval = {
-                                        if (inspectorFloats) actions.onSetInspectorPages(emptyList())
+                                        if (inspectorFloats) dismissOverlayInspector()
                                         jumpToApproval()
                                     },
                                     hasRunContent = hasRunContent,
@@ -2619,10 +2633,6 @@ internal fun ChatTopBar(
     /** 状态行中运行模式之后的会话工作区；为 null 时不显示。 */
     workspace: com.promenar.infinity.ui.workspace.SessionWorkspaceUi? = null,
     onWorkspaceStatus: () -> Unit = {},
-    /** 宽窗口检视器打开时的图钉；功能面板在检视器页签里。 */
-    inspector: ChatTopBarInspector? = null,
-    /** 宽窗口下保留图钉 48dp 固定槽，防止收起/展开检视器时标题与状态行横跳。 */
-    inspectorPinReserved: Boolean = false,
     /** 分支会话：标题前显示分支标记；主会话仍在时点按回到主会话。 */
     branchOpenParent: (() -> Unit)? = null,
     isBranch: Boolean = false,
@@ -2791,39 +2801,6 @@ internal fun ChatTopBar(
             LocalChatNavigationIcon.current?.invoke() ?: InfinityBackButton(onClick = onBack)
         },
         actions = {
-            // 宽窗口保留 48dp 图钉固定槽位防标题横跳；收起检视器时仅透明禁用占位。
-            if (inspector != null || inspectorPinReserved) {
-                val activeInspector = inspector
-                val pinVisible = activeInspector != null
-                val pinAlpha by animateFloatAsState(
-                    targetValue = if (pinVisible) 1f else 0f,
-                    animationSpec = tween(InfinityMotion.DurationShort),
-                    label = "inspector_pin_alpha",
-                )
-                Box(
-                    Modifier
-                        .size(InfinitySpacing.MinimumTouchTarget)
-                        .graphicsLayer { alpha = pinAlpha }
-                        .then(if (pinVisible) Modifier else Modifier.clearAndSetSemantics {}),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (activeInspector != null) {
-                        val pinnedNow = activeInspector.pinned && activeInspector.canPin
-                        ChatTopBarAction(
-                            selected = pinnedNow,
-                            enabled = activeInspector.canPin,
-                            onClick = { haptics.toggle(!activeInspector.pinned); activeInspector.onTogglePin() },
-                            modifier = Modifier.testTag(ChatInspectorTags.PIN),
-                        ) {
-                            Icon(
-                                if (pinnedNow) Icons.Rounded.PushPin else Icons.Outlined.PushPin,
-                                stringResource(if (activeInspector.pinned) R.string.chat_inspector_unpin else R.string.chat_inspector_pin),
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
-                }
-            }
             if (touchLock != null) {
                 // 不生成时保留透明占位，标题宽度与 ⋮ 的位置不随生成开始结束跳动。
                 Box(
@@ -2974,18 +2951,9 @@ internal fun ChatTopBar(
 @Immutable
 data class ChatTopBarTouchLock(val enabled: Boolean, val onLock: () -> Unit)
 
-/** 宽窗口顶栏的检视器图钉：检视器打开时出现，开合由右缘的边缘条负责。 */
-@Immutable
-data class ChatTopBarInspector(
-    val pinned: Boolean,
-    /** 让位后会话仍够宽时才能固定；不够时图钉置灰，偏好保留。 */
-    val canPin: Boolean,
-    val onTogglePin: () -> Unit,
-)
-
 private val BrowserMaximizedInset = 24.dp
 
-/** 输入浮岛在限宽会话列内的水平内边距；浮动检视器的右缘与浮岛右缘对齐。 */
+/** 输入浮岛在限宽会话列内的水平内边距。 */
 private val ComposerIslandHorizontalPadding = 12.dp
 
 /** 顶栏状态行中工作区的显示名称。 */
@@ -3026,27 +2994,6 @@ private fun ChatTopBarWorkspace(
         )
         Text(text = name, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-}
-
-/** 顶栏图标按钮；对应的检视器页签展开时以浅色底标出。 */
-@Composable
-private fun ChatTopBarAction(
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    icon: @Composable () -> Unit,
-) {
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.semantics { this.selected = selected },
-        colors = IconButtonDefaults.iconButtonColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-        content = icon,
-    )
 }
 
 @Composable
