@@ -131,10 +131,9 @@ fun PetSettingsScreen(onBack: () -> Unit) {
     InfinitySettingsPageLayout(title = stringResource(R.string.pet_settings_title), onBack = onBack) { padding ->
         Column(
             Modifier
-                .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(vertical = InfinitySpacing.Large),
+                .padding(padding),
             verticalArrangement = Arrangement.spacedBy(InfinitySpacing.SectionGap),
         ) {
             InfinitySettingsGroup(footer = stringResource(R.string.pet_settings_enabled_footer)) {

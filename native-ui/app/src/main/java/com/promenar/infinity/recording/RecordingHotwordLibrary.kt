@@ -109,7 +109,11 @@ internal fun RecordingHotwordLibraryContent(
         pane = HotwordPane.Edit
     }
 
-    InfinitySettingsPageLayout(title = stringResource(R.string.recording_hotword_library), onBack = onBack) { padding ->
+    InfinitySettingsPageLayout(
+        title = stringResource(R.string.recording_hotword_library),
+        onBack = onBack,
+        topContentPadding = InfinitySpacing.Small,
+    ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).imePadding()) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.XLarge)) {
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {

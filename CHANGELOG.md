@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.72.3-beta] - 2026-11-23
+
+- **统一全站设置页顶栏下方内容顶距（[InfinitySettingsPageLayout.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinitySettingsPageLayout.kt)、[SettingsVisualPrimitivesContractTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/SettingsVisualPrimitivesContractTest.kt)）**：
+  - 为共享骨架 `InfinitySettingsPageLayout` 引入可配置参数 `topContentPadding: Dp = if ((header != null && !headerFrosted) || !showTopBar) 0.dp else InfinitySpacing.Large`（默认 `16dp`，与 `InfinityPageLayout` 及左右 `16dp` 屏边距形成三边对称），一并修复折叠屏展开态内屏右列详情页与外屏单列手机设置页顶部内容紧贴 Header 分割线（原 `0dp`–`3.6dp`）的系统性间距缺陷。
+  - 为 4 类需紧贴顶栏的特殊页保持 `0dp`（`UserSettingsHomeScreen` 自定义页头自动命中、`ComfyHostDetailScreen` 顶部标签栏、`LinuxPackagesScreen` 顶缘线性进度条、`KnowledgeGraphScreen` 顶缘模式切换栏），并保持 `LocalInfinitySettingsEmbedded` 嵌入分支不受影响。
+  - 逐页清理全部 10 处已有手工顶距或控件自带 `8dp` 触控/标签上留白的调用方（`PetSettingsScreen`、`BackgroundActivitySettingsScreen`、`NetworkAccessSettingsScreen`、`LinuxEnvironmentScreen`、`LinuxMirrorsScreen`、`ModelEditorScreen`、`ProviderListScreen`、`KeychainListScreen`、`RecordingVoiceLibrary`、`RecordingHotwordLibrary`）并同步 `NetworkAccessScreenshotTest` 与 `LinuxSettingsScreenshotTest` 测试套壳，杜绝任何页面出现双重留白（`32dp`）。
+  - 补充 `SettingsVisualPrimitivesContractTest` 顶距契约断言，刷新全部 169 张受影响设置页截图参考基线及 40 条 Linux 覆盖清单。
+
 ## [0.72.2-beta] - 2026-11-23
 
 - **对齐全站悬浮毛玻璃顶缘高光与输入浮岛材质（[FrostedBackdrop.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/FrostedBackdrop.kt)、[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)）**：

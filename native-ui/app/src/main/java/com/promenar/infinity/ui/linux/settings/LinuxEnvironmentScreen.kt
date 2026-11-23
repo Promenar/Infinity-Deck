@@ -143,7 +143,11 @@ fun LinuxEnvironmentScreen(
         viewModel.consumeNotice()
         snackbar.showSnackbar(message)
     }
-    InfinitySettingsPageLayout(title = stringResource(R.string.linux_title), onBack = onBack) { padding ->
+    InfinitySettingsPageLayout(
+        title = stringResource(R.string.linux_title),
+        onBack = onBack,
+        topContentPadding = 0.dp,
+    ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             LinuxEnvironmentContent(
                 state = state,

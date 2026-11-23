@@ -152,6 +152,8 @@ internal fun KeychainListContent(state: KeychainListState, actions: KeychainList
         title = state.filter?.takeIf { state.filterLocked }?.let { keychainCategoryName(it) } ?: stringResource(R.string.keychain_title),
         onBack = actions.onBack,
         modifier = modifier,
+        // 未锁定筛选时顶部直接是 FilterChip 行（自带 8dp 触控上留白），缩为 8dp 保证视觉顶距仍为 16dp。
+        topContentPadding = if (state.filterLocked) InfinitySpacing.Large else InfinitySpacing.Small,
         search = InfinityPageSearch(
             query = state.query,
             active = state.searchActive,

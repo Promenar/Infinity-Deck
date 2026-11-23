@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
@@ -64,6 +65,8 @@ fun InfinitySettingsPageLayout(
     headerFrosted: Boolean = false,
     // 二级页顶栏搜索：给出时顶栏右侧出现放大镜，点开后标题位换成搜索框。
     search: InfinityPageSearch? = null,
+    // 顶栏分割线与首项内容之间的默认留白：带标准/毛玻璃顶栏时对齐 InfinityPageLayout 与左右边距（16dp），自定义无底线主标签页头默认 0dp。
+    topContentPadding: Dp = if ((header != null && !headerFrosted) || !showTopBar) 0.dp else InfinitySpacing.Large,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val embedded = LocalInfinitySettingsEmbedded.current
@@ -143,7 +146,7 @@ fun InfinitySettingsPageLayout(
             content(
                 PaddingValues(
                     start = horizontalContentPadding,
-                    top = scaffoldPadding.calculateTopPadding(),
+                    top = scaffoldPadding.calculateTopPadding() + topContentPadding,
                     end = horizontalContentPadding,
                     bottom = scaffoldPadding.calculateBottomPadding() + InfinitySpacing.XLarge,
                 ),

@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
@@ -27,7 +28,11 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 fun NetworkAccessSettingsScreen(onBack: () -> Unit, onOpenTailscale: () -> Unit) {
     val access = (LocalContext.current.applicationContext as InfinityApplication).agentNetworkAccess
     val snapshot by access.snapshot.collectAsStateWithLifecycle()
-    InfinitySettingsPageLayout(title = stringResource(R.string.network_access_title), onBack = onBack) { padding ->
+    InfinitySettingsPageLayout(
+        title = stringResource(R.string.network_access_title),
+        onBack = onBack,
+        topContentPadding = 0.dp,
+    ) { padding ->
         NetworkAccessSettingsContent(
             snapshot = snapshot,
             onOpenTailscale = onOpenTailscale,

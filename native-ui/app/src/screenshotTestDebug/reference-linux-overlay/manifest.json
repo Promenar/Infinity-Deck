@@ -89,8 +89,8 @@
       "linux_sha256": "4a68945423b98ef05e608c45fc3c83f10aebd3d78bd24daa98b01d6defab7418"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/defaultModelsChineseLargeFontReleasePreview_Default models Chinese large font_8ee62bc8_0.png": {
-      "base_sha256": "7f1323411d79c11579d6fe06b50ff456aecff6bf1377624c6f12f5f8c7475cde",
-      "linux_sha256": "7f1323411d79c11579d6fe06b50ff456aecff6bf1377624c6f12f5f8c7475cde"
+      "base_sha256": "adbc0c7d3c68f9dcd038328ff15b02eff5e35b41720f247e34bd51bfc0b5150b",
+      "linux_sha256": "adbc0c7d3c68f9dcd038328ff15b02eff5e35b41720f247e34bd51bfc0b5150b"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/emptyChatEnglishLandscapeReleasePreview_Empty chat English landscape_a72a9f74_0.png": {
       "base_sha256": "b4f504405ac3558d8f836c7ce061d112e60fcec5b04782069423d48eedd368ad",
@@ -101,8 +101,8 @@
       "linux_sha256": "72cc53634db7383455d27b1e52eecfcdaab4f11df226ca26a608642b38a609b7"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/providerListChineseNarrowReleasePreview_Provider list Chinese narrow_342492e5_0.png": {
-      "base_sha256": "67ef67eb56221474a31219faceeec87126d7e50ecb650397870d37f115a729ac",
-      "linux_sha256": "67ef67eb56221474a31219faceeec87126d7e50ecb650397870d37f115a729ac"
+      "base_sha256": "d20f0599ab1e8b29f651a8c3beb07e213f737ff8876c7d6c623d164e75eadac4",
+      "linux_sha256": "d20f0599ab1e8b29f651a8c3beb07e213f737ff8876c7d6c623d164e75eadac4"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/ragDetailsKgLongLandscapeReleasePreview_RAG details KG long landscape_a7916274_0.png": {
       "base_sha256": "3b39ab07a22801ddc861e0aaa48510d5f2140703951f832e90eb67d1040dd6a7",
@@ -117,8 +117,8 @@
       "linux_sha256": "90e0303f07523d5973340ba1dd9f9ec74e53c6eb3d51283a0521064d9a60e99d"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/ragGlobalChineseDarkLargeFontReleasePreview_RAG global Chinese dark large font_6e60c62b_0.png": {
-      "base_sha256": "6ce9eeae04b42d3e55fcce1228e05a4f1f701aa08a19560084c7a4731a3d7576",
-      "linux_sha256": "6ce9eeae04b42d3e55fcce1228e05a4f1f701aa08a19560084c7a4731a3d7576"
+      "base_sha256": "30dce926e2b19e584a327be34b2628952aa313f10b5fef77d3882867b7586e2f",
+      "linux_sha256": "30dce926e2b19e584a327be34b2628952aa313f10b5fef77d3882867b7586e2f"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/streamingChatChineseLandscapeReleasePreview_Streaming chat Chinese landscape_50d024bd_0.png": {
       "base_sha256": "34142b1f8869daae3e04326c299aec6f8de75d668ba7dcc825f41359cd270960",
@@ -145,8 +145,8 @@
       "linux_sha256": "141c8fe16af3fcebb793e8317e71576cbcac3cb8a9f89512e0e6b126db1087c8"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/userSettingsProviderLargeFontReleasePreview_User settings provider English large font_e804a4ab_0.png": {
-      "base_sha256": "ef287dcaaa1fcbd10e6cde35c69df574ff4d18d2d50ff9f67de8a696758edd3e",
-      "linux_sha256": "ef287dcaaa1fcbd10e6cde35c69df574ff4d18d2d50ff9f67de8a696758edd3e"
+      "base_sha256": "989d9897732966347f50cae0a95bd7d51fdc6e9b63c23721aa969cd9a16dcb3a",
+      "linux_sha256": "989d9897732966347f50cae0a95bd7d51fdc6e9b63c23721aa969cd9a16dcb3a"
     },
     "com/promenar/infinity/ui/avatar/AvatarEditorScreenshotTestKt/avatarEditorLightEnglishPreview_Avatar editor light EN 411_a68d18fb_0.png": {
       "base_sha256": "91416bb0818239bccccfcf0b84c0ae4da26ce62e79091cf711453416a0b03978",
@@ -533,8 +533,8 @@
       "linux_sha256": "d70080235ac8b37eeee543c0139058055955244342c8bc13539395d4962a14a8"
     },
     "com/promenar/infinity/ui/keychain/KeychainScreenshotTestKt/keychainDetailSshKeyPreview_钥匙串 SSH 密钥页 浅色英文 字号130_69153020_0.png": {
-      "base_sha256": "45c2330d077e2bc8d0908a91c58a6c96151d669d14b72f49312cf9c6cc7d0750",
-      "linux_sha256": "45c2330d077e2bc8d0908a91c58a6c96151d669d14b72f49312cf9c6cc7d0750"
+      "base_sha256": "d4dd11a88f88464d61d95f239e0a62a9eff97801284aa5d9707fec7933bd6938",
+      "linux_sha256": "d4dd11a88f88464d61d95f239e0a62a9eff97801284aa5d9707fec7933bd6938"
     },
     "com/promenar/infinity/ui/linux/LinuxSettingsScreenshotTestKt/linuxManageRunModeDarkPreview_Linux 环境管理 默认模式与补装 深色_fe61f05b_0.png": {
       "base_sha256": "a8a025c41e5b9ed0373912552668a0a6b2cc2b2e9b807ba5721da27667701527",
@@ -705,28 +705,28 @@
       "linux_sha256": "7dd9d12b8536e7526343e0e5617529e11fb2ae576a1b1ffaa4c94d55b5a18023"
     },
     "com/promenar/infinity/ui/rag/RetrievalBatch1ScreenshotTestKt/knowledgeBaseSettingsCustomDepthPreview_知识库设置 自定义深度 无重排 浅色 中文 360dp_a7bea618_0.png": {
-      "base_sha256": "5d57ae8464e5b5edb0752a2fb3d03c63e1ce64fa71f02483460bcf642c2fa40e",
-      "linux_sha256": "5d57ae8464e5b5edb0752a2fb3d03c63e1ce64fa71f02483460bcf642c2fa40e"
+      "base_sha256": "1ab7d8ed5ad418558a17fd53a722ff12c40d44d400d1204908f45d15ff22d497",
+      "linux_sha256": "1ab7d8ed5ad418558a17fd53a722ff12c40d44d400d1204908f45d15ff22d497"
     },
     "com/promenar/infinity/ui/rag/RetrievalBatch1ScreenshotTestKt/knowledgeBaseSettingsCustomDepthPreview_知识库设置 自定义深度 无重排 深色 中文 411dp_ae3889b4_0.png": {
-      "base_sha256": "83a2e21b820e5cc93f30d6f7d81d9083af4638ee8b4b36c22de8e36d0eac2a31",
-      "linux_sha256": "83a2e21b820e5cc93f30d6f7d81d9083af4638ee8b4b36c22de8e36d0eac2a31"
+      "base_sha256": "8a1f7a4040d5d3dacfb6a57576d7d0626195aa17dc9cfec47bd94cbe844aa3e3",
+      "linux_sha256": "8a1f7a4040d5d3dacfb6a57576d7d0626195aa17dc9cfec47bd94cbe844aa3e3"
     },
     "com/promenar/infinity/ui/rag/RetrievalBatch1ScreenshotTestKt/knowledgeBaseSettingsDefaultPreview_知识库设置 默认 深色 中文 360dp_a0910414_0.png": {
-      "base_sha256": "ceb519aa907a33566cc0eb4fe0e256ec789f19c9b412c8a6666715b001c8feb3",
-      "linux_sha256": "ceb519aa907a33566cc0eb4fe0e256ec789f19c9b412c8a6666715b001c8feb3"
+      "base_sha256": "00358c764e8589ea08796b321bcecb517390111d18349f26058c541f8f8f1dbe",
+      "linux_sha256": "00358c764e8589ea08796b321bcecb517390111d18349f26058c541f8f8f1dbe"
     },
     "com/promenar/infinity/ui/rag/RetrievalBatch1ScreenshotTestKt/knowledgeBaseSettingsDefaultPreview_知识库设置 默认 深色 中文 411dp_cdb7ce66_0.png": {
-      "base_sha256": "9c180dc5cf3ef25d25591ef264ea689f7c3227a54951ced7379e7c10a92f4672",
-      "linux_sha256": "9c180dc5cf3ef25d25591ef264ea689f7c3227a54951ced7379e7c10a92f4672"
+      "base_sha256": "366b71a250e633fffb58d6111f000a07c6ddc0440153dab07d6533009087ce4c",
+      "linux_sha256": "366b71a250e633fffb58d6111f000a07c6ddc0440153dab07d6533009087ce4c"
     },
     "com/promenar/infinity/ui/rag/RetrievalBatch1ScreenshotTestKt/knowledgeDebugSettingsExpandedPreview_调试与高级 展开 分块已改 深色 中文 360dp_7f796904_0.png": {
-      "base_sha256": "d8a8a5aefbae828368bdd71422f8aea60288558a9e292e5304014c9e0cf4f32c",
-      "linux_sha256": "d8a8a5aefbae828368bdd71422f8aea60288558a9e292e5304014c9e0cf4f32c"
+      "base_sha256": "746ad26175f6172d503aff623341a18ead47ccefed8a6926de9bd362e1e6b928",
+      "linux_sha256": "746ad26175f6172d503aff623341a18ead47ccefed8a6926de9bd362e1e6b928"
     },
     "com/promenar/infinity/ui/rag/RetrievalBatch1ScreenshotTestKt/knowledgeDebugSettingsExpandedPreview_调试与高级 展开 分块已改 深色 中文 411dp_434a3e54_0.png": {
-      "base_sha256": "70fd9c653b67742dbceeb6332d9589f55cd7e79c78000fab20304682dd40c4c4",
-      "linux_sha256": "70fd9c653b67742dbceeb6332d9589f55cd7e79c78000fab20304682dd40c4c4"
+      "base_sha256": "29178f35739162d79cb299dec6960080353f052325ed4b6cecbc2fe6a1880b08",
+      "linux_sha256": "29178f35739162d79cb299dec6960080353f052325ed4b6cecbc2fe6a1880b08"
     },
     "com/promenar/infinity/ui/remote/RemotePanelScreenshotTestKt/remoteInspectorLightPreview_远程 检视器 浅色英文 Tailscale 需处理_9b3479f9_0.png": {
       "base_sha256": "dac141f9f7b27ea99e60ffc44fc24e271beebf5ccb2a80598132b474563ae3b6",
@@ -741,12 +741,12 @@
       "linux_sha256": "2bf53d0f6f4287f466c86274573775137aa7788b3d44dfcb65b136d6df673c8f"
     },
     "com/promenar/infinity/ui/settings/BackupLayersScreenshotTestKt/backupLayersDarkPreview_备份分层 深色中文 411_39a4bf7f_0.png": {
-      "base_sha256": "e0c1aab2de9bd82084e37bc4e9146b642f534d8babc823185bc6e735aa54e8c4",
-      "linux_sha256": "e0c1aab2de9bd82084e37bc4e9146b642f534d8babc823185bc6e735aa54e8c4"
+      "base_sha256": "2045120bd053d5a734a229f162a891ce649ab3cf956d8342223b9978e29472ce",
+      "linux_sha256": "2045120bd053d5a734a229f162a891ce649ab3cf956d8342223b9978e29472ce"
     },
     "com/promenar/infinity/ui/settings/BackupLayersScreenshotTestKt/backupLayersLightPreview_备份分层 浅色英文 360 字号130_0a97c3b8_0.png": {
-      "base_sha256": "5e91040d83737c7170bd08b467a1365d15aef49a95b29608ef953ccf1c20aca8",
-      "linux_sha256": "5e91040d83737c7170bd08b467a1365d15aef49a95b29608ef953ccf1c20aca8"
+      "base_sha256": "c476b3f5ac31654c2365b25d96f85533b37aa8a69a4189a2e481b90e5cdcb0ef",
+      "linux_sha256": "c476b3f5ac31654c2365b25d96f85533b37aa8a69a4189a2e481b90e5cdcb0ef"
     },
     "com/promenar/infinity/ui/settings/ComposerSurfaceScreenshotTestKt/composerSurfaceAmbientLightPreview_浮岛材质 环境光 浅中360_ad95d509_0.png": {
       "base_sha256": "a1eda189750eafa968e96b71cf5e21178ccc4815ecac74b5ba9645516ed79941",
@@ -765,28 +765,28 @@
       "linux_sha256": "94635ae660dd27abf39683242aaceb6f7afcda2dbc4857c8e19b9ce511cd126b"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerFormCustomProtocolProvidersModels_提供商编辑 自定义协议 英文 360_e75d3d8c_0.png": {
-      "base_sha256": "741334485fe56ad66a4c05a7d49788155ce5120615e15677fcb0c6a869c4037f",
-      "linux_sha256": "741334485fe56ad66a4c05a7d49788155ce5120615e15677fcb0c6a869c4037f"
+      "base_sha256": "ebfa6e7a4a0b4d7dde96568c88a6f3d98d56da5d7cf2084c051bf3887bfb0574",
+      "linux_sha256": "ebfa6e7a4a0b4d7dde96568c88a6f3d98d56da5d7cf2084c051bf3887bfb0574"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerFormCustomProtocolProvidersModels_提供商编辑 自定义协议 英文 大字 360_eeced860_0.png": {
-      "base_sha256": "db814c12be8f1c04b4993741cc760b39909ea06ba822f9be82a9a9b8d280d171",
-      "linux_sha256": "db814c12be8f1c04b4993741cc760b39909ea06ba822f9be82a9a9b8d280d171"
+      "base_sha256": "0229146ba793488fea594b22536afa8ca7750eb8d5020e27e583ed8cbc171441",
+      "linux_sha256": "0229146ba793488fea594b22536afa8ca7750eb8d5020e27e583ed8cbc171441"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerListProvidersModels_提供商列表 浅色英文 360_5e324ecb_0.png": {
-      "base_sha256": "c81d5bfc67a136eb63d598f61e9b6ad74d67413634d9bb231cf96f97b8d1929b",
-      "linux_sha256": "c81d5bfc67a136eb63d598f61e9b6ad74d67413634d9bb231cf96f97b8d1929b"
+      "base_sha256": "ef2e6ac6fb7873c0fa2d6011a968a14c45263f6fefa4bfc5f3e0e72eb886c43e",
+      "linux_sha256": "ef2e6ac6fb7873c0fa2d6011a968a14c45263f6fefa4bfc5f3e0e72eb886c43e"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerListProvidersModels_提供商列表 深色中文 411_4d282964_0.png": {
-      "base_sha256": "ef2f42547c7a5693598f4e3134cefdeb362df1d3e4fff6bfb13eeb7e7b31fb3f",
-      "linux_sha256": "ef2f42547c7a5693598f4e3134cefdeb362df1d3e4fff6bfb13eeb7e7b31fb3f"
+      "base_sha256": "9e84db0bc30203146cb4d4aed765290b57d0b271e0f697a965b087782bdd1c26",
+      "linux_sha256": "9e84db0bc30203146cb4d4aed765290b57d0b271e0f697a965b087782bdd1c26"
     },
     "com/promenar/infinity/ui/settings/RemoteAdditionsScreenshotTestKt/remoteAgentJobsEntryPreview_远程 SSH 智能体后台命令计数入口 浅色英文 字号130_36049f2b_0.png": {
-      "base_sha256": "66e04719058beafd9da217b4dbc3c0d72e7d6c826a238f11c266eb52860fba5c",
-      "linux_sha256": "66e04719058beafd9da217b4dbc3c0d72e7d6c826a238f11c266eb52860fba5c"
+      "base_sha256": "760c69783c152c718e6d0cafd0a279c990b2fa17f03b62f905dcb972b907722b",
+      "linux_sha256": "760c69783c152c718e6d0cafd0a279c990b2fa17f03b62f905dcb972b907722b"
     },
     "com/promenar/infinity/ui/settings/RemoteAdditionsScreenshotTestKt/sshSettingsIdlePreview_SSH 主机设置 空闲断开 深色英文 字号130_63bd2603_0.png": {
-      "base_sha256": "59e8c396274373a64a3d36eff2b0c65983184a7244e115f2610cbfdee8dda544",
-      "linux_sha256": "59e8c396274373a64a3d36eff2b0c65983184a7244e115f2610cbfdee8dda544"
+      "base_sha256": "13cbe9a691b911ebe61b3167cfc1673527856ed46f3a575388e87e741fd17385",
+      "linux_sha256": "13cbe9a691b911ebe61b3167cfc1673527856ed46f3a575388e87e741fd17385"
     },
     "com/promenar/infinity/ui/settings/RemoteAdditionsScreenshotTestKt/tailscaleAddSshHostPreview_远程 Tailscale 设备添加为 SSH 主机 浅色中文_c7365255_0.png": {
       "base_sha256": "9638f97eb6b2d0ab648ce6191bc3b83c10820e94b9e6b62a3bb3163432768357",
@@ -797,12 +797,12 @@
       "linux_sha256": "d82b7b5649d4f720bdeb1405e749843044f9c717b11d9aaaf7d83b0fe1e675a9"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/localModelsBatch1_本地模型 深色中文 360_3a2422fa_0.png": {
-      "base_sha256": "94b26030116c60b440c97d694a7a008721a0b8d5a46d73b4274695f1f72a901c",
-      "linux_sha256": "94b26030116c60b440c97d694a7a008721a0b8d5a46d73b4274695f1f72a901c"
+      "base_sha256": "8d63b5bfaf88cd5783e9e6bffd00ddfbb81104eb4c3a33281940ef50176c04d5",
+      "linux_sha256": "8d63b5bfaf88cd5783e9e6bffd00ddfbb81104eb4c3a33281940ef50176c04d5"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/localModelsBatch1_本地模型 深色中文 411_8dddc05d_0.png": {
-      "base_sha256": "6c07be4ae94c858632b9e445e91760ee85fe20f3b9f90ef5a26f89041cf11ed8",
-      "linux_sha256": "6c07be4ae94c858632b9e445e91760ee85fe20f3b9f90ef5a26f89041cf11ed8"
+      "base_sha256": "fecf7612cf7c4f2edbece3882bcf4f8d97a5b482edb0415e604cf242b9d71943",
+      "linux_sha256": "fecf7612cf7c4f2edbece3882bcf4f8d97a5b482edb0415e604cf242b9d71943"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/settingsHomeBatch1AvatarBrand_设置首页 已设头像 品牌 浅色英文 360_65654fd7_0.png": {
       "base_sha256": "7cba40fe862ce7581f7a8114300288e54c8484f22d1d74fa975cda40d4dedf51",
@@ -825,92 +825,92 @@
       "linux_sha256": "7b496025cde04d53a137b5d9795aaf82672b0ff7e90225c06cf9bab0bd0ab8f0"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/toolsBudgetBatch1_工具执行预算 深色中文 360_da67b490_0.png": {
-      "base_sha256": "5f0f0907d6e3bcb08d9f1f4d266367526ad9f0ed4588bc403ba6e9635d7ddcb4",
-      "linux_sha256": "5f0f0907d6e3bcb08d9f1f4d266367526ad9f0ed4588bc403ba6e9635d7ddcb4"
+      "base_sha256": "ca5c439f1b1d1d66ca34cfbc535131c742df428c8a2871b7e0d4f47defa6e512",
+      "linux_sha256": "ca5c439f1b1d1d66ca34cfbc535131c742df428c8a2871b7e0d4f47defa6e512"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/toolsPageBatch1LargeText_工具设置顶部 深色中文 字号130_6d11a979_0.png": {
-      "base_sha256": "3e4b49490fb799bb82375fa276f45362b0988c8c6794b2164f39cb5996ae5b47",
-      "linux_sha256": "3e4b49490fb799bb82375fa276f45362b0988c8c6794b2164f39cb5996ae5b47"
+      "base_sha256": "6a16951ea12179299159af022cc875cb22db940fd3c35c91ccfb244ce040c43e",
+      "linux_sha256": "6a16951ea12179299159af022cc875cb22db940fd3c35c91ccfb244ce040c43e"
     },
     "com/promenar/infinity/ui/settings/SettingsPagesBatch1ScreenshotTestKt/toolsPageBatch1LightEnglish_工具设置顶部 浅色英文_7f8611db_0.png": {
-      "base_sha256": "039b8f1b07186994415e47d7852661d95399d3b65af6adfab2839f5f0aea32ed",
-      "linux_sha256": "039b8f1b07186994415e47d7852661d95399d3b65af6adfab2839f5f0aea32ed"
+      "base_sha256": "fe607099afe8783f05ddaea13c5d520ea41383da2392900b695302e069b5e8b6",
+      "linux_sha256": "fe607099afe8783f05ddaea13c5d520ea41383da2392900b695302e069b5e8b6"
     },
     "com/promenar/infinity/ui/settings/SettingsPolishScreenshotTestKt/sshHostActionsLightPreview_SSH 主机操作 浅色英文 未信任_cff42a40_0.png": {
       "base_sha256": "35858a4f883198285e5abe089af4f7421983d92c5c6a2a9686ba118bbcc8757c",
       "linux_sha256": "35858a4f883198285e5abe089af4f7421983d92c5c6a2a9686ba118bbcc8757c"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/sshEmptyLightPreview_SSH 空态 浅色 大字号130_5ad6fe68_0.png": {
-      "base_sha256": "a2ab776c7c6dff3caaad2563fb5cc6b787162c78177446cb0d3aded7744b504c",
-      "linux_sha256": "a2ab776c7c6dff3caaad2563fb5cc6b787162c78177446cb0d3aded7744b504c"
+      "base_sha256": "502c0be69bbc6b80fafe0a751772f770fc308fd8ce909344fac625cca57d7de0",
+      "linux_sha256": "502c0be69bbc6b80fafe0a751772f770fc308fd8ce909344fac625cca57d7de0"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/sshHostsLightPreview_SSH 主机列表 浅色 大字号130_f9afc421_0.png": {
-      "base_sha256": "460daec34d77d314f5ab7c2a5099b934d7c67852c3c4386e2d5e65ac193bd3a6",
-      "linux_sha256": "460daec34d77d314f5ab7c2a5099b934d7c67852c3c4386e2d5e65ac193bd3a6"
+      "base_sha256": "9a5f2e2def69092eeef6fd732bf6a5118eeebf71c923c4901b465a7467eef5f4",
+      "linux_sha256": "9a5f2e2def69092eeef6fd732bf6a5118eeebf71c923c4901b465a7467eef5f4"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledDarkPreview_Termux 未安装 深色 大字号130_6889bcc1_0.png": {
-      "base_sha256": "2b42f20d7071eec29f4da9f80b0ce894acc7c8d572af0f2459fd4306a0958504",
-      "linux_sha256": "2b42f20d7071eec29f4da9f80b0ce894acc7c8d572af0f2459fd4306a0958504"
+      "base_sha256": "af0ad96a52ac6e9015e3c5408f01efbe8b67992cc249dcf99deadbe5ce8e7992",
+      "linux_sha256": "af0ad96a52ac6e9015e3c5408f01efbe8b67992cc249dcf99deadbe5ce8e7992"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledDarkPreview_Termux 未安装 深色_31a71686_0.png": {
-      "base_sha256": "8a5f939e7b115a075387a92d2e4b7b5d880eb2dbb60a3d4e1441a3af5eab34cb",
-      "linux_sha256": "8a5f939e7b115a075387a92d2e4b7b5d880eb2dbb60a3d4e1441a3af5eab34cb"
+      "base_sha256": "4b4449ecdeba8f87cfd53aea3bcf7b1c4c6884305bc8e1dbb29cbb292f87a588",
+      "linux_sha256": "4b4449ecdeba8f87cfd53aea3bcf7b1c4c6884305bc8e1dbb29cbb292f87a588"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLightPreview_Termux 未安装 浅色 大字号130_b86d69ef_0.png": {
-      "base_sha256": "d48026b0c9560863afa05c06739a581586b7cac3db747c0c72d4b46de3c20696",
-      "linux_sha256": "d48026b0c9560863afa05c06739a581586b7cac3db747c0c72d4b46de3c20696"
+      "base_sha256": "997284184467fd51cf4fd9b0273ddc320d3f6d2866e7ce74889c0caeb0b34db2",
+      "linux_sha256": "997284184467fd51cf4fd9b0273ddc320d3f6d2866e7ce74889c0caeb0b34db2"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLightPreview_Termux 未安装 浅色_f80ec007_0.png": {
-      "base_sha256": "31afa0be3d1be7301a6a3dcf824febe223f026760a1105d407dbd2009266a5e1",
-      "linux_sha256": "31afa0be3d1be7301a6a3dcf824febe223f026760a1105d407dbd2009266a5e1"
+      "base_sha256": "3cd3b56872a9cbc993f9e1c3f28f83633f48ba2bef8a70679693a79e7c6ec7c4",
+      "linux_sha256": "3cd3b56872a9cbc993f9e1c3f28f83633f48ba2bef8a70679693a79e7c6ec7c4"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLowerDarkPreview_Termux 未安装下半页 深色 大字号130_8fa0b9a8_0.png": {
-      "base_sha256": "2b42f20d7071eec29f4da9f80b0ce894acc7c8d572af0f2459fd4306a0958504",
-      "linux_sha256": "2b42f20d7071eec29f4da9f80b0ce894acc7c8d572af0f2459fd4306a0958504"
+      "base_sha256": "af0ad96a52ac6e9015e3c5408f01efbe8b67992cc249dcf99deadbe5ce8e7992",
+      "linux_sha256": "af0ad96a52ac6e9015e3c5408f01efbe8b67992cc249dcf99deadbe5ce8e7992"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLowerDarkPreview_Termux 未安装下半页 深色_47daebe2_0.png": {
       "base_sha256": "d392f42cb73c66c094f9a49991a6709b152fe8eeb6f2df6677dccbf2f826bf95",
       "linux_sha256": "d392f42cb73c66c094f9a49991a6709b152fe8eeb6f2df6677dccbf2f826bf95"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLowerLightPreview_Termux 未安装下半页 浅色 大字号130_55886a25_0.png": {
-      "base_sha256": "d48026b0c9560863afa05c06739a581586b7cac3db747c0c72d4b46de3c20696",
-      "linux_sha256": "d48026b0c9560863afa05c06739a581586b7cac3db747c0c72d4b46de3c20696"
+      "base_sha256": "997284184467fd51cf4fd9b0273ddc320d3f6d2866e7ce74889c0caeb0b34db2",
+      "linux_sha256": "997284184467fd51cf4fd9b0273ddc320d3f6d2866e7ce74889c0caeb0b34db2"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/termuxNotInstalledLowerLightPreview_Termux 未安装下半页 浅色_95ecd34f_0.png": {
       "base_sha256": "a968349cad3c1fdecf34fba34b2a251e75fad3cac4f30df980d4b2a6e9078c32",
       "linux_sha256": "a968349cad3c1fdecf34fba34b2a251e75fad3cac4f30df980d4b2a6e9078c32"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/toolsHeaderLightPreview_工具设置顶部 浅色 大字号130_da68fc1a_0.png": {
-      "base_sha256": "c9c208b9dd5a9af8d339955d01a136d4106fb15f920adc62cfe427d2effed464",
-      "linux_sha256": "c9c208b9dd5a9af8d339955d01a136d4106fb15f920adc62cfe427d2effed464"
+      "base_sha256": "1622ccbc325069d9640556516b64ae976727a6a48f425b2fb1b5cd116fe9df83",
+      "linux_sha256": "1622ccbc325069d9640556516b64ae976727a6a48f425b2fb1b5cd116fe9df83"
     },
     "com/promenar/infinity/ui/settings/SettingsVisualScreenshotTestKt/toolsHeaderLightPreview_工具设置顶部 浅色_e5018eab_0.png": {
-      "base_sha256": "b8cdadc36d25858c282d5eb114f37d918ba42fdf45e39c70aebc81ed46d60095",
-      "linux_sha256": "b8cdadc36d25858c282d5eb114f37d918ba42fdf45e39c70aebc81ed46d60095"
+      "base_sha256": "370476001da241a7c6699037871666c59c25af50b141ec77c900dc720b3599fc",
+      "linux_sha256": "370476001da241a7c6699037871666c59c25af50b141ec77c900dc720b3599fc"
     },
     "com/promenar/infinity/ui/settings/TailscaleSettingsScreenshotTestKt/tailscaleNeedsLoginDarkPreview_Tailscale 待登录 深色 大字号130_6d831725_0.png": {
-      "base_sha256": "722111d440ea6d059c3708b2131f8ddce6de3b39fb46cf154788484f4c679a4a",
-      "linux_sha256": "722111d440ea6d059c3708b2131f8ddce6de3b39fb46cf154788484f4c679a4a"
+      "base_sha256": "3f180ceffd24e58a8ee4a594483da7cc45edf9202658ecc7f4bb3c3f5d831d13",
+      "linux_sha256": "3f180ceffd24e58a8ee4a594483da7cc45edf9202658ecc7f4bb3c3f5d831d13"
     },
     "com/promenar/infinity/ui/settings/TailscaleSettingsScreenshotTestKt/tailscaleNeedsLoginLightPreview_Tailscale 待登录 浅色 大字号130_e34707b5_0.png": {
-      "base_sha256": "378b8cd572b79e6898a1d81e75672389fcc01469c3a4e259ab9a6e92b4c26b43",
-      "linux_sha256": "378b8cd572b79e6898a1d81e75672389fcc01469c3a4e259ab9a6e92b4c26b43"
+      "base_sha256": "ba20d1e27466241fef5a06d390c55c26b762d4fc8fb11e6115dd8cea7c5358b2",
+      "linux_sha256": "ba20d1e27466241fef5a06d390c55c26b762d4fc8fb11e6115dd8cea7c5358b2"
     },
     "com/promenar/infinity/ui/settings/TailscaleSettingsScreenshotTestKt/tailscaleRunningDarkPreview_Tailscale 已连接 深色 大字号130_ec9542ba_0.png": {
-      "base_sha256": "ff8b488837d2413985f455a6a0be6f9c509388c6a34da4fa05f962f721197749",
-      "linux_sha256": "ff8b488837d2413985f455a6a0be6f9c509388c6a34da4fa05f962f721197749"
+      "base_sha256": "3d32bea706b1f88a9c52ebf721442fa6f7caada0152b9661fdbecbc64f293508",
+      "linux_sha256": "3d32bea706b1f88a9c52ebf721442fa6f7caada0152b9661fdbecbc64f293508"
     },
     "com/promenar/infinity/ui/settings/TailscaleSettingsScreenshotTestKt/tailscaleRunningLightPreview_Tailscale 已连接 浅色 大字号130_c5f73b61_0.png": {
-      "base_sha256": "3e677be675319bfe71bf40ffc4fcc1119c5063ba5da39e909f846e597975362d",
-      "linux_sha256": "3e677be675319bfe71bf40ffc4fcc1119c5063ba5da39e909f846e597975362d"
+      "base_sha256": "0dd2de1b621dabc1b342223ecc3a500456a8c6071ddb3df9ba43910b96787646",
+      "linux_sha256": "0dd2de1b621dabc1b342223ecc3a500456a8c6071ddb3df9ba43910b96787646"
     },
     "com/promenar/infinity/ui/skills/store/SkillStoreScreenshotTestKt/skillStoreListDarkPreview_技能商店 列表 深色中文_fd22151c_0.png": {
-      "base_sha256": "d4b5c5732cd88f6ecf5c9e37666fec2f6d18841d591195509e15473d70473d1f",
-      "linux_sha256": "d4b5c5732cd88f6ecf5c9e37666fec2f6d18841d591195509e15473d70473d1f"
+      "base_sha256": "d77882cb7945a68cc2ecccee4d080e80ef61db2c91c19b35c29972178facc17f",
+      "linux_sha256": "d77882cb7945a68cc2ecccee4d080e80ef61db2c91c19b35c29972178facc17f"
     },
     "com/promenar/infinity/ui/skills/store/SkillStoreScreenshotTestKt/skillStoreListLightPreview_技能商店 列表 浅色英文 字号130_72773b2d_0.png": {
-      "base_sha256": "ad64ab7afed059a323224d1fc3b1304f08869ec75a124fc34422225ea0ee6295",
-      "linux_sha256": "ad64ab7afed059a323224d1fc3b1304f08869ec75a124fc34422225ea0ee6295"
+      "base_sha256": "f453e8e43e5476de654de3d9f86541de04ea75aa10753e2c8ed9f4552cbca4a8",
+      "linux_sha256": "f453e8e43e5476de654de3d9f86541de04ea75aa10753e2c8ed9f4552cbca4a8"
     },
     "com/promenar/infinity/ui/welcome/OnboardingScreenshotTestKt/onboardingAgentPreview_Onboarding agent Chinese_e4713435_0.png": {
       "base_sha256": "9aac979538b6f367713b748621ee3519dd485feab5e5ef364e5bdd6bd3f99f64",

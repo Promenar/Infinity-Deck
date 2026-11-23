@@ -358,6 +358,7 @@ internal fun ComfyHostScreenContent(
         title = host.name,
         onBack = onBack,
         horizontalContentPadding = 0.dp,
+        topContentPadding = 0.dp,
         actions = {
             Box(Modifier.padding(end = 12.dp)) {
                 ConnectionChip(state.connections[host.id] ?: ComfyConnection.UNKNOWN)

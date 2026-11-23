@@ -220,7 +220,7 @@ internal fun ProviderListScreenContent(
                         modifier = Modifier
                             .animateItem()
                             .padding(horizontal = 20.dp)
-                            .padding(top = 4.dp, bottom = InfinitySpacing.SectionHeaderBottom)
+                            .padding(bottom = InfinitySpacing.SectionHeaderBottom)
                             .testTag(UiTags.PROVIDER_LIST_SUMMARY),
                     )
                 }

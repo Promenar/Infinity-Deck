@@ -198,6 +198,7 @@ fun KnowledgeGraphScreen(
         title = stringResource(R.string.kg_title),
         onBack = onNavigateBack,
         horizontalContentPadding = 0.dp,
+        topContentPadding = 0.dp,
         search = if (selectionRequired) {
             null
         } else {

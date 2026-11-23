@@ -127,6 +127,7 @@ fun LinuxMirrorsScreen(onBack: () -> Unit) {
     InfinitySettingsPageLayout(
         title = stringResource(R.string.linux_mirrors_title),
         onBack = onBack,
+        topContentPadding = 0.dp,
         actions = {
             TextButton(onClick = viewModel::speedTest, enabled = !state.testing, modifier = Modifier.testTag(UiTags.LINUX_MIRROR_SPEED_TEST)) {
                 Text(stringResource(if (state.testing) R.string.linux_mirrors_testing else R.string.linux_mirrors_speed_test))

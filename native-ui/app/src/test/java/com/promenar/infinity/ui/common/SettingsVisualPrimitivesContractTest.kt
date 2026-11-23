@@ -22,6 +22,8 @@ class SettingsVisualPrimitivesContractTest {
         assertThat(source).contains("MaterialTheme.typography.titleLarge")
         assertThat(source).doesNotContain("parentTypography.copy(")
         assertThat(source).contains("InfinitySpacing.ScreenHorizontal")
+        assertThat(source).contains("topContentPadding: Dp = if ((header != null && !headerFrosted) || !showTopBar) 0.dp else InfinitySpacing.Large")
+        assertThat(source).contains("top = scaffoldPadding.calculateTopPadding() + topContentPadding")
         assertThat(source).contains("content: @Composable (PaddingValues) -> Unit")
     }
 

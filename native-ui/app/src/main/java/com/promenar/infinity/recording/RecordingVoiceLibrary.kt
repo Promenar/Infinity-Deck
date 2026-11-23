@@ -299,7 +299,7 @@ private fun RecordingVoiceEnrollment(controller: RecordingController, onClose: (
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                         .animateContentSize(InfinityMotion.contentSizeSpec())
-                        .padding(top = InfinitySpacing.XLarge),
+                        .padding(top = InfinitySpacing.Small),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
                 ) {

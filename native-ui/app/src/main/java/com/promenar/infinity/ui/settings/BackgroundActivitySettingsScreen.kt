@@ -112,7 +112,11 @@ fun BackgroundActivitySettingsScreen(onBack: () -> Unit, onOpenSession: (String)
         intent ?: return
         runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
-    InfinitySettingsPageLayout(title = stringResource(R.string.settings_background_title), onBack = onBack) { padding ->
+    InfinitySettingsPageLayout(
+        title = stringResource(R.string.settings_background_title),
+        onBack = onBack,
+        topContentPadding = 0.dp,
+    ) { padding ->
         BackgroundActivitySettingsContent(
             conditions = conditions,
             jobs = jobs,

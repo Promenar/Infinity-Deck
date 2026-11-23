@@ -96,6 +96,7 @@ fun LinuxPackagesScreen(onBack: () -> Unit) {
         title = stringResource(R.string.linux_packages_title),
         onBack = onBack,
         horizontalContentPadding = 0.dp,
+        topContentPadding = 0.dp,
         search = InfinityPageSearch(
             query = state.query,
             active = searchActive,
