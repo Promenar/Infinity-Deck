@@ -29,11 +29,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import com.promenar.infinity.ui.common.InfinityModalSheet
+import com.promenar.infinity.ui.common.InfinitySheetHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -154,8 +155,9 @@ internal fun OnboardingRestoreSheet(state: OnboardingRestoreSheetState, actions:
         skipPartiallyExpanded = true,
         confirmValueChange = { it != SheetValue.Hidden || !locked },
     )
-    ModalBottomSheet(
+    InfinityModalSheet(
         onDismissRequest = { if (!locked) actions.onDismiss() },
+        height = InfinitySheetHeight.Content,
         sheetState = sheetState,
         modifier = Modifier.testTag(OnboardingRestoreTags.SHEET),
     ) {

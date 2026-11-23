@@ -50,12 +50,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import com.promenar.infinity.ui.common.InfinityModalSheet
+import com.promenar.infinity.ui.common.InfinitySheetHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -600,7 +601,7 @@ private fun ServiceSheet(
                 host.contains(query.trim(), ignoreCase = true) || item.name.contains(query.trim(), ignoreCase = true)
         }
     }.filter { it.second.isNotEmpty() }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Content, sheetState = sheetState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.XLarge)) {
             Text(stringResource(R.string.onboarding_provider_sheet_title), style = MaterialTheme.typography.titleLarge)
             OutlinedTextField(

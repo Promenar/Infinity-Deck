@@ -9,12 +9,10 @@ import androidx.compose.material.icons.automirrored.rounded.NoteAdd
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityPillButton
@@ -72,35 +71,32 @@ internal fun LibraryNoteDialog(onDismiss: () -> Unit, onSave: (String, String) -
     val defaultName = stringResource(R.string.library_note_default_name)
     var name by rememberSaveable { mutableStateOf(defaultName) }
     var text by rememberSaveable { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.library_note_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.library_note_name)) },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.forInput(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text(stringResource(R.string.library_note_body)) },
-                    minLines = 4,
-                    maxLines = 10,
-                    textStyle = MaterialTheme.typography.bodyLarge.forInput(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(name.trim(), text) }, enabled = name.isNotBlank() && text.isNotBlank()) {
-                Text(stringResource(R.string.library_note_save), maxLines = 1)
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_btn_cancel), maxLines = 1) } },
-    )
+    InfinityConfirmDialog(
+        title = stringResource(R.string.library_note_title),
+        message = "",
+        confirmText = stringResource(R.string.library_note_save),
+        confirmEnabled = name.isNotBlank() && text.isNotBlank(),
+        onConfirm = { onSave(name.trim(), text) },
+        onCancel = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.library_note_name)) },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.forInput(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text(stringResource(R.string.library_note_body)) },
+                minLines = 4,
+                maxLines = 10,
+                textStyle = MaterialTheme.typography.bodyLarge.forInput(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
 }

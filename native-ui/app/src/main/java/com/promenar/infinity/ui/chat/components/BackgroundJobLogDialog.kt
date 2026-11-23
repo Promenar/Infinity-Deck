@@ -55,8 +55,12 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.jobs.BackgroundJobController
 import com.promenar.infinity.domain.jobs.BackgroundJobState
 import com.promenar.infinity.ui.chat.copyToClipboard
+import androidx.compose.ui.graphics.Color
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.obsidianTopGlint
 import com.promenar.infinity.ui.theme.InfinityMonospace
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.InfinityShapes
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
@@ -121,16 +125,28 @@ fun BackgroundJobLogDialog(
     val phase = resolveJobLogPhase(readState, nowMillis)
     val name = jobLogDisplayName(job)
     val logText = readState.log?.text.orEmpty()
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
-                .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, InfinityShapes.extraLarge)
+                .border(
+                    1.dp,
+                    if (dark) InfinityPureWhite.copy(alpha = 0.13f) else MaterialTheme.colorScheme.outlineVariant,
+                    InfinityShapes.extraLarge,
+                )
                 .testTag(TAG_JOB_LOG_DIALOG),
-            color = MaterialTheme.colorScheme.surfaceContainer,
+            color = if (dark) InfinityObsidianDialogContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
+            contentColor = MaterialTheme.colorScheme.onSurface,
             shape = InfinityShapes.extraLarge,
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(InfinitySpacing.XLarge),
+                modifier = Modifier
+                    .obsidianTopGlint(
+                        color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                        cornerRadius = 28.dp,
+                    )
+                    .fillMaxWidth()
+                    .padding(InfinitySpacing.XLarge),
                 verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
             ) {
                 Row(

@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.73.3-beta] - 2026-11-24
+
+- **补齐附件菜单及全站其余自定义浮层的黑曜石熏黑主题并清零散落原始 `AlertDialog` / `ModalBottomSheet`（[AttachmentActionMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/AttachmentActionMenu.kt)、[GenerationStatsCard.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/GenerationStatsCard.kt)、[BackgroundJobLogDialog.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/components/BackgroundJobLogDialog.kt)、[LibraryAddMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryAddMenu.kt)、[OnboardingIntroLinux.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/welcome/OnboardingIntroLinux.kt)、[OnboardingRestoreSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/welcome/OnboardingRestoreSheet.kt)、[OnboardingProviderStep.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/welcome/OnboardingProviderStep.kt)、[ComfyWorkflowEditorScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfyWorkflowEditorScreen.kt)、[ComfySettingsScreens.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfySettingsScreens.kt)、[InfinityInspectorLayoutTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/InfinityInspectorLayoutTest.kt)）**：
+  - 将输入框「添加附件」自定义悬浮菜单 `AttachmentActionMenu` 由 MD3 灰底 `surfaceContainerHigh` 升级为复用 `infinityMenuColors()` 的 L3 黑曜石容器 + `0.75dp` 细边 + `obsidianTopGlint` 顶缘镜面高光与双层阴影，与同排审批模式、推理强度菜单保持完全一致。
+  - 同步收口全站其余 7 处未走共享原语的悬浮卡/弹层：`GenerationStatsPopup` / `GenerationStatsCard`（L2 黑曜石底 + 指标卡 `InfinityObsidianDialogChip`）、`BackgroundJobLogDialog`（L2 黑曜石对话框）、`LibraryNoteDialog`（移除原始 `AlertDialog` 改用 `InfinityConfirmDialog`）、3 处引导页弹层（移除原始 `ModalBottomSheet` 改用 `InfinityModalSheet`）及 2 处 ComfyUI 编辑弹层（改用 `infinitySheetContainerColor()` + 细边高光），同步 5 张生成统计截图基线并在 `InfinityInspectorLayoutTest` 增加全站零散落原始 `AlertDialog`/`ModalBottomSheet` 契约守护。
+
 ## [0.73.2-beta] - 2026-11-24
 
 - **修复透明与自定义熏黑 `Surface` 脱离 `Scaffold` 后未显式提供 `contentColor` 导致图标落回黑色的问题（[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)、[InfinityDropdownMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityDropdownMenu.kt)、[SubagentViews.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/SubagentViews.kt)、[InfinityInspectorLayoutTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/InfinityInspectorLayoutTest.kt)）**：

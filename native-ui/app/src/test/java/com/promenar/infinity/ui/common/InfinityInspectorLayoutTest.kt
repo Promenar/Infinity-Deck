@@ -87,4 +87,33 @@ class InfinityInspectorLayoutTest {
         assertThat(paneHeader).contains("val InspectorPanelHeaderHeight = 56.dp")
         assertThat(runDetail).contains("contentInset = InfinitySpacing.ScreenHorizontal")
     }
+
+    @Test fun `附件菜单与全站自定义浮层全部对齐黑曜石熏黑原语且无散落原始 AlertDialog 或 ModalBottomSheet`() {
+        val attachmentMenu = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/chat/AttachmentActionMenu.kt"))
+        val statsCard = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/chat/GenerationStatsCard.kt"))
+        val jobLogDialog = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/chat/components/BackgroundJobLogDialog.kt"))
+
+        assertThat(attachmentMenu).contains("infinityMenuColors()")
+        assertThat(attachmentMenu).contains("obsidianTopGlint(")
+        assertThat(attachmentMenu).doesNotContain("surfaceContainerHigh")
+        assertThat(statsCard).contains("InfinityObsidianDialogContainer")
+        assertThat(statsCard).contains("InfinityObsidianDialogChip")
+        assertThat(jobLogDialog).contains("InfinityObsidianDialogContainer")
+
+        val uiRoot = Path.of("app/src/main/java/com/promenar/infinity/ui")
+        val rawAlertDialogs = mutableListOf<String>()
+        val rawModalSheets = mutableListOf<String>()
+        Files.walk(uiRoot).use { stream ->
+            stream.filter { it.toString().endsWith(".kt") }.forEach { file ->
+                val rel = uiRoot.relativize(file).toString()
+                val text = Files.readString(file)
+                if (Regex("""\bAlertDialog\(""").containsMatchIn(text)) rawAlertDialogs += rel
+                if (rel != "common/InfinityBottomSheet.kt" && Regex("""\bModalBottomSheet\(""").containsMatchIn(text)) {
+                    rawModalSheets += rel
+                }
+            }
+        }
+        assertThat(rawAlertDialogs).isEmpty()
+        assertThat(rawModalSheets).isEmpty()
+    }
 }

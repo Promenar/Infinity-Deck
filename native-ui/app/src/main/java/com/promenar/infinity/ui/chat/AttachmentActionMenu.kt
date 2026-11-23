@@ -2,6 +2,9 @@ package com.promenar.infinity.ui.chat
 
 import com.promenar.infinity.ui.common.InfinityHapticEvent
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
+import com.promenar.infinity.ui.common.infinityMenuColors
+import com.promenar.infinity.ui.common.obsidianTopGlint
+import androidx.compose.ui.draw.shadow
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -119,19 +122,29 @@ internal fun AttachmentActionMenu(
                         transformOrigin = transformOrigin,
                     ) + slideOutVertically(tween(MenuAnimationDurationMillis)) { anchorTravel },
                 ) {
+                    val menuColors = infinityMenuColors()
+                    val menuShape = RoundedCornerShape(18.dp)
                     Surface(
                         modifier = Modifier
                             .widthIn(min = 220.dp, max = 320.dp)
+                            .shadow(
+                                elevation = 16.dp,
+                                shape = menuShape,
+                                clip = false,
+                                ambientColor = menuColors.shadow,
+                                spotColor = menuColors.shadow,
+                            )
                             .testTag(UiTags.CHAT_ATTACHMENT_MENU),
-                        shape = RoundedCornerShape(18.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = menuShape,
+                        color = menuColors.container,
                         contentColor = MaterialTheme.colorScheme.onSurface,
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                        shadowElevation = 8.dp,
+                        border = BorderStroke(0.75.dp, menuColors.edge),
+                        shadowElevation = 6.dp,
                         tonalElevation = 0.dp,
                     ) {
                         Column(
                             modifier = Modifier
+                                .obsidianTopGlint(color = menuColors.highlight, cornerRadius = 18.dp)
                                 .width(IntrinsicSize.Max)
                                 .padding(6.dp)
                                 .verticalScroll(rememberScrollState()),

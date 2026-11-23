@@ -60,9 +60,14 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.CacheSegmentBar
 import com.promenar.infinity.ui.common.InfinityMetaSeparator
 import com.promenar.infinity.ui.common.formatCacheHitRate
+import com.promenar.infinity.ui.common.obsidianTopGlint
 import com.promenar.infinity.ui.theme.InfinityElevation
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogChip
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -165,16 +170,24 @@ internal fun GenerationStatsCard(
     val unavailable = stringResource(R.string.generation_stats_unavailable)
     val unavailableDescription = stringResource(R.string.generation_stats_unavailable_description)
     fun count(value: Long?) = value?.let { formatStatsCount(it, locale) }
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Surface(
         modifier = modifier.testTag(GENERATION_STATS_CARD_TAG),
         shape = CardShape,
-        color = colors.surfaceContainer,
+        color = if (dark) InfinityObsidianDialogContainer else colors.surfaceContainerLowest,
         contentColor = colors.onSurface,
-        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(
+            1.dp,
+            if (dark) InfinityPureWhite.copy(alpha = 0.13f) else colors.outlineVariant.copy(alpha = 0.5f),
+        ),
         shadowElevation = InfinityElevation.Level3,
     ) {
         Column(
             modifier = Modifier
+                .obsidianTopGlint(
+                    color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                    cornerRadius = 16.dp,
+                )
                 .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(InfinitySpacing.Large),
             verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
@@ -292,12 +305,13 @@ private fun StatsTile(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val dark = MaterialTheme.infinityDomainColors.isDark
     val spoken = value?.let { if (unit != null) "$it $unit" else it } ?: unavailableDescription
     val description = stringResource(R.string.generation_stats_metric_description, label, spoken)
     Column(
         modifier = modifier
             .clip(TileShape)
-            .background(colors.surfaceContainerHigh)
+            .background(if (dark) InfinityObsidianDialogChip else colors.surfaceContainerHigh)
             .padding(horizontal = 10.dp, vertical = InfinitySpacing.Small)
             .clearAndSetSemantics { contentDescription = description },
         verticalArrangement = Arrangement.spacedBy(2.dp),

@@ -31,6 +31,8 @@ import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
+import androidx.compose.ui.graphics.Color
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.keepCjkTailTogether
 import kotlinx.serialization.json.*
@@ -466,6 +468,7 @@ private fun ComfyWorkflowFieldEditorDialog(
     var inputKey by remember(initial) { mutableStateOf(initial.inputKey ?: "") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
+    val dark = MaterialTheme.infinityDomainColors.isDark
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -473,9 +476,18 @@ private fun ComfyWorkflowFieldEditorDialog(
         Surface(
             modifier = Modifier.fillMaxSize().padding(top = 24.dp),
             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            color = MaterialTheme.colorScheme.surface,
+            color = infinitySheetContainerColor(),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = if (dark) BorderStroke(1.dp, InfinityPureWhite.copy(alpha = 0.12f)) else null,
         ) {
-            Column(Modifier.fillMaxSize()) {
+            Column(
+                Modifier
+                    .obsidianTopGlint(
+                        color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                        cornerRadius = 20.dp,
+                    )
+                    .fillMaxSize(),
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,

@@ -35,10 +35,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import com.promenar.infinity.ui.common.InfinityModalSheet
+import com.promenar.infinity.ui.common.InfinitySheetHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -389,7 +390,7 @@ internal fun OnboardingLinuxSheet(status: OnboardingLinuxStatus, actions: Onboar
     val close: () -> Unit = {
         scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Content, sheetState = sheetState) {
         OnboardingLinuxSheetContent(
             runtime = status.runtime,
             onCancel = actions.onCancelLinux,
