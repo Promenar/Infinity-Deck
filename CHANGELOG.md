@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.71.6-beta] - 2026-11-23
+
 - **统一内置执行环境 FFmpeg/ffprobe `PATH` 软链并补全内置指南 `infinity-deck` 运行时与隔离契约（[BuiltinExecEnvironment.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/BuiltinExecEnvironment.kt)、[SystemPromptSections.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/SystemPromptSections.kt)、[BuiltinSkillCatalog.kt](native-ui/app/src/main/java/com/promenar/infinity/data/skills/BuiltinSkillCatalog.kt)、[SKILL.md](native-ui/app/src/main/assets/builtin_skills/infinity-deck/SKILL.md)、[runtime-isolation.md](native-ui/app/src/main/assets/builtin_skills/infinity-deck/references/runtime-isolation.md)）**：
   - 在 `BuiltinExecEnvironment` 中维护指向 `nativeLibraryDir` 打包 `libnxffmpeg.so` / `libnxffprobe.so` 的 `exec-bin` 符号链接目录并前置进 `PATH`（升级更换目录时自动刷新），使内置模式下 `shell_exec`、`python_exec`（含 Python `subprocess` / `shutil.which`）与 ComfyUI `BUILTIN_PYTHON` 提交器的 `ffmpeg`/`ffprobe` 可见性完全一致。
   - 在预装内置技能 `infinity-deck` 中新增 [references/runtime-isolation.md](native-ui/app/src/main/assets/builtin_skills/infinity-deck/references/runtime-isolation.md)，系统定义全站四层隔离模型、内置/Linux/文件工具/ComfyUI 路径与挂载可见性矩阵、资料库 `/mnt/knowledge` 分级授权与 `copy_knowledge_to_linux` 边界、`$INFINITY_WORKSPACE` 输出脱敏说明、`$TMPDIR` 与 `/tmp` 差异以及内置精简 FFmpeg 9.1 与 Alpine FFmpeg 能力边界。
