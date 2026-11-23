@@ -70,6 +70,10 @@ class InfinityInspectorLayoutTest {
         val portraitSection = chatScreen.substring(portraitBranchIdx, attachmentAnchorIdx)
         assertThat(portraitSection).contains("Modifier.fillMaxSize().statusBarsPadding().imePadding()")
         assertThat(portraitSection).contains("ChatPortraitObsidianDrawer(")
+        // 自定义透明/熏黑 Surface 必须显式透传 onSurface，防止脱离 Scaffold 后图标与正文落回黑色。
+        assertThat(inspector.split("contentColor = MaterialTheme.colorScheme.onSurface").size - 1).isAtLeast(3)
+        val menu = Files.readString(Path.of("app/src/main/java/com/promenar/infinity/ui/common/InfinityDropdownMenu.kt"))
+        assertThat(menu).contains("contentColor = MaterialTheme.colorScheme.onSurface")
     }
 
     @Test fun `设置子页在检视器内屏蔽系统栏安全区且两档面板页头坐标常量统一`() {

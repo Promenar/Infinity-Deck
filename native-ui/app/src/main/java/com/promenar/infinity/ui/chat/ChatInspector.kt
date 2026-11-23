@@ -179,6 +179,8 @@ internal fun ChatInspectorCard(
             chrome.frostedTint != null -> Color.Transparent
             else -> chrome.container
         },
+        // 透明底或自定义熏黑底不是 Material ColorScheme 键，必须显式提供 onSurface 作为内容色，防止子图标落回默认黑色。
+        contentColor = MaterialTheme.colorScheme.onSurface,
         border = chrome?.border ?: inspectorBorder(),
         shadowElevation = if (floating) 10.dp else 4.dp,
     ) {
@@ -431,6 +433,7 @@ internal fun ChatInspectorStrip(
         modifier = modifier.testTag(InfinityPaneTags.INSPECTOR_STRIP),
         shape = RoundedCornerShape(InspectorStripCornerRadius),
         color = if (chrome.frostedTint != null) Color.Transparent else chrome.container,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         border = chrome.border,
         shadowElevation = 6.dp,
     ) {
@@ -645,6 +648,7 @@ internal fun ChatPortraitObsidianDrawer(
             .testTag(ChatInspectorTags.PORTRAIT_DRAWER),
         shape = drawerShape,
         color = if (chrome.frostedTint != null) Color.Transparent else chrome.container,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         border = chrome.border,
         shadowElevation = 14.dp,
     ) {

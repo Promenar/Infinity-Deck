@@ -622,6 +622,7 @@ private fun SubagentApprovalCard(request: SubagentApproval, onResolve: (String, 
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = if (dark) InfinityObsidianDialogContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(
             1.dp,
             if (dark) InfinityPureWhite.copy(alpha = 0.13f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),

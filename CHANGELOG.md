@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.73.2-beta] - 2026-11-24
+
+- **修复透明与自定义熏黑 `Surface` 脱离 `Scaffold` 后未显式提供 `contentColor` 导致图标落回黑色的问题（[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)、[InfinityDropdownMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityDropdownMenu.kt)、[SubagentViews.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/SubagentViews.kt)、[InfinityInspectorLayoutTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/InfinityInspectorLayoutTest.kt)）**：
+  - 为 `ChatInspectorCard`、`ChatInspectorStrip`、`ChatPortraitObsidianDrawer`、`InfinityDropdownMenu` 与 `SubagentApprovalCard` 统一显式设置 `contentColor = MaterialTheme.colorScheme.onSurface`，修复竖屏 `93%` 熏黑抽屉下「文件」页头右上角搜索与更多图标在深色底上显示为黑色的问题，并补充契约回归断言。
+
 ## [0.73.1-beta] - 2026-11-24
 
 - **修复竖屏 `93%` 熏黑毛玻璃上滑抽屉位于 `Scaffold` 内容层之下被 `ChatTopBar` 遮挡顶部圆角、拖拽把手与页头的问题（[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[InfinityInspectorLayoutTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/InfinityInspectorLayoutTest.kt)）**：

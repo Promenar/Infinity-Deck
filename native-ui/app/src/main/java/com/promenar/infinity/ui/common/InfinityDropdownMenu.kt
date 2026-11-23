@@ -347,6 +347,7 @@ fun InfinityDropdownMenu(
             Surface(
                 shape = shape,
                 color = colors.container,
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 border = BorderStroke(0.75.dp, colors.edge),
                 shadowElevation = MenuKeyShadowElevation,
                 modifier = modifier
