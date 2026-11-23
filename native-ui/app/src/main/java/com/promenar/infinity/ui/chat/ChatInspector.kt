@@ -125,7 +125,9 @@ internal fun remoteDotDescription(dot: RemoteDot?): String? = when (dot) {
     null -> null
 }
 
-private val InspectorShape = RoundedCornerShape(20.dp)
+private val InspectorCornerRadius = 20.dp
+private val InspectorShape = RoundedCornerShape(InspectorCornerRadius)
+private val InspectorStripCornerRadius = 24.dp
 
 @Composable
 private fun inspectorBorder() = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -168,6 +170,7 @@ internal fun ChatInspectorCard(
                     source = backdrop,
                     material = chrome,
                     highlightHeight = 56.dp,
+                    cornerRadius = InspectorCornerRadius,
                     modifier = Modifier.matchParentSize(),
                 )
             }
@@ -404,7 +407,7 @@ internal fun ChatInspectorStrip(
     val chrome = rememberFrostedChromeMaterial(FrostedChromeRole.FLOATING_STRIP)
     Surface(
         modifier = modifier.testTag(InfinityPaneTags.INSPECTOR_STRIP),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(InspectorStripCornerRadius),
         color = if (chrome.frostedTint != null) Color.Transparent else chrome.container,
         border = chrome.border,
         shadowElevation = 6.dp,
@@ -414,6 +417,7 @@ internal fun ChatInspectorStrip(
                 source = backdrop,
                 material = chrome,
                 highlightHeight = 36.dp,
+                cornerRadius = InspectorStripCornerRadius,
                 modifier = Modifier.matchParentSize(),
             )
             Column(Modifier.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {

@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.72.2-beta] - 2026-11-23
+
+- **对齐全站悬浮毛玻璃顶缘高光与输入浮岛材质（[FrostedBackdrop.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/FrostedBackdrop.kt)、[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)）**：
+  - 将 `FrostedChromeBackdropLayer` 顶部整块实心白色渐变矩形填充（原 `56dp` / `36dp` / `48dp`）改为与输入浮岛 `composerIslandGlow` 同源的 `1dp` 圆角外轮廓顶缘镜面细描边（`Stroke(1.dp)`），彻底消除右侧悬浮检视器 `ChatInspectorCard`、右缘收起胶囊条 `ChatInspectorStrip` 与左侧悬浮抽屉顶部的发白发灰雾带，保持通体纯粹的黑曜石熏黑毛玻璃（及浅色冷白磨砂）质感，同步更新 5 张受影响截图参考基线及 2 条 Linux 覆盖清单。
+
 ## [0.72.1-beta] - 2026-11-23
 
 - **修复内置模式真机 `/data/data` ⇄ `/data/user/0` 双向路径别名安全绕过并优化受保护路径即时硬拒绝（[BuiltinRealPathPaths.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/BuiltinRealPathPaths.kt)、[BuiltinHostPathBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/BuiltinHostPathBackend.kt)、[WorkspaceFileTarget.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/WorkspaceFileTarget.kt)、[ShellCommandSafetyClassifier.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/tool/ShellCommandSafetyClassifier.kt)、[InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt)、[SessionToolTargetResolver.kt](native-ui/app/src/main/java/com/promenar/infinity/data/generation/SessionToolTargetResolver.kt)、[ToolExecutionPolicy.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/tool/ToolExecutionPolicy.kt)）**：

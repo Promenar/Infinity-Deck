@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -324,8 +326,8 @@ fun rememberFrostedChromeMaterial(role: FrostedChromeRole): FrostedChromeMateria
 )
 
 /**
- * 在容器最底层绘制实时模糊底 + 熏黑/冷白半透遮罩（或环境光实底），并叠加可选的顶缘内高光、
- * 单侧右缘亮边（用于贴屏幕左缘抽屉）与底缘分割细线。纯装饰不进入无障碍树。
+ * 在容器最底层绘制实时模糊底 + 熏黑/冷白半透遮罩（或环境光实底），并叠加与输入浮岛同源的 1dp 顶缘镜面高光细边
+ * （不向容器内部铺白色渐变，保持熏黑玻璃纯粹感）、单侧右缘亮边（用于贴屏幕左缘抽屉）与底缘分割细线。纯装饰不进入无障碍树。
  */
 @Composable
 fun FrostedChromeBackdropLayer(
@@ -333,6 +335,7 @@ fun FrostedChromeBackdropLayer(
     material: FrostedChromeMaterial,
     modifier: Modifier = Modifier,
     highlightHeight: Dp = 48.dp,
+    cornerRadius: Dp = 0.dp,
     rightEdgeBorder: Boolean = false,
     bottomHairlineAlpha: Float = 0f,
 ) {
@@ -357,7 +360,11 @@ fun FrostedChromeBackdropLayer(
                 .matchParentSize()
                 .drawWithCache {
                     val hiPx = highlightHeight.toPx().coerceAtMost(size.height)
-                    val hiBrush = material.topHighlight?.takeIf { hiPx > 0f }?.let {
+                    val hiStrokePx = 1.dp.toPx()
+                    val hiHalf = hiStrokePx / 2f
+                    val cornerPx = cornerRadius.toPx().coerceAtLeast(0f)
+                    val topHighlightColor = material.topHighlight
+                    val hiBrush = topHighlightColor?.takeIf { hiPx > 0f }?.let {
                         Brush.verticalGradient(
                             0f to it,
                             1f to Color.Transparent,
@@ -369,7 +376,38 @@ fun FrostedChromeBackdropLayer(
                     val hairlinePx = 0.75.dp.toPx()
                     onDrawBehind {
                         if (hiBrush != null) {
-                            drawRect(brush = hiBrush, size = Size(size.width, hiPx))
+                            when {
+                                cornerPx > 0f -> {
+                                    // 对齐输入浮岛 composerIslandGlow：仅沿圆角外轮廓画 1dp 顶缘高光描边，容器内部零白雾。
+                                    val insetRadius = (cornerPx - hiHalf).coerceAtLeast(0f)
+                                    drawRoundRect(
+                                        brush = hiBrush,
+                                        topLeft = Offset(hiHalf, hiHalf),
+                                        size = Size(
+                                            (size.width - hiStrokePx).coerceAtLeast(0f),
+                                            (size.height - hiStrokePx).coerceAtLeast(0f),
+                                        ),
+                                        cornerRadius = CornerRadius(insetRadius, insetRadius),
+                                        style = Stroke(hiStrokePx),
+                                    )
+                                }
+                                rightEdgeBorder -> {
+                                    drawLine(
+                                        brush = hiBrush,
+                                        start = Offset(size.width - hiHalf, 0f),
+                                        end = Offset(size.width - hiHalf, hiPx),
+                                        strokeWidth = hiStrokePx,
+                                    )
+                                }
+                                else -> {
+                                    drawLine(
+                                        color = requireNotNull(topHighlightColor),
+                                        start = Offset(0f, hiHalf),
+                                        end = Offset(size.width, hiHalf),
+                                        strokeWidth = hiStrokePx,
+                                    )
+                                }
+                            }
                         }
                         if (rightBorderPx > 0f && borderColor.alpha > 0f) {
                             drawLine(

@@ -225,8 +225,8 @@
       "linux_sha256": "010d6609d09571b7c8cb9811f7ebc0c697046eda6ba064955098ae730e6c28ec"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/chatInspectorCardLightLargeFontPreview_检视器卡片 浅英 大字_7a6e3f69_0.png": {
-      "base_sha256": "dbc3cc2bf8463f2bf4f434782554765dc9ca368c42ee861ed44d444bac3aa62a",
-      "linux_sha256": "dbc3cc2bf8463f2bf4f434782554765dc9ca368c42ee861ed44d444bac3aa62a"
+      "base_sha256": "2c42e1421a6a97309c44ee4d18189d7f663de13afd680fc3d666f0420b521cda",
+      "linux_sha256": "2c42e1421a6a97309c44ee4d18189d7f663de13afd680fc3d666f0420b521cda"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/chatInspectorInnerShiftDarkPreview_内屏检视器让位 深中814_68c06936_0.png": {
       "base_sha256": "7aa09305d626ef38b8bf0f96beb8306013a9e54883635951f7156dd4ed590c42",
@@ -525,8 +525,8 @@
       "linux_sha256": "ff6140518d85fe4c75fac871d4fcbc30633e062f4b0c7df3294f6a2f6590515c"
     },
     "com/promenar/infinity/ui/hub/HubThreePaneScreenshotTestKt/hubThreePaneDrawerPreview_首页三列 展开窄列表 浅中814_7de76039_0.png": {
-      "base_sha256": "2c68a88fdc942fe99650c516ff78a551c31c93453e9e3bf065fa8ad3a10574c8",
-      "linux_sha256": "2c68a88fdc942fe99650c516ff78a551c31c93453e9e3bf065fa8ad3a10574c8"
+      "base_sha256": "853a9981d47c038dd6c879ee0b5d558484e08c9e83fad5e83f6ce9d46ed8a204",
+      "linux_sha256": "853a9981d47c038dd6c879ee0b5d558484e08c9e83fad5e83f6ce9d46ed8a204"
     },
     "com/promenar/infinity/ui/hub/HubThreePaneScreenshotTestKt/hubThreePaneLargeFontPreview_首页三列 浅中814 字号130_3bfac5dc_0.png": {
       "base_sha256": "d70080235ac8b37eeee543c0139058055955244342c8bc13539395d4962a14a8",
