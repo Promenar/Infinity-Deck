@@ -6,16 +6,17 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
+import java.nio.file.Paths
 
 internal class HostToolPathTranslator(
     mounts: Map<String, File>,
 ) {
     private val mounts = mounts.map { (guest, host) ->
-        requireHost(guest.startsWith('/') && guest != "/" && guest == Path.of(guest).normalize().toString(),
+        requireHost(guest.startsWith('/') && guest != "/" && guest == Paths.get(guest).normalize().toString(),
             "TOOL_PATH", "宿主工具挂载点无效。")
         val root = host.canonicalFile
         requireHost(root.isDirectory, "TOOL_PATH", "宿主工具挂载目录不可用。")
-        Mount(Path.of(guest), root.toPath())
+        Mount(Paths.get(guest), root.toPath())
     }.sortedByDescending { it.input.nameCount }
 
     val roots: List<File> get() = mounts.map { it.host.toFile() }.distinct()
@@ -35,7 +36,7 @@ internal class HostToolPathTranslator(
     private fun resolve(value: String, directory: Boolean = false, linkDepth: Int = 0): File {
         requireHost(value.isNotEmpty() && '\u0000' !in value, "TOOL_PATH", "宿主工具路径无效。")
         if (!directory && value in devices) return File(value)
-        val path = Path.of(value)
+        val path = Paths.get(value)
         val mount = mounts.firstOrNull { path.startsWith(it.input) }
             ?: throw HostToolException("TOOL_PATH", "宿主工具路径超出本次任务授权的挂载。")
         var current = mount.host
@@ -157,7 +158,7 @@ internal class HostToolPathTranslator(
                         // Git 的 pathspec 和相对修订语义依赖 cwd；校验后保留相对拼写。
                         val relativeHost = workingDirectory(directory).toPath().resolve(argument).normalize()
                         if (argument.startsWith('/') || remotePath || command in setOf("clone", "init", "apply") ||
-                            Path.of(translated).normalize() != relativeHost) translated else argument
+                            Paths.get(translated).normalize() != relativeHost) translated else argument
                     }
                 }
             }
@@ -307,7 +308,7 @@ internal class HostToolPathTranslator(
             }
             val translated = resolveArgument(directory, value)
             val ordinary = workingDirectory(directory).toPath().resolve(value).normalize()
-            return if (value.startsWith('/') || Path.of(translated).normalize() != ordinary) translated else value
+            return if (value.startsWith('/') || Paths.get(translated).normalize() != ordinary) translated else value
         }
         val translated = parse(expanded, tar, ::entry, typedPath = { option, value ->
             if (option in setOf("-C", "--directory")) {

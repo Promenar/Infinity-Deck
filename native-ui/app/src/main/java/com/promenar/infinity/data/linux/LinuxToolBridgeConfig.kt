@@ -2,9 +2,11 @@ package com.promenar.infinity.data.linux
 
 import com.promenar.infinity.data.exec.PackagedHostTools
 import java.io.File
+import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
-import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
 
 internal object LinuxToolBridgeConfig {
     const val GUEST_BIN_DIR = "/run/infinity/bin"
@@ -29,12 +31,18 @@ internal object LinuxToolBridgeConfig {
     fun prepareBin(cache: File, tools: PackagedHostTools, builtin: Boolean = false): File {
         val directory = prepareDirectory(cache, File(cache, if (builtin) "builtin-tool-shim-bin" else "linux-tool-shim-bin"))
         val links = if (builtin) mapOf("git" to tools.bridgeShim.absoluteFile.toPath()) else
-            tools.availableTools().keys.associateWith { Path.of("nx-shim") }
+            tools.availableTools().keys.associateWith { Paths.get("nx-shim") }
         val profile = directory.toPath().resolve("terminal-profile")
         Files.newDirectoryStream(directory.toPath()).use { entries ->
             for (entry in entries) {
                 if (!builtin && entry == profile && Files.isRegularFile(entry, NOFOLLOW_LINKS) &&
-                    Files.size(entry) == terminalProfile.toByteArray().size.toLong() && Files.readString(entry) == terminalProfile) continue
+                    Files.size(entry) == terminalProfileBytes.size.toLong()
+                ) {
+                    val bytes = Files.readAllBytes(entry)
+                    if (String(bytes, Charsets.UTF_8) == terminalProfile) continue
+                    // 保留 readString 遇到非法 UTF-8 时抛出异常的行为。
+                    Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes))
+                }
                 val target = links[entry.fileName.toString()]
                 if (target != null && Files.isSymbolicLink(entry) && Files.readSymbolicLink(entry) == target) continue
                 // 只删除受管目录中的单个残留条目，不跟随链接或递归进入目录。
@@ -43,7 +51,7 @@ internal object LinuxToolBridgeConfig {
             }
         }
         if (!builtin && !Files.exists(profile, NOFOLLOW_LINKS)) {
-            Files.writeString(profile, terminalProfile, java.nio.file.StandardOpenOption.CREATE_NEW)
+            Files.write(profile, terminalProfileBytes, StandardOpenOption.CREATE_NEW)
         }
         for ((name, target) in links) {
             val entry = directory.toPath().resolve(name)
@@ -67,6 +75,7 @@ internal object LinuxToolBridgeConfig {
             *) export PATH="$GUEST_BIN_DIR:${'$'}PATH" ;;
         esac
     """.trimIndent() + "\n"
+    private val terminalProfileBytes = terminalProfile.toByteArray(Charsets.UTF_8)
 
     private fun prepareDirectory(cache: File, directory: File): File {
         require(Files.isDirectory(cache.toPath(), NOFOLLOW_LINKS)) { "宿主工具缓存目录无效。" }
