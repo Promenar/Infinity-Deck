@@ -1,6 +1,8 @@
 package com.promenar.infinity.data.rag
 
 import com.promenar.infinity.data.remote.ModelHttp
+import com.promenar.infinity.data.remote.ResolvedProviderModel
+import com.promenar.infinity.data.remote.routeViaBuiltInProxy
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
 import com.promenar.infinity.data.remote.withModelTimeoutSupport
@@ -23,24 +25,42 @@ import kotlinx.serialization.json.*
  * @param apiKey   API 密钥
  * @param model    提供商的远端图像模型 ID
  */
-class ImageGenClient(
+class ImageGenClient private constructor(
     private val baseUrl: String,
     private val apiKey: String,
     private val model: String,
-    httpClient: HttpClient = ModelHttp.client {
-        install(HttpTimeout) {
-            requestTimeoutMillis = 120_000  // 图像生成可能较慢
-            connectTimeoutMillis = 15_000
-            // 上游出图前长时间不回包；不设时沿用 OkHttp 默认 10 秒读超时，十几秒的生图会被切断。
-            socketTimeoutMillis = 120_000
-        }
-    },
-    private val responseBodyReader: suspend (HttpResponse) -> String = { response ->
-        response.bodyAsText()
-    },
+    httpClient: HttpClient,
+    private val responseBodyReader: suspend (HttpResponse) -> String,
+    private val useBuiltInProxy: Boolean,
+    private val providerId: String?,
 ) {
+    constructor(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        httpClient: HttpClient = ModelHttp.client {
+            install(HttpTimeout) {
+                requestTimeoutMillis = 120_000
+                connectTimeoutMillis = 15_000
+                // 上游出图前可能长时间不回包，读超时与生图请求上限一致。
+                socketTimeoutMillis = 120_000
+            }
+        },
+        responseBodyReader: suspend (HttpResponse) -> String = { response -> response.bodyAsText() },
+    ) : this(baseUrl, apiKey, model, httpClient, responseBodyReader, false, null)
+
     private val httpClient = httpClient.withModelTimeoutSupport()
     private val json = Json { ignoreUnknownKeys = true }
+
+    /** 保留调用方注入的 HTTP 客户端，并绑定已解析提供商的请求路由。 */
+    internal fun withProviderRoute(route: ResolvedProviderModel): ImageGenClient =
+        if (useBuiltInProxy == route.config.useBuiltInProxy && (!useBuiltInProxy || providerId == route.providerId)) {
+            this
+        } else {
+            ImageGenClient(
+                baseUrl, apiKey, model, httpClient, responseBodyReader, route.config.useBuiltInProxy, route.providerId,
+            )
+        }
 
     /** 可选参数只发送调用方显式给出的值，兼容拒绝未知字段的聚合网关。 */
     suspend fun generate(
@@ -55,6 +75,7 @@ class ImageGenClient(
         return withModerationFallback { moderation ->
             val requestBody = parameters(prompt, size, quality, background, outputFormat, outputCompression, n, moderation)
             httpClient.post(endpoint("generations")) {
+                routeViaBuiltInProxy(useBuiltInProxy, providerId)
                 applyModelTimeout(ModelTimeoutKind.IMAGE)
                 contentType(ContentType.Application.Json)
                 header("Authorization", "Bearer $apiKey")
@@ -95,6 +116,7 @@ class ImageGenClient(
                 inputFidelity?.let { append("input_fidelity", it) }
             })
             httpClient.post(endpoint("edits")) {
+                routeViaBuiltInProxy(useBuiltInProxy, providerId)
                 applyModelTimeout(ModelTimeoutKind.IMAGE)
                 header("Authorization", "Bearer $apiKey")
                 setBody(body)

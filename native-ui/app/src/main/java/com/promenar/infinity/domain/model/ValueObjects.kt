@@ -47,7 +47,8 @@ data class ProviderConfig(
     val baseUrl: String,
     val apiKey: String,
     val defaultModel: String,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    val useBuiltInProxy: Boolean = false,
 )
 
 data class ConnectionResult(

@@ -74,6 +74,30 @@ class ProviderManagerTest {
     }
 
     @Test
+    fun `代理选项独立持久化并随提供商移动和删除`() {
+        val type = ProtocolType.OpenAI_ChatCompletions
+        val providerUrl = "https://provider.invalid"
+        assertThat(manager.getMainProviderConfig()?.useBuiltInProxy).isFalse()
+        manager.updateMainProvider(type, providerUrl, CredentialUpdate.Preserve, "remote-model", useBuiltInProxy = true)
+        manager.updateMainProvider(type, providerUrl, CredentialUpdate.Preserve, "remote-model")
+        manager.addProvider(ProviderListItem("extra-proxy", "代理提供商", providerUrl, "m", type, useBuiltInProxy = true))
+        manager.addProvider(ProviderListItem("extra-direct", "原路由提供商", providerUrl, "m", type))
+        val restored = ProviderManager.createForTest(app, secrets)
+        assertThat(restored.getProviderSummary("default")?.useBuiltInProxy).isTrue()
+        assertThat(restored.getProviderConfig("extra-proxy")?.useBuiltInProxy).isTrue()
+        assertThat(restored.getProviderConfig("extra-direct")?.useBuiltInProxy).isFalse()
+        val route = DefaultProviderRequestRouter(restored).resolve("default::remote-model") as ProviderResolution.Success
+        assertThat(route.value.config.useBuiltInProxy).isTrue()
+
+        restored.deleteProvider("extra-proxy")
+        assertThat(restored.getProviderConfig("extra-direct")?.useBuiltInProxy).isFalse()
+        assertThat(app.getSharedPreferences("infinity_settings", 0).contains("extra_provider_1_use_built_in_proxy")).isFalse()
+        restored.deleteProvider("default")
+        restored.updateMainProvider(type, providerUrl, CredentialUpdate.Preserve, "remote-model")
+        assertThat(restored.getMainProviderConfig()?.useBuiltInProxy).isFalse()
+    }
+
+    @Test
     fun `删除提供商会清除连接和同步状态并保留主提供商状态`() {
         addExtraProviderWithModel()
         manager.recordProviderConnectionTest("extra-a", ProviderConnectionProbeResult.Success)

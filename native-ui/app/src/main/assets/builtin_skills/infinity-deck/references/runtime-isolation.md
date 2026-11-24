@@ -45,3 +45,7 @@
 5. **资料库与关键运行数据保护**：
    - 资料库文档由 Room 托管，必须通过 `request_knowledge_access` 申请授权后用文件工具读写，或用 `copy_knowledge_to_linux` 导出副本给 Linux 脚本处理。
    - 关键运行数据目录通过文件工具仅开放只读自诊断（`infinity_encrypted_secrets.xml*` 全硬拒）；任何命令修改均须先取得用户明确书面同意。
+
+## Linux 命令按需使用内置代理
+
+内置代理运行时，新启动的 Alpine Linux 进程可读取 `$INFINITY_PROXY_HTTP`、`$INFINITY_PROXY_SOCKS` 和 `$INFINITY_PROXY_NO_PROXY`。它们供单条公网命令主动使用。HTTP 版本适用于标准 HTTP 代理，SOCKS 版本使用 `socks5h` 由远端解析域名，绕过列表保留回环、私网与 Tailnet。用 `test -n "${INFINITY_PROXY_HTTP:-}"` 检查是否可用。两个代理地址含本机临时凭据，禁止打印、复制到日志、保存到配置或传给模型。

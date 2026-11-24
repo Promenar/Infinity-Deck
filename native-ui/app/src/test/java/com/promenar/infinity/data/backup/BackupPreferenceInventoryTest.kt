@@ -8,6 +8,14 @@ import java.nio.file.Path
 
 class BackupPreferenceInventoryTest {
     @Test
+    fun `提供商代理选择按各自配置参与备份`() {
+        assertThat(BackupPreferencePolicy.isAllowed("provider", "use_built_in_proxy")).isTrue()
+        assertThat(BackupPreferencePolicy.isAllowed("settings", "extra_provider_0_use_built_in_proxy")).isTrue()
+        assertThat(BackupPreferencePolicy.isAllowed("settings", "use_built_in_proxy")).isFalse()
+        assertThat(BackupPreferencePolicy.isAllowed("provider", "proxy_password")).isFalse()
+    }
+
+    @Test
     fun `宠物会话记忆登记为仅本机数据`() {
         assertThat(BackupPreferencePolicy.isKnown("infinity_pet_memory", "state")).isTrue()
         assertThat(BackupPreferencePolicy.isAllowed("infinity_pet_memory", "state")).isFalse()

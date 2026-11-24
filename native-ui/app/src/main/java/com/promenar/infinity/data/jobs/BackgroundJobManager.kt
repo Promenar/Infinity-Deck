@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.jobs
 
+import com.promenar.infinity.data.proxy.BuiltInProxyConfig
 import com.promenar.infinity.data.exec.*
 import com.promenar.infinity.data.secret.SessionSecretVault
 import com.promenar.infinity.data.secret.SecretOutputRedactor
@@ -288,8 +289,19 @@ class BackgroundJobManager(
                         }
                         if (!environment.keys.containsAll(record.secretNames)) throw JobAccessException("JOB_SECRET_UNAVAILABLE", "引用的保密槽位已销毁，任务未执行。")
                         val original = prepareCommand(actualKind,source,stdin,location.copy(sessionId=record.sessionId, pythonSource = kind == BackgroundJobRunner.PYTHON),minutes)
-                        val prepared = PreparedBackgroundCommand(original.request.copy(environment = original.request.environment + environment,
-                            outputTransform = redactor?.let { secretCommandOutput(sessionId, it) }), original.close, original.afterRun)
+                        val linux = actualKind == BackgroundJobRunner.LINUX
+                        val releaseProxySecrets = if (linux) {
+                            retainSecretEnvironment(sessionId, builtInProxyOutputSecrets(original.request.environment), redactor)
+                        } else ({})
+                        val commandEnvironment = if (linux) environment.filterKeys { it !in BuiltInProxyConfig.environmentKeys } else environment
+                        val prepared = PreparedBackgroundCommand(
+                            original.request.copy(
+                                environment = original.request.environment + commandEnvironment,
+                                outputTransform = redactor?.let { secretCommandOutput(sessionId, it) },
+                            ),
+                            close = { try { original.close() } finally { releaseProxySecrets() } },
+                            afterRun = original.afterRun,
+                        )
                         command=prepared
                         var linuxRemoved = false
                         val output = coroutineScope {

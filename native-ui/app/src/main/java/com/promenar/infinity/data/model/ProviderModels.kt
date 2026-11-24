@@ -30,6 +30,7 @@ data class ProviderListItem(
     val hasApiKey: Boolean = false,
     val hasVertexCredentials: Boolean = false,
     val enabled: Boolean = true,
+    val useBuiltInProxy: Boolean = false,
 )
 
 /**
@@ -66,6 +67,7 @@ data class ProviderSummary(
     val model: String,
     val hasApiKey: Boolean,
     val hasVertexCredentials: Boolean,
+    val useBuiltInProxy: Boolean = false,
 )
 
 /**
@@ -80,4 +82,5 @@ data class ProviderConfig(
     val vertexServiceAccountJson: String = "",
     val sessionHeadersEnabled: Boolean = false,
     val sessionHeaderName: String = SessionHeaderPolicy.DEFAULT_NAME,
+    val useBuiltInProxy: Boolean = false,
 )

@@ -527,12 +527,15 @@ class SettingsViewModel(
                             .serviceAccountJson(config.vertexServiceAccountJson)
                             .projectId("")
                             .location(VERTEX_DEFAULT_LOCATION)
+                            .useBuiltInProxy(config.useBuiltInProxy, providerId)
                             .build()
                     }
                     fetchedModels = tmpProvider.listModelDescriptors()
                     currentCoroutineContext().ensureActive()
                 } catch (cancellation: CancellationException) {
                     throw cancellation
+                } catch (unavailable: com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException) {
+                    throw unavailable
                 } catch (_: Exception) { /* 远程拉取失败，回退到数据库 */ }
 
                 // 步骤 2: 回退 — 从 ModelSpecs 数据库匹配该协议类型的已知模型

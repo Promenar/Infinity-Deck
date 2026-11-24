@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.remote.protocol
 
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
+
 import androidx.annotation.StringRes
 import kotlinx.coroutines.flow.Flow
 import com.promenar.infinity.R
@@ -473,6 +475,13 @@ fun NormalizedError.toStreamChunkError(cause: Throwable? = null): StreamChunk.Er
         providerMessage = failure.providerMessage,
     )
 }
+
+internal fun BuiltInProxyUnavailableException.toProxyStreamError(): StreamChunk.Error = StreamChunk.Error(
+    code = GenerationFailureCode.NETWORK,
+    retryable = false,
+    technical = message,
+    cause = this,
+)
 
 internal fun truncatedStreamError(technical: String): StreamChunk.Error = StreamChunk.Error(
     code = GenerationFailureCode.NETWORK,

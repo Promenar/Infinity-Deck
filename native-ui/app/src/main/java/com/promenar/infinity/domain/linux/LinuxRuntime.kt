@@ -214,4 +214,6 @@ data class LinuxProcessLaunch(
     val hostWorkingDirectory: File,
 ) {
     val command: List<String> get() = listOf(executable) + arguments
+
+    override fun toString(): String = "LinuxProcessLaunch(arguments=${arguments.size}, environmentKeys=${environment.keys})"
 }

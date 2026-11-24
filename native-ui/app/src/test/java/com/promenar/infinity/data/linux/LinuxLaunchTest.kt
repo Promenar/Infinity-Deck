@@ -11,6 +11,27 @@ import java.nio.file.Path
 import java.util.TimeZone
 
 class LinuxLaunchTest {
+    @Test fun `内置代理只注入专用变量且保留标准环境`() {
+        var endpoint: com.promenar.infinity.data.proxy.BuiltInProxyEndpoint? =
+            com.promenar.infinity.data.proxy.BuiltInProxyEndpoint(41987, "test-user", "test-proxy-fixture")
+        val builder = LinuxLaunchBuilder(
+            PackagedProot(temporary.resolve("lib").toFile()), root, temporary.resolve("cache").toFile(),
+            tailnetEnvironment = { mapOf("HTTPS_PROXY" to "tailnet-https") },
+            builtInProxyEndpoint = { endpoint },
+        )
+        val spec = LinuxLaunchSpec(emptyList(), environment = mapOf("HTTP_PROXY" to "user-http"))
+        val launch = builder.build(spec)
+        assertEquals("user-http", launch.environment["HTTP_PROXY"])
+        assertEquals("tailnet-https", launch.environment["HTTPS_PROXY"])
+        assertEquals("http://test-user:test-proxy-fixture@127.0.0.1:41987", launch.environment["INFINITY_PROXY_HTTP"])
+        assertEquals("socks5h://test-user:test-proxy-fixture@127.0.0.1:41987", launch.environment["INFINITY_PROXY_SOCKS"])
+        assertEquals("localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10",
+            launch.environment["INFINITY_PROXY_NO_PROXY"])
+        assertFalse(launch.toString().contains("test-proxy-fixture"))
+        endpoint = null
+        assertFalse(builder.build(spec).environment.keys.any { it.startsWith("INFINITY_PROXY_") })
+    }
+
     @Test fun `默认Linux工作区别名存在且无工作区时不虚构变量`() {
         val workspace = temporary.resolve("project").toFile().apply { mkdirs() }
         val environment = builder().build(LinuxLaunchSpec(emptyList(), workspace)).environment

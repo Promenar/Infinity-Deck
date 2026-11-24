@@ -1,5 +1,9 @@
 package com.promenar.infinity.data.network
 
+import com.promenar.infinity.data.proxy.BuiltInPreemptiveProxyAuthInterceptor
+import com.promenar.infinity.data.proxy.BuiltInProxyAuthenticator
+import com.promenar.infinity.data.proxy.BuiltInProxyRouting
+import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
 import com.promenar.infinity.data.tailnet.TailnetHosts
 import com.promenar.infinity.data.tailnet.TailnetRouting
 import com.promenar.infinity.domain.network.AgentNetworkEndpoint
@@ -28,10 +32,16 @@ class AgentHttpRoute(val client: OkHttpClient, private val requestUrl: String, p
 }
 
 object AgentHttpRouting {
-    fun route(base: OkHttpClient, endpoint: AgentNetworkEndpoint, routing: TailnetRouting): AgentHttpRoute {
+    fun route(
+        base: OkHttpClient,
+        endpoint: AgentNetworkEndpoint,
+        routing: TailnetRouting,
+        builtInProxy: BuiltInProxyRouting = InstalledBuiltInProxyRouting.routing,
+    ): AgentHttpRoute {
         val builder = base.newBuilder().followRedirects(false).followSslRedirects(false)
         var url = endpoint.uri.toString()
         var hostHeader: String? = null
+        val publicProxy = if (endpoint.target == NetworkTargetClass.PUBLIC) builtInProxy.endpoint.value else null
         if (endpoint.target == NetworkTargetClass.TAILNET) {
             builder.proxy(AgentTailnetProxy.requireProxy(routing))
                 .proxyAuthenticator(routing.proxyAuthenticator)
@@ -52,6 +62,11 @@ object AgentHttpRouting {
                 hostHeader = origin.host.let { if (':' in it) "[$it]" else it } + if (origin.port == (if (origin.isHttps) 443 else 80)) "" else ":${origin.port}"
                 url = origin.newBuilder().host(checkNotNull(address.hostAddress)).build().toString()
             }
+        } else if (publicProxy != null) {
+            // 逐跳分类已完成。保留 URL 主机名，由远端节点解析公网域名。
+            builder.proxy(publicProxy.proxy)
+                .proxyAuthenticator(BuiltInProxyAuthenticator(builtInProxy, publicTargetOnly = true))
+                .addNetworkInterceptor(BuiltInPreemptiveProxyAuthInterceptor(builtInProxy, publicTargetOnly = true))
         } else {
             // 分类与连接使用相同地址集合；避免系统代理重新解析后改变 tailnet 选路。
             val addresses = endpoint.addresses.filterNot { TailnetHosts.isTailnetAddress(it.address) }

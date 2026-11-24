@@ -1,7 +1,9 @@
 package com.promenar.infinity.data.remote.provider
 
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.UnifiedProviderConfig
+import com.promenar.infinity.data.remote.routeViaBuiltInProxy
 import com.promenar.infinity.data.remote.protocol.ProviderEndpointOperation
 import com.promenar.infinity.data.remote.protocol.ProviderEndpointResolver
 import com.promenar.infinity.data.remote.protocol.ProviderEndpointTarget
@@ -84,6 +86,8 @@ class ProviderConnectionProbe(
         serviceAccountJson: String = "",
         projectId: String = "",
         location: String = VERTEX_DEFAULT_LOCATION,
+        useBuiltInProxy: Boolean = false,
+        providerId: String? = null,
     ): ProviderConnectionProbeResult {
         val protocol = try {
             ProtocolType.fromLegacyName(persistedProtocol)
@@ -99,6 +103,8 @@ class ProviderConnectionProbe(
                 serviceAccountJson = serviceAccountJson,
                 projectId = projectId,
                 location = location,
+                useBuiltInProxy = useBuiltInProxy,
+                providerId = providerId,
             ),
         )
     }
@@ -112,6 +118,8 @@ class ProviderConnectionProbe(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (_: UnsupportedProviderOperationException) {
             ProviderConnectionProbeResult.Unsupported
         } catch (_: UnsupportedProviderProtocolException) {
@@ -140,6 +148,7 @@ class ProviderConnectionProbe(
         )
         requireHttpEndpoint(endpoint)
         val response = httpClient.get(endpoint) {
+            routeViaBuiltInProxy(config.useBuiltInProxy, config.providerId)
             when (config.protocolType) {
                 ProtocolType.Anthropic_Messages -> {
                     header("x-api-key", config.apiKey)
@@ -200,6 +209,7 @@ class ProviderConnectionProbe(
             ProviderEndpointTarget.VertexOAuthToken,
         )
         val response = httpClient.post(endpoint) {
+            routeViaBuiltInProxy(config.useBuiltInProxy, config.providerId)
             contentType(ContentType.Application.FormUrlEncoded)
             setBody(
                 "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=$assertion",

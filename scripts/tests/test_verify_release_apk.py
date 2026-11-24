@@ -479,6 +479,39 @@ def elf(machine: int) -> bytes:
     return b"\x7fELF\x02\x01\x01" + b"\x00" * 9 + (2).to_bytes(2, "little") + machine.to_bytes(2, "little") + b"payload"
 
 
+class ProxyBinaryTest(ApkFixtureTestCase):
+    def test_requires_matching_elf_for_every_packaged_abi(self) -> None:
+        entries = {
+            "lib/arm64-v8a/libpystdlib.so": b"zip",
+            "lib/x86_64/libpysite.so": b"zip",
+            "lib/arm64-v8a/libnxproxy.so": elf(183),
+            "lib/x86_64/libnxproxy.so": elf(62),
+        }
+        verify_release_apk.verify_proxy_binary(self.make_apk(entries))
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "x86_64 缺少 libnxproxy.so"):
+            verify_release_apk.verify_proxy_binary(self.make_apk({k: v for k, v in entries.items() if v != elf(62)}))
+        entries["lib/x86_64/libnxproxy.so"] = elf(183)
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "架构与 ABI 不符"):
+            verify_release_apk.verify_proxy_binary(self.make_apk(entries))
+
+
+    def test_proxy_allowances_are_scoped_to_packaged_binary(self) -> None:
+        content = b"100.64.0.0/10 Chrome/10.0.649.0"
+        verify_release_apk.scan_sensitive_content(self.make_apk({"lib/arm64-v8a/libnxproxy.so": content}))
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "私网或 CGNAT"):
+            verify_release_apk.scan_sensitive_content(self.make_apk({"assets/other": content}))
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "疑似 OpenAI"):
+            verify_release_apk.scan_sensitive_content(self.make_apk({
+                "lib/arm64-v8a/libnxproxy.so": content + b" sk-" + b"SyntheticFixture" * 2,
+            }))
+
+    def test_dex_accepts_only_the_fixed_proxy_bypass_setting(self) -> None:
+        content = verify_release_apk.APP_PROXY_BYPASS_SETTING
+        verify_release_apk.scan_sensitive_content(self.make_apk({"classes2.dex": content}))
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "私网或 CGNAT"):
+            verify_release_apk.scan_sensitive_content(self.make_apk({"classes2.dex": content + b" 10.0.0.0"}))
+
+
 class TailnetBinaryTest(ApkFixtureTestCase):
     """内置 Tailscale（Go 程序）：每个打包 Python 的 ABI 都须带对应架构的 libnxtailnet.so；豁免只覆盖其中的上游常量。"""
 

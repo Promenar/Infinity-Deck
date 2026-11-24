@@ -1,17 +1,31 @@
 package com.promenar.infinity.data.remote.provider
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
+import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.UnifiedProviderConfig
+import com.promenar.infinity.data.remote.protocol.PromptRequest
+import com.promenar.infinity.data.remote.protocol.ProtocolFactory
+import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 import com.promenar.infinity.data.remote.protocol.ProtocolType
+import com.promenar.infinity.data.remote.protocol.StreamChunk
 import com.promenar.infinity.data.remote.protocol.VERTEX_DEFAULT_LOCATION
+import com.promenar.infinity.data.tailnet.DisabledTailnetRouting
+import com.promenar.infinity.data.tailnet.TailnetRouting
 import io.ktor.client.*
 import io.ktor.client.engine.mock.*
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import java.io.IOException
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
+import java.net.URI
 import java.security.KeyPairGenerator
 import java.util.Base64
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
@@ -98,6 +112,39 @@ class ProviderConnectionProbeTest {
         assertThat(formBody).contains("grant_type=")
         assertThat(formBody).contains("assertion=")
         assertThat(formBody).doesNotContain(fixture.privateKeyPem)
+    }
+
+    @Test
+    fun `Vertex 探测与推理的 OAuth 请求保持代理拒绝错误`() = runTest {
+        val forbiddenFallback = object : TailnetRouting by DisabledTailnetRouting {
+            override val proxySelector = object : ProxySelector() {
+                override fun select(uri: URI?): List<Proxy> = throw IOException("测试禁止系统选路")
+                override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) = Unit
+            }
+        }
+        ModelHttp.install({ forbiddenFallback }) { null }
+        try {
+            val config = UnifiedProviderConfig(
+                ProtocolType.Google_VertexAI, "https://us-central1-aiplatform.googleapis.com", "", "gemini-2.5-pro",
+                serviceAccountJson = validCredentialJson().json,
+                useBuiltInProxy = true,
+                providerId = "vertex-test",
+            )
+            val probeError = runCatching { ProviderConnectionProbe.processScoped.probe(config) }.exceptionOrNull()
+            assertThat(probeError).isInstanceOf(BuiltInProxyUnavailableException::class.java)
+            val protocol = ProtocolFactory.create(
+                config.protocolType, config.baseUrl, model = config.defaultModel,
+                serviceAccountJson = config.serviceAccountJson, useBuiltInProxy = true, providerId = config.providerId,
+            )
+            val prompt = PromptRequest(listOf(ProtocolMessage(role = "user", content = "测试")), config.defaultModel)
+            val syncError = runCatching { protocol.sendPromptSync(prompt) }.exceptionOrNull()
+            assertThat(syncError).isInstanceOf(BuiltInProxyUnavailableException::class.java)
+            val streamError = protocol.sendPrompt(prompt).toList().single() as StreamChunk.Error
+            assertThat(streamError.cause).isInstanceOf(BuiltInProxyUnavailableException::class.java)
+            assertThat(streamError.retryable).isFalse()
+        } finally {
+            ModelHttp.install({ DisabledTailnetRouting }) { null }
+        }
     }
 
     @Test

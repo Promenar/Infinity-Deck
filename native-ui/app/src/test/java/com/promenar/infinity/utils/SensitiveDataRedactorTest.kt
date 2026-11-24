@@ -9,6 +9,16 @@ import okhttp3.Headers.Companion.toHeaders
 import org.junit.jupiter.api.Test
 
 class SensitiveDataRedactorTest {
+    @Test fun `诊断删除 HTTP 和 SOCKS 回环代理凭据`() {
+        for (scheme in listOf("http", "https", "socks5h", "socks5")) {
+            val url = "$scheme://test%40user:t%40st-fixture@127.0.0.1:41234"
+            val message = SensitiveDataRedactor.redactMessage("代理 $url 已连接")
+            assertThat(message).contains("$scheme://127.0.0.1:41234")
+            assertThat(message).doesNotContain("t%40st-fixture")
+            assertThat(message).doesNotContain("test%40user")
+        }
+    }
+
     @Test
     fun `redactHeaders removes credential values`() {
         val headers = mapOf(

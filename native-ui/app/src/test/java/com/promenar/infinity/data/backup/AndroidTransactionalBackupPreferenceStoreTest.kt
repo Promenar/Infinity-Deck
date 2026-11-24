@@ -47,6 +47,33 @@ class AndroidTransactionalBackupPreferenceStoreTest {
     }
 
     @Test
+    fun `提供商代理偏好以布尔值往返且旧备份缺省会清除已有开关`() = runBlocking {
+        val main = context.getSharedPreferences("infinity_provider", 0)
+        val settings = context.getSharedPreferences("infinity_settings", 0)
+        main.edit().putBoolean("use_built_in_proxy", true).commit()
+        settings.edit().putInt("extra_providers_count", 1).putString("extra_provider_0_id", "extra-test")
+            .putBoolean("extra_provider_0_use_built_in_proxy", true).commit()
+        val adapter = store()
+        val saved = adapter.snapshot(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
+        assertThat(saved.entries.filter { it.key.endsWith("use_built_in_proxy") }).containsExactly(
+            entry("provider", "use_built_in_proxy", PreferenceValueType.BOOLEAN, "true"),
+            entry("settings", "extra_provider_0_use_built_in_proxy", PreferenceValueType.BOOLEAN, "true"),
+        )
+
+        val old = saved.copy(entries = saved.entries.filterNot { it.key.endsWith("use_built_in_proxy") })
+        adapter.prepare("tx-provider-proxy-old", saved, old)
+        adapter.commitPrepared("tx-provider-proxy-old")
+        assertThat(main.getBoolean("use_built_in_proxy", false)).isFalse()
+        assertThat(settings.getBoolean("extra_provider_0_use_built_in_proxy", false)).isFalse()
+
+        val before = adapter.snapshot(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
+        adapter.prepare("tx-provider-proxy-new", before, saved)
+        adapter.commitPrepared("tx-provider-proxy-new")
+        assertThat(main.getBoolean("use_built_in_proxy", false)).isTrue()
+        assertThat(settings.getBoolean("extra_provider_0_use_built_in_proxy", false)).isTrue()
+    }
+
+    @Test
     fun `技能商店来源记录与开关备份恢复且本机检查时间不变`() = runBlocking {
         val settings = context.getSharedPreferences("infinity_settings", 0)
         settings.edit().putString("skill_store_sources", "[\"https://example.com/index\"]")

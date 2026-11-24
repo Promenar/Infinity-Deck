@@ -740,9 +740,12 @@ is_expected_resumed_activity "$2"
         self.assertIn("if: always()", RELEASE)
         self.assertIn('rm -f "${RUNNER_TEMP}/infinity-release.jks"', RELEASE)
 
-    def test_every_gradle_job_installs_registered_go_for_tailnet(self) -> None:
+    def test_every_gradle_job_installs_registered_go_for_native_processes(self) -> None:
         version = re.search(r'val tailnetGoVersion = "([0-9.]+)"', APP_BUILD)
         self.assertIsNotNone(version)
+        proxy_version = re.search(r'val proxyGoVersion = "([0-9.]+)"', APP_BUILD)
+        self.assertIsNotNone(proxy_version)
+        self.assertEqual(version.group(1), proxy_version.group(1))
         regression = (ROOT / ".github/workflows/device-regression.yml").read_text(encoding="utf-8")
         for workflow in (RELEASE, regression):
             jobs = re.findall(r"^  [a-z][a-z0-9-]*:\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)", workflow, flags=re.MULTILINE | re.DOTALL)
@@ -751,7 +754,9 @@ is_expected_resumed_activity "$2"
             for job in gradle_jobs:
                 self.assertRegex(job, r"uses: actions/setup-go@[0-9a-f]{40} # v\d+")
                 self.assertIn(f'go-version: "{version.group(1)}"', job)
-                self.assertIn("cache-dependency-path: native-ui/app/tailnet/go.sum", job)
+                self.assertIn("cache-dependency-path: |", job)
+                self.assertIn("native-ui/app/tailnet/go.sum", job)
+                self.assertIn("native-ui/app/proxy/go.sum", job)
 
     def test_release_device_e2e_only_runs_minimum_sdk(self) -> None:
         job = workflow_job("device-e2e")

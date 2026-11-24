@@ -8,6 +8,15 @@ import com.promenar.infinity.data.skills.SkillStatus
 import org.junit.Test
 
 class SystemPromptSectionsSkillsTest {
+    @Test fun `Linux 代理变量只供单条命令主动使用并保护凭据`() {
+        val guidance = SystemPromptSections.LINUX_SHELL_GUIDANCE
+        assertThat(guidance).contains("单条公网命令")
+        assertThat(guidance).contains("\$INFINITY_PROXY_HTTP")
+        assertThat(guidance).contains("\$INFINITY_PROXY_SOCKS")
+        assertThat(guidance).contains("\$INFINITY_PROXY_NO_PROXY")
+        assertThat(guidance).contains("禁止打印、记录或上传代理凭据")
+    }
+
     @Test fun `通用与完整工具引导均要求调用前给出简短进展`() {
         for (generic in listOf(true, false)) {
             val prompt = SystemPromptSections.toolGuidance(setOf("read_file"), generic)

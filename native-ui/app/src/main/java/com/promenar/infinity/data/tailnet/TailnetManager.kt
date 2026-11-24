@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -99,11 +100,15 @@ class TailnetManager(
         @Volatile var client: TailnetClient? = null
         @Volatile var stopping = false
         val endpoint = CompletableFuture<TailnetProxyEndpoint?>()
+        // 由 startGuard 保护，端点就绪后发布启动期间收到的最新状态。
+        var pendingSummary: TailnetStatusSummary? = null
     }
 
     private data class LaunchConfig(val controlUrl: String, val ephemeral: Boolean, val authKeyRevision: Int)
 
     private val lock = Mutex()
+    // 由 lock 保护，随下一次子进程启动重放。
+    private var desiredUpstream: TailnetUpstreamOptions? = null
     private val startGuard = Any()
     @Volatile private var session: Session? = null
     @Volatile private var startInFlight: CompletableFuture<TailnetProxyEndpoint?>? = null
@@ -161,6 +166,7 @@ class TailnetManager(
     // ---- TailnetEndpointSource ----
 
     override fun currentEndpoint(): TailnetProxyEndpoint? {
+        if (!enabled) return null
         val current = session ?: return null
         if (current.stopping || current.client?.isExited == true) return null
         return current.endpoint.getNow(null)
@@ -170,7 +176,8 @@ class TailnetManager(
         if (!enabled) return null
         currentEndpoint()?.let { return it }
         val future = requestStart() ?: return null
-        return runCatching { future.get(timeoutMillis, TimeUnit.MILLISECONDS) }.getOrNull()
+        val endpoint = runCatching { future.get(timeoutMillis, TimeUnit.MILLISECONDS) }.getOrNull()
+        return endpoint?.takeIf { currentEndpoint() === it }
     }
 
     // ---- TailnetConnector ----
@@ -185,18 +192,19 @@ class TailnetManager(
         currentEndpoint()?.let { return it }
         val future = requestStart() ?: return null
         // 取消一个等待方时保留共享启动，路由选择器和其他会话仍可取得端点。
-        return withTimeoutOrNull(timeoutMillis) {
-            suspendCancellableCoroutine { continuation ->
+        val endpoint = withTimeoutOrNull(timeoutMillis) {
+            suspendCancellableCoroutine<TailnetProxyEndpoint?> { continuation ->
                 future.whenComplete { endpoint, _ -> if (continuation.isActive) continuation.resume(endpoint) }
             }
         }
+        return endpoint?.takeIf { currentEndpoint() === it }
     }
 
     /** 返回正在进行或新发起的启动；退避期内或已停用返回 null。 */
     private fun requestStart(): CompletableFuture<TailnetProxyEndpoint?>? = synchronized(startGuard) {
         val current = session
         if (current != null && !current.stopping && current.client?.isExited != true) return current.endpoint
-        startInFlight?.let { return it }
+        startInFlight?.takeUnless { it.isDone }?.let { return it }
         if (!enabled || clock() - lastFailureAt < RETRY_BACKOFF_MS) return null
         val future = CompletableFuture<TailnetProxyEndpoint?>()
         startInFlight = future
@@ -231,6 +239,49 @@ class TailnetManager(
         lastFailureAt = Long.MIN_VALUE / 2
         requestStart()
     }
+
+    /**
+     * 更新公网流量的本机 CONNECT 上游。子进程确认应用时返回 true，尚未启动时缓存并返回 false。
+     * null 清空配置，后续启动直接使用系统网络访问公网。
+     */
+    suspend fun setUpstreamProxy(
+        port: Int?,
+        proxyUser: String? = null,
+        proxyPassword: String? = null,
+    ): Boolean {
+        val options = if (port == null) {
+            null
+        } else {
+            require(port in 1..65535) { "上游代理端口无效" }
+            require(
+                !proxyUser.isNullOrEmpty() && ':' !in proxyUser && proxyUser.none(::isBasicControl) &&
+                    !proxyPassword.isNullOrEmpty() && proxyPassword.none(::isBasicControl),
+            ) { "上游 Basic 代理凭据不合法" }
+            TailnetUpstreamOptions("127.0.0.1:$port", proxyUser, proxyPassword)
+        }
+        return lock.withLock {
+            desiredUpstream = options
+            // 停用设置已写入时，仍清空尚未退出的子进程中的上游。
+            if (!enabled && options != null) return@withLock false
+            val target = liveSession() ?: return@withLock false
+            val client = target.client ?: return@withLock false
+            // 写出 RPC 后等待应答，调用方取消时也保持期望配置和子进程一致。
+            withContext(NonCancellable) {
+                try {
+                    client.setUpstreamProxy(options)
+                    session === target && !client.isExited && (options == null || enabled)
+                } catch (_: IOException) {
+                    failAndCloseLocked(target, client)
+                    false
+                } catch (_: TailnetCommandException) {
+                    failAndCloseLocked(target, client)
+                    false
+                }
+            }
+        }
+    }
+
+    private fun isBasicControl(char: Char): Boolean = char < ' ' || char == '\u007f'
 
     private suspend fun applyLocked(settings: TailnetSettings) {
         if (launcher == null) {
@@ -271,10 +322,12 @@ class TailnetManager(
         }
         val next = Session(settings.launchConfig())
         next.endpoint.whenComplete { value, _ -> future.complete(value) }
-        session = next
-        magicDnsSuffix = null
-        peerNames = null
-        mutableState.value = TailnetState(TailnetPhase.STARTING)
+        synchronized(startGuard) {
+            session = next
+            magicDnsSuffix = null
+            peerNames = null
+            mutableState.value = TailnetState(TailnetPhase.STARTING)
+        }
         val client = try {
             withContext(ioDispatcher) {
                 stateDirectory.mkdirs()
@@ -307,6 +360,7 @@ class TailnetManager(
         )
         authKey?.fill('\u0000')
         val result = try {
+            desiredUpstream?.let { client.setUpstreamProxy(it) }
             client.start(options)
         } catch (_: IOException) {
             null
@@ -314,56 +368,83 @@ class TailnetManager(
             null
         }
         if (result == null) {
-            withContext(ioDispatcher) { client.close() }
-            fail(next, TailnetFailure.START_FAILED)
+            failAndCloseLocked(next, client)
             return
         }
-        next.endpoint.complete(TailnetProxyEndpoint(result.proxyPort, user, password))
+        synchronized(startGuard) {
+            if (session === next && !client.isExited) {
+                next.endpoint.complete(TailnetProxyEndpoint(result.proxyPort, user, password))
+                next.pendingSummary?.let { onSummary(next, it) }
+                next.pendingSummary = null
+            } else {
+                next.endpoint.complete(null)
+            }
+        }
     }
 
     private fun fail(target: Session, code: String) {
-        target.endpoint.complete(null)
-        lastFailureAt = clock()
-        if (session === target) {
-            session = null
-            mutableState.value = TailnetState(TailnetPhase.FAILED, failure = code)
+        synchronized(startGuard) {
+            if (session === target) {
+                session = null
+                magicDnsSuffix = null
+                peerNames = null
+                lastFailureAt = clock()
+                mutableState.value = TailnetState(TailnetPhase.FAILED, failure = code)
+            }
+            target.endpoint.complete(null)
         }
     }
 
+    private suspend fun failAndCloseLocked(target: Session, client: TailnetClient) {
+        target.stopping = true
+        fail(target, TailnetFailure.START_FAILED)
+        withContext(ioDispatcher) { client.close() }
+    }
+
     private fun onSummary(target: Session, summary: TailnetStatusSummary) {
-        if (session !== target || target.stopping) return
-        magicDnsSuffix = summary.magicDnsSuffix?.takeIf { it.isNotBlank() }
-        val phase = phaseOf(summary)
-        if (phase != TailnetPhase.RUNNING) peerNames = if (phase == TailnetPhase.STARTING) null else emptySet()
-        mutableState.update { previous ->
-            TailnetState(
-                phase = phase,
-                summary = summary,
-                peers = if (phase == TailnetPhase.RUNNING) previous.peers else emptyList(),
-                failure = if (phase == TailnetPhase.FAILED) TailnetFailure.START_FAILED else null,
-            )
+        val phase = synchronized(startGuard) {
+            if (session !== target || target.stopping) return
+            if (!target.endpoint.isDone) {
+                target.pendingSummary = summary
+                return
+            }
+            magicDnsSuffix = summary.magicDnsSuffix?.takeIf { it.isNotBlank() }
+            val phase = phaseOf(summary)
+            if (phase != TailnetPhase.RUNNING) peerNames = if (phase == TailnetPhase.STARTING) null else emptySet()
+            mutableState.update { previous ->
+                TailnetState(
+                    phase = phase,
+                    summary = summary,
+                    peers = if (phase == TailnetPhase.RUNNING) previous.peers else emptyList(),
+                    failure = if (phase == TailnetPhase.FAILED) TailnetFailure.START_FAILED else null,
+                )
+            }
+            if (phase == TailnetPhase.FAILED) lastFailureAt = clock()
+            phase
         }
-        if (phase == TailnetPhase.FAILED) lastFailureAt = clock()
         if (phase == TailnetPhase.RUNNING) scope.launch(ioDispatcher) { refreshPeers(target) }
     }
 
     private fun onExit(target: Session) {
-        target.endpoint.complete(null)
-        if (session !== target) return
-        session = null
-        peerNames = null
-        if (target.stopping) return
-        lastFailureAt = clock()
-        mutableState.value = TailnetState(TailnetPhase.FAILED, failure = TailnetFailure.EXITED)
+        synchronized(startGuard) {
+            if (session === target && !target.stopping) {
+                fail(target, TailnetFailure.EXITED)
+            } else {
+                target.endpoint.complete(null)
+            }
+        }
     }
 
     private suspend fun stopLocked() {
-        val current = session ?: return
-        current.stopping = true
-        session = null
-        peerNames = null
-        magicDnsSuffix = null
-        current.endpoint.complete(null)
+        val current = synchronized(startGuard) {
+            val current = session ?: return
+            current.stopping = true
+            session = null
+            peerNames = null
+            magicDnsSuffix = null
+            current.endpoint.complete(null)
+            current
+        }
         withContext(ioDispatcher) { current.client?.close() }
         if (mutableState.value.phase != TailnetPhase.DISABLED) mutableState.value = TailnetState(TailnetPhase.STOPPED)
     }
@@ -371,15 +452,19 @@ class TailnetManager(
     private suspend fun refreshPeers(target: Session): List<TailnetPeer>? {
         val client = target.client ?: return null
         val peers = runCatching { client.peers() }.getOrNull() ?: return null
-        if (session !== target) return null
-        peerNames = peers.flatMapTo(mutableSetOf()) { peer ->
-            listOfNotNull(peer.name, peer.dnsName).map(TailnetHosts::normalize).filter { it.isNotEmpty() }
+        synchronized(startGuard) {
+            if (session !== target || target.stopping || mutableState.value.phase != TailnetPhase.RUNNING) return null
+            peerNames = peers.flatMapTo(mutableSetOf()) { peer ->
+                listOfNotNull(peer.name, peer.dnsName).map(TailnetHosts::normalize).filter { it.isNotEmpty() }
+            }
+            mutableState.update { it.copy(peers = peers) }
         }
-        mutableState.update { previous -> if (previous.phase == TailnetPhase.RUNNING) previous.copy(peers = peers) else previous }
         return peers
     }
 
-    private fun liveSession(): Session? = session?.takeIf { !it.stopping && it.client?.isExited != true && it.client != null }
+    private fun liveSession(): Session? = session?.takeIf {
+        !it.stopping && it.client?.isExited == false && it.endpoint.getNow(null) != null
+    }
 
     override suspend fun refresh(): TailnetState {
         if (!enabled) return mutableState.value

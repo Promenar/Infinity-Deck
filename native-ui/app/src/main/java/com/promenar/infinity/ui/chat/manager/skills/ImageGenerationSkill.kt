@@ -150,6 +150,7 @@ class ImageGenerationSkill(
                 ).read(context.sessionId, request.images, request.mask, request.markup)
                 val resolved = providerRequestRouter.requireModelRoute(modelId).requireOpenAiModelRoute()
                 val client = imageGenClientFactory(resolved.config.baseUrl, resolved.config.apiKey, resolved.remoteModelId)
+                    .withProviderRoute(resolved)
                 val options = request.requested
                 val result = if (inputs == null) client.generate(
                     prompt = request.prompt, size = options.size, quality = options.quality, background = options.background,

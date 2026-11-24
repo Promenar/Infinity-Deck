@@ -14,8 +14,17 @@ class QueryRewriter(
     private val modelRouteResolver: ((String?) -> ResolvedProviderModel)? = null,
     private val protocolFactory: (ResolvedProviderModel) -> LlmProtocol = { route ->
         val config = route.config
-        ProtocolFactory.create(config.protocolType, config.baseUrl, config.apiKey, route.remoteModelId,
-            config.serviceAccountJson, config.projectId, config.location)
+        ProtocolFactory.create(
+            type = config.protocolType,
+            baseUrl = config.baseUrl,
+            apiKey = config.apiKey,
+            model = route.remoteModelId,
+            serviceAccountJson = config.serviceAccountJson,
+            projectId = config.projectId,
+            location = config.location,
+            useBuiltInProxy = config.useBuiltInProxy,
+            providerId = route.providerId,
+        )
     },
 ) {
     suspend fun rewrite(

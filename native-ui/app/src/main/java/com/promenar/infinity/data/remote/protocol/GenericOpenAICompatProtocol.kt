@@ -3,6 +3,7 @@ package com.promenar.infinity.data.remote.protocol
 import com.promenar.infinity.data.remote.applySessionRequestHeaders
 import com.promenar.infinity.data.remote.observeFirstByte
 
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
@@ -32,10 +33,12 @@ class GenericOpenAICompatProtocol(
     private val apiKey: String,
     private val model: String,
     override val protocolType: ProtocolType = ProtocolType.Generic_OpenAI_Compat,
-    httpClient: HttpClient? = null
+    httpClient: HttpClient? = null,
+    useBuiltInProxy: Boolean = false,
+    providerId: String? = null,
 ) : LlmProtocol {
 
-    private val httpClient: HttpClient = (httpClient ?: ModelHttp.client {
+    private val httpClient: HttpClient = (httpClient ?: ModelHttp.client(useBuiltInProxy, providerId) {
         install(HttpTimeout) {
             requestTimeoutMillis = 120_000
             connectTimeoutMillis = 30_000
@@ -177,6 +180,8 @@ class GenericOpenAICompatProtocol(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            send(unavailable.toProxyStreamError())
         } catch (e: Exception) {
             send(normalizeError(e))
         } finally {
@@ -198,6 +203,8 @@ class GenericOpenAICompatProtocol(
             }
         } catch (e: CancellationException) {
             throw e // 结构化并发：CancellationException 必须透传，否则 withTimeoutOrNull 失效
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (e: Exception) {
             val normalized = ErrorNormalizer.normalize(e)
             throw Exception("[${normalized.category}] ${normalized.technicalMessage}")
@@ -245,6 +252,8 @@ class GenericOpenAICompatProtocol(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (_: Exception) {
             emptyList()
         }

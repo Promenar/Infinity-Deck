@@ -3,6 +3,7 @@ package com.promenar.infinity.data.remote.protocol
 import com.promenar.infinity.data.remote.applySessionRequestHeaders
 import com.promenar.infinity.data.remote.observeFirstByte
 
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
@@ -50,12 +51,14 @@ class AnthropicProtocol(
     private val apiKey: String,
     private val model: String,
     private val anthropicVersion: String = "2023-06-01",
-    httpClient: HttpClient? = null
+    httpClient: HttpClient? = null,
+    useBuiltInProxy: Boolean = false,
+    providerId: String? = null,
 ) : LlmProtocol {
 
     override val protocolType: ProtocolType = ProtocolType.Anthropic_Messages
 
-    private val httpClient: HttpClient = (httpClient ?: ModelHttp.client {
+    private val httpClient: HttpClient = (httpClient ?: ModelHttp.client(useBuiltInProxy, providerId) {
         install(HttpTimeout) {
             requestTimeoutMillis = 120_000
             connectTimeoutMillis = 30_000
@@ -203,6 +206,8 @@ class AnthropicProtocol(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            send(unavailable.toProxyStreamError())
         } catch (e: Exception) {
             send(normalizeError(e))
         } finally {
@@ -223,6 +228,8 @@ class AnthropicProtocol(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (e: Exception) {
             val normalized = ErrorNormalizer.normalize(e)
             throw Exception("[${normalized.category}] ${normalized.technicalMessage}")
@@ -269,6 +276,8 @@ class AnthropicProtocol(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (_: Exception) {
             emptyList()
         }

@@ -28,6 +28,24 @@ class WebViewTailnetProxyTest {
     private val first = TailnetProxyEndpoint(41001, "user-aaaaaaaaaaaaaaaa", "pass-aaaaaaaaaaaaaaaa")
     private val second = TailnetProxyEndpoint(41002, "user-bbbbbbbbbbbbbbbb", "pass-bbbbbbbbbbbbbbbb")
 
+    @Test fun `仅代理时使用独立realm，双开时优先Tailscale，关闭后撤销`() {
+        val override = FakeOverride()
+        val webView = WebViewTailnetProxy(NoSource, override) { _, _ -> }
+        val endpoint = com.promenar.infinity.data.proxy.BuiltInProxyEndpoint(41339, "proxy-fixture-user", "proxy-fixture-password")
+        webView.apply(null, endpoint)
+        assertThat(webView.credentialsFor("127.0.0.1:41339", endpoint.realm))
+            .isEqualTo(endpoint.proxyUser to endpoint.proxyPassword)
+        assertThat(webView.credentialsFor("127.0.0.1", "infinity-tailnet-${endpoint.proxyUser}")).isNull()
+        webView.apply(first, endpoint)
+        assertThat(webView.credentialsFor("127.0.0.1", endpoint.realm)).isNull()
+        assertThat(webView.credentialsFor("127.0.0.1", WebViewTailnetProxy.proxyRealm(first))).isNotNull()
+        webView.apply(null, endpoint)
+        webView.apply(null, null)
+        assertThat(override.calls).containsExactly(
+            "set http://127.0.0.1:41339", "set http://127.0.0.1:41001", "set http://127.0.0.1:41339", "clear",
+        ).inOrder()
+    }
+
     @Test fun `运行时设代理，端点变化改设，停止时撤销`() {
         val override = FakeOverride()
         val proxy = WebViewTailnetProxy(NoSource, override) { _, _ -> }

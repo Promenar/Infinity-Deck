@@ -18,6 +18,9 @@ object SensitiveDataRedactor {
         "x-auth-token"
     )
     private val urlPattern = Regex("""https?://[^\s\"'<>]+""", RegexOption.IGNORE_CASE)
+    private val loopbackProxyUrl = Regex(
+        """(?i)\b((?:https?|socks5h?)://)[^\s"'<>/@]+(?::[^\s"'<>/@]*)?@((?:127\.0\.0\.1|localhost|\[::1\]):[0-9]{1,5})(?=[^0-9]|$)""",
+    )
     private val bearerPattern = Regex("""(?i)(bearer\s+)[^\s,;\"]+""")
     private val jsonSensitiveValuePattern = Regex(
         """(?i)(\")($SENSITIVE_KEY_PATTERN)\1(\s*:\s*)(\"(?:\\.|[^\"\\])*\")"""
@@ -69,7 +72,8 @@ object SensitiveDataRedactor {
     }
 
     fun redactUrl(url: String): String {
-        val parsed = url.toHttpUrlOrNull()
+        val safeUrl = redactProxyCredentials(url)
+        val parsed = safeUrl.toHttpUrlOrNull()
         if (parsed != null) {
             return parsed.newBuilder()
                 .username("")
@@ -79,14 +83,17 @@ object SensitiveDataRedactor {
                 .build()
                 .toString()
         }
-        val boundary = listOf(url.indexOf('?'), url.indexOf('#'))
+        val boundary = listOf(safeUrl.indexOf('?'), safeUrl.indexOf('#'))
             .filter { it >= 0 }
             .minOrNull()
-        return if (boundary == null) url else url.substring(0, boundary)
+        return if (boundary == null) safeUrl else safeUrl.substring(0, boundary)
     }
 
+    internal fun redactProxyCredentials(text: String): String =
+        loopbackProxyUrl.replace(text) { it.groupValues[1] + it.groupValues[2] }
+
     fun redactMessage(message: String): String {
-        val withoutUrlSecrets = urlPattern.replace(message) { redactUrl(it.value) }
+        val withoutUrlSecrets = urlPattern.replace(redactProxyCredentials(message)) { redactUrl(it.value) }
         val withoutBearerTokens = bearerPattern.replace(withoutUrlSecrets, "$1$REDACTED")
         val withoutJsonSecrets = jsonSensitiveValuePattern.replace(withoutBearerTokens) { match ->
             "${match.groupValues[1]}${match.groupValues[2]}${match.groupValues[1]}" +

@@ -197,6 +197,29 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             ).timeoutMillis
         }, liveOutput = toolLiveOutputStore, vault = sessionSecretVault, redactor = secretOutputRedactor)
     }
+    val builtInProxyManager: com.promenar.infinity.data.proxy.BuiltInProxyManager by lazy {
+        val proxyDir = File(applicationInfo.nativeLibraryDir, "libnxproxy.so")
+        val dns = com.promenar.infinity.data.proxy.AndroidBuiltInProxyDns(this)
+        val preferences = getSharedPreferences(com.promenar.infinity.data.proxy.BuiltInProxyStore.PREFERENCES_NAME, MODE_PRIVATE)
+        val store = com.promenar.infinity.data.proxy.BuiltInProxyStore(
+            preferences,
+            secretStore = { AndroidKeystoreSecretStore(this, "infinity_proxy_secrets", "infinity.proxy.secrets.v1") },
+        )
+        com.promenar.infinity.data.proxy.BuiltInProxyManager(
+            store = store,
+            launcher = proxyDir.takeIf(File::isFile)?.let {
+                com.promenar.infinity.data.proxy.AndroidBuiltInProxyProcessLauncher(it, File(cacheDir, "nxproxy"))
+            },
+            scope = startupScope,
+            readDns = dns::current,
+            dnsChanges = dns.changes,
+            setUpstream = { endpoint ->
+                tailnetManager.setUpstreamProxy(endpoint?.port, endpoint?.proxyUser, endpoint?.proxyPassword)
+                Unit
+            },
+        ).also { com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting.routing = it }
+    }
+
     /** 内置 Tailscale（tsnet 子进程，不占用系统 VPN）；创建时安装为全局 tailnet 路由。未打包可执行文件时报告不可用。 */
     val tailnetManager: com.promenar.infinity.data.tailnet.TailnetManager by lazy {
         val executable = File(applicationInfo.nativeLibraryDir, com.promenar.infinity.data.tailnet.TailnetManager.EXECUTABLE_NAME)
@@ -217,11 +240,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
         ).also { manager ->
             com.promenar.infinity.data.tailnet.InstalledTailnetRouting.routing = manager
-            // 内置 Tailscale 运行时，应用内 WebView 经本机代理访问 tailnet；停止时撤销。
-            com.promenar.infinity.data.tailnet.WebViewTailnetProxy.create(manager).also { proxy ->
-                com.promenar.infinity.data.tailnet.WebViewTailnetProxy.installed = proxy
-                proxy.start(startupScope, manager.state)
-            }
         }
     }
     /** 模型请求发往 tailnet 时等待内置 Tailscale 接入的关口。 */
@@ -615,7 +633,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
     val agentNetworkAccess: com.promenar.infinity.domain.network.AgentNetworkAccess by lazy {
-        com.promenar.infinity.data.network.DefaultAgentNetworkAccess(tailnetManager, startupScope)
+        com.promenar.infinity.data.network.DefaultAgentNetworkAccess(tailnetManager, startupScope, builtInProxyManager)
     }
 
     val scriptFileApprovals by lazy { com.promenar.infinity.data.script.ScriptFileApprovalBroker() }
@@ -2466,9 +2484,21 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         }
         startBackupRecovery()
         // 模型调用在请求线程上首次读取路由，内置 Tailscale 无需在主线程创建。
-        com.promenar.infinity.data.remote.ModelHttp.install(routing = { tailnetManager }, gate = { tailnetConnectGate })
-        // 内置 Tailscale 启用时随 App 启动拉起子进程；App 进程结束时子进程随 stdin 关闭退出。
+        com.promenar.infinity.data.remote.ModelHttp.install(
+            routing = { tailnetManager }, gate = { tailnetConnectGate }, proxy = { builtInProxyManager },
+        )
         startupScope.launch(Dispatchers.IO) { tailnetManager.start() }
+        startupScope.launch(Dispatchers.IO) { builtInProxyManager.start() }
+        startupScope.launch(Dispatchers.IO) {
+            val tailnet = tailnetManager
+            val builtIn = builtInProxyManager
+            withContext(Dispatchers.Main.immediate) {
+                com.promenar.infinity.data.tailnet.WebViewTailnetProxy.create(tailnet, builtIn).also { proxy ->
+                    com.promenar.infinity.data.tailnet.WebViewTailnetProxy.installed = proxy
+                    proxy.start(startupScope, tailnet.state)
+                }
+            }
+        }
     }
 
     private fun currentProcessName(): String = try {
@@ -3153,6 +3183,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     serviceAccountJson = config.serviceAccountJson,
                     projectId = config.projectId,
                     location = config.location,
+                    useBuiltInProxy = config.useBuiltInProxy,
+                    providerId = route.providerId.takeIf { config.useBuiltInProxy },
                 )
             }
         }
@@ -3477,6 +3509,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             serviceAccountJson = config.vertexServiceAccountJson,
             projectId = vertexProjectId,
             location = VERTEX_DEFAULT_LOCATION,
+            useBuiltInProxy = config.useBuiltInProxy,
+            providerId = "default",
         )
     }
 
@@ -3521,6 +3555,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     .serviceAccountJson(config.vertexServiceAccountJson)
                     .projectId(credential.projectId)
                     .location(VERTEX_DEFAULT_LOCATION)
+                    .useBuiltInProxy(config.useBuiltInProxy, "default")
                     .model(config.model)
                     .build()
             } else {
@@ -3528,6 +3563,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     .protocolType(config.protocolType)
                     .baseUrl(config.baseUrl)
                     .apiKey(config.apiKey)
+                    .useBuiltInProxy(config.useBuiltInProxy, "default")
                     .model(config.model)
                     .build()
             }

@@ -157,7 +157,8 @@ class ProviderManager private constructor(
         baseUrl: String,
         credentialUpdate: CredentialUpdate,
         model: String,
-        name: String? = null
+        name: String? = null,
+        useBuiltInProxy: Boolean? = null,
     ) {
         ProviderConfigurationRevision.publishMutation(afterProviderConfigurationWriteStarted) {
             val existingName = providerPrefs.getString("protocol_id", null)
@@ -171,6 +172,10 @@ class ProviderManager private constructor(
                 .putString("protocol_id_name", protocolType.legacyDisplayName)
                 .putString("base_url", baseUrl)
                 .putString("model", model)
+                .apply {
+                    // 旧调用方省略代理选项时保留现有配置。
+                    if (useBuiltInProxy != null) putBoolean("use_built_in_proxy", useBuiltInProxy)
+                }
                 .apply()
             applyCredentialUpdate("default", protocolType, credentialUpdate)
             if (name != null) {
@@ -196,6 +201,7 @@ class ProviderManager private constructor(
             model = providerPrefs.getString("model", "") ?: "",
             name = providerPrefs.getString("provider_name", null),
             vertexServiceAccountJson = readSecret(SecretCatalog.vertexServiceAccount("default")),
+            useBuiltInProxy = providerPrefs.getBoolean("use_built_in_proxy", false),
         )
     }
 
@@ -260,6 +266,7 @@ class ProviderManager private constructor(
                     vertexServiceAccountJson = readSecret(
                         SecretCatalog.vertexServiceAccount(resolvedId)
                     ),
+                    useBuiltInProxy = settingsPrefs.getBoolean("${prefix}_use_built_in_proxy", false),
                 )
             }
         }
@@ -309,6 +316,7 @@ class ProviderManager private constructor(
                     protocolType = config.protocolType,
                     hasApiKey = config.apiKey.isNotBlank(),
                     hasVertexCredentials = config.vertexServiceAccountJson.isNotBlank(),
+                    useBuiltInProxy = config.useBuiltInProxy,
                 )
             )
         } else {
@@ -354,6 +362,7 @@ class ProviderManager private constructor(
                     hasApiKey = secretStore.contains(SecretCatalog.providerApiKey(realId)),
                     hasVertexCredentials = secretStore.contains(SecretCatalog.vertexServiceAccount(realId)),
                     enabled = settingsPrefs.getBoolean("${prefix}_enabled", true),
+                    useBuiltInProxy = settingsPrefs.getBoolean("${prefix}_use_built_in_proxy", false),
                 )
             )
         }
@@ -428,6 +437,7 @@ class ProviderManager private constructor(
                     .remove("base_url")
                     .remove("model")
                     .remove("provider_name")
+                    .remove("use_built_in_proxy")
                     .apply()
             }
             val removedModelIds = _providerModels.value
@@ -487,6 +497,7 @@ class ProviderManager private constructor(
                 baseUrl = item.baseUrl,
                 model = item.model,
                 enabled = item.enabled,
+                useBuiltInProxy = item.useBuiltInProxy,
             )
         }
         val knownIds = known.mapTo(mutableSetOf()) { it.id }
@@ -505,6 +516,7 @@ class ProviderManager private constructor(
                 .remove("${prefix}_base_url")
                 .remove("${prefix}_model")
                 .remove("${prefix}_enabled")
+                .remove("${prefix}_use_built_in_proxy")
         }
         editor
             .putInt("extra_providers_count", extras.size)
@@ -518,6 +530,7 @@ class ProviderManager private constructor(
                 .putString("${prefix}_model", item.model)
                 .putString("${prefix}_id", item.id)
                 .putBoolean("${prefix}_enabled", item.enabled)
+                .putBoolean("${prefix}_use_built_in_proxy", item.useBuiltInProxy)
         }
         editor.apply()
     }
@@ -537,6 +550,7 @@ class ProviderManager private constructor(
                 baseUrl = settingsPrefs.getString("${prefix}_base_url", "").orEmpty(),
                 model = settingsPrefs.getString("${prefix}_model", "").orEmpty(),
                 enabled = settingsPrefs.getBoolean("${prefix}_enabled", true),
+                useBuiltInProxy = settingsPrefs.getBoolean("${prefix}_use_built_in_proxy", false),
             )
         }
     }
@@ -548,6 +562,7 @@ class ProviderManager private constructor(
         val baseUrl: String,
         val model: String,
         val enabled: Boolean,
+        val useBuiltInProxy: Boolean,
     )
 
     fun getProviderSummary(providerId: String): ProviderSummary? {
@@ -555,11 +570,13 @@ class ProviderManager private constructor(
         val baseUrl: String
         val model: String
         val name: String?
+        val useBuiltInProxy: Boolean
         if (providerId == "default") {
             protocolType = readMainProtocol() ?: return null
             baseUrl = providerPrefs.getString("base_url", "").orEmpty()
             model = providerPrefs.getString("model", "").orEmpty()
             name = providerPrefs.getString("provider_name", null)
+            useBuiltInProxy = providerPrefs.getBoolean("use_built_in_proxy", false)
         } else {
             val count = settingsPrefs.getInt("extra_providers_count", 0)
             val index = (0 until count).firstOrNull { resolveExtraProviderId(it) == providerId } ?: return null
@@ -568,6 +585,7 @@ class ProviderManager private constructor(
             baseUrl = settingsPrefs.getString("${prefix}_base_url", "").orEmpty()
             model = settingsPrefs.getString("${prefix}_model", "").orEmpty()
             name = settingsPrefs.getString("${prefix}_name", null)
+            useBuiltInProxy = settingsPrefs.getBoolean("${prefix}_use_built_in_proxy", false)
         }
         return ProviderSummary(
             id = providerId,
@@ -577,6 +595,7 @@ class ProviderManager private constructor(
             model = model,
             hasApiKey = secretStore.contains(SecretCatalog.providerApiKey(providerId)),
             hasVertexCredentials = secretStore.contains(SecretCatalog.vertexServiceAccount(providerId)),
+            useBuiltInProxy = useBuiltInProxy,
         )
     }
 

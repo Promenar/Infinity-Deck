@@ -37,6 +37,7 @@ internal suspend fun saveProviderConfiguration(
         protocolType = protocolType,
         hasApiKey = credentialPresent && protocolType !is ProtocolType.Google_VertexAI,
         hasVertexCredentials = credentialPresent && protocolType is ProtocolType.Google_VertexAI,
+        useBuiltInProxy = existingSummary?.useBuiltInProxy ?: false,
     )
     when (providerId) {
         null -> {

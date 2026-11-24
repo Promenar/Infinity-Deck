@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.tailnet
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
@@ -8,6 +9,28 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import org.junit.Test
 
 class TailnetProtocolTest {
+    @Test
+    fun `清空上游请求显式发送 null`() {
+        val request = TailnetRequest(id = 9, op = TailnetOps.SET_UPSTREAM)
+        val encoded = TailnetCodec.json.parseToJsonElement(TailnetCodec.encode(request)).jsonObject
+        assertThat(encoded).containsEntry("upstream", JsonNull)
+    }
+
+    @Test
+    fun `上游配置仅在请求编码中写入凭据`() {
+        val options = TailnetUpstreamOptions("127.0.0.1:9801", "fixture-user", "fixture-password")
+        val request = TailnetRequest(id = 9, op = TailnetOps.SET_UPSTREAM, upstream = options)
+        val encoded = TailnetCodec.json.parseToJsonElement(TailnetCodec.encode(request)).jsonObject
+        val upstream = encoded["upstream"]!!.jsonObject
+        assertThat(upstream["address"]!!.jsonPrimitive.content).isEqualTo("127.0.0.1:9801")
+        assertThat(upstream["proxyUser"]!!.jsonPrimitive.content).isEqualTo("fixture-user")
+        assertThat(upstream["proxyPassword"]!!.jsonPrimitive.content).isEqualTo("fixture-password")
+        for (text in listOf(options.toString(), request.toString())) {
+            assertThat(text).doesNotContain("fixture-user")
+            assertThat(text).doesNotContain("fixture-password")
+        }
+    }
+
     @Test
     fun `ping 请求包含目标且 toString 只暴露 id 与操作`() {
         val request = TailnetRequest(id = 8, op = TailnetOps.PING, ping = TailnetPingOptions("100.64.0.5"))

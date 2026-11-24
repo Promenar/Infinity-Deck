@@ -1,6 +1,8 @@
 package com.promenar.infinity.data.rag
 
 import com.promenar.infinity.data.remote.ModelHttp
+import com.promenar.infinity.data.remote.routeViaBuiltInProxy
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
 import com.promenar.infinity.data.remote.withModelTimeoutSupport
@@ -94,6 +96,8 @@ class RerankClient(
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (e: Exception) {
             null
         }
@@ -122,6 +126,7 @@ class RerankClient(
         }
 
         val response: HttpResponse = httpClient.post(endpoint) {
+            routeViaBuiltInProxy(route?.config?.useBuiltInProxy == true, route?.providerId)
             applyModelTimeout(ModelTimeoutKind.RERANK)
             contentType(ContentType.Application.Json)
             header("Authorization", "Bearer $apiKey")

@@ -41,7 +41,9 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.27.1"
-          cache-dependency-path: native-ui/app/tailnet/go.sum
+          cache-dependency-path: |
+            native-ui/app/tailnet/go.sum
+            native-ui/app/proxy/go.sum
 
       - name: 配置 Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4

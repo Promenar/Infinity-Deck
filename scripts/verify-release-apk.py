@@ -95,6 +95,7 @@ SITE_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
 # 内置 Tailscale 节点（app/tailnet 的 Go 程序，依赖由 go.sum 固定）：Go 符号表中相邻的小写标识符会拼出 sk- 前缀，
 # Tailscale 与 Go 标准库中的保留地址段常量（含 MagicDNS 解析地址 100.100.100.100 与 ChromeOS ARC 网段）。
 # 只对 libnxtailnet.so 放行这些具体值；真实 API 密钥含大写或数字，口令 URL、用户路径等其它模式照常报警。
+PROXY_BINARY_PATTERN = re.compile(r"lib/([^/]+)/libnxproxy\.so\Z")
 TAILNET_BINARY_PATTERN = re.compile(r"lib/([^/]+)/libnxtailnet\.so\Z")
 TAILNET_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
     "疑似 OpenAI 兼容密钥": re.compile(rb"sk-[a-z-]+"),
@@ -102,14 +103,27 @@ TAILNET_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
         rb"10\.0\.0\.0|100\.64\.0\.0|172\.16\.0\.0|192\.168\.0\.0|100\.115\.92\.0|100\.100\.100\.100|10\.[02]76\.76\.10"
     ),
 }
+# 由固定 Go 版本交叉构建两个 ABI 后核对。只允许具体公开静态字串的指纹，
+# 两段分别来自 Go 合并的产品标识字符串，另外两段来自 OpenSSH 算法名。
+PROXY_GO_IDENTIFIER_HASHES = {
+    "7c037569ef0a6dc319fdd63a34e92c9927173c7e9b84b9ce4ee5227e90061da2",
+    "36d591ec0a4d5a689c615a87c5f555d9b9a14c1ad2a5a72d6c89e6cca119432e",
+    "b12c7307b55a67d1701d94890611bf9605785942351afe051978e0a23888ab47",
+    "3ba30ddc57c5e012f28276fa224e3485067a139cd220da03b730060afb01b2b9",
+}
+# Tailnet 旁路基址，以及上游 TLS User-Agent 中的浏览器版本号。
+PROXY_GO_ADDRESS_ALLOWANCES = re.compile(rb"100\.64\.0\.0|10\.0\.649\.0")
+# DEX 中的专用 NO_PROXY 值只豁免这段完整的固定 CIDR 列表。
+APP_PROXY_BYPASS_SETTING = b"localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
+
 # 应用 dex：视觉实验室的虚构 Tailscale 设备使用固定的 100.101.7.0/24 地址（ui/lab/tailnet/LabTailnet.kt）。
 # 只对 classes*.dex 放行这一网段；其它私网与 CGNAT 地址照常报警。
 APP_DEX_PATTERN = re.compile(r"classes\d*\.dex\Z")
 APP_DEX_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
     "私网或 CGNAT 测试地址": re.compile(rb"100\.101\.7\.\d{1,3}"),
 }
-# ELF e_machine：发行 APK 中每个带打包 Python 的 ABI 都须有对应架构的 libnxtailnet.so。
-TAILNET_ELF_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
+# ELF e_machine：每个带打包 Python 的 ABI 都须有对应架构的 Go 可执行文件。
+ANDROID_ELF_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
 
 # 精简内置 FFmpeg/ffprobe 共享库清单（随 arm64-v8a 发行）。
 PACKAGED_FFMPEG_LIBRARIES: tuple[str, ...] = (
@@ -357,6 +371,15 @@ def verify_packaged_python_bytecode(apk: Path) -> None:
 
 def verify_tailnet_binary(apk: Path) -> None:
     """确认每个带打包 Python 的 ABI 都有内置 Tailscale 可执行文件，且是对应架构的 ELF。"""
+    verify_go_binary(apk, TAILNET_BINARY_PATTERN, "libnxtailnet.so", "内置 Tailscale")
+
+
+def verify_proxy_binary(apk: Path) -> None:
+    """确认每个带打包 Python 的 ABI 都有对应架构的内置代理。"""
+    verify_go_binary(apk, PROXY_BINARY_PATTERN, "libnxproxy.so", "内置代理")
+
+
+def verify_go_binary(apk: Path, pattern: re.Pattern[str], filename: str, component: str) -> None:
     python_abis: set[str] = set()
     binaries: dict[str, bytes] = {}
     with zipfile.ZipFile(apk) as archive:
@@ -365,23 +388,23 @@ def verify_tailnet_binary(apk: Path) -> None:
             python = PYTHON_BYTECODE_ENTRY_PATTERN.fullmatch(name)
             if python is not None:
                 python_abis.add(python.group(1))
-            tailnet = TAILNET_BINARY_PATTERN.fullmatch(name)
-            if tailnet is not None:
+            binary = pattern.fullmatch(name)
+            if binary is not None:
                 with archive.open(info) as stream:
-                    binaries[tailnet.group(1)] = stream.read(20)
+                    binaries[binary.group(1)] = stream.read(20)
     problems: list[str] = []
     if not binaries:
-        problems.append("APK 未包含 libnxtailnet.so")
+        problems.append(f"APK 未包含 {filename}")
     for abi in sorted(python_abis - set(binaries)):
-        problems.append(f"{abi} 缺少 libnxtailnet.so")
+        problems.append(f"{abi} 缺少 {filename}")
     for abi, header in sorted(binaries.items()):
-        expected = TAILNET_ELF_MACHINES.get(abi)
+        expected = ANDROID_ELF_MACHINES.get(abi)
         if len(header) < 20 or header[:4] != b"\x7fELF":
-            problems.append(f"{abi}/libnxtailnet.so 不是 ELF 可执行文件")
+            problems.append(f"{abi}/{filename} 不是 ELF 可执行文件")
         elif expected is None or int.from_bytes(header[18:20], "little") != expected:
-            problems.append(f"{abi}/libnxtailnet.so 的架构与 ABI 不符")
+            problems.append(f"{abi}/{filename} 的架构与 ABI 不符")
     if problems:
-        raise VerificationError("内置 Tailscale 校验失败：" + "；".join(problems))
+        raise VerificationError(f"{component}校验失败：" + "；".join(problems))
 
 
 def verify_packaged_ffmpeg(apk: Path) -> None:
@@ -407,7 +430,7 @@ def verify_packaged_ffmpeg(apk: Path) -> None:
             problems.append(f"arm64-v8a 缺少 {lib}")
         elif len(header) < 20 or header[:4] != b"\x7fELF":
             problems.append(f"arm64-v8a/{lib} 不是 ELF 二进制文件")
-        elif int.from_bytes(header[18:20], "little") != TAILNET_ELF_MACHINES["arm64-v8a"]:
+        elif int.from_bytes(header[18:20], "little") != ANDROID_ELF_MACHINES["arm64-v8a"]:
             problems.append(f"arm64-v8a/{lib} 的架构不是 arm64-v8a")
     if problems:
         raise VerificationError("内置 FFmpeg 校验失败：" + "；".join(problems))
@@ -499,20 +522,42 @@ def upstream_allowances(entry_name: str) -> dict[str, re.Pattern[bytes]]:
     return {}
 
 
+def scan_proxy_binary(stream, entry_name: str) -> list[tuple[str, str]]:
+    # Go 链接器合并后的静态串可跨越普通扫描边界，按完整字串匹配固定指纹。
+    data = stream.read(MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES + 1)
+    if len(data) > MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES:
+        raise VerificationError("内置代理可执行文件超过 APK 单条目限制")
+    findings = []
+    for label, pattern in SENSITIVE_PATTERNS:
+        for match in pattern.finditer(data):
+            value = match.group()
+            if label == "疑似 OpenAI 兼容密钥" and hashlib.sha256(value).hexdigest() in PROXY_GO_IDENTIFIER_HASHES:
+                continue
+            if label == "私网或 CGNAT 测试地址" and PROXY_GO_ADDRESS_ALLOWANCES.fullmatch(value):
+                continue
+            findings.append((entry_name, label))
+            break
+    return findings
+
+
 def scan_stream(
     stream,
     entry_name: str,
     *,
     chunk_bytes: int = READ_CHUNK_BYTES,
 ) -> list[tuple[str, str]]:
+    if PROXY_BINARY_PATTERN.fullmatch(entry_name):
+        return scan_proxy_binary(stream, entry_name)
     findings: list[tuple[str, str]] = []
     allowances = upstream_allowances(entry_name)
+    app_dex = APP_DEX_PATTERN.fullmatch(entry_name) is not None
     tail = b""
     while True:
         chunk = stream.read(chunk_bytes)
         if not chunk:
             break
-        candidate = tail + chunk
+        raw_candidate = tail + chunk
+        candidate = raw_candidate.replace(APP_PROXY_BYPASS_SETTING, b"") if app_dex else raw_candidate
         for label, pattern in SENSITIVE_PATTERNS:
             allowed = allowances.get(label)
             if allowed is None:
@@ -520,7 +565,7 @@ def scan_stream(
                     findings.append((entry_name, label))
             elif any(not allowed.fullmatch(match.group()) for match in pattern.finditer(candidate)):
                 findings.append((entry_name, label))
-        tail = candidate[-SCAN_OVERLAP_BYTES:]
+        tail = raw_candidate[-SCAN_OVERLAP_BYTES:]
     return findings
 
 
@@ -569,6 +614,7 @@ def main() -> int:
     verify_recording_artifacts(apk)
     verify_packaged_python_bytecode(apk)
     verify_tailnet_binary(apk)
+    verify_proxy_binary(apk)
     verify_packaged_ffmpeg(apk)
     verify_linux_runtime(apk, args.distribution)
     verify_badging(apk, args.expected_package, args.expected_version_code, args.expected_version_name)

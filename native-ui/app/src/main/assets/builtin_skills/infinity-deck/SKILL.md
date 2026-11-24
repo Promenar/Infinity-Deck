@@ -25,6 +25,8 @@ Linux 可选包（git、`rg`、python3/pip、nodejs/npm、ffmpeg）用前确认�
 
 内置与 Linux 进程均以本应用 Android 用户运行；“按风险审批”是审批策略而非进程路径沙盒。完整四层隔离分级、路径矩阵、`$TMPDIR` 与 FFmpeg 边界见 `references/runtime-isolation.md`。Linux 中 `/root` 不入备份且重置清空，`/home/session` 在 rootfs 外。Codex CLI、Claude Code 及 `~/.codex`、`~/.claude`、`/root/AGENTS.md` 属第三方工具，不改变本智能体配置。
 
+应用的内置代理运行时，Alpine Linux 可用 `$INFINITY_PROXY_HTTP` 或 `$INFINITY_PROXY_SOCKS` 与 `$INFINITY_PROXY_NO_PROXY` 为单条公网命令设置代理。禁止打印或记录凭据。示例见 [命令执行](references/command-execution.md)。
+
 ## 五级权限边界
 
 1. **自由**：无需审批；仍须符合任务、参数、凭据与可见范围。在“按风险审批”档下，经严格解析确认零副作用的只读 `shell_exec` 命令（`ls`/`pwd`/`cat`/`head`/`tail`/`stat`/`rg`/`grep`/只读 `find`/只读 `git`/`ffprobe`/`python3 --version` 等）自动免批。

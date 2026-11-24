@@ -1,13 +1,20 @@
 package com.promenar.infinity.data.tailnet
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.junit.After
 import org.junit.Test
 import java.io.File
@@ -54,6 +61,128 @@ class TailnetManagerTest {
 
     private suspend fun TailnetManager.awaitPhase(phase: TailnetPhase): TailnetState =
         withTimeout(5_000) { state.first { it.phase == phase } }
+
+    @Test
+    fun `已缓存的上游先于端点就绪并在退出后重新应用`() = runBlocking<Unit> {
+        val configuring = CompletableDeferred<Pair<FakeTailnetChild, Long>>()
+        val launchCount = AtomicLong()
+        val manager = manager(TailnetProcessLauncher {
+            val first = launchCount.incrementAndGet() == 1L
+            FakeTailnetChild(handler = { child, request ->
+                if (request["op"]!!.jsonPrimitive.content != TailnetOps.SET_UPSTREAM) return@FakeTailnetChild false
+                val id = request["id"]!!.jsonPrimitive.long
+                if (first) configuring.complete(child to id) else child.reply(id)
+                true
+            }).also(children::add)
+        })
+        assertThat(manager.setUpstreamProxy(9801, "test-user", "test-pass")).isFalse()
+        assertThat(children).isEmpty()
+
+        store.setEnabled(true)
+        manager.start()
+        val (first, id) = withTimeout(5_000) { configuring.await() }
+        assertThat(manager.currentEndpoint()).isNull()
+        assertThat(manager.state.value.phase).isEqualTo(TailnetPhase.STARTING)
+        assertThat(first.received).hasSize(1)
+        first.reply(id)
+        manager.awaitPhase(TailnetPhase.NEEDS_LOGIN)
+        assertThat(manager.currentEndpoint()).isNotNull()
+        first.crash()
+        manager.awaitPhase(TailnetPhase.FAILED)
+        assertThat(manager.currentEndpoint()).isNull()
+
+        assertThat(manager.ensureStarted(force = true, timeoutMillis = 5_000)).isTrue()
+        val second = children.last()
+        assertThat(second).isNotSameInstanceAs(first)
+        val requests = second.received.take(2).map { TailnetCodec.json.parseToJsonElement(it).jsonObject }
+        assertThat(requests.map { it["op"]!!.jsonPrimitive.content })
+            .containsExactly("set_upstream", "start").inOrder()
+        assertThat(requests.first()["upstream"]!!.jsonObject["address"]!!.jsonPrimitive.content)
+            .isEqualTo("127.0.0.1:9801")
+    }
+
+    @Test
+    fun `并发清空等待上一次更新应答且关闭重启后保持直连`() = runBlocking<Unit> {
+        val updateReceived = CompletableDeferred<Pair<FakeTailnetChild, Long>>()
+        val manager = manager(TailnetProcessLauncher {
+            FakeTailnetChild(handler = { child, request ->
+                if (request["op"]!!.jsonPrimitive.content != TailnetOps.SET_UPSTREAM) return@FakeTailnetChild false
+                val id = request["id"]!!.jsonPrimitive.long
+                if (request["upstream"] == JsonNull) child.reply(id) else updateReceived.complete(child to id)
+                true
+            }).also(children::add)
+        })
+        store.setEnabled(true)
+        manager.start()
+        manager.awaitPhase(TailnetPhase.NEEDS_LOGIN)
+
+        val update = async { manager.setUpstreamProxy(9802, "test-user", "test-pass") }
+        val (child, id) = withTimeout(5_000) { updateReceived.await() }
+        val clear = async(start = CoroutineStart.UNDISPATCHED) { manager.setUpstreamProxy(null) }
+        assertThat(clear.isCompleted).isFalse()
+        assertThat(child.received.count { "\"op\":\"set_upstream\"" in it }).isEqualTo(1)
+        child.reply(id)
+        assertThat(withTimeout(5_000) { update.await() }).isTrue()
+        assertThat(withTimeout(5_000) { clear.await() }).isTrue()
+        val cleared = TailnetCodec.json.parseToJsonElement(child.received.last()).jsonObject
+        assertThat(cleared["upstream"]).isEqualTo(JsonNull)
+
+        manager.setEnabled(false)
+        manager.awaitPhase(TailnetPhase.DISABLED)
+        assertThat(child.stdinClosed).isTrue()
+        manager.setEnabled(true)
+        manager.awaitPhase(TailnetPhase.NEEDS_LOGIN)
+        assertThat(children.last().received).hasSize(1)
+        assertThat(children.last().received.single()).contains("\"op\":\"start\"")
+    }
+
+    @Test
+    fun `清空被拒绝时关闭旧子进程且重试使用直连`() = runBlocking<Unit> {
+        val manager = manager(TailnetProcessLauncher {
+            FakeTailnetChild(handler = { child, request ->
+                if (request["op"]!!.jsonPrimitive.content != TailnetOps.SET_UPSTREAM) return@FakeTailnetChild false
+                val id = request["id"]!!.jsonPrimitive.long
+                if (request["upstream"] == JsonNull) child.fail(id, TailnetErrors.BAD_REQUEST) else child.reply(id)
+                true
+            }).also(children::add)
+        })
+        assertThat(manager.setUpstreamProxy(9803, "test-user", "test-pass")).isFalse()
+        store.setEnabled(true)
+        manager.start()
+        manager.awaitPhase(TailnetPhase.NEEDS_LOGIN)
+
+        assertThat(manager.setUpstreamProxy(null)).isFalse()
+        assertThat(children.single().stdinClosed).isTrue()
+        assertThat(manager.currentEndpoint()).isNull()
+        assertThat(manager.state.value.phase).isEqualTo(TailnetPhase.FAILED)
+        assertThat(manager.ensureStarted(force = true, timeoutMillis = 5_000)).isTrue()
+        assertThat(children.last().received.single()).contains("\"op\":\"start\"")
+    }
+
+    @Test
+    fun `停用设置先到达时仍清空待关闭子进程的上游`() = runBlocking<Unit> {
+        val manager = manager(TailnetProcessLauncher {
+            FakeTailnetChild(handler = { child, request ->
+                if (request["op"]!!.jsonPrimitive.content != TailnetOps.SET_UPSTREAM) return@FakeTailnetChild false
+                child.reply(request["id"]!!.jsonPrimitive.long)
+                true
+            }).also(children::add)
+        })
+        store.setEnabled(true)
+        assertThat(manager.ensureStarted(force = true, timeoutMillis = 5_000)).isTrue()
+        assertThat(manager.setUpstreamProxy(9804, "test-user", "test-pass")).isTrue()
+
+        // 延迟订阅设置，以复现已停用但子进程的关闭尚未执行的窗口。
+        manager.setEnabled(false)
+        assertThat(manager.currentEndpoint()).isNull()
+        assertThat(manager.setUpstreamProxy(null)).isTrue()
+        val child = children.single()
+        val request = TailnetCodec.json.parseToJsonElement(child.received.last()).jsonObject
+        assertThat(request["upstream"]).isEqualTo(JsonNull)
+        manager.start()
+        manager.awaitPhase(TailnetPhase.DISABLED)
+        assertThat(child.stdinClosed).isTrue()
+    }
 
     @Test
     fun `单路IO首次刷新可以挂起等待子进程启动`() = runBlocking<Unit> {

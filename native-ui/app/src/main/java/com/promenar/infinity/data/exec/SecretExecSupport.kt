@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.exec
 
+import com.promenar.infinity.data.proxy.BuiltInProxyConfig
 import com.promenar.infinity.data.secret.SecretOutputRedactor
 import com.promenar.infinity.domain.tool.CommandToolResult
 import com.promenar.infinity.domain.tool.ToolOutputStream
@@ -8,6 +9,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.net.URI
 import java.util.UUID
 
 internal fun linuxPythonCommand(code: String): String = "python3 -c '${code.replace("'", "'\\''")}'".also {
@@ -24,6 +26,18 @@ internal fun retainSecretEnvironment(sessionId: String?, environment: Map<String
     }
     return { redactor.clearJob(sessionId, id) }
 }
+
+/** 长命令仍需遮蔽启动时注入的端点，代理重启不会影响其输出脱敏。 */
+internal fun builtInProxyOutputSecrets(environment: Map<String, String>): Map<String, String> = buildMap {
+    listOf(BuiltInProxyConfig.HTTP, BuiltInProxyConfig.SOCKS).forEach { key ->
+        val url = environment[key] ?: return@forEach
+        val userInfo = runCatching { URI(url).userInfo }.getOrNull() ?: return@forEach
+        put(key, url)
+        put("代理凭据", userInfo)
+        put("代理用户名", userInfo.substringBefore(':'))
+        put("代理口令", userInfo.substringAfter(':'))
+    }
+}.filterValues { it.isNotEmpty() }
 
 /** 两路输出使用独立尾部，避免 stdout 与 stderr 交错打断匹配。 */
 internal fun secretCommandOutput(sessionId: String, redactor: SecretOutputRedactor): CommandOutputTransform {

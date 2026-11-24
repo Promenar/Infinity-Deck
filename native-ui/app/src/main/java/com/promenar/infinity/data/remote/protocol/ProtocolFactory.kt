@@ -15,6 +15,8 @@ object ProtocolFactory {
         projectId: String = "",
         location: String = VERTEX_DEFAULT_LOCATION,
         localEngine: LocalInferenceEngine? = null,
+        useBuiltInProxy: Boolean = false,
+        providerId: String? = null,
     ): LlmProtocol = create(
         type = ProtocolType.fromLegacyName(persistedType),
         baseUrl = baseUrl,
@@ -24,6 +26,8 @@ object ProtocolFactory {
         projectId = projectId,
         location = location,
         localEngine = localEngine,
+        useBuiltInProxy = useBuiltInProxy,
+        providerId = providerId,
     )
 
     fun create(
@@ -34,23 +38,35 @@ object ProtocolFactory {
         serviceAccountJson: String = "",
         projectId: String = "",
         location: String = VERTEX_DEFAULT_LOCATION,
-        localEngine: LocalInferenceEngine? = null
+        localEngine: LocalInferenceEngine? = null,
+        useBuiltInProxy: Boolean = false,
+        providerId: String? = null,
     ): LlmProtocol {
         return when (type) {
-            ProtocolType.OpenAI_ChatCompletions -> OpenAIProtocol(baseUrl, apiKey, model)
-            ProtocolType.OpenAI_Responses -> OpenAIResponsesProtocol(baseUrl, apiKey, model)
+            ProtocolType.OpenAI_ChatCompletions -> OpenAIProtocol(
+                baseUrl, apiKey, model, useBuiltInProxy = useBuiltInProxy, providerId = providerId,
+            )
+            ProtocolType.OpenAI_Responses -> OpenAIResponsesProtocol(
+                baseUrl, apiKey, model, useBuiltInProxy = useBuiltInProxy, providerId = providerId,
+            )
             
-            ProtocolType.Anthropic_Messages -> AnthropicProtocol(baseUrl, apiKey, model)
+            ProtocolType.Anthropic_Messages -> AnthropicProtocol(
+                baseUrl, apiKey, model, useBuiltInProxy = useBuiltInProxy, providerId = providerId,
+            )
             
             ProtocolType.Google_VertexAI -> VertexAIProtocol(
                 baseUrl = baseUrl,
                 serviceAccountJson = serviceAccountJson,
                 projectId = projectId,
                 location = location,
-                model = model
+                model = model,
+                useBuiltInProxy = useBuiltInProxy,
+                providerId = providerId,
             )
             
-            ProtocolType.Google_Gemini -> GeminiProtocol(baseUrl, apiKey, model)
+            ProtocolType.Google_Gemini -> GeminiProtocol(
+                baseUrl, apiKey, model, useBuiltInProxy = useBuiltInProxy, providerId = providerId,
+            )
 
             ProtocolType.Cohere_Chat,
             ProtocolType.Yi_ZeroOne,
@@ -69,6 +85,8 @@ object ProtocolFactory {
                 apiKey = apiKey,
                 model = model,
                 protocolType = type,
+                useBuiltInProxy = useBuiltInProxy,
+                providerId = providerId,
             )
             
             ProtocolType.Local -> {

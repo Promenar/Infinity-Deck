@@ -81,6 +81,8 @@ interface ProviderRequestRouter {
                 serviceAccountJson = config.serviceAccountJson,
                 projectId = config.projectId,
                 location = config.location,
+                useBuiltInProxy = config.useBuiltInProxy,
+                providerId = route.providerId,
             )
         },
     ): LlmProtocol = if (resolved.config.protocolType == ProtocolType.Local) {
@@ -293,6 +295,8 @@ class DefaultProviderRequestRouter(
             serviceAccountJson = raw.vertexServiceAccountJson,
             projectId = vertexProjectId,
             location = VERTEX_DEFAULT_LOCATION,
+            useBuiltInProxy = raw.useBuiltInProxy,
+            providerId = providerId,
             sessionHeaderName = com.promenar.infinity.data.model.SessionHeaderPolicy.resolveName(
                 raw.sessionHeadersEnabled, raw.sessionHeaderName, model.sessionHeaderMode,
             ),

@@ -135,3 +135,9 @@ SSH 与终端依赖保持版本固定；终端原生进程桥接库只用于侧�
 - [Silero VAD v4](https://github.com/snakers4/silero-vad/tree/v4.0) 为 MIT。随 APK 分发 [k2-fsa 导出的 16 kHz ONNX](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx)，用于端侧语音活动检测。许可全文位于 `assets/licenses/silero-vad-LICENSE.txt`。
 - [Apache Commons Compress 1.28.0](https://commons.apache.org/proper/commons-compress/) 为 Apache-2.0，用于在本机流式解压听写模型。运行时解析到 Commons Codec 1.19.0、Commons IO 2.20.0 和 Commons Lang 3.18.0，均为 Apache-2.0。
 - [llama.cpp b12076](https://github.com/ggml-org/llama.cpp/tree/36ee3caf7aa2dcb0210bedab1b61ee9f269765d3) 为 MIT，用于侧载本地推理。用户可单独选择下载 [Qwen3-0.6B Q8 GGUF](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/tree/23749fefcc72300e3a2ad315e1317431b06b590a)（Apache-2.0）。
+
+## 内置代理出站协议库
+
+- 上游源码固定在 [MetaCubeX/mihomo v1.19.34](https://github.com/MetaCubeX/mihomo/tree/v1.19.34)，版权归 MetaCubeX 及其贡献者所有，采用 GPL-3.0。[完整许可](proxy/LICENSE)
+- 从该版本链接出站协议与分享链接转换库。模块版本、依赖校验值及可复现构建入口分别见 [go.mod](../../native-ui/app/proxy/go.mod)、[go.sum](../../native-ui/app/proxy/go.sum) 和 [Android 构建配置](../../native-ui/app/build.gradle.kts)。Android 两个渠道使用相同的出站模块，产物为独立的 `libnxproxy.so`。
+- 对应源代码包括本仓库的代理模块及构建配置、上述固定版本的上游源码与 Go 依赖。上游版权、许可和免责声明随对应源码保留。

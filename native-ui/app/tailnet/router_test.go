@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"testing"
 )
@@ -13,6 +16,129 @@ type fakeDirectory struct {
 	suffix  string
 	peers   []Peer
 	reads   int
+}
+
+func TestUpstreamOnlyForConfirmedPublicTargets(t *testing.T) {
+	dir := &fakeDirectory{running: true, suffix: "home.example", peers: samplePeers()}
+	tail, direct := &recordingDial{}, &recordingDial{}
+	config, err := newUpstream(&UpstreamOptions{Address: "127.0.0.1:9876", ProxyUser: "relay", ProxyPassword: "fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upstreamTargets := make(chan string, 1)
+	r := &Router{
+		Directory: dir,
+		Tailnet:   tail.dial,
+		Direct: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if addr != config.address {
+				return direct.dial(ctx, network, addr)
+			}
+			client, server := net.Pipe()
+			go func() {
+				defer server.Close()
+				req, err := http.ReadRequest(bufio.NewReader(server))
+				if err != nil {
+					t.Errorf("读取上游握手：%v", err)
+					return
+				}
+				if req.Header.Get("X-Infinity-Public-Target") != "1" {
+					t.Error("公网握手缺少目标范围约束")
+				}
+				upstreamTargets <- req.Host
+				io.WriteString(server, "HTTP/1.1 200 Connection established\r\n\r\n")
+				io.Copy(io.Discard, server)
+			}()
+			return client, nil
+		},
+		LookupIP: func(_ context.Context, host string) ([]netip.Addr, error) {
+			public := netip.MustParseAddr("9.9.9.9")
+			switch host {
+			case "public.example", "public.example.", "private.example", "service.local", "home.arpa":
+				return []netip.Addr{public}, nil
+			case "private.example.":
+				return []netip.Addr{netip.MustParseAddr("192.168.0.9")}, nil
+			case "mixed.example":
+				return []netip.Addr{public, netip.MustParseAddr("::ffff:192.168.0.9")}, nil
+			case "tail.example":
+				return []netip.Addr{public, netip.MustParseAddr("100.70.0.8")}, nil
+			case "loop.example":
+				return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
+			case "empty.example":
+				return nil, nil
+			default:
+				return nil, errors.New("测试 DNS 查询失败")
+			}
+		},
+	}
+	r.setUpstream(config)
+	t.Cleanup(func() { r.setUpstream(nil) })
+	for _, tc := range []struct {
+		target string
+		tail   string
+		direct string
+		public bool
+		err    error
+	}{
+		{target: "Public.Example.:80", public: true},
+		{target: "8.8.8.8:443", public: true},
+		{target: "[2606:4700::1111]:443", public: true},
+		{target: "localhost:80"},
+		{target: "printer:80"},
+		{target: "service.local:80", direct: "9.9.9.9:80"},
+		{target: "home.arpa:80", direct: "9.9.9.9:80"},
+		{target: "127.0.0.2:80"},
+		{target: "[::1]:80"},
+		{target: "192.168.0.9:80"},
+		{target: "[fd00::1]:80"},
+		{target: "169.254.1.1:80"},
+		{target: "[fe80::1%en0]:80"},
+		{target: "192.0.2.1:80"},
+		{target: "mixed.example:80", direct: "192.168.0.9:80"},
+		{target: "private.example.:80", direct: "192.168.0.9:80"},
+		{target: "loop.example:80", direct: "127.0.0.1:80"},
+		{target: "missing.example:80", err: errUpstreamDNS},
+		{target: "empty.example:80", err: errUpstreamDNS},
+		{target: "nas:443", tail: "100.101.102.103:443"},
+		{target: "nas.home.example:443", tail: "100.101.102.103:443"},
+		{target: "ghost.home.example:443", err: errUnknownTailnet},
+		{target: "ghost.ts.net:443", err: errUnknownTailnet},
+		{target: "tail.example:443", tail: "100.70.0.8:443"},
+		{target: "[fd7a:115c:a1e0::1]:443", tail: "[fd7a:115c:a1e0::1]:443"},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			tail.addr, direct.addr = "", ""
+			conn, err := r.Dial(context.Background(), "tcp", tc.target)
+			if !errors.Is(err, tc.err) {
+				t.Fatalf("拨号得到 %v，预期 %v", err, tc.err)
+			}
+			if conn != nil {
+				conn.Close()
+			}
+			var sent string
+			select {
+			case sent = <-upstreamTargets:
+			default:
+			}
+			expectedDirect := tc.direct
+			if expectedDirect == "" {
+				expectedDirect = tc.target
+			}
+			switch {
+			case tc.public:
+				if sent != tc.target || tail.addr != "" || direct.addr != "" {
+					t.Fatalf("应以原 authority 请求上游，得到 %q，tailnet=%q，直连=%q", sent, tail.addr, direct.addr)
+				}
+			case sent != "":
+				t.Fatalf("目标不应发送到上游，收到 %q", sent)
+			case tc.tail != "" || tc.err != nil:
+				if tail.addr != tc.tail || direct.addr != "" {
+					t.Fatalf("tailnet=%q，直连=%q", tail.addr, direct.addr)
+				}
+			case direct.addr != expectedDirect || tail.addr != "":
+				t.Fatalf("应直连原目标，实际直连=%q，tailnet=%q", direct.addr, tail.addr)
+			}
+		})
+	}
 }
 
 func (f *fakeDirectory) Running() bool          { return f.running }

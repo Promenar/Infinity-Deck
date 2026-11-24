@@ -127,15 +127,17 @@ class TailnetClient(
         start: TailnetStartOptions? = null,
         timeoutMillis: Long = DEFAULT_TIMEOUT_MS,
         ping: TailnetPingOptions? = null,
+        upstream: TailnetUpstreamOptions? = null,
     ): JsonElement? {
         if (exited.get() || closed.get()) throw IOException("内置 Tailscale 未运行")
         val id = nextId.getAndIncrement()
         val deferred = CompletableDeferred<TailnetMessage.Response>()
         pending[id] = deferred
         try {
-            val line = TailnetCodec.encode(TailnetRequest(id = id, op = op, start = start, ping = ping))
+            val line = TailnetCodec.encode(TailnetRequest(id = id, op = op, start = start, ping = ping, upstream = upstream))
             withContext(ioDispatcher) {
                 synchronized(writer) {
+                    if (exited.get() || closed.get()) throw IOException("内置 Tailscale 未运行")
                     writer.write(line)
                     writer.write("\n")
                     writer.flush()
@@ -168,6 +170,10 @@ class TailnetClient(
 
     suspend fun start(options: TailnetStartOptions): TailnetStartResult =
         call(TailnetStartResult.serializer(), TailnetOps.START, start = options)
+
+    suspend fun setUpstreamProxy(options: TailnetUpstreamOptions?) {
+        call(TailnetOps.SET_UPSTREAM, upstream = options)
+    }
 
     suspend fun status(): TailnetStatusSummary = call(TailnetStatusSummary.serializer(), TailnetOps.STATUS)
 

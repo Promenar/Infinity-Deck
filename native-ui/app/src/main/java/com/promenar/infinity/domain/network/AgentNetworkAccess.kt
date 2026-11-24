@@ -35,6 +35,9 @@ data class AgentNetworkSnapshot(
     val tailnetRunning: Boolean,
     /** 按 [AgentNetworkTool] 声明顺序给出全部工具族。 */
     val rows: List<NetworkAccessRow>,
+    val builtInProxyAvailable: Boolean = false,
+    val builtInProxyEnabled: Boolean = false,
+    val builtInProxyRunning: Boolean = false,
 )
 
 /** 界面读取网络路径总表的入口；选路逻辑与工具执行共用同一份规则。 */

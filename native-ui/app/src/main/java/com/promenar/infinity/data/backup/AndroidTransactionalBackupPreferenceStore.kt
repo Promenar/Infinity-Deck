@@ -292,7 +292,9 @@ internal class AndroidTransactionalBackupPreferenceStore(
                 else -> PreferenceValueType.STRING
             }
         }
-        if (namespace == "settings" && key.startsWith("extra_provider_") && key.endsWith("_enabled")) {
+        if (namespace == "settings" && key.startsWith("extra_provider_") &&
+            (key.endsWith("_enabled") || key.endsWith("_use_built_in_proxy"))
+        ) {
             return PreferenceValueType.BOOLEAN
         }
         if (namespace == "provider" && key.startsWith("provider_") && key.endsWith("_enabled")) {
@@ -445,6 +447,7 @@ internal class AndroidTransactionalBackupPreferenceStore(
             fun typed(namespace: String, type: PreferenceValueType, vararg keys: String) {
                 keys.forEach { put(namespace to it, type) }
             }
+            typed("provider", PreferenceValueType.BOOLEAN, "use_built_in_proxy")
             typed("settings", PreferenceValueType.BOOLEAN,
                 "skill_store_auto_check", "haptic_enabled", "haptic_status_enabled", "local_models_enabled", "local_auto_load", "preset_skills_migrated_v3")
             typed("settings", PreferenceValueType.INT, "loop_limit", "extra_providers_count", "default_max_tokens")

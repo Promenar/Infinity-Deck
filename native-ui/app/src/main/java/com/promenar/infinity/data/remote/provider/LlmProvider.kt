@@ -39,6 +39,8 @@ class LlmProvider(internal val protocol: LlmProtocol) {
         private var serviceAccountJson: String = ""
         private var projectId: String = ""
         private var location: String = VERTEX_DEFAULT_LOCATION
+        private var useBuiltInProxy: Boolean = false
+        private var providerId: String? = null
 
         fun protocolId(id: ProtocolType) = apply { this.protocolType = id }
         fun protocolType(type: ProtocolType) = apply { this.protocolType = type }
@@ -48,11 +50,15 @@ class LlmProvider(internal val protocol: LlmProtocol) {
         fun serviceAccountJson(json: String) = apply { this.serviceAccountJson = json }
         fun projectId(id: String) = apply { this.projectId = id }
         fun location(loc: String) = apply { this.location = loc }
+        fun useBuiltInProxy(enabled: Boolean, providerId: String? = null) = apply {
+            this.useBuiltInProxy = enabled
+            this.providerId = providerId
+        }
 
         fun build(): LlmProvider {
             val protocol = createProtocol(
                 protocolType, baseUrl, apiKey, model,
-                serviceAccountJson, projectId, location
+                serviceAccountJson, projectId, location, useBuiltInProxy, providerId,
             )
             return LlmProvider(protocol)
         }
@@ -71,9 +77,11 @@ class LlmProvider(internal val protocol: LlmProtocol) {
             baseUrl: String,
             apiKey: String,
             model: String,
-            serviceAccountJson: String = "",
-            projectId: String = "",
-            location: String = VERTEX_DEFAULT_LOCATION
+            serviceAccountJson: String,
+            projectId: String,
+            location: String,
+            useBuiltInProxy: Boolean,
+            providerId: String?,
         ): LlmProtocol {
             if (type == ProtocolType.Local) {
                 throw IllegalStateException("Use LlmProvider.local(engine) factory for local models")
@@ -86,6 +94,8 @@ class LlmProvider(internal val protocol: LlmProtocol) {
                 serviceAccountJson = serviceAccountJson,
                 projectId = projectId,
                 location = location,
+                useBuiltInProxy = useBuiltInProxy,
+                providerId = providerId,
             )
         }
 

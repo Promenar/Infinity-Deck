@@ -3,6 +3,7 @@ package com.promenar.infinity.data.remote.protocol
 import com.promenar.infinity.data.remote.applySessionRequestHeaders
 import com.promenar.infinity.data.remote.observeFirstByte
 
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
@@ -33,12 +34,14 @@ class VertexAIProtocol(
     private val location: String = VERTEX_DEFAULT_LOCATION,
     private val model: String = "",
     private val baseUrl: String = "",
-    httpClient: HttpClient? = null
+    httpClient: HttpClient? = null,
+    useBuiltInProxy: Boolean = false,
+    providerId: String? = null,
 ) : LlmProtocol {
 
     override val protocolType: ProtocolType = ProtocolType.Google_VertexAI
 
-    private val httpClient: HttpClient = (httpClient ?: ModelHttp.client {
+    private val httpClient: HttpClient = (httpClient ?: ModelHttp.client(useBuiltInProxy, providerId) {
         install(HttpTimeout) {
             requestTimeoutMillis = 120_000
             connectTimeoutMillis = 30_000
@@ -94,6 +97,9 @@ class VertexAIProtocol(
             token = getAccessToken()
         } catch (e: CancellationException) {
             throw e
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            send(unavailable.toProxyStreamError())
+            return@channelFlow
         } catch (e: Exception) {
             send(StreamChunk.Error(
                 code = com.promenar.infinity.domain.generation.GenerationFailureCode.AUTH,
@@ -144,6 +150,8 @@ class VertexAIProtocol(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            send(unavailable.toProxyStreamError())
         } catch (error: Exception) {
             send(normalizeError(error))
         }
@@ -164,6 +172,8 @@ class VertexAIProtocol(
             token = getAccessToken()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (e: Exception) {
             throw Exception("Vertex AI Authentication Failed: ${safeCredentialError(e)}")
         }
@@ -179,6 +189,8 @@ class VertexAIProtocol(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (e: Exception) {
             val normalized = ErrorNormalizer.normalize(e)
             throw Exception("[${normalized.category}] ${normalized.technicalMessage}")

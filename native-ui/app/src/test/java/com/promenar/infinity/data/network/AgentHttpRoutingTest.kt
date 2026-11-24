@@ -26,6 +26,26 @@ import org.junit.jupiter.api.io.TempDir
 class AgentHttpRoutingTest {
     @TempDir lateinit var directory: File
 
+    @Test fun `公网保留代理解析域名而私网和回环使用直连`(): Unit = runBlocking {
+        val localProxy = com.promenar.infinity.data.proxy.BuiltInProxyEndpoint(41323, "测试用户", "测试口令")
+        val builtIn = object : com.promenar.infinity.data.proxy.BuiltInProxyRouting {
+            override val endpoint = kotlinx.coroutines.flow.MutableStateFlow<com.promenar.infinity.data.proxy.BuiltInProxyEndpoint?>(localProxy)
+        }
+        val policy = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName(it)) })
+        val public = AgentNetworkPolicy(resolver = { arrayOf(InetAddress.getByName("192.0.2.11")) })
+            .validate("https://example.invalid/")
+        val http = OkHttpClient()
+        val proxied = AgentHttpRouting.route(http, public, DisabledTailnetRouting, builtIn)
+        assertThat(proxied.client.proxy).isEqualTo(localProxy.proxy)
+        assertThat(proxied.request(Request.Builder().url(public.uri.toURL()).build()).url.host).isEqualTo("example.invalid")
+        for (host in listOf("10.1.2.3", "127.0.0.1")) {
+            val direct = AgentHttpRouting.route(http, policy.validate("http://$host/"), DisabledTailnetRouting, builtIn)
+            assertThat(direct.client.proxy).isEqualTo(Proxy.NO_PROXY)
+        }
+        builtIn.endpoint.value = null
+        assertThat(AgentHttpRouting.route(http, public, DisabledTailnetRouting, builtIn).client.proxy).isEqualTo(Proxy.NO_PROXY)
+    }
+
     @Test fun `tailnetHTTP经内置代理且DNS派生目标保留原始Host`(): Unit = runBlocking {
         val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 34567))
         val routing = object : TailnetRouting by DisabledTailnetRouting {

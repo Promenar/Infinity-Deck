@@ -1,6 +1,7 @@
 import com.android.compose.screenshot.tasks.PreviewScreenshotUpdateTask
 import com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask
 import com.promenar.infinity.buildlogic.BuildPackagedFfmpeg
+import com.promenar.infinity.buildlogic.BuildProxyBinary
 import com.promenar.infinity.buildlogic.BuildTailnetBinary
 import com.promenar.infinity.buildlogic.BuildLinuxRuntime
 import com.promenar.infinity.buildlogic.FetchVerifiedFile
@@ -312,6 +313,23 @@ val buildTailnetBinary = tailnetGoTargets.mapValues { (abi, target) ->
     }
 }
 
+// 内置代理与 Tailscale 分开编译，两个渠道按相同的 ABI 规则打包。
+val proxyGoVersion = "1.27.1"
+val proxyEnabled = providers.gradleProperty("infinity.proxy").map(String::toBoolean).getOrElse(true)
+val buildProxyBinary = tailnetGoTargets.mapValues { (abi, target) ->
+    val taskSuffix = abi.split('-', '_').joinToString("") { part -> part.replaceFirstChar { it.uppercaseChar() } }
+    tasks.register<BuildProxyBinary>("buildProxy$taskSuffix") {
+        moduleDirectory.set(layout.projectDirectory.dir("proxy"))
+        sources.from(fileTree("proxy") { include("**/*.go", "go.mod", "go.sum"); exclude("**/*_test.go") })
+        goVersion.set(proxyGoVersion)
+        this.abi.set(abi)
+        goOs.set(target.first)
+        goArch.set(target.second)
+        goExecutable.set(tailnetGoExecutable)
+        outputDirectory.set(layout.buildDirectory.dir("generated/proxy/$abi"))
+    }
+}
+
 // 设置页底部展示的提交短 SHA；源码不在 Git 仓库或没有 git 时写 unknown，不让构建失败。
 val gitCommitShortSha: String = runCatching {
     providers.exec {
@@ -384,6 +402,11 @@ androidComponents.onVariants { variant ->
     if (tailnetEnabled) {
         buildTailnetBinary.filterKeys { it in pythonAbis }.values.forEach { build ->
             variant.sources.jniLibs?.addGeneratedSourceDirectory(build, BuildTailnetBinary::getOutputDirectory)
+        }
+    }
+    if (proxyEnabled) {
+        buildProxyBinary.filterKeys { it in pythonAbis }.values.forEach { build ->
+            variant.sources.jniLibs?.addGeneratedSourceDirectory(build, BuildProxyBinary::getOutputDirectory)
         }
     }
     // 内置精简 FFmpeg/ffprobe（arm64-v8a），随内置 Python 一起提供音视频剪辑与探测能力。
@@ -571,8 +594,8 @@ android {
         // 打包的 Python 启动器与扩展需要真实文件路径才能 execve/dlopen，安装时必须解压到 nativeLibraryDir。
         jniLibs.useLegacyPackaging = true
         // libpystdlib.so 与 libpysite.so 是 Python 模块 zip，不是 ELF，跳过符号剥离。
-        // libnxtailnet.so 是已用 -s -w 剥离的 Go 可执行文件，保持构建产物原样（可复现）。
-        jniLibs.keepDebugSymbols += listOf("**/libpystdlib.so", "**/libpysite.so", "**/libnxtailnet.so")
+        // 内置 Go 程序是已用 -s -w 剥离的 Go 可执行文件，保持构建产物原样（可复现）。
+        jniLibs.keepDebugSymbols += listOf("**/libpystdlib.so", "**/libpysite.so", "**/libnxtailnet.so", "**/libnxproxy.so")
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

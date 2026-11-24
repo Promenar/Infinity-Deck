@@ -6,10 +6,11 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
-// 代理按目标分流：tailnet 地址经 tsnet，其它目标经系统网络直连（域名由 Android 系统 DNS 解析）。
+// 代理按目标分流：tailnet 经 tsnet，系统 DNS 确认的公网目标可通过上游，其余经系统网络直连。
 
 var (
 	// tailnetPrefix4 是 Tailscale 分配的 CGNAT 地址段。
@@ -25,6 +26,7 @@ var (
 	errTailnetNotRunning = errors.New("Tailscale 未登录或未在线（tailnet_not_running）")
 	errUnknownTailnet    = errors.New("tailnet 中没有这个节点（tailnet_unknown_host）")
 	errUnsupportedNet    = errors.New("只支持 TCP 连接")
+	errUpstreamDNS       = errors.New("无法确认上游代理目标的地址范围")
 )
 
 // IsTailnetAddr 判断地址是否属于 tailnet 地址段。
@@ -68,19 +70,35 @@ type DialFunc func(ctx context.Context, network, address string) (net.Conn, erro
 
 // Route 是一次分流判定。
 type Route struct {
-	Tailnet bool
+	Tailnet         bool
+	Public          bool
+	DNSUnknown      bool
+	DirectAddresses []netip.Addr
 	// Addr 是 tailnet 目标解析得到的地址；直连目标为零值。
 	Addr netip.Addr
 	Peer *Peer
 	Err  error
 }
 
-// Router 根据目标决定经 tsnet 还是直连。
+// Router 根据目标决定经 tsnet、上游 CONNECT 或系统网络拨号。
 type Router struct {
 	Directory Directory
 	Tailnet   DialFunc
 	Direct    DialFunc
 	LookupIP  func(context.Context, string) ([]netip.Addr, error)
+	upstream  atomic.Pointer[upstreamProxy]
+}
+
+func (r *Router) setUpstream(next *upstreamProxy) bool {
+	previous := r.upstream.Load()
+	if previous.sameConfig(next) {
+		return false
+	}
+	r.upstream.Store(next)
+	if previous != nil {
+		previous.close()
+	}
+	return true
 }
 
 func findPeerByAddr(peers []Peer, addr netip.Addr) *Peer {
@@ -125,13 +143,13 @@ func isMagicDNSName(name, suffix string) bool {
 //   - tailnet 地址段内的 IP 经 tsnet；
 //   - MagicDNS 全名（*.ts.net 或当前 tailnet 后缀）经 tsnet，节点不存在时拒绝，不回落到公网 DNS；
 //   - 不含点的短名匹配到节点时经 tsnet，否则直连（保留局域网短名的原有行为）；
-//   - 普通域名由系统 DNS 查询，包含 tailnet 地址时使用该地址，其它目标直连。
+//   - 普通域名由系统 DNS 查询，优先使用 tailnet 地址；全部为公网地址时才可经上游。
 func (r *Router) Resolve(ctx context.Context, host string) Route {
 	name := normalizeHost(host)
 	if addr, err := netip.ParseAddr(name); err == nil {
 		addr = addr.Unmap()
 		if !IsTailnetAddr(addr) {
-			return Route{}
+			return Route{Public: isPublicAddress(addr)}
 		}
 		peer := findPeerByAddr(r.Directory.Peers(ctx, false), addr)
 		return Route{Tailnet: true, Addr: addr, Peer: peer}
@@ -149,15 +167,30 @@ func (r *Router) Resolve(ctx context.Context, host string) Route {
 				return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 			}
 		}
-		addresses, err := lookup(ctx, name)
-		if err == nil {
-			for _, addr := range addresses {
-				if IsTailnetAddr(addr) {
-					return Route{Tailnet: true, Addr: addr.Unmap()}
-				}
+		lookupName := name
+		if strings.HasSuffix(host, ".") {
+			// 保留绝对域名的末尾点，避免按 DNS 搜索域判定另一个名称。
+			lookupName += "."
+		}
+		localName := strings.HasSuffix(name, ".local") || strings.HasSuffix(name, ".lan") ||
+			name == "home.arpa" || strings.HasSuffix(name, ".home.arpa")
+		addresses, err := lookup(ctx, lookupName)
+		if err != nil || len(addresses) == 0 {
+			return Route{DNSUnknown: !localName}
+		}
+		var nonPublic []netip.Addr
+		for _, addr := range addresses {
+			if IsTailnetAddr(addr) {
+				return Route{Tailnet: true, Addr: addr.Unmap()}
+			}
+			if !isPublicAddress(addr) {
+				nonPublic = append(nonPublic, addr.Unmap())
 			}
 		}
-		return Route{}
+		if len(nonPublic) > 0 {
+			return Route{DirectAddresses: nonPublic}
+		}
+		return Route{Public: !localName, DirectAddresses: addresses}
 	}
 	peer := findPeerByName(r.Directory.Peers(ctx, false), name, suffix)
 	if peer == nil {
@@ -192,6 +225,25 @@ func (r *Router) Dial(ctx context.Context, network, address string) (net.Conn, e
 	}
 	route := r.Resolve(ctx, host)
 	if !route.Tailnet {
+		if upstream := r.upstream.Load(); upstream != nil {
+			if route.Public {
+				return upstream.dial(ctx, r.Direct, address)
+			}
+			if route.DNSUnknown {
+				return nil, errUpstreamDNS
+			}
+			if len(route.DirectAddresses) > 0 {
+				var last error
+				for _, ip := range route.DirectAddresses {
+					conn, err := r.Direct(ctx, "tcp", net.JoinHostPort(ip.String(), port))
+					if err == nil {
+						return conn, nil
+					}
+					last = err
+				}
+				return nil, last
+			}
+		}
 		return r.Direct(ctx, "tcp", address)
 	}
 	if route.Err != nil {

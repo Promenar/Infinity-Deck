@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -48,7 +49,7 @@ type Backend interface {
 type Server struct {
 	out        *Writer
 	newBackend func(*StartOptions) Backend
-	direct     DialFunc
+	router     *Router
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -62,7 +63,7 @@ type Server struct {
 
 func NewServer(out *Writer, newBackend func(*StartOptions) Backend, direct DialFunc) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{out: out, newBackend: newBackend, direct: direct, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	return &Server{out: out, newBackend: newBackend, router: &Router{Direct: direct}, ctx: ctx, cancel: cancel, done: make(chan struct{})}
 }
 
 // Run 读取命令直到 stdin 结束或收到 shutdown，然后关闭节点并返回退出码。
@@ -109,6 +110,10 @@ func (s *Server) dispatch(req *Request) {
 		s.once.Do(func() { close(s.done) })
 		return
 	}
+	if req.Op == OpSetUpstream {
+		s.setUpstream(req)
+		return
+	}
 	s.mu.Lock()
 	backend := s.backend
 	s.mu.Unlock()
@@ -121,6 +126,28 @@ func (s *Server) dispatch(req *Request) {
 		return
 	}
 	go s.handle(req, backend)
+}
+
+// 更新和启停由读取命令的同一个 goroutine 依次执行。
+func (s *Server) setUpstream(req *Request) {
+	var options *UpstreamOptions
+	if err := json.Unmarshal(req.Upstream, &options); err != nil {
+		s.out.Fail(req.ID, ErrBadRequest, "upstream 必须是配置对象或 null")
+		return
+	}
+	next, err := newUpstream(options)
+	if err != nil {
+		s.out.Fail(req.ID, ErrBadRequest, err.Error())
+		return
+	}
+	if s.proxy != nil && next != nil && next.address == s.proxy.listener.Addr().String() {
+		s.out.Fail(req.ID, ErrBadRequest, "上游端口与本机分流代理端口相同")
+		return
+	}
+	if s.router.setUpstream(next) && s.proxy != nil {
+		s.proxy.resetForwarder()
+	}
+	s.out.Reply(req.ID, struct{}{})
 }
 
 func (s *Server) handle(req *Request, backend Backend) {
@@ -227,13 +254,20 @@ func (s *Server) start(req *Request) {
 		return
 	}
 	backend := s.newBackend(&opts)
-	router := &Router{Directory: backend, Tailnet: backend.Dial, Direct: s.direct}
+	router := &Router{Directory: backend, Tailnet: backend.Dial, Direct: s.router.Direct}
+	router.upstream.Store(s.router.upstream.Load())
 	proxy := &Proxy{Credentials: Credentials{User: opts.ProxyUser, Password: opts.ProxyPassword}, Dial: router.Dial}
 	port, err := proxy.Listen()
 	if err != nil {
 		s.out.Fail(req.ID, ErrStartFailed, "无法监听本机代理端口")
 		return
 	}
+	if upstream := router.upstream.Load(); upstream != nil && upstream.address == proxy.listener.Addr().String() {
+		proxy.Close()
+		s.out.Fail(req.ID, ErrStartFailed, "上游端口与本机分流代理端口相同")
+		return
+	}
+	s.router = router
 	s.backend, s.proxy = backend, proxy
 	s.out.Reply(req.ID, StartResult{ProxyPort: port})
 	go func() {
@@ -245,6 +279,7 @@ func (s *Server) start(req *Request) {
 
 func (s *Server) shutdown() {
 	s.cancel()
+	s.router.setUpstream(nil)
 	s.mu.Lock()
 	backend, proxy := s.backend, s.proxy
 	s.mu.Unlock()

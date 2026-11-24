@@ -14,6 +14,8 @@ import com.promenar.infinity.data.remote.protocol.StreamChunk
 import com.promenar.infinity.data.remote.protocol.ProtocolFactory
 import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.remote.protocol.toStreamChunkError
+import com.promenar.infinity.data.remote.protocol.toProxyStreamError
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.protocol.VERTEX_DEFAULT_LOCATION
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.generation.GenerationFailedException
@@ -35,6 +37,8 @@ data class UnifiedProviderConfig(
     val projectId: String = "",
     val location: String = VERTEX_DEFAULT_LOCATION,
     val sessionHeaderName: String? = null,
+    val useBuiltInProxy: Boolean = false,
+    val providerId: String? = null,
 ) {
     override fun toString(): String =
         "UnifiedProviderConfig(protocolType=$protocolType, " +
@@ -76,6 +80,8 @@ class UnifiedLlmClient private constructor(
                 serviceAccountJson = config.serviceAccountJson,
                 projectId = config.projectId,
                 location = config.location,
+                useBuiltInProxy = config.useBuiltInProxy,
+                providerId = config.providerId,
             )
         },
         sessionIdentifier: suspend (String) -> String? = { null },
@@ -224,6 +230,12 @@ class UnifiedLlmClient private constructor(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            if (!terminalErrorSeen) {
+                val error = unavailable.toProxyStreamError()
+                send(error)
+                diagnostic.observeTerminal(error)
+            }
         } catch (e: Exception) {
             InfinityLogger.logError("[UnifiedLlmClient] Stream error", e)
             if (!terminalErrorSeen) {

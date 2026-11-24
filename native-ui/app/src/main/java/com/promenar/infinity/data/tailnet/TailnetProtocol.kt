@@ -3,10 +3,12 @@ package com.promenar.infinity.data.tailnet
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
@@ -22,6 +24,7 @@ object TailnetOps {
     const val LOGIN = "login"
     const val LOGOUT = "logout"
     const val SHUTDOWN = "shutdown"
+    const val SET_UPSTREAM = "set_upstream"
 }
 
 /** 子进程错误码。 */
@@ -56,8 +59,18 @@ class TailnetRequest(
     val op: String,
     val start: TailnetStartOptions? = null,
     val ping: TailnetPingOptions? = null,
+    val upstream: TailnetUpstreamOptions? = null,
 ) {
     override fun toString(): String = "TailnetRequest(id=$id, op=$op)"
+}
+
+@Serializable
+class TailnetUpstreamOptions(
+    val address: String,
+    val proxyUser: String,
+    val proxyPassword: String,
+) {
+    override fun toString(): String = "TailnetUpstreamOptions(已配置)"
 }
 
 @Serializable
@@ -155,7 +168,13 @@ object TailnetCodec {
         encodeDefaults = false
     }
 
-    fun encode(request: TailnetRequest): String = json.encodeToString(TailnetRequest.serializer(), request)
+    fun encode(request: TailnetRequest): String {
+        if (request.op != TailnetOps.SET_UPSTREAM || request.upstream != null) {
+            return json.encodeToString(TailnetRequest.serializer(), request)
+        }
+        val envelope = json.encodeToJsonElement(TailnetRequest.serializer(), request).jsonObject
+        return JsonObject(envelope + ("upstream" to JsonNull)).toString()
+    }
 
     fun decode(line: String): TailnetMessage {
         val element = runCatching { json.parseToJsonElement(line) }.getOrNull() as? JsonObject ?: return TailnetMessage.Unknown

@@ -28,6 +28,8 @@ class KgRequestClient(
             serviceAccountJson = config.serviceAccountJson,
             projectId = config.projectId,
             location = config.location,
+            useBuiltInProxy = config.useBuiltInProxy,
+            providerId = resolved.providerId,
         )
     },
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,

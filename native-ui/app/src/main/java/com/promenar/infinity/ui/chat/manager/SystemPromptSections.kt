@@ -65,12 +65,19 @@ object SystemPromptSections {
         appendLine("- 管理技能、规则或说明自身能力与权限时，先用 activate_skill(name=\"infinity-deck\") 读取内置指南；具体审批与关键运行数据规则见下方权限段。")
     }
 
+    private const val LINUX_PROXY_GUIDANCE =
+        "内置代理运行时，Linux 可在单条公网命令前设置 http_proxy=\"\$INFINITY_PROXY_HTTP\" " +
+        "https_proxy=\"\$INFINITY_PROXY_HTTP\" no_proxy=\"\$INFINITY_PROXY_NO_PROXY\"。" +
+        "需要 SOCKS5 远端解析时，将单条命令的代理地址改用 \$INFINITY_PROXY_SOCKS。" +
+        "仅在变量存在时使用，禁止打印、记录或上传代理凭据，禁用 set -x 和会回显凭据的详细日志。"
+
     const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl），使用 apk add 安装软件包；git、ripgrep（rg）、python3 与 pip、nodejs 与 npm、ffmpeg 是安装时的可选包，用前确认已安装，缺少时 apk add 补装。" +
         "会话专用空间为 /home/session，基础工作区挂载为 /workspace。INFINITY_WORKSPACE 指向命令的起始工作目录，分支 worktree 使用其绑定目录；普通会话通常使用 /workspace。" +
         "真实路径挂载为 /mnt/<别名>，用户级技能为 /mnt/skills（INFINITY_SKILLS=/mnt/skills）；SAF 挂载不可见。" +
         "文件工具与命令使用相同的 Linux 路径，相对路径相对当前会话的起始工作目录；/root、/etc 等绝对路径指向 Linux rootfs。" +
         "/home/session 保存在 rootfs 之外，重置 Linux 不删除它；/root 不进入备份，重置会清空。文件元数据密集操作较慢。" +
         "Linux 不可用时返回错误，请用户在会话中处理环境，不能自动改用系统 sh、打包 Python 或其它运行环境。" +
+        LINUX_PROXY_GUIDANCE +
         "Linux 命令以本应用的 Android 用户运行，按风险审批档下严格解析的零副作用只读命令免批、其余命令逐条审批，免批准档常规命令免批；毁灭性根目录破坏命令在两档下均直接硬拦截且不可审批。" +
         "原生 git 访问 HTTPS 远端时自动使用用户在设置中保存的 Git 凭据，与内置模式共用，无需在 Linux 中登录或配置凭据助手。" +
         "git@主机: 与 ssh:// 远端在 Linux 中不经 SSH 桥，需要时请用户切到内置模式。" +

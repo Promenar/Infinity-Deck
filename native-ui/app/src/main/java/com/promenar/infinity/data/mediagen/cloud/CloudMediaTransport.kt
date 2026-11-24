@@ -5,6 +5,7 @@ import com.promenar.infinity.data.model.*
 import com.promenar.infinity.data.remote.ModelHttp
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
+import com.promenar.infinity.data.remote.routeViaBuiltInProxy
 import com.promenar.infinity.data.remote.withModelTimeoutSupport
 import com.promenar.infinity.data.remote.protocol.readBoundedModelListBody
 import io.ktor.client.HttpClient
@@ -39,22 +40,41 @@ class CloudHttpException(val status: Int) : IOException("媒体接口返回 HTTP
 class CloudApiException(val code: Int) : IOException("媒体接口返回错误代码 $code")
 
 /** 复用模型引擎的连接池、系统代理、内置 Tailnet 与用户配置的媒体超时。 */
-class KtorCloudMediaHttp(
-    private val apiKey: (String) -> String,
-    client: HttpClient = ModelHttp.client { followRedirects = false; expectSuccess = false },
+class KtorCloudMediaHttp private constructor(
+    private val credentials: CredentialsSource,
+    client: HttpClient,
 ) : CloudMediaHttp {
+    private class Credentials(val apiKey: String, val useBuiltInProxy: Boolean)
+
+    private fun interface CredentialsSource {
+        fun resolve(providerId: String): Credentials?
+    }
+
     private val client = client.config { followRedirects = false; expectSuccess = false }.also { configured ->
         client.coroutineContext.job.invokeOnCompletion { configured.close() }
     }.withModelTimeoutSupport()
-    constructor(providers: ProviderManager) : this({ id -> providers.getProviderConfig(id)?.apiKey.orEmpty() })
+
+    constructor(
+        apiKey: (String) -> String,
+        client: HttpClient = ModelHttp.client(),
+    ) : this(CredentialsSource { Credentials(apiKey(it), false) }, client)
+
+    constructor(providers: ProviderManager) : this(
+        CredentialsSource { providerId ->
+            providers.getProviderConfig(providerId)?.let { Credentials(it.apiKey, it.useBuiltInProxy) }
+        },
+        ModelHttp.client(),
+    )
 
     override suspend fun request(providerId: String, url: String, body: JsonObject?): JsonObject = withContext(Dispatchers.IO) {
         val endpoint = java.net.URI(url)
         require(endpoint.scheme in setOf("http", "https") && endpoint.host != null && endpoint.rawUserInfo == null && endpoint.rawFragment == null)
-        val key = apiKey(providerId)
+        val config = credentials.resolve(providerId)
+        val key = config?.apiKey.orEmpty()
         require(key.isNotBlank()) { "提供商尚未配置密钥" }
         // 不跟随带鉴权请求的重定向；错误正文不进入日志或异常。
         client.prepareRequest(url) {
+            routeViaBuiltInProxy(config?.useBuiltInProxy == true, providerId)
             method = if (body == null) HttpMethod.Get else HttpMethod.Post
             header(HttpHeaders.Authorization, "Bearer $key")
             if (body != null) { contentType(ContentType.Application.Json); setBody(body.toString()) }

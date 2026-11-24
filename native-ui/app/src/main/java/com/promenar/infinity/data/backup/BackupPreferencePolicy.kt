@@ -16,6 +16,7 @@ internal object BackupPreferencePolicy {
         VOICE_NAMESPACE to setOf("library"),
         "provider" to setOf(
             "protocol_id", "protocol_id_name", "base_url", "model", "provider_name",
+            "use_built_in_proxy",
             "embedding_base_url", "embedding_model",
         ),
         "settings" to setOf(
@@ -66,7 +67,7 @@ internal object BackupPreferencePolicy {
 
     private val dynamicAllowed = mapOf(
         "settings" to listOf(
-            Regex("extra_provider_[0-9]+_(id|name|protocol|type|base_url|model|enabled)"),
+            Regex("extra_provider_[0-9]+_(id|name|protocol|type|base_url|model|enabled|use_built_in_proxy)"),
             Regex(
                 "model_info_.+_(name|type|context|provider|provider_id|remote_model_id|maxoutput|cutoff|caps|" +
                     "input|family|canonical_id|chat_endpoint|auto_fingerprint|user_edited_fields|" +

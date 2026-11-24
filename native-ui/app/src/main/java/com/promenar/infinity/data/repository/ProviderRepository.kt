@@ -3,6 +3,7 @@ package com.promenar.infinity.data.repository
 import com.promenar.infinity.data.manager.ProviderManager
 import com.promenar.infinity.data.model.ProviderListItem
 import com.promenar.infinity.data.model.toCredentialUpdate
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.remote.protocol.VERTEX_DEFAULT_LOCATION
 import com.promenar.infinity.data.remote.provider.LlmProvider
@@ -47,6 +48,8 @@ class ProviderRepository(
                     serviceAccountJson = config.vertexServiceAccountJson,
                     projectId = "",
                     location = VERTEX_DEFAULT_LOCATION,
+                    useBuiltInProxy = config.useBuiltInProxy,
+                    providerId = providerId,
                 ),
             )
             val latency = System.currentTimeMillis() - start
@@ -66,6 +69,8 @@ class ProviderRepository(
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            ConnectionResult(false, System.currentTimeMillis() - start, unavailable.message)
         } catch (_: Exception) {
             val latency = System.currentTimeMillis() - start
             ConnectionResult(false, latency, "CONNECTION_PROBE_FAILED")
@@ -95,6 +100,8 @@ class ProviderRepository(
             serviceAccountJson = config.vertexServiceAccountJson,
             projectId = "",
             location = VERTEX_DEFAULT_LOCATION,
+            useBuiltInProxy = config.useBuiltInProxy,
+            providerId = providerId,
         )
         return try {
             modelDescriptorFetcher?.invoke(unifiedConfig)
@@ -107,10 +114,13 @@ class ProviderRepository(
                     .serviceAccountJson(unifiedConfig.serviceAccountJson)
                     .projectId(unifiedConfig.projectId)
                     .location(unifiedConfig.location)
+                    .useBuiltInProxy(unifiedConfig.useBuiltInProxy, providerId)
                     .build()
                     .listModelDescriptors()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (unavailable: BuiltInProxyUnavailableException) {
+            throw unavailable
         } catch (_: Exception) {
             emptyList()
         }
@@ -131,7 +141,8 @@ class ProviderRepository(
                 baseUrl = config.baseUrl,
                 credentialUpdate = config.apiKey.toCredentialUpdate(),
                 model = config.defaultModel,
-                name = config.name
+                name = config.name,
+                useBuiltInProxy = config.useBuiltInProxy,
             )
         } else {
             val item = ProviderListItem(
@@ -142,6 +153,7 @@ class ProviderRepository(
                 protocolType = dataProtocolType,
                 hasApiKey = config.apiKey.isNotBlank() && dataProtocolType !is ProtocolType.Google_VertexAI,
                 hasVertexCredentials = config.apiKey.isNotBlank() && dataProtocolType is ProtocolType.Google_VertexAI,
+                useBuiltInProxy = config.useBuiltInProxy,
             )
             val credentialUpdate = config.apiKey.toCredentialUpdate()
             if (providerManager.getProviderConfig(config.id) != null) {
@@ -165,6 +177,7 @@ class ProviderRepository(
         apiKey = "",
         defaultModel = model,
         isEnabled = hasApiKey || hasVertexCredentials,
+        useBuiltInProxy = useBuiltInProxy,
         )
     }
 

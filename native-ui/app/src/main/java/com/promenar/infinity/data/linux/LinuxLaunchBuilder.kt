@@ -1,5 +1,8 @@
 package com.promenar.infinity.data.linux
 
+import com.promenar.infinity.data.proxy.BuiltInProxyConfig
+import com.promenar.infinity.data.proxy.BuiltInProxyEndpoint
+import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
 import com.promenar.infinity.data.tailnet.InstalledTailnetRouting
 import com.promenar.infinity.data.exec.withLegacyWorkspaceAliases
 import com.promenar.infinity.domain.linux.LinuxLaunchSpec
@@ -22,6 +25,7 @@ class LinuxLaunchBuilder(
     private val cacheDirectory: File,
     private val tailnetEnvironment: () -> Map<String, String> = { InstalledTailnetRouting.routing.subprocessEnvironment() },
     private val messages: LinuxRuntimeMessages = LinuxRuntimeMessages(),
+    private val builtInProxyEndpoint: () -> BuiltInProxyEndpoint? = { InstalledBuiltInProxyRouting.routing.endpoint.value },
 ) {
     fun build(spec: LinuxLaunchSpec, maintainHomeConfiguration: Boolean = true): LinuxProcessLaunch {
         val tmp = File(cacheDirectory, "proot-tmp")
@@ -82,7 +86,9 @@ class LinuxLaunchBuilder(
         )
         if (spec.workspace != null) environment["INFINITY_WORKSPACE"] = "/workspace"
         environment.putAll(tailnetEnvironment().filterKeys { it in PROXY_KEYS })
-        environment.putAll(spec.environment)
+        // 保留用户的标准代理变量。专用变量仅反映本次启动时有效的内置代理。
+        environment.putAll(spec.environment.filterKeys { it !in BuiltInProxyConfig.environmentKeys })
+        builtInProxyEndpoint()?.let { environment.putAll(BuiltInProxyConfig.environment(it)) }
         LinuxGitSafeDirectories.appendTo(environment, listOfNotNull("/workspace".takeIf { spec.workspace != null }) + spec.mounts.map { it.guestPath })
         if (spec.wakeInbox != null) environment[LinuxWakeLimits.ENVIRONMENT_VARIABLE] = LinuxWakeLimits.GUEST_DIRECTORY
         val runtimeEnvironment = environment.withLegacyWorkspaceAliases()

@@ -259,6 +259,7 @@ class BuiltinExecService(
         val secrets = try { sessionId?.let { vault?.environment(it, source) }.orEmpty() }
         catch (_: IllegalStateException) { return CommandToolResult(errorCode = "SECRET_SLOT_UNAVAILABLE", guidance = "引用的保密槽位已销毁或不能作为环境变量，命令未执行。") }
         val releaseSecrets = retainSecretEnvironment(sessionId, secrets, redactor)
+        var releaseProxySecrets: () -> Unit = {}
         try {
         val safeLive = if (capture != null) ToolLiveOutputSink.None else live
         fun executionFields() = buildJsonObject { put("runtime", runtime); if (kind == ExecRunKind.LINUX) put("stderr_merged", capture == null) }
@@ -289,6 +290,10 @@ class BuiltinExecService(
             val base = if (kind == ExecRunKind.LINUX) {
                 linuxRequest(root, workspaceKind, sessionId, linuxSource ?: source, stdin, timeoutSeconds, target, LinuxGitEnvironment.from(lease.environment))
             } else request(root, workspaceKind)
+            if (kind == ExecRunKind.LINUX) {
+                releaseProxySecrets()
+                releaseProxySecrets = retainSecretEnvironment(sessionId, builtInProxyOutputSecrets(base.environment), redactor)
+            }
             val commandRequest = base.copy(environment = if (kind == ExecRunKind.LINUX) linuxCommandEnvironment(base.environment, lease.environment, secrets)
                 else base.environment + lease.environment + secrets,
                 terminal = base.terminal && capture == null,
@@ -454,7 +459,7 @@ class BuiltinExecService(
             }
         }
         return captured.redacted(sessionId, redactor)
-        } finally { releaseSecrets() }
+        } finally { releaseProxySecrets(); releaseSecrets() }
     }
 
     private fun modeChanged() = CommandToolResult(errorCode = "EXEC_MODE_CHANGED", guidance = messages(RunModeMessage.MODE_CHANGED))

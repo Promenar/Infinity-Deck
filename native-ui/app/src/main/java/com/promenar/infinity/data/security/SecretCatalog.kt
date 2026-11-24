@@ -9,6 +9,12 @@ object SecretCatalog {
     fun vertexServiceAccount(providerId: String): SecretId =
         SecretId("vertex_service_account:${providerHash(providerId)}")
 
+    /** 这两个槽仅用于本机代理设置，由独立加密存储持有。 */
+    internal fun builtInProxyStorage(slot: Int): SecretId {
+        require(slot == 0 || slot == 1)
+        return SecretId("built_in_proxy_local_v1:$slot")
+    }
+
     val tavilyApiKey = SecretId("tavily_api_key")
     val keenableApiKey = SecretId("keenable_api_key")
     val embeddingApiKey = SecretId("embedding_api_key")

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tailscale.com/net/proxymux"
@@ -64,7 +65,7 @@ type Proxy struct {
 
 	listener net.Listener
 	httpSrv  *http.Server
-	fwd      *httputil.ReverseProxy
+	fwd      atomic.Pointer[httputil.ReverseProxy]
 	wg       sync.WaitGroup
 }
 
@@ -75,7 +76,7 @@ func (p *Proxy) Listen() (int, error) {
 		return 0, err
 	}
 	p.listener = ln
-	p.fwd = p.newForwarder()
+	p.resetForwarder()
 	socksLn, httpLn := proxymux.SplitSOCKSAndHTTP(ln)
 	p.httpSrv = &http.Server{
 		Handler:           http.HandlerFunc(p.serveHTTP),
@@ -95,6 +96,9 @@ func (p *Proxy) Close() {
 	}
 	if p.httpSrv != nil {
 		_ = p.httpSrv.Close()
+	}
+	if fwd := p.fwd.Load(); fwd != nil {
+		fwd.Transport.(*http.Transport).CloseIdleConnections()
 	}
 }
 
@@ -259,7 +263,7 @@ func (p *Proxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "只转发 http:// 绝对 URI；HTTPS 请使用 CONNECT", http.StatusBadRequest)
 		return
 	}
-	p.fwd.ServeHTTP(w, r)
+	p.fwd.Load().ServeHTTP(w, r)
 }
 
 func (p *Proxy) authorized(header string) bool {
@@ -313,6 +317,13 @@ func httpStatusFor(err error) int {
 }
 
 const tailnetOriginHostHeader = "X-Infinity-Origin-Host"
+
+// 路由变化时替换 HTTP 转发连接池，后续请求按当前配置重新拨号。
+func (p *Proxy) resetForwarder() {
+	if previous := p.fwd.Swap(p.newForwarder()); previous != nil {
+		previous.Transport.(*http.Transport).CloseIdleConnections()
+	}
+}
 
 // 固定 tailnet IP 的 HTTP 请求保留原始虚拟主机；内部头只携带合法 authority。
 func forwardedOriginHost(target, authority string) string {

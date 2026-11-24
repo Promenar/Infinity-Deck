@@ -10,17 +10,25 @@ import (
 )
 
 // stdin/stdout JSON 行协议。父进程（Infinity Deck）每行写一个 request，本进程每行回一个 response 或推送一个 event。
-// 协议内容不含 auth key 之外的秘密；auth key 与代理口令只经 stdin 进入本进程，任何输出都不回显。
+// auth key 与代理凭据只经 stdin 进入本进程，任何输出都不回显。
 
 // maxLineBytes 限制单行请求大小，防止异常输入耗尽内存。
 const maxLineBytes = 64 * 1024
 
 // Request 是父进程发来的一条命令。
 type Request struct {
-	ID    int64         `json:"id"`
-	Op    string        `json:"op"`
-	Start *StartOptions `json:"start,omitempty"`
-	Ping  *PingOptions  `json:"ping,omitempty"`
+	ID       int64           `json:"id"`
+	Op       string          `json:"op"`
+	Start    *StartOptions   `json:"start,omitempty"`
+	Ping     *PingOptions    `json:"ping,omitempty"`
+	Upstream json.RawMessage `json:"upstream,omitempty"`
+}
+
+// UpstreamOptions 是 set_upstream 的配置；显式 null 清空。
+type UpstreamOptions struct {
+	Address       string `json:"address"`
+	ProxyUser     string `json:"proxyUser"`
+	ProxyPassword string `json:"proxyPassword"`
 }
 
 // PingOptions 只接受在线节点的 tailnet IP。
@@ -52,13 +60,14 @@ type StartOptions struct {
 
 // 命令名。
 const (
-	OpStart    = "start"
-	OpStatus   = "status"
-	OpPeers    = "peers"
-	OpPing     = "ping"
-	OpLogin    = "login"
-	OpLogout   = "logout"
-	OpShutdown = "shutdown"
+	OpStart       = "start"
+	OpStatus      = "status"
+	OpPeers       = "peers"
+	OpPing        = "ping"
+	OpLogin       = "login"
+	OpLogout      = "logout"
+	OpShutdown    = "shutdown"
+	OpSetUpstream = "set_upstream"
 )
 
 // 错误码；父进程按错误码而不是消息文本处理。

@@ -25,7 +25,9 @@ data class BuiltinCommandRequest(
     val terminal: Boolean = false,
     val outputLimitOverride: Int? = null,
     val outputTransform: CommandOutputTransform? = null,
-)
+) {
+    override fun toString(): String = "BuiltinCommandRequest(arguments=${argv.size}, timeoutSeconds=$timeoutSeconds, terminal=$terminal)"
+}
 
 data class BuiltinCommandOutput(
     /** 超时或被我们结束时为 null。 */

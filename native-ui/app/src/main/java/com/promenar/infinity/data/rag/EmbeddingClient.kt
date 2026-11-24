@@ -1,6 +1,8 @@
 package com.promenar.infinity.data.rag
 
 import com.promenar.infinity.data.remote.ModelHttp
+import com.promenar.infinity.data.remote.routeViaBuiltInProxy
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.ModelRequestTimeouts
 import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
@@ -262,6 +264,7 @@ class EmbeddingClient(
             }
             val (response, responseText) = try {
                 val response = httpClient.post(endpoint) {
+                    routeViaBuiltInProxy(route?.config?.useBuiltInProxy == true, route?.providerId)
                     expectSuccess = false
                     if (isQuery) applyModelTimeout(ModelTimeoutKind.EMBEDDING) else {
                         val idle = ModelRequestTimeouts.socketMillis(ModelTimeoutKind.EMBEDDING)
@@ -277,6 +280,8 @@ class EmbeddingClient(
                 response to response.bodyAsText()
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (unavailable: BuiltInProxyUnavailableException) {
+                throw unavailable
             } catch (failure: IOException) {
                 // Ktor 3 会把读取通道的底层超时包在关闭异常中。
                 val timeout = generateSequence<Throwable>(failure) { it.cause }.take(8).any {

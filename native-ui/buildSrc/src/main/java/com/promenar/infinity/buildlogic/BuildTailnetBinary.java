@@ -21,7 +21,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -70,27 +72,35 @@ public abstract class BuildTailnetBinary extends DefaultTask {
 
     public BuildTailnetBinary() {
         setGroup("build setup");
-        setDescription("用固定 Go 版本把内置 Tailscale 节点编译为 jniLibs 可执行文件 libnxtailnet.so。");
+        setDescription("用固定 Go 版本把" + componentName() + "编译为 jniLibs 可执行文件 " + executableName() + "。");
     }
+
+    protected String componentName() { return "内置 Tailscale"; }
+    protected String executableName() { return "libnxtailnet.so"; }
+    protected String skipHint() { return SKIP_HINT; }
+    protected List<String> buildTags() { return List.of(); }
 
     @TaskAction
     public void build() throws Exception {
         File module = getModuleDirectory().get().getAsFile();
-        if (!new File(module, "go.sum").isFile()) throw new GradleException("内置 Tailscale 缺少 go.sum：" + module);
+        if (!new File(module, "go.sum").isFile()) throw new GradleException(componentName() + "缺少 go.sum：" + module);
         Map<String, String> environment = environment();
         String version = run(module, environment, "env", "GOVERSION").trim();
         String expected = "go" + getGoVersion().get();
         if (!version.equals(expected)) {
-            throw new GradleException("内置 Tailscale 需要 " + expected + "，当前 go 报告 " + version + "；" + SKIP_HINT);
+            throw new GradleException(componentName() + "需要 " + expected + "，当前 go 报告 " + version + "；" + skipHint());
         }
         File output = getOutputDirectory().get().getAsFile();
         getFileSystemOperations().delete(spec -> spec.delete(output));
         File abiDir = new File(output, getAbi().get());
         Files.createDirectories(abiDir.toPath());
-        File binary = new File(abiDir, "libnxtailnet.so");
+        File binary = new File(abiDir, executableName());
         // -R 显式固定 64KB 段地址舍入（PT_LOAD 对齐），兼容 16KB 页设备，不依赖 Go 链接器默认值。
-        run(module, environment, "build", "-trimpath", "-buildvcs=false", "-ldflags=-s -w -buildid= -R 0x10000",
-                "-o", binary.getPath(), ".");
+        List<String> args = new ArrayList<>(List.of("build", "-trimpath", "-buildvcs=false",
+                "-ldflags=-s -w -buildid= -R 0x10000", "-o", binary.getPath()));
+        if (!buildTags().isEmpty()) args.add("-tags=" + String.join(",", buildTags()));
+        args.add(".");
+        run(module, environment, args.toArray(String[]::new));
         if (!binary.isFile() || binary.length() == 0) throw new GradleException("Go 构建未生成 " + binary);
     }
 
@@ -122,11 +132,11 @@ public abstract class BuildTailnetBinary extends DefaultTask {
                 spec.setIgnoreExitValue(true);
             });
         } catch (RuntimeException failure) {
-            throw new GradleException("无法运行「" + go + "」构建内置 Tailscale；" + SKIP_HINT, failure);
+            throw new GradleException("无法运行「" + go + "」构建" + componentName() + "；" + skipHint(), failure);
         }
         if (result.getExitValue() != 0) {
             throw new GradleException("go " + args[0] + " 失败（退出码 " + result.getExitValue() + "）：\n"
-                    + stderr.toString(StandardCharsets.UTF_8).trim() + "\n" + SKIP_HINT);
+                    + stderr.toString(StandardCharsets.UTF_8).trim() + "\n" + skipHint());
         }
         return stdout.toString(StandardCharsets.UTF_8);
     }

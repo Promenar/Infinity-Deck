@@ -86,3 +86,15 @@
 | `JOB_SESSION_LIMIT`、`JOB_GLOBAL_LIMIT` | 运行中的任务达到上限 | 等待或停止已有任务 |
 | `JOB_UNAVAILABLE` | 后台任务服务不可用 | 请用户重新打开应用 |
 | 审批被拒 | 用户不同意执行 | 不重试，推进不依赖它的工作 |
+
+## 单条公网命令的内置代理
+
+确认相应变量存在后，用命令前置赋值将代理限制在当前调用。以下命令使用 HTTP 代理。
+
+```sh
+test -n "${INFINITY_PROXY_HTTP:-}" &&
+  http_proxy="$INFINITY_PROXY_HTTP" https_proxy="$INFINITY_PROXY_HTTP" \
+  no_proxy="$INFINITY_PROXY_NO_PROXY" curl -fsS https://example.org/
+```
+
+需要 SOCKS5 远端解析时，把两个代理地址都改用 `$INFINITY_PROXY_SOCKS`，绕过列表继续使用 `$INFINITY_PROXY_NO_PROXY`。保持标准代理变量的原有会话配置。执行时关闭 `set -x`，避免用 `env`、`printenv`、`echo` 或详细调试日志输出凭据。
