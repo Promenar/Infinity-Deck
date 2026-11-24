@@ -9,6 +9,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.util.Locale
 
 internal class GitHostConfig(private val cache: File, private val tools: PackagedHostTools) {
@@ -53,10 +55,14 @@ internal class GitHostConfig(private val cache: File, private val tools: Package
             "maintenance.auto" to "false",
             "commit.gpgSign" to "false",
             "tag.gpgSign" to "false",
+            "tag.forceSignAnnotated" to "false",
             "merge.verifySignatures" to "false",
+            "gpg.openpgp.program" to "/system/bin/false",
+            "gpg.ssh.program" to "/system/bin/false",
+            "gpg.x509.program" to "/system/bin/false",
             "submodule.recurse" to "false",
             "diff.ignoreSubmodules" to "all",
-            "http.followRedirects" to "false",
+            "http.followRedirects" to "initial",
             "safe.directory" to "",
         )
         configuration += roots.map { it.canonicalPath }.distinct().map { "safe.directory" to it }
@@ -80,54 +86,97 @@ internal class GitHostConfig(private val cache: File, private val tools: Package
         return environment
     }
 
-    @Synchronized
-    private fun prepare(git: File): Triple<File, File, File> {
+    private fun prepare(git: File): Triple<File, File, File> = synchronized(managedDirectoryLock) {
         require(Files.isDirectory(cache.toPath(), NOFOLLOW_LINKS)) { "Git 缓存目录无效。" }
         val exec = managedDirectory("git-exec-path", mapOf(
             "git" to git, "git-remote-http" to tools.gitRemoteHttps, "git-remote-https" to tools.gitRemoteHttps,
             "git-upload-pack" to git, "git-receive-pack" to git, "git-upload-archive" to git,
         ))
-        return Triple(exec, managedDirectory("git-empty-template", emptyMap()), managedDirectory("git-empty-hooks", emptyMap()))
+        Triple(exec, managedDirectory("git-empty-template", emptyMap()), managedDirectory("git-empty-hooks", emptyMap()))
     }
 
     private fun managedDirectory(name: String, links: Map<String, File>): File {
         val directory = File(cache, name).absoluteFile
         val path = directory.toPath()
+        val expected = links.mapValues { (_, target) -> target.absoluteFile.toPath() }
         if (!Files.exists(path, NOFOLLOW_LINKS)) {
             Files.createDirectory(path)
-            links.forEach { (entry, target) -> Files.createSymbolicLink(path.resolve(entry), target.absoluteFile.toPath()) }
+            expected.forEach { (entry, target) -> Files.createSymbolicLink(path.resolve(entry), target) }
         }
         require(Files.isDirectory(path, NOFOLLOW_LINKS)) { "Git 受管目录不能是符号链接。" }
-        Files.newDirectoryStream(path).use { entries ->
-            val actual = entries.associateBy { it.fileName.toString() }
-            require(actual.keys == links.keys && actual.all { (entry, link) ->
-                Files.isSymbolicLink(link) && Files.readSymbolicLink(link) == links.getValue(entry).absoluteFile.toPath()
-            }) { "Git 受管目录内容不匹配。" }
+
+        fun readLinks(): Map<String, Path> = Files.newDirectoryStream(path).use { entries ->
+            val paths = entries.associateBy { it.fileName.toString() }
+            require(paths.keys == expected.keys && paths.values.all(Files::isSymbolicLink)) { "Git 受管目录内容不匹配。" }
+            paths.mapValues { (entry, link) ->
+                Files.readSymbolicLink(link).also { target ->
+                    require(target.fileName == expected.getValue(entry).fileName) { "Git 受管链接目标名称不匹配。" }
+                }
+            }
         }
-        require(directory.setWritable(false, false)) { "无法设定 Git 受管目录为只读。" }
+
+        val actual = readLinks()
+        val outdated = expected.filter { (entry, target) -> actual[entry] != target }
+        try {
+            if (outdated.isNotEmpty()) {
+                // 在同一缓存目录暂存新链接，原子替换时不会留下缺项。
+                val staging = Files.createTempDirectory(path.parent, ".$name-")
+                try {
+                    outdated.forEach { (entry, target) -> Files.createSymbolicLink(staging.resolve(entry), target) }
+                    require(directory.setWritable(true, true)) { "无法恢复 Git 受管目录的写权限。" }
+                    outdated.keys.forEach { entry ->
+                        Files.move(staging.resolve(entry), path.resolve(entry), ATOMIC_MOVE, REPLACE_EXISTING)
+                    }
+                    require(readLinks() == expected) { "Git 受管目录内容不匹配。" }
+                } finally {
+                    outdated.keys.forEach { Files.deleteIfExists(staging.resolve(it)) }
+                    Files.delete(staging)
+                }
+            }
+        } finally {
+            require(directory.setWritable(false, false)) { "无法设定 Git 受管目录为只读。" }
+        }
         return directory
     }
 
     companion object {
+        private val managedDirectoryLock = Any()
         private val blocked = setOf(
             "upload-pack", "receive-pack", "exec-path", "ext-diff", "textconv", "filters",
             "template", "separate-git-dir", "recurse-submodules", "recursive", "config-env",
             "output", "open-files-in-pager", "helper", "difftool", "no-index", "gpg-sign",
             "sign", "verify-signatures", "edit", "exec", "pathspec-from-file", "output-directory",
             "object-format", "reference", "reference-if-able", "shared", "server-option", "unsafe-paths",
-            "directory", "remote", "super-prefix", "prefix", "template-dir", "no-verify", "file", "exclude-from", "rebase",
+            "directory", "remote", "super-prefix", "prefix", "template-dir", "file", "exclude-from",
             "signed", "show-signature", "verify", "edit-description", "no-recurse-submodules", "push-option", "negotiation-tip",
             "contents", "add-file", "add-virtual-file", "exclude-standard", "exclude-per-directory", "follow-tags",
+            "interactive", "edit-todo", "local-user",
         )
+        private val exactLongOptionCommands = mapOf(
+            "filter" to setOf("cat-file", "clone", "fetch", "rev-list"),
+            "follow" to setOf("diff", "diff-files", "diff-index", "diff-tree", "log", "rev-list", "show"),
+            "exclude" to setOf("for-each-ref", "log", "ls-files", "rev-list", "rev-parse", "shortlog", "show"),
+            "verify" to setOf("rev-parse"),
+        )
+        private val writableConfig = setOf("user.name", "user.email", "init.defaultbranch")
+        private val readableRefConfig = Regex("(?:remote\\.[a-z0-9_-]+\\.(?:url|pushurl)|branch\\.[a-z0-9_-]+\\.(?:remote|merge))")
+        private val signingCommands = setOf("commit", "merge", "cherry-pick", "revert", "rebase", "tag")
+        private val messageFileCommands = setOf("commit", "merge", "tag")
+        private val pickaxeCommands = setOf("diff", "diff-files", "diff-index", "diff-tree", "log", "show")
+        private val pullShortOptionsWithValues = setOf('s', 'S', 'X', 'j', 'o')
+        private val strategyCommands = setOf("merge", "pull", "rebase")
+        internal val builtInStrategies = setOf("ort", "recursive", "resolve", "octopus", "ours", "subtree")
+        internal val booleanValues = setOf("true", "false", "yes", "no", "on", "off", "0", "1")
+        internal val nonInteractiveRebaseModes = booleanValues + setOf("merges", "m")
         private val safeCommandConfig = setOf(
             "user.name", "user.email", "author.name", "author.email", "committer.name", "committer.email",
             "color.ui", "core.quotepath", "init.defaultbranch", "commit.gpgsign", "tag.gpgsign",
         )
         private val allowedCommands = setOf(
-            "add", "apply", "archive", "blame", "branch", "cat-file", "checkout", "cherry-pick",
+            "add", "apply", "archive", "blame", "branch", "cat-file", "check-ignore", "checkout", "cherry-pick",
             "clean", "clone", "commit", "config", "describe", "diff", "diff-files", "diff-index", "diff-tree",
             "fetch", "for-each-ref", "grep", "init", "log", "ls-files", "ls-remote", "ls-tree",
-            "merge", "merge-base", "mv", "pull", "push", "reflog", "remote", "reset", "restore",
+            "merge", "merge-base", "mv", "pull", "push", "rebase", "reflog", "remote", "reset", "restore",
             "rev-list", "rev-parse", "revert", "rm", "shortlog", "show", "show-ref", "stash",
             "status", "switch", "tag", "worktree",
         )
@@ -136,16 +185,16 @@ internal class GitHostConfig(private val cache: File, private val tools: Package
             "--origin", "--message", "--depth", "--shallow-since", "--shallow-exclude", "--filter",
             "--max-count", "--format", "--grep", "--author", "--since", "--until", "--strategy", "--strategy-option",
             "--color-moved-ws", "--diff-filter", "--exclude", "--set-upstream-to", "--sort",
-            "--target", "--initial-branch", "--max-age", "--min-age", "--max-parents", "--min-parents",
+            "--target", "--initial-branch", "--max-age", "--min-age", "--max-parents", "--min-parents", "--onto",
         )
-        private val allowedLongOptions = optionsWithValues.map { it.removePrefix("--") }.toSet() + setOf(
+        private val allowedLongOptions = optionsWithValues.map { it.removePrefix("--") }.toSet() + exactLongOptionCommands.keys + setOf(
             "quiet", "verbose", "porcelain", "short", "branch", "show-stash", "untracked-files",
             "ahead-behind", "no-ahead-behind", "renames", "no-renames", "ignored", "null", "stat", "summary",
             "name-only", "name-status", "numstat", "shortstat", "patch", "no-patch", "raw", "cached", "staged",
             "exit-code", "check", "binary", "full-index", "no-color", "color", "color-moved", "word-diff",
             "ignore-all-space", "ignore-space-change", "ignore-space-at-eol", "diff-algorithm",
             "oneline", "pretty", "decorate", "no-decorate", "graph", "all", "reverse", "first-parent", "no-merges",
-            "merges", "topo-order", "date-order", "date", "ancestry-path", "follow", "abbrev-commit", "no-abbrev",
+            "merges", "topo-order", "date-order", "date", "ancestry-path", "abbrev-commit", "no-abbrev",
             "show-current", "list", "contains", "no-contains", "merged", "no-merged", "points-at", "no-track", "track",
             "bare", "mirror", "single-branch", "no-single-branch", "no-checkout", "no-tags", "tags", "progress", "no-progress",
             "prune", "prune-tags", "dry-run", "force", "force-with-lease", "force-if-includes", "set-upstream", "atomic",
@@ -157,17 +206,23 @@ internal class GitHostConfig(private val cache: File, private val tools: Package
             "show-prefix", "is-inside-work-tree", "is-bare-repository", "is-inside-git-dir", "verify", "quiet", "short",
             "heads", "branches", "refs", "symref", "exit-code", "match", "exact-match", "always", "dirty", "broken",
             "abbrev", "object-only", "format", "all-match", "reflog", "no-reflog", "full-history", "simplify-merges",
+            "rebase", "no-rebase", "autostash", "no-autostash", "quit", "keep-base", "force-rebase",
+            "reapply-cherry-picks", "no-reapply-cherry-picks", "update-refs", "no-update-refs", "abbrev-ref",
+            "symbolic-full-name", "is-shallow-repository", "git-dir", "git-common-dir", "absolute-git-dir",
+            "unshallow", "remotes", "no-verify", "no-stat", "create-reflog", "no-create-reflog",
         )
 
         fun optionConsumesValue(command: String, option: String): Boolean = option in optionsWithValues || when (option) {
             "--branch" -> command == "clone"
             "-e" -> command == "grep"
             "-b", "-B" -> command in setOf("clone", "checkout")
+            "-c", "-C" -> command == "switch"
             "-m" -> command in setOf("commit", "merge", "tag")
             "-o" -> command == "clone"
             "-n" -> command in setOf("log", "show", "rev-list", "shortlog", "tag")
-            "-X" -> command in setOf("merge", "pull", "cherry-pick", "revert")
-            "-s" -> command in setOf("merge", "pull")
+            "-S" -> command in pickaxeCommands || command == "blame"
+            "-X" -> command in strategyCommands || command in setOf("cherry-pick", "revert")
+            "-s" -> command in strategyCommands
             else -> false
         }
 
@@ -202,14 +257,15 @@ internal class GitHostConfig(private val cache: File, private val tools: Package
 
         private fun validateSubcommand(command: String, arguments: List<String>) {
             if (command == "config") {
-                val keys = setOf("user.name", "user.email")
                 val args = arguments.dropWhile { it == "--local" }
                 val allowed = when {
-                    args.firstOrNull() in setOf("--get", "--get-all") -> args.size == 2 && args[1].lowercase(Locale.ROOT) in keys
-                    args.size in 1..2 -> args.first().lowercase(Locale.ROOT) in keys && args.drop(1).none { it.startsWith('-') }
+                    args.firstOrNull() in setOf("--get", "--get-all") -> args.size == 2 &&
+                        args[1].lowercase(Locale.ROOT).let { it in writableConfig || readableRefConfig.matches(it) }
+                    args.size in 1..2 -> args.first().lowercase(Locale.ROOT) in writableConfig &&
+                        args.drop(1).none { it.startsWith('-') }
                     else -> false
                 }
-                requireHost(allowed, "GIT_OPTION_BLOCKED", "宿主 Git 仅开放仓库用户名和邮箱配置。")
+                requireHost(allowed, "GIT_OPTION_BLOCKED", "仓库配置键或操作不在宿主 Git 白名单内。")
                 return
             }
             // 只有未被前一选项消耗的 -- 才结束选项解析。
@@ -222,30 +278,54 @@ internal class GitHostConfig(private val cache: File, private val tools: Package
                     break
                 }
                 val key = argument.substringBefore('=')
+                val short = key.startsWith("-") && !key.startsWith("--")
                 if (key.startsWith("--")) {
                     val name = key.removePrefix("--")
-                    requireHost(name in allowedLongOptions && (blocked.none { it.startsWith(name) } ||
-                        name in setOf("refs", "stat", "summary", "short", "no-edit", "no-gpg-sign") || name == "verify" && command == "rev-parse"),
+                    // 同样的拼写在没有精确选项的子命令里可能成为危险选项的缩写。
+                    val exactCommands = exactLongOptionCommands[name]
+                    val safe = if (exactCommands == null) blocked.none { it.startsWith(name) } else command in exactCommands
+                    requireHost(name in allowedLongOptions && safe,
                         "GIT_OPTION_BLOCKED", "Git 选项可能读取非受管配置或启动外部程序。")
                 }
-                if (key.startsWith("-") && !key.startsWith("--")) {
-                    requireHost('F' !in key && 'S' !in key && 'I' !in key && 'O' !in key &&
-                        !(command == "grep" && 'f' in key) &&
-                        !(command == "archive" && 'o' in key) &&
-                        !(command in setOf("merge", "pull") && 's' in key && !key.startsWith("-s")) &&
-                        !(command in setOf("clone", "fetch", "pull", "push", "ls-remote", "archive") && 'u' in key) &&
-                        !(command in setOf("tag", "commit", "merge", "cherry-pick", "revert") && 'e' in key) &&
-                        !(command == "tag" && 's' in key) &&
-                        !(command == "clone" && 'c' in key),
+                if (short) {
+                    val firstOption = key.take(2)
+                    val flags = if (firstOption in setOf("-S", "-X") && optionConsumesValue(command, firstOption)) firstOption else key
+                    requireHost('I' !in flags && 'O' !in flags &&
+                        !(command in messageFileCommands && 'F' in flags) &&
+                        !(command in signingCommands && 'S' in flags) &&
+                        !(command == "blame" && 'S' in flags && !flags.startsWith("-S")) &&
+                        !(command == "rebase" && ('i' in flags || 'x' in flags)) &&
+                        !(command == "grep" && 'f' in flags) &&
+                        !(command == "archive" && 'o' in flags) &&
+                        !(command in strategyCommands && 's' in flags && !flags.startsWith("-s")) &&
+                        !(command in setOf("clone", "ls-remote") && 'u' in flags) &&
+                        !(command in setOf("tag", "commit", "merge", "cherry-pick", "revert") && 'e' in flags) &&
+                        !(command == "tag" && 's' in flags) &&
+                        !(command == "clone" && 'c' in flags),
                         "GIT_OPTION_BLOCKED", "Git 短选项可能启动外部程序。")
                 }
                 val value = if (argument == key && optionConsumesValue(command, key)) {
                     arguments.getOrNull(index++) ?: throw HostToolException("GIT_ARGUMENT", "Git 选项缺少值。")
                 } else argument.substringAfter('=', "")
-                if (key == "--strategy" || command in setOf("merge", "pull") && key.startsWith("-s")) {
+                if (command == "blame" && key != "-S" && argument == key && value.startsWith('-') && !value.startsWith("--")) {
+                    requireHost('S' !in value, "GIT_OPTION_BLOCKED", "Git blame 的祖先文件须由独立选项指定。")
+                }
+                if (key == "--strategy" || command in strategyCommands && key.startsWith("-s")) {
                     val strategy = if (key.startsWith("-s") && key.length > 2) key.drop(2) else value
-                    requireHost(strategy in setOf("ort", "recursive", "resolve", "octopus", "ours", "subtree"),
+                    requireHost(strategy in builtInStrategies,
                         "GIT_OPTION_BLOCKED", "宿主 Git 仅允许内置合并策略。")
+                }
+                if (command == "pull") {
+                    val rebaseMode = when {
+                        key == "--rebase" -> value
+                        short -> {
+                            val firstValueOption = argument.drop(1).firstOrNull { it == 'r' || it in pullShortOptionsWithValues }
+                            if (firstValueOption == 'r') argument.substringAfter('r') else ""
+                        }
+                        else -> ""
+                    }
+                    requireHost(rebaseMode.isEmpty() || rebaseMode.lowercase(Locale.ROOT) in nonInteractiveRebaseModes,
+                        "GIT_OPTION_BLOCKED", "宿主 Git 仅允许非交互式变基。")
                 }
             }
             requireHost(command != "worktree" || arguments.firstOrNull() == "list",

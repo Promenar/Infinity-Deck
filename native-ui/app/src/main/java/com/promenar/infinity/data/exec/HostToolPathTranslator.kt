@@ -74,7 +74,7 @@ internal class HostToolPathTranslator(
         val arguments = when (tool) {
             "git" -> git(cwd, argv)
             "rg" -> parse(argv, rg, translate, defaultArguments = listOf("-j", threads.toString()), maxThreads = threads)
-            "fd" -> parse(argv, fd, translate, defaultArguments = listOf("-j", threads.toString()), maxThreads = threads)
+            "fd" -> fd(cwd, argv, threads)
             "jq" -> listOf("-L", "/dev/null") + parse(argv, jq, translate)
             "sqlite3" -> listOf("--safe") + parse(argv, sqlite, translate)
             "zstd" -> parse(argv, zstd, translate, defaultArguments = listOf("-T$threads"), maxThreads = threads)
@@ -134,6 +134,8 @@ internal class HostToolPathTranslator(
                 command == "config" -> argument
                 gitOptionValue -> argument.also { gitOptionValue = false }
                 argument == "--" -> argument.also { pathspec = true }
+                !pathspec && command == "blame" && argument == "-S" -> argument.also { pendingPath = it }
+                !pathspec && command == "blame" && argument.startsWith("-S") -> "-S" + path(argument.drop(2), false)
                 !pathspec && argument.startsWith('-') -> argument.also { gitOptionValue = GitHostConfig.optionConsumesValue(command, argument) }
                 else -> {
                     position++
@@ -149,7 +151,7 @@ internal class HostToolPathTranslator(
                     val local = !isNetworkGitUrl(argument) && (remotePath || argument.startsWith('/') || argument.startsWith("./") ||
                         argument.startsWith("../") || argument == ".." || pathspec ||
                         command in setOf("init", "apply", "clone") ||
-                        command in setOf("add", "rm", "mv", "clean"))
+                        command in setOf("add", "check-ignore", "rm", "mv", "clean"))
                     if (!local) argument else {
                         val translated = resolveArgument(directory, argument)
                         // Git 的 pathspec 和相对修订语义依赖 cwd；校验后保留相对拼写。
@@ -162,6 +164,25 @@ internal class HostToolPathTranslator(
         }
     }
 
+    private fun fd(cwd: String, argv: List<String>, threads: Int): List<String> {
+        var base = cwd
+        var listsDetails = false
+        var stripsCwdPrefix = false
+        val translate: (String) -> String = { resolveArgument(base, it) }
+        val translated = parse(argv, fd, translate, defaultArguments = listOf("-j", threads.toString()), typedPath = { option, value ->
+            if (option == "--base-directory") {
+                base = if (value.startsWith('/')) value else "$cwd/$value"
+                workingDirectory(base).path
+            } else translate(value)
+        }, deferredPathOptions = setOf("--search-path", "--ignore-file"), onOption = { option ->
+            if (option == "-l" || option == "--list-details") listsDetails = true
+            if (option == "--strip-cwd-prefix") stripsCwdPrefix = true
+        }, maxThreads = threads)
+        // 详细列表调用固定的系统 ls，保留路径前缀以免文件名被识别为选项。
+        requireHost(!listsDetails || !stripsCwdPrefix, "TOOL_OPTION_BLOCKED", "fd 详细列表需保留路径前缀。")
+        return translated
+    }
+
     /** 每个工具显式声明选项的值与位置参数的语义。未知选项按失败处理。 */
     private fun parse(
         argv: List<String>,
@@ -169,6 +190,7 @@ internal class HostToolPathTranslator(
         translate: (String) -> String,
         defaultArguments: List<String> = emptyList(),
         typedPath: (String, String) -> String = { _, value -> translate(value) },
+        deferredPathOptions: Set<String> = emptySet(),
         onOption: (String) -> Unit = {},
         maxThreads: Int = 1,
     ): List<String> {
@@ -176,9 +198,16 @@ internal class HostToolPathTranslator(
         var index = 0
         var position = 0
         val patternPositions = mutableListOf<Int>()
+        val deferredPaths = mutableListOf<Pair<Int, String>>()
         var explicitPattern = false
         var explicitThreads = false
         var positional = false
+        fun convert(option: String, value: String, type: Value): String = type.convert(value, maxThreads) { path ->
+            if (option in deferredPathOptions) {
+                deferredPaths += result.size to option
+                path
+            } else typedPath(option, path)
+        }
         while (index < argv.size) {
             val arg = argv[index++]
             if (!positional && arg == "--") {
@@ -201,7 +230,7 @@ internal class HostToolPathTranslator(
                             requireHost(spec.values.size == 1, "TOOL_ARGUMENT", "宿主工具选项不能合并书写。")
                             val value = arg.substring(offset).takeIf(String::isNotEmpty)
                                 ?: argv.getOrNull(index++) ?: missingValue()
-                            val converted = spec.values.single().convert(value, maxThreads) { typedPath(short, it) }
+                            val converted = convert(short, value, spec.values.single())
                             if (short == "-T" && grammar == zstd) result[result.lastIndex] = "$short$converted"
                             else result += converted
                             break
@@ -217,7 +246,7 @@ internal class HostToolPathTranslator(
                     requireHost(inline == null || spec.values.size == 1, "TOOL_ARGUMENT", "宿主工具选项的值不合法。")
                     spec.values.forEachIndexed { offset, type ->
                         val value = (if (offset == 0) inline else null) ?: argv.getOrNull(index++) ?: missingValue()
-                        val converted = type.convert(value, maxThreads) { typedPath(key, it) }
+                        val converted = convert(key, value, type)
                         if (key == "-T" && grammar == zstd) result[result.lastIndex] = "$key$converted"
                         else result += converted
                     }
@@ -226,11 +255,12 @@ internal class HostToolPathTranslator(
                 result += when (grammar.position) {
                     Position.PATHS -> translate(arg)
                     Position.FIRST_PATTERN -> arg.also { patternPositions += result.size }
-                    Position.FIRST_PATH -> if (position == 0) translate(arg) else arg
+                    Position.SQLITE_DATABASE -> if (position == 0 && arg != ":memory:") translate(arg) else arg
                 }
                 position++
             }
         }
+        for ((resultIndex, option) in deferredPaths) result[resultIndex] = typedPath(option, result[resultIndex])
         for ((positionIndex, resultIndex) in patternPositions.withIndex()) {
             val value = result[resultIndex]
             if (explicitPattern || positionIndex != 0) result[resultIndex] = translate(value)
@@ -266,6 +296,8 @@ internal class HostToolPathTranslator(
         val expanded = expandTar(argv)
         var selecting = false
         var directory = cwd
+        var autoCompress = false
+        var archive: String? = null
         fun entry(value: String): String {
             requireHost(!value.startsWith('@'), "TOOL_OPTION_BLOCKED", "宿主 bsdtar 不从其他归档添加成员。")
             if (selecting) {
@@ -277,20 +309,27 @@ internal class HostToolPathTranslator(
             val ordinary = workingDirectory(directory).toPath().resolve(value).normalize()
             return if (value.startsWith('/') || Path.of(translated).normalize() != ordinary) translated else value
         }
-        return parse(expanded, tar, ::entry, typedPath = { option, value ->
+        val translated = parse(expanded, tar, ::entry, typedPath = { option, value ->
             if (option in setOf("-C", "--directory")) {
                 directory = if (value.startsWith('/')) value else "$directory/$value"
                 workingDirectory(directory).path
-            } else initialPath(value)
-        }, onOption = { if (it in setOf("-t", "-x", "--list", "--extract")) selecting = true })
+            } else initialPath(value).also { archive = it }
+        }, onOption = { option ->
+            if (option in setOf("-t", "-x", "--list", "--extract")) selecting = true
+            if (option == "-a" || option == "--auto-compress") autoCompress = true
+        })
+        val archivePath = archive
+        requireHost(!autoCompress || archivePath == null || archivePath == "-" || autoArchiveSuffixes.any(archivePath::endsWith),
+            "TOOL_OPTION_BLOCKED", "bsdtar 自动压缩仅支持宿主已打包的格式。")
+        return translated
     }
 
     private fun expandTar(argv: List<String>): List<String> {
         val flags = argv.firstOrNull() ?: return argv
-        return if (flags.matches(Regex("[ctxrvzjJfC]+"))) listOf("-$flags") + argv.drop(1) else argv
+        return if (flags.matches(Regex("[actxrvzjJfC]+"))) listOf("-$flags") + argv.drop(1) else argv
     }
 
-    private enum class Position { PATHS, FIRST_PATTERN, FIRST_PATH }
+    private enum class Position { PATHS, FIRST_PATTERN, SQLITE_DATABASE }
     private enum class Value {
         TEXT, PATH, NUMBER, FILTER, JQ_FILE;
         fun convert(value: String, maxThreads: Int, translate: (String) -> String): String = when (this) {
@@ -348,7 +387,9 @@ internal class HostToolPathTranslator(
 
         private val rg = Grammar(Position.FIRST_PATTERN) {
             options("-i -s -S -v -w -x -F -n -N -l -c -H -h -o -q -a -U -u --hidden --no-ignore --no-ignore-vcs --files --files-with-matches --files-without-match --json --version --help --line-number --no-heading --heading --no-config --fixed-strings --ignore-case --smart-case --invert-match --count --no-filename --with-filename --only-matching --null")
+            options("--column --vimgrep --stats --multiline --multiline-dotall --type-list --trim --passthru --no-line-number --no-messages --quiet --text --case-sensitive --word-regexp --line-regexp --no-ignore-dot --no-ignore-global --no-ignore-parent")
             options("-A -B -C -m -M -g -t -T --glob --iglob --color --max-depth --max-count --type --type-not --encoding --context --sort --sortr", Value.TEXT)
+            options("--after-context --before-context --max-filesize --context-separator --field-context-separator --field-match-separator", Value.TEXT)
             options("-e --regexp", Value.TEXT, pattern = true)
             options("-f --file", Value.PATH, pattern = true)
             options("--ignore-file", Value.PATH)
@@ -357,8 +398,10 @@ internal class HostToolPathTranslator(
         }
         private val fd = Grammar(Position.FIRST_PATTERN) {
             options("-H -I -u -s -i -g -F -a -p -0 -h -V --hidden --no-ignore --no-ignore-vcs --glob --regex --fixed-strings --absolute-path --full-path --print0 --help --version --strip-cwd-prefix")
+            options("-l --list-details --case-sensitive --ignore-case --unrestricted --prune --show-errors --one-file-system")
             options("-d -t -e -E -S --max-depth --min-depth --exact-depth --type --extension --exclude --size --color --max-results", Value.TEXT)
-            options("--ignore-file", Value.PATH)
+            options("--changed-within --changed-before --and", Value.TEXT)
+            options("--ignore-file --base-directory --search-path", Value.PATH)
             options("-j --threads", Value.NUMBER, threads = true)
         }
         private val jq = Grammar(Position.FIRST_PATTERN) {
@@ -368,7 +411,7 @@ internal class HostToolPathTranslator(
             options("--arg --argjson", Value.TEXT, Value.TEXT)
             options("--slurpfile --rawfile --argfile", Value.TEXT, Value.PATH)
         }
-        private val sqlite = Grammar(Position.FIRST_PATH, singleDashLong = true) {
+        private val sqlite = Grammar(Position.SQLITE_DATABASE, singleDashLong = true) {
             options("-batch --batch -bail --bail -noheader -header -csv -column -json -line -list -readonly -safe --safe -version --version -help --help")
             options("-separator -nullvalue -newline -cmd", Value.TEXT)
             options("-init", Value.PATH)
@@ -380,10 +423,12 @@ internal class HostToolPathTranslator(
             put("--single-thread", Option(emptyList(), threads = true))
         }
         private val tar = Grammar {
-            options("-c -t -x -r -u -v -z -j -J -k -O --create --list --extract --append --verbose --gzip --bzip2 --xz --zstd --keep-old-files --to-stdout --no-same-owner --no-same-permissions --numeric-owner --version --help")
+            options("-c -t -x -r -u -v -z -j -J -k -O -a --create --list --extract --append --verbose --gzip --bzip2 --xz --zstd --auto-compress --keep-old-files --to-stdout --no-same-owner --no-same-permissions --numeric-owner --version --help")
             options("-f --file -C --directory", Value.PATH)
             options("--exclude --strip-components --format", Value.TEXT)
         }
+        private val autoArchiveSuffixes = setOf(".tar", ".tgz", ".tar.gz", ".tbz", ".tbz2", ".tar.bz2", ".txz", ".tar.xz",
+            ".tzst", ".tar.zst", ".zip", ".7z")
         private val rsync = Grammar {
             options("-a -r -v -q -h -n -c -t -p -o -g -l -z -u -i -P -W --archive --recursive --verbose --quiet --dry-run --checksum --times --perms --owner --group --links --compress --update --itemize-changes --progress --partial --whole-file --delete --delete-excluded --ignore-existing --existing --safe-links --stats --version --help")
             options("--exclude --include --out-format --max-size --min-size --bwlimit", Value.TEXT)
