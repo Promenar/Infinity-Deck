@@ -230,6 +230,11 @@ class ThemePreferenceStoreTest {
         verify { editor.putString("motion_generation_indicator", "ports") }
         verify { editor.putString("motion_empty_chat", "mobius_led") }
         verify { editor.putString("theme_scheme_style", "vibrant") }
+
+        store.setSchemeStyle(InfinitySchemeStyle.BRIGHT)
+        assertThat(store.state.value.schemeStyle).isEqualTo(InfinitySchemeStyle.BRIGHT)
+        verify { editor.putString("theme_scheme_style", "bright") }
+        assertThat(InfinitySchemeStyle.fromPreferenceValue("bright")).isEqualTo(InfinitySchemeStyle.BRIGHT)
     }
 
     @Test

@@ -1,8 +1,11 @@
 package com.promenar.infinity.ui.theme
 
+import android.annotation.SuppressLint
 import androidx.compose.ui.graphics.Color
-import com.google.common.truth.Truth.assertThat
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import com.google.android.material.color.utilities.Hct
+import com.google.common.truth.Truth.assertThat
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -55,5 +58,43 @@ class SeededColorSchemeStyleTest {
         assertThat(abs(dark.blue - target.blue) * 255).isAtMost(24f)
         assertThat(contrast(light.primary, light.onPrimary)).isAtLeast(4.5f)
         assertThat(contrast(light.primary, Color.White)).isAtLeast(4.5f)
+    }
+
+    private fun hueDelta(a: Double, b: Double): Double {
+        val diff = abs(a - b) % 360.0
+        return if (diff > 180.0) 360.0 - diff else diff
+    }
+
+    @SuppressLint("RestrictedApi")
+    @Test
+    fun `明亮风格在全部预设色上锁定原色相、深色更饱和且具备可读对比度`() {
+        InfinityPresetColors.forEach { seed ->
+            val seedHue = Hct.fromInt(seed.toArgb()).hue
+            val darkBright = seededColorScheme(seed, dark = true, style = InfinitySchemeStyle.BRIGHT)
+            val darkSoft = seededColorScheme(seed, dark = true, style = InfinitySchemeStyle.TONAL_SPOT)
+            val lightBright = seededColorScheme(seed, dark = false, style = InfinitySchemeStyle.BRIGHT)
+
+            val darkHue = Hct.fromInt(darkBright.primary.toArgb()).hue
+            val lightHue = Hct.fromInt(lightBright.primary.toArgb()).hue
+            assertThat(hueDelta(darkHue, seedHue)).isAtMost(12.0)
+            assertThat(hueDelta(lightHue, seedHue)).isAtMost(12.0)
+
+            assertThat(saturation(darkBright.primary)).isGreaterThan(saturation(darkSoft.primary))
+            assertThat(contrast(darkBright.primary, Color.Black)).isAtLeast(4.5f)
+            assertThat(contrast(darkBright.primary, darkBright.onPrimary)).isAtLeast(2.7f)
+            assertThat(contrast(lightBright.primary, lightBright.onPrimary)).isAtLeast(4.5f)
+            assertThat(contrast(lightBright.primary, Color.White)).isAtLeast(4.5f)
+        }
+    }
+
+    @SuppressLint("RestrictedApi")
+    @Test
+    fun `明亮风格遇到近中性灰种子时不凭空注入高彩度`() {
+        val neutral = Color(0xFF7A7A7A)
+        val darkBright = seededColorScheme(neutral, dark = true, style = InfinitySchemeStyle.BRIGHT)
+        val lightBright = seededColorScheme(neutral, dark = false, style = InfinitySchemeStyle.BRIGHT)
+
+        assertThat(Hct.fromInt(darkBright.primary.toArgb()).chroma).isLessThan(12.0)
+        assertThat(Hct.fromInt(lightBright.primary.toArgb()).chroma).isLessThan(12.0)
     }
 }

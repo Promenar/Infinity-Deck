@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.73.7-beta] - 2026-11-24
+
+- **新增外观「明亮（`BRIGHT`）」配色风格并统一「对话」与「资料」页头右上角圆形主色 `+` 按钮（[InfinityMotionStyles.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/InfinityMotionStyles.kt)、[SeededColorScheme.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/SeededColorScheme.kt)、[ThemeScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ThemeScreen.kt)、[InfinityTabHeader.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityTabHeader.kt)、[AgentHubScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/hub/AgentHubScreen.kt)、[LibraryAddMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryAddMenu.kt)、[SeededColorSchemeStyleTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/theme/SeededColorSchemeStyleTest.kt)、[ThemePreferenceStoreTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/theme/ThemePreferenceStoreTest.kt)、[LibraryAddMenuTest.kt](native-ui/app/src/androidTest/java/com/promenar/infinity/ui/library/LibraryAddMenuTest.kt)）**：
+  - **新增第 5 档「明亮」配色风格**：在 `InfinitySchemeStyle` 新增 `BRIGHT` 并在外观设置「配色风格」选择器提供中英双语入口（`明亮` / `Bright`）；`SeededColorScheme` 严格锁定所选种子原色相（零偏色，且对近中性灰种子保持低彩度避免误偏色），在深色模式下将 `primary` 推进至高彩度明亮中亮区（Tone 58 / 黄绿系 64），在浅色模式下保持清透高饱和亮色（Tone 48 / 44），并自适应匹配高对比度前景色。
+  - **统一「对话」与「资料」页头 `+` 主操作**：在 `InfinityTabHeader` 抽取共享原语 `InfinityTabHeaderCircleAction`（`48dp` 触控区、`34dp` 实心 `primary / onPrimary` 圆形按钮与 `pressFeedback` 圆形涟漪），替换对话页原先的半透 `primaryContainer` 圆形按钮与资料页的 `InfinityPillButton` 胶囊，使两个主标签页右上角 `+` 按钮在颜色、形状、尺寸与无障碍语义上完全一致。
+  - **回归与基线同步**：补齐 `BRIGHT` 全 11 预设色色相保真、饱和度、对比度与中性灰守卫单测、偏好持久化单测及 `LibraryAddMenuTest` 无障碍定位更新；保留已确认原型 `BrightThemeAndProxyPrototype.kt`，同步受影响的对话/资料页头 10 张截图及前序 `v0.73.3-beta` 遗留的 5 张附件菜单黑曜石截图参考基线与 6 条 Linux 覆盖清单。
+
 ## [0.73.6-beta] - 2026-11-24
 
 - **修复资料页 `LibraryNoticeEffect` 在消费提示后首帧取消底部提示条的缺陷（[LibraryScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryScreen.kt)、[LibraryLocationManagementTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/library/LibraryLocationManagementTest.kt)）**：

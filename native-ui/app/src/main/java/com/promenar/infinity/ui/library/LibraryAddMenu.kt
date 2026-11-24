@@ -26,8 +26,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityMenuItem
-import com.promenar.infinity.ui.common.InfinityPillButton
-import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.InfinityTabHeaderCircleAction
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 
@@ -35,11 +34,10 @@ import com.promenar.infinity.ui.theme.forInput
 internal fun LibraryAddMenu(onRecord: () -> Unit, onImport: () -> Unit, onNote: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
-        InfinityPillButton(
-            text = stringResource(R.string.library_add_action),
-            onClick = { expanded = true },
+        InfinityTabHeaderCircleAction(
             icon = Icons.Rounded.Add,
-            tone = InfinityPillTone.PRIMARY,
+            contentDescription = stringResource(R.string.library_add_action),
+            onClick = { expanded = true },
         )
         InfinityDropdownMenu(
             expanded = expanded,

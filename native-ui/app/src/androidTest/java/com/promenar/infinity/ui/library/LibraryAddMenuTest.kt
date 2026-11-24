@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.library
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso.pressBack
@@ -33,7 +34,7 @@ class LibraryAddMenuTest {
         }
         fun node(label: Int) = rule.onNodeWithText(rule.activity.getString(label))
 
-        rule.onNodeWithText(add).performClick()
+        rule.onNodeWithContentDescription(add).performClick()
         node(record).assertIsDisplayed()
         node(importFiles).assertIsDisplayed()
         node(note).assertIsDisplayed()
@@ -42,7 +43,7 @@ class LibraryAddMenuTest {
         rule.runOnIdle { assertEquals(emptyList<Int>(), actions) }
 
         listOf(record, importFiles, note).forEach { action ->
-            rule.onNodeWithText(add).performClick()
+            rule.onNodeWithContentDescription(add).performClick()
             node(action).performClick()
             node(action).assertDoesNotExist()
         }

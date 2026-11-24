@@ -1697,6 +1697,8 @@
     <string name="theme_scheme_fidelity_desc">Stays closest to the color you pick.</string>
     <string name="theme_scheme_expressive">Expressive</string>
     <string name="theme_scheme_expressive_desc">Shifts the secondary hues for stronger contrast.</string>
+    <string name="theme_scheme_bright">Bright</string>
+    <string name="theme_scheme_bright_desc">Locks your chosen hue in vivid, luminous tones.</string>
     <string name="theme_custom_color">Custom color</string>
     <string name="theme_custom_color_title">Custom accent color</string>
     <string name="theme_custom_color_hex">Hex</string>

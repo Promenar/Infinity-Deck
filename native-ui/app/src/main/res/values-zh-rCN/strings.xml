@@ -1689,6 +1689,8 @@
     <string name="theme_scheme_fidelity_desc">尽量贴近你选的颜色。</string>
     <string name="theme_scheme_expressive">表现力</string>
     <string name="theme_scheme_expressive_desc">辅色偏移色相，对比更强。</string>
+    <string name="theme_scheme_bright">明亮</string>
+    <string name="theme_scheme_bright_desc">锁定原色相，呈现高饱和活力亮色。</string>
     <string name="theme_custom_color">自定义颜色</string>
     <string name="theme_custom_color_title">自定义强调色</string>
     <string name="theme_custom_color_hex">十六进制</string>

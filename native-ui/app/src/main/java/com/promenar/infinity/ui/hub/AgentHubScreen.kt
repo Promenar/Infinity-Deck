@@ -890,34 +890,12 @@ private fun HubNewChatAction(
     var expanded by remember { mutableStateOf(false) }
     val actionLabel = stringResource(R.string.hub_new_chat)
     Box {
-        Box(
-            modifier = Modifier
-                .sizeIn(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
-                .testTag(UiTags.HUB_NEW_CHAT)
-                .semantics { contentDescription = actionLabel }
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    role = Role.Button,
-                    onClickLabel = actionLabel,
-                ) { if (agents.isEmpty()) onRequestAdd() else expanded = true },
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
+        InfinityTabHeaderCircleAction(
+            icon = Icons.Rounded.Add,
+            contentDescription = actionLabel,
+            onClick = { if (agents.isEmpty()) onRequestAdd() else expanded = true },
+            modifier = Modifier.testTag(UiTags.HUB_NEW_CHAT),
+        )
         HubNewChatMenu(
             expanded = expanded,
             onDismiss = { expanded = false },

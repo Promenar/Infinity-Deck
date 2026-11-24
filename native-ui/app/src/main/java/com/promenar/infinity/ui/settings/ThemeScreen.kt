@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -444,6 +445,7 @@ private fun SchemeStyleSelector(selected: InfinitySchemeStyle, enabled: Boolean,
         Triple(InfinitySchemeStyle.VIBRANT, R.string.theme_scheme_vibrant, R.string.theme_scheme_vibrant_desc),
         Triple(InfinitySchemeStyle.FIDELITY, R.string.theme_scheme_fidelity, R.string.theme_scheme_fidelity_desc),
         Triple(InfinitySchemeStyle.EXPRESSIVE, R.string.theme_scheme_expressive, R.string.theme_scheme_expressive_desc),
+        Triple(InfinitySchemeStyle.BRIGHT, R.string.theme_scheme_bright, R.string.theme_scheme_bright_desc),
     )
     InfinityValueRow(
         title = stringResource(R.string.theme_scheme_style),
@@ -462,6 +464,7 @@ private fun SchemeStyleSelector(selected: InfinitySchemeStyle, enabled: Boolean,
                 InfinitySchemeStyle.VIBRANT -> Icons.Rounded.ColorLens
                 InfinitySchemeStyle.FIDELITY -> Icons.Rounded.Brush
                 InfinitySchemeStyle.EXPRESSIVE -> Icons.Rounded.AutoAwesome
+                InfinitySchemeStyle.BRIGHT -> Icons.Rounded.WbSunny
             }
             InfinityOptionItem(
                 title = stringResource(titleRes),

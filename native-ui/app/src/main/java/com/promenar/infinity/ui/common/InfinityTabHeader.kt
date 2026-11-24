@@ -3,6 +3,9 @@ package com.promenar.infinity.ui.common
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -12,9 +15,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
@@ -29,9 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +134,48 @@ fun InfinityTabHeader(
                     Text(stringResource(R.string.common_btn_cancel))
                 }
             }
+        }
+    }
+}
+
+/**
+ * 主标签页页头右侧统一的圆形主色图标操作（如对话页「新建会话」、资料页「添加」）。
+ * 外层保证 48dp 最小触控区，内层绘制 34dp 实心主色圆与 20dp `onPrimary` 图标，按压涟漪裁切在圆形内。
+ */
+@Composable
+fun InfinityTabHeaderCircleAction(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .sizeIn(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
+            .semantics { this.contentDescription = contentDescription }
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClickLabel = contentDescription,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .pressFeedback(interaction, CircleShape)
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }
