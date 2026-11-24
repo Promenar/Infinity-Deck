@@ -3936,7 +3936,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
 
-    /** 凭据注入代理向远端转发所用的 OkHttp 客户端：tailnet 上的 git 主机经内置 Tailscale 本机代理，其它主机按系统默认选择器。 */
+    /** 媒体、网页抓取等复用的客户端，按既有 Tailscale 和系统代理规则分流。 */
     val gitRemoteHttpClient: okhttp3.OkHttpClient by lazy {
         okhttp3.OkHttpClient.Builder()
             .proxySelector(tailnetManager.proxySelector)
@@ -3945,10 +3945,14 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             .build()
     }
 
+    private val gitHttpsOutboundClient: okhttp3.OkHttpClient by lazy {
+        com.promenar.infinity.data.git.remote.GitRemoteHttpClient.create(tailnetManager, builtInProxyManager)
+    }
+
     val gitHubDeviceLogin: com.promenar.infinity.data.git.remote.GitHubDeviceLogin by lazy {
         com.promenar.infinity.data.git.remote.OAuthDeviceLogin(
             BuildConfig.GITHUB_OAUTH_CLIENT_ID,
-            gitRemoteHttpClient,
+            gitHttpsOutboundClient,
             com.promenar.infinity.data.git.remote.LazyGitCredentialStore { gitCredentialStore },
         )
     }
@@ -3963,10 +3967,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.git.remote.GitRemoteBroker(
             credentials = credentials,
             nonces = nonces,
-            proxy = com.promenar.infinity.data.git.remote.GitCredentialProxy(credentials, nonces, gitRemoteHttpClient),
+            proxy = com.promenar.infinity.data.git.remote.GitCredentialProxy(credentials, nonces, gitHttpsOutboundClient),
             githubApi = com.promenar.infinity.data.git.remote.GitHubApiProxy(
                 com.promenar.infinity.data.linux.LinuxGhConfig.directory(cacheDir),
-                com.promenar.infinity.data.git.remote.GitHubApiForwarder(credentials, nonces, gitRemoteHttpClient),
+                com.promenar.infinity.data.git.remote.GitHubApiForwarder(credentials, nonces, gitHttpsOutboundClient),
             ),
             sshBridge = com.promenar.infinity.data.git.remote.GitSshBridge(
                 nonces = nonces,
