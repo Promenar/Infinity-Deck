@@ -154,7 +154,7 @@ object PetToolCategories {
         "write_file", "patch_file", "create_file", "create_directory", "move_file", "delete_file", "canvas_create", "canvas_update" -> "write"
         "search_files", "web_search", "knowledge_search", "memory_search" -> "search"
         "web_fetch", "browser_open", "browser_snapshot", "browser_click", "browser_type" -> "web"
-        "shell_exec", "python_exec", "python_sandbox", "exec_js", "run_script", "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send", "ssh_session_read", "ssh_session_close" -> "shell"
+        "shell_exec", "git_exec", "python_exec", "python_sandbox", "exec_js", "run_script", "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send", "ssh_session_read", "ssh_session_close" -> "shell"
         "generate_image", "view_media", "media_fetch" -> "image"
         "schedule_create", "schedule_list", "schedule_pause", "schedule_resume", "schedule_cancel" -> "schedule"
         "agent_task", "agent_wait" -> "subagent"

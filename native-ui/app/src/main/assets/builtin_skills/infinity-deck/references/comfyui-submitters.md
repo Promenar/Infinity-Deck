@@ -5,7 +5,7 @@
 ## 双执行环境与安全边界
 
 - **自动环境路由**：
-  - 当前会话激活 **Linux 运行模式** 且内置 Linux 环境就绪时，干跑校验与正式执行均自动在 **Linux 虚拟环境**（`python3`）中运行，直接消费 Linux 内通过 `apk add` 安装的 `ffmpeg`、`ffprobe` 与第三方 Python 包（Alpine 为 musl ABI，不混用 Android 打包二进制）。
+  - 当前会话激活 **Linux 运行模式** 且内置 Linux 环境就绪时，干跑校验与正式执行均自动在 **Linux 虚拟环境**（`python3`）中运行，提交器的运行时能力以 `comfy_list_hosts.available_tools` 为准。Linux 提交器使用 Alpine 的 Python 与第三方包；在 Linux `shell_exec` 调试时可用宿主工具桥提供的 `ffmpeg` / `ffprobe`。
   - 其它情况（内置模式、Linux 未就绪、制作面板等无会话触发）均在应用打包的独立 **内置 Python 3.14** 中运行；`arm64-v8a` 已内置精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，不含 `lavfi` 虚拟输入），并通过 `runDir/bin` 符号链接前置进 `PATH`，脚本与子进程可直接调用。
   - 干跑自检与正式运行始终使用同一执行环境，并在 `comfy_list_hosts`、`comfy_save_submitter`、`comfy_preflight_workflow`、`comfy_run_workflow` 中返回 `execution_runtime`（`LINUX` 或 `BUILTIN_PYTHON`）与工具探测状态 `available_tools`。
   - 提交器使用单次运行目录和独立的工具配置。声明外部工具依赖时，以该提交器的 `available_tools` 和干跑结果为准。

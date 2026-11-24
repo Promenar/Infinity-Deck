@@ -194,4 +194,12 @@ class BuiltinExecEnvironmentTest {
         assertThat(env["ALL_PROXY"]).startsWith("socks5h://")
         assertThat(env["INFINITY_BACKEND"]).isEqualTo("builtin")
     }
+    @Test fun `仅原生 Git 与当前租约均就绪时让 PATH shim 接管 shell Git`() {
+        val builtin = environment(null)
+        assertThat(builtin.shellPrelude()).doesNotContain("INFINITY_TOOL_BRIDGE_NONCE")
+        listOf("git", "git-remote-https", "gitssh").forEach { File(pythonDir, "libnx$it.so").createNewFile() }
+        val prelude = builtin.shellPrelude()
+        assertThat(prelude).contains("INFINITY_TOOL_BRIDGE_NONCE")
+        assertThat(prelude).contains("-m infinity_git")
+    }
 }

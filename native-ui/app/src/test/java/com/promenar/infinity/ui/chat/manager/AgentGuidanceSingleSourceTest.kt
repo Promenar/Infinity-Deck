@@ -19,7 +19,7 @@ class AgentGuidanceSingleSourceTest {
     private fun occurrences(text: String, fragment: String) = text.windowed(fragment.length).count { it == fragment }
 
     @Test fun `Linux 会话的环境说明只随 shell_exec 工具说明出现一次`() {
-        val marker = "使用 apk add 安装软件包"
+        val marker = "Sideload arm64 将 APK 提供的"
         val shell = SessionRunModeToolDefinitions.forSession(builtin("shell_exec"), SessionRunMode.LINUX).function.description
         val python = SessionRunModeToolDefinitions.forSession(builtin("python_exec"), SessionRunMode.LINUX).function.description
         val prompt = SystemPromptSections.toolGuidance(setOf("shell_exec", "python_exec", "read_file"), false, runMode = SessionRunMode.LINUX)
@@ -54,5 +54,12 @@ class AgentGuidanceSingleSourceTest {
                 assertThat(value.replace(Regex("%\\d\\\$d"), "")).doesNotContainMatch("\\d")
             }
         }
+    }
+    @Test fun `Linux 工具定义介绍结构化 Git 与受支持的路径`() {
+        val git = SessionRunModeToolDefinitions.forSession(builtin("git_exec"), SessionRunMode.LINUX).function.description
+        assertThat(git).contains("HTTPS")
+        assertThat(git).contains("SSH")
+        assertThat(git).contains("/home/session")
+        assertThat(SystemPromptSections.LINUX_SHELL_GUIDANCE).contains("/usr/bin/rg")
     }
 }

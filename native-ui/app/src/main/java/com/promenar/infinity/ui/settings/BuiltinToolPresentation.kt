@@ -55,7 +55,7 @@ internal fun builtinToolCategory(id: String): BuiltinToolCategory = when (id) {
     "web_search", "web_fetch", "browser_open", "browser_snapshot", "browser_click", "browser_type" -> BuiltinToolCategory.WEB
     "file_read", "file_list", "file_search", "file_diff", "file_write", "file_patch",
     "create_file", "create_directory", "move_file", "delete_file", "copy_knowledge_to_linux" -> BuiltinToolCategory.FILES
-    "exec_js", "run_script", "shell_exec", "python_exec", "python_sandbox" -> BuiltinToolCategory.EXECUTION
+    "exec_js", "run_script", "shell_exec", "git_exec", "python_exec", "python_sandbox" -> BuiltinToolCategory.EXECUTION
     "image_generation", "view_media", "media_fetch",
     "comfy_probe", "comfy_templates", "comfy_define_template",
     "comfy_list_hosts", "comfy_list_submitters", "comfy_list_workflows",
@@ -107,7 +107,7 @@ internal fun builtinToolIcon(id: String): ImageVector = when (id) {
     "delete_file" -> Icons.Rounded.DeleteOutline
     "exec_js" -> Icons.Rounded.Javascript
     "run_script" -> Icons.Rounded.PlayCircleOutline
-    "shell_exec" -> Icons.Rounded.Terminal
+    "shell_exec", "git_exec" -> Icons.Rounded.Terminal
     "python_exec" -> Icons.Rounded.Code
     "python_sandbox" -> Icons.Rounded.Science
     "agent_task" -> Icons.Rounded.AccountTree

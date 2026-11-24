@@ -12,7 +12,8 @@ description: 管理或创建技能、编辑技能文件、管理智能体规则�
 | 项目 | 内置模式 | Linux 模式 |
 |---|---|---|
 | `shell_exec` | `/system/bin/sh`（不可装系统包；临时用 `$TMPDIR`，输出保留真实路径） | proot + Alpine（`apk` 装包）；不可用时不自动回退 |
-| `python_exec` | 打包 Python 3.14（可装纯 Python pip）；arm64 精简 FFmpeg/ffprobe 已进 `PATH` | Linux `python3` 与 `apk` 工具，不混用 Android 打包库 |
+| `python_exec` | 打包 Python 3.14，可安装纯 Python 包 | Alpine `python3`，可通过宿主工具桥调用 APK 原生工具 |
+| `git_exec` | Sideload arm64 原生 Git，cwd 为授权真实路径 | 同一原生 Git，cwd 为本会话授权挂载路径 |
 | 文件工具与工作区 | 统一用真实 Android 路径（同 `$INFINITY_WORKSPACE`）；工作区内可用无前导 `/` 相对路径，禁用 `/skills`、`/session` 等旧虚拟前缀 | 普通 `/workspace`，私有另有 `/home/session`；Linux/分支目录用绑定路径 |
 | 外部挂载与资料库 | 真实挂载共用设备真实路径；无 POSIX 路径的 `/mnt/knowledge`、SAF `/mnt/<别名>` 仅文件工具可访问 | 文件工具见真实路径与 `/mnt/knowledge`；shell 仅见真实路径，资料用 `copy_knowledge_to_linux` 拷入 `/home/session/inbox` |
 | 用户级技能 | 真实目录 `files/agent_skills/<名称>`（同 `$INFINITY_SKILLS/<名称>`） | 文件工具与命令 `/mnt/skills/<名称>`（`INFINITY_SKILLS=/mnt/skills`） |
@@ -30,14 +31,14 @@ Linux 可选包（git、`rg`、python3/pip、nodejs/npm、ffmpeg）用前确认�
 ## 五级权限边界
 
 1. **自由**：无需审批；仍须符合任务、参数、凭据与可见范围。在“按风险审批”档下，经严格解析确认零副作用的只读 `shell_exec` 命令（`ls`/`pwd`/`cat`/`head`/`tail`/`stat`/`rg`/`grep`/只读 `find`/只读 `git`/`ffprobe`/`python3 --version` 等）自动免批。
-2. **逐次审批**：调用前由用户批准，不得以其它授权绕过。非只读 `shell_exec`、`python_exec`、`termux_exec`、`ssh_*`、`sftp_upload`/`sftp_download`、`job_input`、`browser_eval`、`delete_file`、工作区外真实路径变更及 Linux rootfs 变更在按风险审批档需批、免批准档免批（L1）。`schedule_create`、`request_knowledge_access`、`resolve_startup_issue`、`ssh_host_*`、ComfyUI 配置/模板变更及 `fixed_overrides`、技能目录变更、`install_skill`、跨会话读取与 `agents_write` 在两档均需批（L2）；`install_skill`/`agents_write`/ComfyUI 配置不可限时免批。技能、命令、删除、工作区外与 Linux 系统目录审批卡提供“批准，10 分钟内同类免审批”，到期或在输入栏盾牌菜单恢复后重新弹卡；子代理与脚本内文件操作不受影响。
+2. **逐次审批**：调用前由用户批准，不得以其它授权绕过。非只读 `shell_exec`、非只读 `git_exec`、`python_exec`、`termux_exec`、`ssh_*`、`sftp_upload`/`sftp_download`、`job_input`、`browser_eval`、`delete_file`、工作区外真实路径变更及 Linux rootfs 变更在按风险审批档需批、免批准档免批（L1）。`schedule_create`、`request_knowledge_access`、`resolve_startup_issue`、`ssh_host_*`、ComfyUI 配置/模板变更及 `fixed_overrides`、技能目录变更、`install_skill`、跨会话读取与 `agents_write` 在两档均需批（L2）；`install_skill`/`agents_write`/ComfyUI 配置不可限时免批。技能、命令、删除、工作区外与 Linux 系统目录审批卡提供“批准，10 分钟内同类免审批”，到期或在输入栏盾牌菜单恢复后重新弹卡；子代理与脚本内文件操作不受影响。
 3. **审批加书面同意**：关键运行数据包括 `databases/`（含 `infinity_v2.db`）、`shared_prefs/`（不含加密密钥 `infinity_encrypted_secrets.xml*`）、`no_backup/` 及诊断日志 `files/infinity_diagnostics.jsonl`、`files/infinity_logs.txt`、`files/diag-keep`。文件工具开放只读自诊断并硬拒写删；用命令修改前须先说明目的与影响并取得用户明确书面同意，审批卡不替代书面同意。用户技能 `files/agent_skills/` 不在此列：用文件工具修改时审批卡即确认，勿用命令绕开审批。`files/python-user` 装 pip 与 Linux 装包属正常使用。`runtime_changes` 为事后检测，不构成事前拦截。
 4. **仅用户可操作**：下表界面配置无专用工具，请给出入口由用户操作，不能篡改数据库或偏好文件绕过。
 5. **不可能 / 不可审批硬拦截**：不能绕过 Android 安全边界授系统权限、改系统设置、读它应用私有数据，或让 Linux shell 直访 SAF。加密密钥 `shared_prefs/infinity_encrypted_secrets.xml*` 对文件工具全硬拒。针对系统根（`/`）、共享存储根（`/sdcard`、`/storage/emulated/0`）、应用数据根、Linux 系统根或未展开根目录变量的毁灭性命令两档均直接硬拦截（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`），不弹审批卡。
 
 ### 模型工具审批表
 
-依次列出内置/按风险审批、内置/免批准、Linux/按风险审批、Linux/免批准四种配置的普通调用级别。“自由”仅指审批判定；参数条件列以同顺序“批/免/拒”表示覆盖值。技能目录含移动两端、项目技能父目录与真实/Linux 技能身份；工作区外指内置模式工作区外合法真实路径变更；Linux根目录指 rootfs 变更；跨会话指 `session-approval:` 读取。未列工具四配置均自由且无参数条件。
+表中“自由”指免批。参数条件按列顺序用“批/免/拒”覆盖默认判定。技能目录含移动两端、项目技能父目录与两种模式的技能路径。工作区外指内置模式的合法外部路径变更，Linux 根目录指 rootfs 变更，跨会话指 `session-approval:` 读取。未列工具均免批。
 
 | 工具 | 内置/按风险审批 | 内置/免批准 | Linux/按风险审批 | Linux/免批准 | 参数条件 |
 |---|---|---|---|---|---|
@@ -53,6 +54,7 @@ Linux 可选包（git、`rg`、python3/pip、nodejs/npm、ffmpeg）用前确认�
 | `create_directory` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 | `create_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 | `delete_file` | 逐次审批 | 自由 | 逐次审批 | 自由 | 技能目录=批,批,批,批 |
+| `git_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `install_skill` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `job_input` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `media_fetch` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
@@ -77,7 +79,7 @@ Linux 可选包（git、`rg`、python3/pip、nodejs/npm、ffmpeg）用前确认�
 | `termux_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `write_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 
-技能目录与 SSH 主机配置始终逐次审批；工作区外写入与 Linux rootfs 变更按风险审批档批、免批准档免；`shell_exec` 零副作用只读命令在按风险审批档免批，毁灭性根目录命令两档均硬拦截。勿用命令绕过文件工具改用户技能；改项目技能前先说明目标。`sftp_write` 免批，`sftp_download` 写入技能目录直接拒绝。首次主机信任、指纹变更与秘密输入由用户处理。
+按风险审批档对 `shell_exec` 和 `git_exec` 的零副作用只读命令免批。禁止用命令绕过技能目录审批，改项目技能前说明目标。`sftp_write` 免批，`sftp_download` 写入技能目录直接拒绝。首次主机信任、指纹变更与秘密输入由用户处理。
 
 MCP 工具由已连服务器动态提供：SCHEDULE/ACCESS_GRANT/AGENT_CONFIG 须逐次审批，其余按目标与会话规则判定。自定义数据库/脚本 Skill 不暴露执行。`request_secret`/`show_secret` 免审批，勿让用户把秘密贴进聊天；`capture_secret` 是命令参数机制。
 

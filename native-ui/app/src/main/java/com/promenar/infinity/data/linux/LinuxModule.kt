@@ -75,6 +75,10 @@ class LinuxHostServices(
     val beginSessionMutation: suspend (sessionId: String) -> (suspend () -> Unit) = { {} },
     /** 准备会话收件箱并开始监听；维护终端不调用。 */
     val wakeInbox: suspend (sessionId: String) -> File? = { null },
+    val gitRemote: com.promenar.infinity.data.git.remote.GitRemoteSessions = com.promenar.infinity.data.git.remote.GitRemoteSessions.None,
+    val hostBridge: () -> com.promenar.infinity.data.exec.HostToolBridgeServer? = { null },
+    val terminalSpec: suspend (String, File, File) -> com.promenar.infinity.domain.linux.LinuxLaunchSpec =
+        { _, workspace, home -> com.promenar.infinity.domain.linux.LinuxLaunchSpec(emptyList(), workspace, workingDirectory = "/workspace", sessionHome = home) },
     /** 会话工作区的宿主根目录，不持工作区写锁；会话工作区不可用时为 null。 */
     val sessionWorkspaceRoot: suspend (sessionId: String) -> File?,
 )

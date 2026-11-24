@@ -62,8 +62,8 @@ internal data class ToolInvocationPresentation(val steps: List<ExecutionStep>) {
         else results.flatMap { parseRuntimeChanges(it.content) }.distinct()
 
     private companion object {
-        val WORKSPACE_TRACKED_COMMANDS = setOf("shell_exec", "python_exec")
-        val RUNTIME_MONITORED_TOOLS = setOf("shell_exec", "python_exec", "job_status", "job_wait", "job_input")
+        val WORKSPACE_TRACKED_COMMANDS = setOf("shell_exec", "git_exec", "python_exec")
+        val RUNTIME_MONITORED_TOOLS = setOf("shell_exec", "git_exec", "python_exec", "job_status", "job_wait", "job_input")
     }
 }
 
@@ -188,7 +188,7 @@ internal data class ToolGroupSummary(
 
 /** 内置工具仅按完整 ID 匹配，MCP 命名空间与未知工具统一归入其它。 */
 internal fun toolSummaryAction(name: String?): ToolSummaryAction = when (name) {
-    "shell_exec", "python_exec", "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send", "ssh_session_read",
+    "shell_exec", "git_exec", "python_exec", "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send", "ssh_session_read",
     "ssh_session_close", "ssh_host_install_key", "run_script", "exec_js", "python_sandbox",
     "job_status", "job_wait", "job_stop", "job_list", "job_input" -> ToolSummaryAction.COMMAND
     "web_search", "search_tavily", "search_searxng" -> ToolSummaryAction.WEB_SEARCH

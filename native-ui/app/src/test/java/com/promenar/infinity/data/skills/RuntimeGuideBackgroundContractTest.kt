@@ -166,4 +166,13 @@ class RuntimeGuideBackgroundContractTest {
         assertThat(linuxPrompt).contains("不随本轮生成结束或取消而停止")
         assertThat(linuxPrompt).doesNotContain("持锁运行")
     }
+    @Test fun `随包指南明确原生 Git、任务租约和同 UID 边界`() {
+        val execution = guideDirectory.resolve(executionReference).readText()
+        val isolation = guideDirectory.resolve("references/runtime-isolation.md").readText()
+        assertThat(execution).contains("git_exec")
+        assertThat(execution).contains("SSH")
+        assertThat(execution).contains("background: true")
+        assertThat(isolation).contains("同 UID")
+        assertThat(isolation).contains("当前命令或终端租约")
+    }
 }

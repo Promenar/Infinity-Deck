@@ -32,6 +32,7 @@ class BuiltinExecEnvironment(
     private val hostTools = PackagedHostTools(python.nativeLibraryDir)
 
     val pythonAvailable: Boolean get() = python.isAvailable
+    internal val gitAvailable: Boolean get() = hostTools.isGitAvailable
 
     /** 侧载渠道开放 pip；Play 渠道 `pip` 返回 PIP_UNSUPPORTED。 */
     val pipAvailable: Boolean get() = userPackages != null
@@ -80,7 +81,7 @@ class BuiltinExecEnvironment(
         return environment.withLegacyWorkspaceAliases()
     }
 
-    /** 内置命令及其子进程的打包工具入口。Git 的远端认证和执行策略由现有 shell 函数接管。 */
+    /** 内置命令及其子进程的非 Git 工具入口。原生 Git 由当前任务的桥租约提供。 */
     @Synchronized
     private fun ensureBundledToolShims(): File? {
         val shims = hostTools.availableTools() - "git"
@@ -144,15 +145,18 @@ class BuiltinExecEnvironment(
      * 此处仍保留带 LD_LIBRARY_PATH 的 shell 函数作为旧版动态链接器兜底。
      */
     fun shellPrelude(): String = if (python.isAvailable) {
+        val git = "git() { python3 -m infinity_git \"\$@\"; }"
+        val gitRoute = if (gitAvailable) "if [ -z \"\${INFINITY_TOOL_BRIDGE_NONCE:-}\" ]; then $git; fi" else git
         val base = "python3() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_PYTHON\" \"\$@\"; }; python() { python3 \"\$@\"; }; " +
-            "git() { python3 -m infinity_git \"\$@\"; }; pip() { python3 -m infinity_pip \"\$@\"; }; pip3() { pip \"\$@\"; }"
+            "$gitRoute; pip() { python3 -m infinity_pip \"\$@\"; }; pip3() { pip \"\$@\"; }"
         if (python.ffmpegAvailable) {
             "$base; ffmpeg() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_FFMPEG\" \"\$@\"; }; " +
                 "ffprobe() { LD_LIBRARY_PATH=\"\$INFINITY_PYEXT_DIR\" \"\$INFINITY_FFPROBE\" \"\$@\"; }"
         } else base
     } else {
         listOf("python3", "git", "pip").joinToString("; ") { name ->
-            "$name() { echo \"$name: $PYTHON_UNAVAILABLE_SHORT\" >&2; return 127; }"
+            val fallback = "$name() { echo \"$name: $PYTHON_UNAVAILABLE_SHORT\" >&2; return 127; }"
+            if (name == "git" && gitAvailable) "if [ -z \"\${INFINITY_TOOL_BRIDGE_NONCE:-}\" ]; then $fallback; fi" else fallback
         } + "; python() { python3 \"\$@\"; }; pip3() { pip \"\$@\"; }"
     }
 
@@ -229,6 +233,13 @@ class SystemCaBundle(
 }
 
 object AndroidProcessGroupSignaller : ProcessGroupSignaller {
+    internal fun isAlive(processGroupId: Int): Boolean = try {
+        Os.kill(-processGroupId, 0)
+        true
+    } catch (error: ErrnoException) {
+        if (error.errno == OsConstants.ESRCH) false else throw error
+    }
+
     override fun signal(processGroupId: Int, signal: Int) {
         try {
             Os.kill(-processGroupId, signal)

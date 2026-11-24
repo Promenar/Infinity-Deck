@@ -5,6 +5,12 @@ import com.promenar.infinity.data.secret.SecretOutputRedactor
 import com.promenar.infinity.data.secret.SecretCapture
 import com.promenar.infinity.domain.secret.SecretIoLimits
 import com.promenar.infinity.data.git.remote.GitRemoteSessions
+import com.promenar.infinity.data.linux.LinuxResourceGovernor
+import com.promenar.infinity.domain.linux.LinuxLaunchSpec
+import com.promenar.infinity.data.git.remote.GitRemoteLease
+import com.promenar.infinity.domain.tool.GitExecArguments
+import java.io.Closeable
+import java.util.concurrent.atomic.AtomicBoolean
 import com.promenar.infinity.data.git.remote.LinuxGitEnvironment
 import com.promenar.infinity.data.linux.commandRequest
 import com.promenar.infinity.data.linux.MIB
@@ -70,6 +76,9 @@ class BuiltinExecService(
     private val wakeInbox: suspend (String) -> File? = { null },
     private val vault: SessionSecretVault? = null,
     redactor: SecretOutputRedactor? = null,
+    private val hostBridge: HostToolBridgeServer? = null,
+    private val hostGit: GitHostBroker? = null,
+    private val invalidateGit: (String) -> Unit = {},
 ) {
     private val redactor = redactor ?: vault?.let(::SecretOutputRedactor)
     suspend fun runModeForSession(sessionId: String?): SessionRunMode? = sessionMode(sessionId)
@@ -77,9 +86,7 @@ class BuiltinExecService(
     val pipAvailable: Boolean get() = environment.pipAvailable
     private val packageProvenance = LinuxExecProvenance(linuxProvenance)
 
-    /** [gitEnvironment] 需进入启动规格：gh 代理目录是否挂载由启动规格中的 `GH_CONFIG_DIR` 决定。 */
-    private suspend fun linuxRequest(root: File, kind: String, sessionId: String?, source: String, stdin: String?, seconds: Int, expectedWorkspace: SessionWorkspace? = null,
-                                     gitEnvironment: Map<String, String> = emptyMap()): BuiltinCommandRequest = withContext(Dispatchers.IO) {
+    private suspend fun linuxSpec(root: File, kind: String, sessionId: String?, source: String, expectedWorkspace: SessionWorkspace?): LinuxLaunchSpec {
         val system = environment.forWorkspace(root, kind)
         // 私有主工作区直接复用已解析的根；Linux 命令不等待全量索引扫描。
         val home = if (kind == SessionWorkspaceResolver.KIND_PRIVATE) root else sessionId?.let { sessionHome(it) }
@@ -96,10 +103,83 @@ class BuiltinExecService(
         val workspaceDirectory = (selected as? SessionWorkspace.Directory)?.takeIf {
             it.kind == com.promenar.infinity.data.local.db.entity.WorkspaceEntity.KIND_LINUX_HOME
         }?.let { com.promenar.infinity.data.workspace.LinuxWorkspaceLocation.workingDirectory(it.workspace) }
-        val spec = linuxExecSpec(source, root, kind, sessionId?.let { visibleMounts(it) }.orEmpty(), File(system.getValue("INFINITY_SKILLS")), home, launchBinding, workspaceDirectory,
+        return linuxExecSpec(source, root, kind, sessionId?.let { visibleMounts(it) }.orEmpty(), File(system.getValue("INFINITY_SKILLS")), home, launchBinding, workspaceDirectory,
             wakeInbox = sessionId?.let { wakeInbox(it) })
-        val launch = checkNotNull(linuxRuntime).prepareLaunch(spec.copy(environment = spec.environment + gitEnvironment))
+    }
+
+    /** Git 与宿主工具租约在工作区结束对账前关闭。 */
+    private suspend fun linuxRequest(root: File, kind: String, sessionId: String?, source: String, stdin: String?, seconds: Int, expectedWorkspace: SessionWorkspace? = null,
+                                     job: HostToolJob? = null): BuiltinCommandRequest = withContext(Dispatchers.IO) {
+        val runtime = checkNotNull(linuxRuntime)
+        val spec = linuxSpec(root, kind, sessionId, source, expectedWorkspace)
+        if (job != null && hostBridge?.available == true) {
+            job.bridge = hostBridge.tryOpenJobLease({ HostToolPathTranslator.forLinux(spec, runtime.paths.rootfs) },
+                job.git.environment, LinuxResourceGovernor.system.budget())
+        }
+        val gitEnvironment = job?.let { LinuxGitEnvironment.from(it.git.environment) }.orEmpty()
+        val launch = runtime.prepareLaunch(spec.copy(environment = spec.environment + gitEnvironment + job?.bridge?.environment.orEmpty()))
         launch.commandRequest(seconds, stdin, terminal = true)
+    }
+
+    private suspend fun builtinEnvironment(base: Map<String, String>, root: File, sessionId: String?, job: HostToolJob, secrets: Map<String, String>): Map<String, String> {
+        val merged = base + job.git.environment + secrets.filterKeys { !it.startsWith("INFINITY_TOOL_BRIDGE_") }
+        if (hostBridge?.available != true || !environment.gitAvailable) return merged
+        val roots = builtinGitRoots(root, sessionId)
+        val bridge = hostBridge.tryOpenJobLease({ HostToolPathTranslator.forHost(roots) }, job.git.environment,
+            LinuxResourceGovernor.system.budget(), builtin = true) ?: return merged
+        job.bridge = bridge
+        return merged + bridge.environment + ("PATH" to "${checkNotNull(bridge.builtinBin).absolutePath}:${base.getValue("PATH")}")
+    }
+
+    private suspend fun builtinGitRoots(root: File, sessionId: String?): List<File> {
+        val visible = sessionId?.let { visibleMounts(it) }.orEmpty().mapNotNull { mount ->
+            com.promenar.infinity.data.storage.ExternalMountPaths.commandAccess(mount).realPath?.let(::File)
+        }
+        return listOf(root) + listOfNotNull(sessionId?.let { sessionHome(it) }) + visible
+    }
+
+    private class HostToolJob(val git: GitRemoteLease) : Closeable {
+        var bridge: HostToolBridgeServer.JobLease? = null
+        private val closed = AtomicBoolean()
+
+        override fun close() {
+            if (closed.compareAndSet(false, true)) try { bridge?.close() } finally { git.close() }
+        }
+    }
+
+    private suspend fun openGitLease(): GitRemoteLease = try { gitRemote.open() }
+    catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { GitRemoteSessions.None.open() }
+
+
+    suspend fun runGit(
+        workspaceRootUuid: String,
+        sessionId: String,
+        arguments: GitExecArguments,
+        expectedMode: SessionRunMode,
+        live: ToolLiveOutputSink = ToolLiveOutputSink.None,
+        attachment: LinuxExecAttachment? = null,
+    ): CommandToolResult {
+        val broker = hostGit ?: return CommandToolResult(errorCode = "TOOL_UNAVAILABLE", guidance = "该渠道没有原生 Git。")
+        if (sessionMode(sessionId) != expectedMode) return modeChanged()
+        if (expectedMode == SessionRunMode.LINUX && linuxRuntime?.state?.value !is com.promenar.infinity.domain.linux.LinuxRuntimeState.Ready) {
+            return linuxUnavailable()
+        }
+        try {
+            return execute(workspaceRootUuid, sessionId, arguments.timeoutSeconds, ExecRunKind.SHELL, "git", live,
+                attachment = attachment, directGit = true) { root, kind, git ->
+                withContext(Dispatchers.IO) {
+                    val spec = if (expectedMode == SessionRunMode.LINUX) linuxSpec(root, kind, sessionId, "", null) else null
+                    val translator = if (spec == null) {
+                        HostToolPathTranslator.forHost(builtinGitRoots(root, sessionId))
+                    } else HostToolPathTranslator.forLinux(spec, checkNotNull(linuxRuntime).paths.rootfs)
+                    val cwd = gitWorkingDirectory(root, spec, arguments.cwd)
+                    broker.request(translator, cwd, arguments.args, git.environment, LinuxResourceGovernor.system.budget(), arguments.timeoutSeconds)
+                }
+            }
+        } finally {
+            invalidateGit(sessionId)
+        }
     }
 
     suspend fun runShell(
@@ -123,7 +203,7 @@ class BuiltinExecService(
         if (decision.verdict == com.promenar.infinity.domain.tool.CommandSafetyVerdict.BLOCKED_CATASTROPHIC) {
             return catastrophicBlocked(decision)
         }
-        return execute(workspaceRootUuid, sessionId, timeoutSeconds, if (mode == SessionRunMode.LINUX) ExecRunKind.LINUX else ExecRunKind.SHELL, command, live, stdin, attachment, capture) { root, kind ->
+        return execute(workspaceRootUuid, sessionId, timeoutSeconds, if (mode == SessionRunMode.LINUX) ExecRunKind.LINUX else ExecRunKind.SHELL, command, live, stdin, attachment, capture) { root, kind, _ ->
             BuiltinCommandRequest(
                 argv = listOf(shell, "-c", environment.shellPrelude() + "\n__infinity_command=\"\$1\"; shift; eval \"\$__infinity_command\"", "sh", command),
                 workingDirectory = root,
@@ -157,7 +237,7 @@ class BuiltinExecService(
         when (mode) {
             null -> return modeRequired()
             SessionRunMode.LINUX -> return execute(workspaceRootUuid, sessionId, timeoutSeconds, ExecRunKind.LINUX,
-                code, live, stdin = stdin, attachment = attachment, capture = capture, linuxSource = linuxPythonCommand(code)) { _, _ ->
+                code, live, stdin = stdin, attachment = attachment, capture = capture, linuxSource = linuxPythonCommand(code)) { _, _, _ ->
                 error("Linux Python 使用 guest 启动路径")
             }
             SessionRunMode.BUILTIN -> Unit
@@ -169,7 +249,7 @@ class BuiltinExecService(
                     "请改用 termux_exec 或 ssh_exec。shell_exec 仍可使用系统命令。",
             )
         }
-        return execute(workspaceRootUuid, sessionId, timeoutSeconds, ExecRunKind.PYTHON, code, live, stdin = stdin, attachment = attachment, capture = capture) { root, kind ->
+        return execute(workspaceRootUuid, sessionId, timeoutSeconds, ExecRunKind.PYTHON, code, live, stdin = stdin, attachment = attachment, capture = capture) { root, kind, _ ->
             BuiltinCommandRequest(
                 argv = listOf(environment.pythonLauncher.path, "-c", code),
                 workingDirectory = root,
@@ -207,7 +287,7 @@ class BuiltinExecService(
         val root = location.commandDirectory
         val workspaceKind = location.workspaceKind
         val secrets = resolvedSessionId?.let { vault?.environment(it, source) }.orEmpty()
-        val lease = try { gitRemote.open() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { GitRemoteSessions.None.open() }
+        val job = HostToolJob(openGitLease())
         return try {
             if (linux) {
                 val runtime = linuxRuntime
@@ -215,26 +295,34 @@ class BuiltinExecService(
                     throw LinuxUnavailableException(runtime?.state?.value ?: com.promenar.infinity.domain.linux.LinuxRuntimeState.NotInstalled(0))
                 }
                 val launchSource = if (kind == com.promenar.infinity.domain.jobs.BackgroundJobRunner.PYTHON || location.pythonSource) linuxPythonCommand(source) else source
-                val gitEnvironment = LinuxGitEnvironment.from(lease.environment)
-                val request = linuxRequest(root, workspaceKind, resolvedSessionId, launchSource, stdin, minutes * 60, gitEnvironment = gitEnvironment)
+                val request = linuxRequest(root, workspaceKind, resolvedSessionId, launchSource, stdin, minutes * 60, job = job)
                 val title = titleOrNull(resolvedSessionId)
                 val before = packageProvenance.before()
                 val finishMutation = resolvedSessionId?.let { beginSessionMutation(it) }
                 val finishWorkspace = try { com.promenar.infinity.data.repository.WorkspaceExternalMutationCoordinator.begin(root.toPath()) }
                 catch (failure: Throwable) { withContext(kotlinx.coroutines.NonCancellable) { finishMutation?.invoke() }; throw failure }
                 return com.promenar.infinity.data.jobs.PreparedBackgroundCommand(
-                    request.copy(environment = linuxCommandEnvironment(request.environment, lease.environment, secrets)), lease::close,
-                    afterRun = { try { packageProvenance.after(before, resolvedSessionId, title) } finally { try { finishMutation?.invoke() } finally { finishWorkspace() } } },
+                    request.copy(environment = linuxCommandEnvironment(request.environment, job.git.environment, secrets)),
+                    close = job::close,
+                    afterRun = {
+                        try {
+                            try { job.close() } finally { packageProvenance.after(before, resolvedSessionId, title) }
+                        } finally { try { finishMutation?.invoke() } finally { finishWorkspace() } }
+                    },
                 )
             }
             val python = kind == com.promenar.infinity.domain.jobs.BackgroundJobRunner.PYTHON
             val argv = if (python) listOf(environment.pythonLauncher.path, "-c", source)
                 else listOf(shell, "-c", environment.shellPrelude() + "\n__infinity_command=\"\$1\"; shift; eval \"\$__infinity_command\"", "sh", source)
             com.promenar.infinity.data.jobs.PreparedBackgroundCommand(
-                BuiltinCommandRequest(argv, root, (if (python) environment.forPython(root, workspaceKind) else environment.forWorkspace(root, workspaceKind)) + lease.environment + secrets, stdin, minutes * 60),
-                lease::close,
+                BuiltinCommandRequest(argv, root, builtinEnvironment(
+                    if (python) environment.forPython(root, workspaceKind) else environment.forWorkspace(root, workspaceKind),
+                    root, resolvedSessionId, job, secrets,
+                ), stdin, minutes * 60),
+                job::close,
+                afterRun = job::close,
             )
-        } catch (failure: Throwable) { lease.close(); throw failure }
+        } catch (failure: Throwable) { job.close(); throw failure }
     }
 
     private suspend fun titleOrNull(sessionId: String?): String? = withContext(Dispatchers.IO) {
@@ -254,14 +342,20 @@ class BuiltinExecService(
         attachment: LinuxExecAttachment? = null,
         capture: SecretCapture? = null,
         linuxSource: String? = null,
-        request: (File, String) -> BuiltinCommandRequest,
+        directGit: Boolean = false,
+        request: suspend (File, String, GitRemoteLease) -> BuiltinCommandRequest,
     ): CommandToolResult {
         if (capture != null && (vault == null || sessionId == null)) return CommandToolResult(errorCode = "SECRET_VAULT_UNAVAILABLE", guidance = "本会话保密库不可用，命令未执行。")
-        val runtime = if (kind == ExecRunKind.LINUX) "linux" else "system"
+        val runtime = when {
+            directGit -> "native-git"
+            kind == ExecRunKind.LINUX -> "linux"
+            else -> "system"
+        }
         val secrets = try { sessionId?.let { vault?.environment(it, source) }.orEmpty() }
         catch (_: IllegalStateException) { return CommandToolResult(errorCode = "SECRET_SLOT_UNAVAILABLE", guidance = "引用的保密槽位已销毁或不能作为环境变量，命令未执行。") }
         val releaseSecrets = retainSecretEnvironment(sessionId, secrets, redactor)
         var releaseProxySecrets: () -> Unit = {}
+        var releaseBridgeSecrets: () -> Unit = {}
         try {
         val safeLive = if (capture != null) ToolLiveOutputSink.None else live
         fun executionFields() = buildJsonObject { put("runtime", runtime); if (kind == ExecRunKind.LINUX) put("stderr_merged", capture == null) }
@@ -285,19 +379,26 @@ class BuiltinExecService(
         safeLive.onStop(control::requestStop)
         val run = ExecRunInfo(UUID.randomUUID().toString(), kind, ExecRunInfo.summarize(source), timeoutSeconds, wallClockMillis())
         // 代理不可用时命令照常执行，内置 git 退回直连。
-        val lease = try { gitRemote.open() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { GitRemoteSessions.None.open() }
+        val job = HostToolJob(openGitLease())
         var runtimeFields = JsonObject(emptyMap())
         suspend fun runCommand(root: File): BuiltinCommandOutput {
             attachment?.onDirectory?.invoke(root)
             val base = if (kind == ExecRunKind.LINUX) {
-                linuxRequest(root, workspaceKind, sessionId, linuxSource ?: source, stdin, timeoutSeconds, target, LinuxGitEnvironment.from(lease.environment))
-            } else request(root, workspaceKind)
+                linuxRequest(root, workspaceKind, sessionId, linuxSource ?: source, stdin, timeoutSeconds, target, job)
+            } else request(root, workspaceKind, job.git)
             if (kind == ExecRunKind.LINUX) {
                 releaseProxySecrets()
                 releaseProxySecrets = retainSecretEnvironment(sessionId, builtInProxyOutputSecrets(base.environment), redactor)
             }
-            val commandRequest = base.copy(environment = if (kind == ExecRunKind.LINUX) linuxCommandEnvironment(base.environment, lease.environment, secrets)
-                else base.environment + lease.environment + secrets,
+            val commandEnvironment = when {
+                directGit -> base.environment
+                kind == ExecRunKind.LINUX -> linuxCommandEnvironment(base.environment, job.git.environment, secrets)
+                else -> withContext(Dispatchers.IO) { builtinEnvironment(base.environment, root, sessionId, job, secrets) }
+            }
+            releaseBridgeSecrets = retainSecretEnvironment(sessionId, job.git.environment.filterKeys {
+                it == com.promenar.infinity.data.git.remote.GitRemoteBroker.ENV_NONCE
+            } + job.bridge?.environment.orEmpty().filterKeys { it == com.promenar.infinity.data.linux.LinuxToolBridgeConfig.ENV_NONCE }, redactor)
+            val commandRequest = base.copy(environment = commandEnvironment,
                 terminal = base.terminal && capture == null,
                 outputLimitOverride = if (capture != null) SecretIoLimits.MAX_SECRET_BYTES + 1 else null,
                 outputTransform = if (capture == null && sessionId != null && redactor != null) secretCommandOutput(sessionId, redactor) else null)
@@ -328,7 +429,10 @@ class BuiltinExecService(
                 return runner.run(commandRequest, control, safeLive::emit)
             } finally {
                 if (linux) {
-                    try { packageProvenance.after(packagesBefore, sessionId, title) }
+                    try {
+                        try { withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { job.close() } }
+                        finally { packageProvenance.after(packagesBefore, sessionId, title) }
+                    }
                     finally {
                         try {
                             withContext(kotlinx.coroutines.NonCancellable) {
@@ -338,7 +442,7 @@ class BuiltinExecService(
                             if (sessionId != null && attachment == null) requestSessionHomeReconcile(sessionId)
                         }
                     }
-                }
+                } else withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { job.close() }
                 val snapshot = before
                 if (snapshot != null && runtimeDataMonitor != null) runtimeFields = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                     runtimeDataMonitor.changesSince(snapshot)
@@ -377,6 +481,8 @@ class BuiltinExecService(
             throw cancelled
         } catch (_: LinuxUnavailableException) {
             return linuxUnavailable()
+        } catch (denied: HostToolException) {
+            return CommandToolResult(errorCode = denied.code, guidance = denied.message, backendFields = executionFields())
         } catch (_: SecurityException) {
             return CommandToolResult(
                 errorCode = "EXEC_WORKSPACE_UNAVAILABLE",
@@ -390,7 +496,7 @@ class BuiltinExecService(
                 backendFields = JsonObject(runtimeFields + executionFields()),
             )
         } finally {
-            lease.close()
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { job.close() }
         }
         val outcome = held.value
         val fields = JsonObject((if (directory != null) directoryFields(workspaceKind) else workspaceFields(outcome.changes)) + runtimeFields + executionFields())
@@ -461,7 +567,7 @@ class BuiltinExecService(
             }
         }
         return captured.redacted(sessionId, redactor)
-        } finally { releaseProxySecrets(); releaseSecrets() }
+        } finally { releaseBridgeSecrets(); releaseProxySecrets(); releaseSecrets() }
     }
 
     private fun modeChanged() = CommandToolResult(errorCode = "EXEC_MODE_CHANGED", guidance = messages(RunModeMessage.MODE_CHANGED))
@@ -573,6 +679,15 @@ class BuiltinExecService(
                 }))
             }
         }
+    }
+}
+
+internal fun gitWorkingDirectory(root: File, linux: LinuxLaunchSpec?, cwd: String?): String {
+    val base = if (linux == null) root.canonicalPath else linux.workingDirectory ?: "/workspace"
+    return when {
+        cwd == null -> base
+        cwd.startsWith('/') -> cwd
+        else -> "$base/$cwd"
     }
 }
 

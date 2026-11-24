@@ -12,4 +12,4 @@ internal fun linuxCommandEnvironment(
 
 private fun canOverride(key: String) =
     !key.startsWith("GIT_CONFIG_") && key !in BuiltInProxyConfig.environmentKeys &&
-        key !in LinuxResourceBudget.managedEnvironmentKeys
+        key !in LinuxResourceBudget.managedEnvironmentKeys && !key.startsWith("INFINITY_TOOL_BRIDGE_")

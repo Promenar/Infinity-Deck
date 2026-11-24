@@ -1569,6 +1569,18 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 reconcileSession = ::requestSessionHomeReconcile,
                 beginSessionMutation = ::beginSessionMutation,
                 wakeInbox = { linuxWakeInbox.prepare(it) },
+                gitRemote = com.promenar.infinity.data.git.remote.GitRemoteSessions { gitRemoteBroker.open() },
+                hostBridge = { hostToolBridge },
+                terminalSpec = { sessionId, root, home ->
+                    val selected = sessionWorkspaceResolver.resolve(sessionId)
+                    val directory = (selected as? com.promenar.infinity.data.workspace.SessionWorkspace.Directory)?.takeIf {
+                        it.kind == com.promenar.infinity.data.local.db.entity.WorkspaceEntity.KIND_LINUX_HOME
+                    }?.let { com.promenar.infinity.data.workspace.LinuxWorkspaceLocation.workingDirectory(it.workspace) }
+                    com.promenar.infinity.data.exec.linuxExecSpec("", root,
+                        com.promenar.infinity.data.workspace.SessionWorkspaceResolver.kindOf(selected),
+                        externalFolderManager.visible(sessionId), skillCatalog.userRoot, home,
+                        commandLaunchBinding(sessionId), directory).copy(argv = emptyList())
+                },
                 sessionWorkspaceRoot = { sessionId ->
                     when (val workspace = sessionWorkspaceResolver.resolve(sessionId)) {
                         is com.promenar.infinity.data.workspace.SessionWorkspace.Directory -> workspace.root
@@ -1595,6 +1607,38 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             runtimeDataMonitor = runtimeDataMonitor,
         )
     }
+    private val packagedHostTools by lazy {
+        if (BuildConfig.DISTRIBUTION != "sideload") return@lazy null
+        applicationInfo.nativeLibraryDir?.takeIf(String::isNotBlank)?.let {
+            com.promenar.infinity.data.exec.PackagedHostTools(File(it))
+        }
+    }
+    private val hostGit by lazy {
+        packagedHostTools?.let { tools ->
+            com.promenar.infinity.data.exec.GitHostBroker(tools, com.promenar.infinity.data.exec.GitHostConfig(cacheDir, tools))
+        }
+    }
+    private val hostToolBridgeOwner = lazy {
+        val tools = packagedHostTools?.takeIf { it.isBridgeShimAvailable } ?: return@lazy null
+        val git = checkNotNull(hostGit)
+        com.promenar.infinity.data.exec.HostToolBridgeServer(cacheDir, tools, git, launch = { request ->
+            backgroundCommandRunner.startHostTool(request, com.promenar.infinity.data.exec.AndroidProcessGroupSignaller::isAlive)
+        })
+    }
+    private val hostToolBridge by hostToolBridgeOwner
+
+    override fun onTerminate() {
+        try {
+            if (hostToolBridgeOwner.isInitialized()) hostToolBridge?.close()
+        } finally {
+            super.onTerminate()
+        }
+    }
+    private suspend fun commandLaunchBinding(sessionId: String): com.promenar.infinity.data.branch.BranchLinuxCommandWorkspace? {
+        val row = database.sessionDao().getById(sessionId)
+        return row?.worktreeDirectory?.let { com.promenar.infinity.data.branch.BranchLinuxCommandWorkspace(branchUnderlyingWorkspace(row), it) }
+    }
+
     private val commandKeepAlive by lazy {
         com.promenar.infinity.background.exec.AndroidExecKeepAlive(this, execRunRegistry,
             com.promenar.infinity.distribution.DistributionCapabilities.backgroundKeepAliveAvailable)
@@ -1688,10 +1732,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             wakeInbox = { linuxWakeInbox.prepare(it) },
             messages = runModeMessages,
             vault = sessionSecretVault, redactor = secretOutputRedactor,
-            linuxLaunchBinding = { sessionId ->
-                val row = database.sessionDao().getById(sessionId)
-                row?.worktreeDirectory?.let { com.promenar.infinity.data.branch.BranchLinuxCommandWorkspace(branchUnderlyingWorkspace(row), it) }
-            },
+            linuxLaunchBinding = ::commandLaunchBinding,
+            hostBridge = hostToolBridge,
+            hostGit = hostGit,
+            invalidateGit = { gitStatusCache.invalidate(it) },
         )
     }
 
@@ -2151,6 +2195,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(com.promenar.infinity.ui.chat.manager.skills.RunScriptSkill(scriptToolRunner))
             register(com.promenar.infinity.ui.chat.manager.skills.PythonSandboxSkill(scriptToolRunner))
             register(com.promenar.infinity.ui.chat.manager.skills.ShellExecSkill(builtinExecService, backgroundJobs))
+            if (packagedHostTools?.isGitAvailable == true) register(com.promenar.infinity.ui.chat.manager.skills.GitExecSkill(builtinExecService, backgroundJobs))
             register(com.promenar.infinity.ui.chat.manager.skills.PythonExecSkill(builtinExecService, backgroundJobs))
             com.promenar.infinity.ui.chat.manager.skills.backgroundJobTools(backgroundJobs).forEach(::register)
             register(com.promenar.infinity.ui.chat.manager.skills.StateDefineSkill(stateBoardRepository))

@@ -2,6 +2,10 @@ package com.promenar.infinity.data.linux
 
 import com.promenar.infinity.data.exec.ExecRunInfo
 import com.promenar.infinity.data.exec.ExecRunKind
+import com.promenar.infinity.data.exec.HostToolPathTranslator
+import com.promenar.infinity.data.git.remote.GitRemoteSessions
+import com.promenar.infinity.data.git.remote.LinuxGitEnvironment
+import java.io.Closeable
 import com.promenar.infinity.domain.linux.LinuxLaunchSpec
 import com.promenar.infinity.domain.linux.LinuxRuntime
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
@@ -53,9 +57,11 @@ internal class LinuxTerminalSessionsImpl(
         var pendingCommand = initialCommand
         var initialWriting = false
         var stopping = false
+        var finishing = false
         var visible = false
         var discarded = false
         var finishMutation: suspend () -> Unit = {}
+        var closeLeases: () -> Unit = {}
     }
 
     private val lock = Any()
@@ -86,6 +92,7 @@ internal class LinuxTerminalSessionsImpl(
         val epoch = synchronized(lock) { requireReady(); environmentEpoch }
         var finishMutation: suspend () -> Unit = {}
         var mutationStarted = false
+        var closeLeases: () -> Unit = {}
         var opened: Entry? = null
         try {
             val launch = withContext(ioDispatcher) {
@@ -114,8 +121,7 @@ internal class LinuxTerminalSessionsImpl(
                         }
                         mutationStarted = true
                         reconcileSession(location.sessionId)
-                        LinuxLaunchSpec(emptyList(), workspace, workingDirectory = "/workspace", sessionHome = home,
-                            wakeInbox = wakeInbox(location.sessionId))
+                        host.terminalSpec(location.sessionId, workspace, home).copy(wakeInbox = wakeInbox(location.sessionId))
                     }
                     is LinuxTerminalLocation.Directory -> {
                         require(location.path.startsWith('/') && '\u0000' !in location.path) { "Terminal directory must be absolute" }
@@ -124,7 +130,17 @@ internal class LinuxTerminalSessionsImpl(
                         LinuxLaunchSpec(emptyList(), workingDirectory = location.path)
                     }
                 }
-                runtime.prepareLaunch(spec)
+                val gitLease = try { host.gitRemote.open() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { GitRemoteSessions.None.open() }
+                var bridge: Closeable? = null
+                closeLeases = { try { bridge?.close() } finally { gitLease.close() } }
+                val tools = host.hostBridge()?.takeIf { it.available }?.tryOpenJobLease(
+                    { HostToolPathTranslator.forLinux(spec, runtime.paths.rootfs) }, gitLease.environment, LinuxResourceGovernor.system.budget(),
+                )
+                bridge = tools
+                val gitEnvironment = gitLease.environment.takeIf { it.isNotEmpty() }?.let(LinuxGitEnvironment::from).orEmpty()
+                runtime.prepareLaunch(spec.copy(environment = spec.environment + gitEnvironment + tools?.environment.orEmpty()))
             }
             return withContext(mainDispatcher) {
                 val entry = synchronized(lock) {
@@ -134,6 +150,7 @@ internal class LinuxTerminalSessionsImpl(
                     Entry(LinuxTerminalInfo(UUID.randomUUID().toString(), ordinal, null, location, now(), true), initialCommand)
                 }
                 entry.finishMutation = finishMutation
+                entry.closeLeases = closeLeases
                 entry.client = LinuxTerminalClient({ onTitle(entry) }, { finished(entry) })
                 entry.pty = factory.create(launch, entry.client)
                 opened = entry
@@ -192,9 +209,11 @@ internal class LinuxTerminalSessionsImpl(
             }
         } catch (error: Throwable) {
             opened?.let { discard(it) }
-            if (opened == null && mutationStarted) withContext(NonCancellable + ioDispatcher) {
-                try { finishMutation() } finally {
-                    (location as? LinuxTerminalLocation.SessionWorkspace)?.let { reconcileSession(it.sessionId) }
+            if (opened == null) withContext(NonCancellable + ioDispatcher) {
+                try { closeLeases() } finally {
+                    if (mutationStarted) try { finishMutation() } finally {
+                        (location as? LinuxTerminalLocation.SessionWorkspace)?.let { reconcileSession(it.sessionId) }
+                    }
                 }
             }
             throw error
@@ -226,7 +245,7 @@ internal class LinuxTerminalSessionsImpl(
 
     private fun stop(entry: Entry) {
         synchronized(lock) {
-            if (entry.stopping || entry.ended.isCompleted) return
+            if (entry.stopping || entry.finishing || entry.ended.isCompleted) return
             entry.stopping = true
             entry.pendingCommand = null
             entry.inputSubmitted.completeExceptionally(IllegalStateException("Terminal session was stopped during startup"))
@@ -252,18 +271,27 @@ internal class LinuxTerminalSessionsImpl(
 
     private fun finished(entry: Entry) {
         synchronized(lock) {
-            if (entry.ended.isCompleted) return
+            if (entry.finishing || entry.ended.isCompleted) return
+            entry.finishing = true
             entry.pendingCommand = null
-            entry.info = entry.info.copy(running = false, exitCode = entry.pty.exitCode)
             if (!entry.initialWriting) entry.inputSubmitted.completeExceptionally(IllegalStateException("Terminal exited before initial input"))
-            if (entry.discarded) entries.remove(entry.id)
-            publish()
-            entry.ended.complete(Unit)
         }
-        (entry.infoAtStart.location as? LinuxTerminalLocation.SessionWorkspace)?.let { location ->
-            scope.launch(NonCancellable + ioDispatcher) {
-                try { try { entry.finishMutation() } finally { reconcileSession(location.sessionId) } }
-                catch (failure: Exception) { InfinityLogger.logError("LinuxTerminal.reconcile", failure) }
+        scope.launch(NonCancellable + ioDispatcher) {
+            try {
+                try { entry.closeLeases() } finally {
+                    (entry.infoAtStart.location as? LinuxTerminalLocation.SessionWorkspace)?.let { location ->
+                        try { entry.finishMutation() } finally { reconcileSession(location.sessionId) }
+                    }
+                }
+            } catch (failure: Exception) {
+                InfinityLogger.logError("LinuxTerminal.reconcile", failure)
+            } finally {
+                synchronized(lock) {
+                    entry.info = entry.info.copy(running = false, exitCode = entry.pty.exitCode)
+                    if (entry.discarded) entries.remove(entry.id)
+                    publish()
+                    entry.ended.complete(Unit)
+                }
             }
         }
     }

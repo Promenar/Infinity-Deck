@@ -5,6 +5,7 @@ import com.promenar.infinity.data.proxy.BuiltInProxyEndpoint
 import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
 import com.promenar.infinity.data.tailnet.InstalledTailnetRouting
 import com.promenar.infinity.data.exec.withLegacyWorkspaceAliases
+import com.promenar.infinity.data.exec.PackagedHostTools
 import com.promenar.infinity.data.git.remote.LinuxGitEnvironment
 import com.promenar.infinity.domain.linux.LinuxLaunchSpec
 import com.promenar.infinity.domain.linux.LinuxProcessLaunch
@@ -28,6 +29,7 @@ class LinuxLaunchBuilder(
     private val messages: LinuxRuntimeMessages = LinuxRuntimeMessages(),
     private val builtInProxyEndpoint: () -> BuiltInProxyEndpoint? = { InstalledBuiltInProxyRouting.routing.endpoint.value },
     private val resourceBudget: () -> LinuxResourceBudget = { LinuxResourceGovernor.system.budget() },
+    private val hostTools: PackagedHostTools = PackagedHostTools(proot.executable.absoluteFile.parentFile!!),
 ) {
     fun build(
         spec: LinuxLaunchSpec,
@@ -73,12 +75,35 @@ class LinuxLaunchBuilder(
             require(bind.host.exists() && ':' !in bind.host.path && '\u0000' !in bind.host.path) { messages(LinuxRuntimeMessage.HOST_MOUNT) }
             arguments += listOf("-b", "${bind.host.absolutePath}:$guest")
         }
+        val bridge = LinuxToolBridgeConfig.bridgeDirectory(cacheDirectory)
+        val bridgeEnabled = hostTools.isBridgeShimAvailable && !spec.environment[LinuxToolBridgeConfig.ENV_NONCE].isNullOrBlank() &&
+            Files.isDirectory(bridge.toPath(), NOFOLLOW_LINKS)
+        if (bridgeEnabled) {
+            val socket = LinuxToolBridgeConfig.socket(cacheDirectory)
+            LinuxToolBridgeConfig.requireSocketPath(socket)
+            check(Files.readAttributes(socket.toPath(), BasicFileAttributes::class.java, NOFOLLOW_LINKS).isOther) {
+                "宿主工具 socket 未就绪。"
+            }
+            val bin = LinuxToolBridgeConfig.prepareBin(cacheDirectory, hostTools)
+            for (guest in listOf(LinuxToolBridgeConfig.GUEST_BIN_DIR, LinuxToolBridgeConfig.GUEST_BRIDGE_DIR)) {
+                Files.createDirectories(LinuxRootfsFiles.safePath(rootfs, guest.removePrefix("/")).toPath())
+            }
+            arguments += listOf("-b", "${bin.absolutePath}:${LinuxToolBridgeConfig.GUEST_BIN_DIR}",
+                "-b", "${hostTools.bridgeShim.absolutePath}:${LinuxToolBridgeConfig.GUEST_SHIM}",
+                "-b", "${bridge.absolutePath}:${LinuxToolBridgeConfig.GUEST_BRIDGE_DIR}")
+        }
         val directory = spec.workingDirectory ?: if (spec.workspace != null) "/workspace" else "/root"
         require(directory.startsWith('/') && '\u0000' !in directory && directory.split('/').none { it == ".." }) { messages(LinuxRuntimeMessage.WORKING_DIRECTORY) }
         arguments += listOf("-w", directory)
         val bash = File(rootfs, "bin/bash")
         val shell = if (LinuxRootfsFiles.isGuestFile(rootfs, bash)) "/bin/bash" else "/bin/sh"
-        arguments += spec.argv.ifEmpty { listOf(shell, "-l") }
+        arguments += spec.argv.ifEmpty {
+            when {
+                !bridgeEnabled -> listOf(shell, "-l")
+                shell == "/bin/bash" -> listOf(shell, "--rcfile", LinuxToolBridgeConfig.GUEST_TERMINAL_PROFILE, "-i")
+                else -> listOf(shell, "-i")
+            }
+        }
         val environment = linkedMapOf(
             "PROOT_LOADER" to proot.loader.path, "PROOT_TMP_DIR" to tmp.path,
             "HOME" to "/root", "PATH" to "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -95,6 +120,14 @@ class LinuxLaunchBuilder(
         environment.putAll(tailnetEnvironment().filterKeys { it in PROXY_KEYS })
         // 保留用户的标准代理变量。专用变量仅反映本次启动时有效的内置代理。
         environment.putAll(spec.environment.filterKeys { it !in BuiltInProxyConfig.environmentKeys })
+        if (bridgeEnabled) {
+            environment["PATH"] = LinuxToolBridgeConfig.GUEST_BIN_DIR + ":" + environment.getValue("PATH")
+            environment[LinuxToolBridgeConfig.ENV_SOCKET] = LinuxToolBridgeConfig.GUEST_SOCKET
+            if (spec.argv.isEmpty() && shell == "/bin/sh") environment["ENV"] = LinuxToolBridgeConfig.GUEST_TERMINAL_PROFILE
+        } else {
+            environment.remove(LinuxToolBridgeConfig.ENV_NONCE)
+            environment.remove(LinuxToolBridgeConfig.ENV_SOCKET)
+        }
         builtInProxyEndpoint()?.let { environment.putAll(BuiltInProxyConfig.environment(it)) }
         LinuxGitSafeDirectories.appendTo(environment, listOfNotNull("/workspace".takeIf { spec.workspace != null }) + spec.mounts.map { it.guestPath })
         if (spec.wakeInbox != null) environment[LinuxWakeLimits.ENVIRONMENT_VARIABLE] = LinuxWakeLimits.GUEST_DIRECTORY

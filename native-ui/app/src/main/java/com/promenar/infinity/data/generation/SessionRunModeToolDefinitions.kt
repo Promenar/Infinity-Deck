@@ -15,10 +15,11 @@ object SessionRunModeToolDefinitions {
     fun forSession(tool: ProtocolTool, mode: SessionRunMode?): ProtocolTool {
         if (mode != SessionRunMode.LINUX || tool.sourceId != "builtin") return tool
         val name = tool.function.name
-        if (name !in setOf("shell_exec", "python_exec") && name !in files) return tool
+        if (name !in setOf("shell_exec", "python_exec", "git_exec") && name !in files) return tool
         val base = tool.baseDefinitionDigest ?: (ToolInvocationIdentityFactory.definitionDigest(tool) as? ToolDefinitionDigestResolution.Valid)?.digest ?: return tool
         val description = when (name) {
             "shell_exec" -> SystemPromptSections.LINUX_SHELL_GUIDANCE
+            "git_exec" -> "直接执行 APK 内的原生 Git，支持 HTTPS 凭据代理和 SSH 桥。cwd 使用 /workspace、/home/session、/mnt/<别名>、/mnt/skills、/root、/tmp，或相对当前工作目录。通过 args 逐项传参数，background=true 返回任务号。"
             "python_exec" -> "在本会话 Linux 环境的 python3 中执行 code，可使用本会话保密库的环境变量引用与 capture_secret；捕获强制前台。路径、pip 与 apk 安装、后台任务规则与 shell_exec 工具说明相同。"
             "read_file", "search_files" -> "${tool.function.description} $PATHS"
             else -> "$name。$PATHS"

@@ -96,4 +96,11 @@ class LinuxCommandEnvironmentTest {
         check(process.waitFor(30, TimeUnit.SECONDS))
         return process.exitValue() to output
     }
+    @Test fun `桥 socket 与 nonce 只来源于启动规格`() {
+        val socket = com.promenar.infinity.data.linux.LinuxToolBridgeConfig.ENV_SOCKET
+        val nonce = com.promenar.infinity.data.linux.LinuxToolBridgeConfig.ENV_NONCE
+        val launch = mapOf(socket to "managed", nonce to "issued")
+        val overwrite = mapOf(socket to "override", nonce to "override")
+        assertEquals(launch, linuxCommandEnvironment(launch, overwrite, overwrite))
+    }
 }

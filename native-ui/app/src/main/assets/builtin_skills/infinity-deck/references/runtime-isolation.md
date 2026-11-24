@@ -9,7 +9,7 @@
 | 1. 强沙盒层 | `exec_js`、`run_script`、`python_sandbox`；会话 HTML 画布 | 前三者在 Android `isolatedProcess="true"` 进程 `:script_runtime` 运行（Linux 会话自动隐藏）；画布在离线安全 WebView 运行 | 零本地文件系统直访；脚本一切工作区读写经主进程能力通道校验与审批；画布仅可只读拉取 `https://workspace-media.infinity.invalid/workspace/...` | 零直连外网、零凭据接触 |
 | 2. 统一路径与规则边界层 | `read_file`、`write_file`、`patch_file`、`diff_file`、`create_file`、`create_directory`、`move_file`、`delete_file`、`list_files`、`search_files`、媒体与画布存取 | 主进程路径解析器按运行模式路由，拒绝 `..` 与已废除伪虚拟前缀 | **内置模式**与命令共用真实 Android 路径（工作区内支持无前导 `/` 相对路径，仅 `/mnt/knowledge` 与 SAF `/mnt/<别名>` 保留虚拟前缀）：工作区内读写自由（`delete_file` 按档审批），工作区外合法真实路径写入在按风险审批档需 L1 审批；关键运行数据开放只读自诊断并硬拒写删；加密密钥存储 `infinity_encrypted_secrets.xml*` 读写列举全硬拒。**Linux 模式**统一用 Linux 路径 | 不直接发起外网；媒体/画布保存对资料库与 Linux rootfs 一律只读 |
 | 3. 暂存隔离 + 零凭据代理层 | ComfyUI 兼容层（`comfy_save_submitter` 干跑、`comfy_run_workflow`） | 会话处于 Linux 模式且环境就绪时走 Alpine `proot`（`LINUX`）；其余走打包 Python 3.14（`BUILTIN_PYTHON`） | 不挂载工作区、`/home/session`、`/mnt/skills` 或资料库；输入素材由宿主显式拷入临时暂存目录，脚本只在单次隔离运行目录执行（Linux 仅绑定 `/mnt/comfy_run` 与 `/mnt/comfy_stage`），产物由宿主验回工作区后销毁运行目录 | 主机密钥留在宿主 `127.0.0.1` 回环代理（`COMFY_HOST_URL`），脚本零接触凭据；默认 `NO_PROXY=127.0.0.1,localhost` |
-| 4. 命令执行与外部层 | `shell_exec`、`python_exec`（内置 / Linux）；`termux_exec`、`ssh_exec` | 内置与 Linux 命令均以本应用 Android UID 运行，无内核级路径沙盒；`termux_exec` 为 Termux 身份；`ssh_exec` 为远端主机账号 | 内置命令在工作区真实目录运行，与文件工具路径 1:1 一致；Linux 命令经 `proot` 将视图收拢到 rootfs 与显式挂载；两档均对毁灭性根目录破坏命令实施不可审批硬拦截（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`） | 继承 Tailnet 代理（启用时）；内置 Git HTTPS/SSH 与 Linux `git` HTTPS/`gh` 走宿主凭据代理；保密值走 `request_secret` / `capture_secret` 脱敏 |
+| 4. 命令执行与外部层 | `shell_exec`、`python_exec`（内置 / Linux）；`termux_exec`、`ssh_exec` | 内置与 Linux 命令均以本应用 Android UID 运行，无内核级路径沙盒；`termux_exec` 为 Termux 身份；`ssh_exec` 为远端主机账号 | 内置命令在工作区真实目录运行，与文件工具路径 1:1 一致；Linux 命令经 `proot` 将视图收拢到 rootfs 与显式挂载；两档均对毁灭性根目录破坏命令实施不可审批硬拦截（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`） | 继承 Tailnet 代理（启用时）；侧载内置与 Linux 的 Git HTTPS/SSH 及 Linux `gh` 使用应用凭据代理；保密值走 `request_secret` / `capture_secret` 脱敏 |
 
 ## 二、路径与挂载可见性矩阵
 
@@ -39,10 +39,9 @@
    - 内置模式运行在 Android 原生环境，系统根目录不存在可写的 `/tmp`；一切临时文件必须写入 `$TMPDIR` 或当前工作区子目录并在结束后清理。
    - Linux 模式运行在 Alpine rootfs 内，`/tmp` 正常可写。
 4. **内置 FFmpeg/ffprobe 与 Linux FFmpeg 的能力边界**：
-   - **内置模式（`arm64-v8a`）**：应用自带精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，为控包体裁掉了 `lavfi` 等虚拟输入设备）。宿主已将符号链接目录前置进 `PATH`，因此 **`shell_exec`、`python_exec`（及 Python `subprocess`/`shutil.which`）与 `ComfySubmitterRunner(BUILTIN_PYTHON)` 三处均可直接调用 `ffmpeg`/`ffprobe`**；同时保留 `INFINITY_FFMPEG` / `INFINITY_FFPROBE` 环境变量。
-   - `shell_exec`、`python_exec` 也将随 APK 提供的 `rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync` 加入内置模式的 `PATH`。以当前环境的工具探测结果为准。
-   - **内置模式 `python3` / `git` / `pip`**：这三者在 `shell_exec` 中以当前 shell 函数提供，子 shell 与 `subprocess` 不可见；脚本内调打包 Python 用 `sys.executable` 或 `$INFINITY_PYTHON`，调内置 Git/Pip 用 `python3 -m infinity_git` / `python3 -m infinity_pip`。
-   - **Linux 模式**：因 Alpine 使用 musl libc、与 Android Bionic ABI 不兼容，Linux 会话（含 `ComfySubmitterRunner(LINUX)`）一律使用 Alpine 自身 `apk add` 安装的工具，不混用 Android 打包二进制。
+   - **Sideload arm64-v8a** 提供 `git`、`ffmpeg`、`ffprobe`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync`。内置命令通过前置 `PATH` 调用，Linux 通过 shim 把支持的调用转发给宿主。以当前 APK 实际包含的工具为准。
+   - Linux shim 只翻译当前命令授权的 `/workspace`、`/home/session`、`/mnt/<别名>`、`/mnt/skills`、`/root`、`/tmp` 与本次实际绑定的额外目录。处理 Alpine 系统路径时使用对应的 Alpine 可执行文件。Play 渠道与 Git 检视器继续使用打包 Python 的 `infinity_git`。
+   - 宿主桥在应用私有 Unix socket 验证对端 UID 和当前命令或终端租约，按挂载表解析显式路径，校验参数与环境，并在租约关闭时回收宿主进程组。应用与子进程共享 Android UID。同 UID 进程可直接访问应用有权访问的数据；应用层路径校验无法约束并发的文件替换、工具内部读取或归档内容。仅在会话授权范围内运行脚本与处理仓库。
 5. **资料库与关键运行数据保护**：
    - 资料库文档由 Room 托管，必须通过 `request_knowledge_access` 申请授权后用文件工具读写，或用 `copy_knowledge_to_linux` 导出副本给 Linux 脚本处理。
    - 关键运行数据目录通过文件工具仅开放只读自诊断（`infinity_encrypted_secrets.xml*` 全硬拒）；任何命令修改均须先取得用户明确书面同意。

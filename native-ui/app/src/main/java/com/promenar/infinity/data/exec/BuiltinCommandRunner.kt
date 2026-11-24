@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 import java.io.InputStreamReader
+import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -421,6 +422,42 @@ class BuiltinCommandRunner(
         }
     }
 
+    /** 帧协议保留原始字节，由桥处理输入和输出；这里沿用原有进程组包装。 */
+    internal fun startHostTool(
+        request: BuiltinCommandRequest,
+        groupAlive: (Int) -> Boolean = { false },
+    ): HostToolProcess {
+        val scratch = Files.createTempDirectory(scratchDirectory().apply { mkdirs() }.toPath(), "host-tool-").toFile()
+        val pidFile = File(scratch, "pgid")
+        val gate = File(scratch, "start")
+        // 先取得 setsid 的组号，再允许包装进程 exec 原生工具。
+        val gated = request.copy(argv = listOf(shell, "-c", HOST_TOOL_GATE, "infinity-host-gate",
+            gate.path, hostUtility("sleep")) + request.argv)
+        val builder = ProcessBuilder(launchCommand(gated, pidFile, false)).directory(request.workingDirectory)
+        builder.environment().clear()
+        builder.environment().putAll(request.environment)
+        val process = try { builder.start() } catch (failure: Throwable) {
+            scratch.deleteRecursively()
+            throw failure
+        }
+        try {
+            repeat(50) {
+                readProcessGroup(pidFile)?.let { group ->
+                    val child = HostToolProcess(process, group, scratch, signaller, groupAlive, request.memoryWatch?.invoke())
+                    Files.createFile(gate.toPath())
+                    return child
+                }
+                if (process.isAlive) Thread.sleep(10)
+            }
+            throw java.io.IOException("无法取得宿主工具进程组。")
+        } catch (failure: Throwable) {
+            readProcessGroup(pidFile)?.let { runCatching { signaller.signal(it, SIGKILL) } }
+            process.destroyForcibly()
+            scratch.deleteRecursively()
+            throw failure
+        }
+    }
+
     /** 包装脚本先于 proot 执行，宿主工具不能依赖 guest 的 PATH。 */
     internal fun launchCommand(request: BuiltinCommandRequest, pidFile: File, requireIdentity: Boolean): List<String> =
         groupLauncher + listOf(shell, "-c", WRAPPER, "infinity-exec", pidFile.path, bootIdentity().orEmpty(),
@@ -550,6 +587,8 @@ class BuiltinCommandRunner(
         const val SIGKILL = 9
         const val SIGTERM = 15
         private const val SIGNAL_EXIT_BASE = 128
+        private const val HOST_TOOL_GATE = "n=0; while [ ! -f \"\$1\" ]; do " +
+            "[ \"\$n\" -lt 100 ] || exit 125; \"\$2\" 0.01 || exit 125; n=\$((n + 1)); done; shift 2; exec \"\$@\""
         /** $1 为进程组号文件，$4/$5/$6 为宿主 cat/mv/printf；写入失败时不执行命令。 */
         private const val WRAPPER = "echo \$\$ > \"\$1\" || exit 125; " +
             "if [ -r /proc/\$\$/stat ]; then " +

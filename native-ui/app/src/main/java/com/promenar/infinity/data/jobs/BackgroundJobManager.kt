@@ -1,8 +1,8 @@
 package com.promenar.infinity.data.jobs
 
-import com.promenar.infinity.data.proxy.BuiltInProxyConfig
 import com.promenar.infinity.data.exec.*
 import com.promenar.infinity.data.linux.MIB
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.longOrNull
@@ -453,10 +453,13 @@ class BackgroundJobManager(
                         if (!environment.keys.containsAll(record.secretNames)) throw JobAccessException("JOB_SECRET_UNAVAILABLE", "引用的保密槽位已销毁，任务未执行。")
                         val original = prepareCommand(actualKind,source,stdin,location.copy(sessionId=record.sessionId, pythonSource = kind == BackgroundJobRunner.PYTHON),minutes)
                         val linux = actualKind == BackgroundJobRunner.LINUX
-                        val releaseProxySecrets = if (linux) {
-                            retainSecretEnvironment(sessionId, builtInProxyOutputSecrets(original.request.environment), redactor)
-                        } else ({})
-                        val commandEnvironment = if (linux) environment.filterKeys { it !in BuiltInProxyConfig.environmentKeys } else environment
+                        val protected = original.request.environment.filterKeys {
+                            it == com.promenar.infinity.data.linux.LinuxToolBridgeConfig.ENV_NONCE ||
+                                it == com.promenar.infinity.data.git.remote.GitRemoteBroker.ENV_NONCE
+                        }
+                        val proxySecrets = if (linux) builtInProxyOutputSecrets(original.request.environment) else emptyMap()
+                        val releaseProxySecrets = retainSecretEnvironment(sessionId, protected + proxySecrets, redactor)
+                        val commandEnvironment = com.promenar.infinity.data.exec.linuxCommandEnvironment(emptyMap(), emptyMap(), environment)
                         val prepared = PreparedBackgroundCommand(
                             original.request.copy(
                                 environment = original.request.environment + commandEnvironment,
@@ -536,12 +539,13 @@ class BackgroundJobManager(
         action: BackgroundJobExitAction, live: ToolLiveOutputSink,
         title: String? = null,
         block: suspend (LinuxExecAttachment, ToolLiveOutputSink) -> com.promenar.infinity.domain.tool.CommandToolResult,
-    ): com.promenar.infinity.domain.tool.CommandToolResult = runForeground(sessionId, root, source, yieldSeconds, minutes, action, live, title, BackgroundJobRunner.LINUX, block)
+    ): com.promenar.infinity.domain.tool.CommandToolResult = runForeground(sessionId, root, source, yieldSeconds, minutes, action, live, title, BackgroundJobRunner.LINUX, block = block)
 
     suspend fun runForeground(
         sessionId: String, root: String, source: String, yieldSeconds: Int, minutes: Int,
         action: BackgroundJobExitAction, live: ToolLiveOutputSink, title: String? = null,
         kind: BackgroundJobRunner = BackgroundJobRunner.LINUX,
+        startInBackground: Boolean = false,
         block: suspend (LinuxExecAttachment, ToolLiveOutputSink) -> com.promenar.infinity.domain.tool.CommandToolResult,
     ): com.promenar.infinity.domain.tool.CommandToolResult {
         require(kind in setOf(BackgroundJobRunner.LINUX, BackgroundJobRunner.SHELL, BackgroundJobRunner.PYTHON))
@@ -560,6 +564,9 @@ class BackgroundJobManager(
                 ownedHandle = handle
                 handle.control.yieldAfterSeconds = yieldSeconds
                 handle.control.yieldedTimeoutSeconds = minutes * 60
+                if (startInBackground) handle.control.started.invokeOnCompletion { cause ->
+                    if (cause == null) handle.control.requestYield()
+                }
                 store.put(record)
                 val release = live.retain()
                 val sink = liveOutput.open("job:${record.id}", inferOutputEvents = false)
@@ -596,7 +603,8 @@ class BackgroundJobManager(
                             )
                             store.put(terminal); publish(); handle.terminal.complete(Unit)
                             result.complete(safeValue)
-                            if (yielded.get()) {
+                            val detached = yielded.get() || startInBackground && handle.control.started.isCompleted
+                            if (detached) {
                                 emitJobEndDiagnostic(
                                     terminal, value.timedOut, value.errorCode == "EXEC_STOPPED", value.errorCode == "EXEC_PROCESS_KILLED",
                                     (value.backendFields["memoryPressureCancelled"] as? JsonPrimitive)?.booleanOrNull == true,
@@ -604,7 +612,7 @@ class BackgroundJobManager(
                                     (value.backendFields["peakMemoryMb"] as? JsonPrimitive)?.longOrNull,
                                 )
                             }
-                            if (yielded.get() && sessionAllowed(record) && !handle.suppressCompletion) {
+                            if (detached && sessionAllowed(record) && !handle.suppressCompletion) {
                                 try { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
                             }
                             requestReconcile(terminal)
@@ -636,8 +644,9 @@ class BackgroundJobManager(
                     } }
                     try {
                         kotlinx.coroutines.selects.select<com.promenar.infinity.domain.tool.CommandToolResult?> {
+                            if (startInBackground) handle.control.yielded.onAwait { null }
                             result.onAwait { it }
-                            handle.control.yielded.onAwait { null }
+                            if (!startInBackground) handle.control.yielded.onAwait { null }
                         }
                     } finally { insertion?.cancel() }
                 }
@@ -648,12 +657,20 @@ class BackgroundJobManager(
             yielded.set(true)
             emitJobStartDiagnostic(record, background = false, foregroundState = "YIELDED")
             withContext(NonCancellable) { store.updateIfPresent(record.id) { it.copy(workspaceDirectory = directory?.path) } }
-            if (result.isCompleted) return result.await()
+            if (result.isCompleted) {
+                val settled = result.await()
+                if (!startInBackground) return settled
+                val current = store.all().firstOrNull { it.id == record.id }
+                return settled.copy(backendFields = JsonObject(settled.backendFields + mapOf(
+                    "job_id" to JsonPrimitive(record.id),
+                    "state" to JsonPrimitive(current?.state?.lowercase(java.util.Locale.ROOT) ?: "exited"),
+                )))
+            }
             val output = handle.control.outputSnapshot
             val rawTail = if (output == null) withContext(Dispatchers.IO) { readJobLogTail(logFile(record)) } else null
             val fields = kotlinx.serialization.json.buildJsonObject {
                 put("runtime", kotlinx.serialization.json.JsonPrimitive(if (kind == BackgroundJobRunner.LINUX) "linux" else "system"))
-                put("stderr_merged", kotlinx.serialization.json.JsonPrimitive(true))
+                put("stderr_merged", kotlinx.serialization.json.JsonPrimitive(kind == BackgroundJobRunner.LINUX))
                 put("state", kotlinx.serialization.json.JsonPrimitive("running")); put("job_id", kotlinx.serialization.json.JsonPrimitive(record.id))
                 put("yielded_after_seconds", kotlinx.serialization.json.JsonPrimitive(((now() - record.startedAtMillis).coerceAtLeast(0) / 1000)))
                 put("workspace_mode", kotlinx.serialization.json.JsonPrimitive("direct_reconcile_on_exit"))

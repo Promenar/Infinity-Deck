@@ -81,7 +81,7 @@ object CommandOutputParser {
 
     private val TRUNCATION_MARKER = Regex("""^…\(已截断，原始 (\d+) 字符\)""")
     private val SHELL_TOOLS = setOf("shell_exec")
-    private val COMMAND_TOOLS = setOf("shell_exec", "python_exec", "termux_exec", "ssh_exec", "job_status", "job_wait", "job_input")
+    private val COMMAND_TOOLS = setOf("shell_exec", "git_exec", "python_exec", "termux_exec", "ssh_exec", "job_status", "job_wait", "job_input")
 
     fun isCommandTool(toolName: String?): Boolean = toolName in COMMAND_TOOLS
 
@@ -95,7 +95,9 @@ object CommandOutputParser {
         val failureSummary = resultContent.startsWith(FAILURE_PREFIX)
         val body = if (failureSummary) resultContent.removePrefix(FAILURE_PREFIX) else resultContent
         val result = parseObject(body)
-        val fullCommand = arguments?.text("command") ?: arguments?.text("code") ?: result?.text("summary")
+        val gitCommand = (arguments?.get("args") as? kotlinx.serialization.json.JsonArray)
+            ?.takeIf { toolName == "git_exec" }?.let { "git $it" }
+        val fullCommand = gitCommand ?: arguments?.text("command") ?: arguments?.text("code") ?: result?.text("summary")
         val commandLine = fullCommand?.let(::singleLine)
         val rerun = if (toolName in SHELL_TOOLS) arguments?.text("command")?.takeIf(String::isNotBlank) else null
 
@@ -174,7 +176,7 @@ object CommandOutputParser {
         toolName == "termux_exec" -> CommandRuntime.TERMUX
         toolName == "ssh_exec" -> CommandRuntime.SSH
         toolName == "python_exec" -> CommandRuntime.PYTHON
-        toolName == "shell_exec" -> CommandRuntime.SYSTEM
+        toolName in setOf("shell_exec", "git_exec") -> CommandRuntime.SYSTEM
         else -> CommandRuntime.UNKNOWN
     }
 

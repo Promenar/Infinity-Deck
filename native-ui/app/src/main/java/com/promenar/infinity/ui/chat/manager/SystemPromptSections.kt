@@ -71,7 +71,7 @@ object SystemPromptSections {
         "需要 SOCKS5 远端解析时，将单条命令的代理地址改用 \$INFINITY_PROXY_SOCKS。" +
         "仅在变量存在时使用，禁止打印、记录或上传代理凭据，禁用 set -x 和会回显凭据的详细日志。"
 
-    const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl），使用 apk add 安装软件包；git、ripgrep（rg）、python3 与 pip、nodejs 与 npm、ffmpeg 是安装时的可选包，用前确认已安装，缺少时 apk add 补装。" +
+    const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl）。Sideload arm64 将 APK 提供的 git、ffmpeg、ffprobe、rg、fd、jq、sqlite3、zstd、bsdtar、rsync 置于 PATH 前端，直接使用。python3、pip、nodejs、npm 等其它软件可用 apk add 安装。" +
         "会话专用空间为 /home/session，基础工作区挂载为 /workspace。INFINITY_WORKSPACE 指向命令的起始工作目录，分支 worktree 使用其绑定目录；普通会话通常使用 /workspace。" +
         "真实路径挂载为 /mnt/<别名>，用户级技能为 /mnt/skills（INFINITY_SKILLS=/mnt/skills）；SAF 挂载不可见。" +
         "文件工具与命令使用相同的 Linux 路径，相对路径相对当前会话的起始工作目录；/root、/etc 等绝对路径指向 Linux rootfs。" +
@@ -79,8 +79,8 @@ object SystemPromptSections {
         "Linux 不可用时返回错误，请用户在会话中处理环境，不能自动改用系统 sh、打包 Python 或其它运行环境。" +
         LINUX_PROXY_GUIDANCE +
         "Linux 命令以本应用的 Android 用户运行，按风险审批档下严格解析的零副作用只读命令免批、其余命令逐条审批，免批准档常规命令免批；毁灭性根目录破坏命令在两档下均直接硬拦截且不可审批。" +
-        "原生 git 访问 HTTPS 远端时自动使用用户在设置中保存的 Git 凭据，与内置模式共用，无需在 Linux 中登录或配置凭据助手。" +
-        "git@主机: 与 ssh:// 远端在 Linux 中不经 SSH 桥，需要时请用户切到内置模式。" +
+        "宿主工具桥仅处理 /workspace、/home/session、/mnt/<别名>、/mnt/skills、/root 和 /tmp 内的路径。处理 /etc、/usr 等 Alpine 系统路径时，显式调用已安装的 Alpine 命令（如 /usr/bin/rg）。" +
+        "宿主原生 Git 同时支持 HTTPS 凭据代理和 git@主机:、ssh:// SSH 桥，使用应用设置中保存的凭据。常规 Git 操作优先用 git_exec，以 args 传递参数。" +
         "gh 同样经应用代理使用已保存的 github.com 凭据，无需运行 gh auth login，不要让用户粘贴令牌；尚未保存时调用 request_secret（git_credential，github.com），卡片里也可改用浏览器登录 GitHub。" +
         "shell_exec 在伪终端运行（TERM=xterm-256color，120列×40行，stderr合并到stdout）。默认15秒让出为后台任务，yield_after_seconds=0 等待到 timeout_seconds；background:true 立即返回任务号。" +
         "background:true 与自动让出的后台任务不随本轮生成结束或取消而停止（最长运行 max_runtime_minutes 默认120、上限1440，后台不使用 timeout_seconds；on_exit 默认 notify，结束后需继续处理请用 wake）。" +
@@ -133,7 +133,7 @@ object SystemPromptSections {
         "create_file", "create_directory", "move_file", "delete_file",
     )
     private val PLAN_TOOLS = setOf("initialize_plan", "update_plan", "get_plan", "drop_plan")
-    private val WORKSPACE_PROCESS_TOOLS = setOf("shell_exec", "python_exec", "run_script", "exec_js", "python_sandbox")
+    private val WORKSPACE_PROCESS_TOOLS = setOf("shell_exec", "python_exec", "git_exec", "run_script", "exec_js", "python_sandbox")
     private val MEDIA_TOOLS = setOf(
         "image_generation", "generate_image", "media_fetch", "view_media",
         "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send",
@@ -201,7 +201,8 @@ object SystemPromptSections {
         if ("shell_exec" in toolNames) {
             appendLine("- " + shellRuntimeGuidance(linuxState, runMode))
             if (!usesLinux) {
-                appendLine("- python_exec 与 python_sandbox 使用打包 Python。内置 shell_exec 和 python_exec 将 APK 提供的 ffmpeg、ffprobe、rg、fd、jq、sqlite3、zstd、bsdtar、rsync 加入 PATH。用 command -v 查询当前设备上的可用性。")
+                appendLine("- python_exec 与 python_sandbox 使用打包 Python。Sideload arm64 将 APK 提供的 git、ffmpeg、ffprobe、rg、fd、jq、sqlite3、zstd、bsdtar、rsync 置于 PATH 前端，直接使用。用 command -v 查询实际入口。")
+                if ("git_exec" in toolNames) appendLine("- 常规 Git 操作优先用 git_exec。原生 Git 经应用代理访问 HTTPS 和 SSH 远端。")
             }
         }
         if (toolNames.any { it == "sftp_upload" || it == "sftp_download" }) {
@@ -262,11 +263,11 @@ object SystemPromptSections {
         if (toolNames.any { it in setOf("state_define", "state_update", "state_get", "state_remove") }) {
             appendLine("- 用户要求跟踪游戏状态或写作进度时，用 state_define 定义状态面板，以 state_update 更新，state_get 读取，state_remove 移除；无需额外模型抽取。")
         }
-        if (toolNames.any { it in setOf("shell_exec", "python_exec", "termux_exec", "ssh_exec") } && "job_wait" in toolNames) {
+        if (toolNames.any { it in setOf("shell_exec", "python_exec", "git_exec", "termux_exec", "ssh_exec") } && "job_wait" in toolNames) {
             // 常驻提示只放选用规则；参数、状态与存活条件在内置指南的附带文件中按需读取。
             appendLine("- 需要在本次工具调用之后继续运行的进程用命令工具的 background:true 启动并用 job_* 工具管理；命令里的 nohup、&、setsid、screen、tmux 不能让本机进程持续运行。周期性工作用 schedule_create。细节读 read_skill_file(name=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.NAME}\", path=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.REFERENCE_FILES.first()}\")。")
         }
-        if (toolNames.any { it in setOf("shell_exec", "python_exec", "termux_exec") } && "job_wait" in toolNames) {
+        if (toolNames.any { it in setOf("shell_exec", "python_exec", "git_exec", "termux_exec") } && "job_wait" in toolNames) {
             if (runMode == SessionRunMode.LINUX) appendLine("- Linux 长命令可用 background:true 立即返回，或等待前台默认15秒让出；两者均不随本轮生成结束或取消而停止，用 job_status/job_wait/job_input/job_stop 操作。让出的进程直接在原目录运行，结束后异步对账，结果包含 workspace_changes；自选目录不对账。")
             else appendLine("- 耗时超过约一分钟或需要持续运行的命令使用 background:true；启动后继续其它工作，需要结果时用 job_wait。长任务优先 on_exit:\"wake\"，不要循环轮询。私有工作区后台命令在快照中运行，结束时合入，冲突产物保留在 jobs/；job_status/job_wait 发布日志。")
         }

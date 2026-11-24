@@ -30,9 +30,10 @@
 
 其它要点：
 
-- 内置模式下 `python3`、`git`、`pip` 由当前 shell 的函数提供。子脚本可通过 `sys.executable` 或 `$INFINITY_PYTHON` 调用打包 Python，并以 `-m infinity_git` 或 `-m infinity_pip` 执行 Git 与 pip。Git 的 HTTPS 凭据来自应用设置，SSH 远端使用已保存且验证过主机密钥的 SSH 主机。
-- 内置模式（`arm64-v8a`）随应用打包精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，不含 `lavfi` 虚拟输入），已通过符号链接目录前置进 `PATH`（并保留 `INFINITY_FFMPEG`/`INFINITY_FFPROBE`），因此在 `shell_exec`、`python_exec` 及 Python `subprocess` 中均可直接调用 `ffmpeg`/`ffprobe`。Linux 模式改用 Alpine `apk add ffmpeg` 安装的 musl 二进制，不混用 Android 打包库。
-- 内置命令也会自动将 APK 中可用的 `rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync` 加入 `PATH`。用 `command -v <工具名>` 查询当前设备上的可用性。
+- Sideload arm64-v8a 将 APK 提供的 `git`、`ffmpeg`、`ffprobe`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync` 置于内置及 Linux 命令的 `PATH` 前端。用 `command -v` 查看当前入口。Linux 处理 `/etc`、`/usr` 等系统路径时显式调用 Alpine 的工具。
+- 常规 Git 操作用 `git_exec`，例如 `{"args":["status","--short"],"cwd":"."}`。Linux 的 cwd 使用会话挂载路径，内置模式使用授权真实路径。HTTPS 凭据与 SSH 主机都来自应用设置。Git 的外部命令、仓库自定义钩子、过滤器和配置包含受限。宿主模式会拒绝不支持的仓库配置或参数。
+- `git_exec` 在按风险审批档区分只读与写入，私有工作区执行后对账并刷新 Git 状态。传入 `background: true` 可在任务面板或用 `job_status`、`job_stop` 管理。
+- 内置 `python3` 和 `pip` 由当前 shell 函数提供。子脚本可通过 `sys.executable` 或 `$INFINITY_PYTHON` 运行 Python。Play 的 Git 仍通过 `python3 -m infinity_git` 执行。
 - 内置模式下，命令与文件工具完全共用真实 Android 规范路径，`pwd`、`echo "$INFINITY_WORKSPACE"` 与文件工具返回路径一致，命令输出直接保留真实路径（不再脱敏为字面量 `$INFINITY_WORKSPACE`）。
 - 内置模式运行在 Android 原生环境，系统根目录没有可写的 `/tmp`，临时文件一律使用 `$TMPDIR`（指向 `cacheDir/exec-tmp`）或工作区临时文件并在结束后清理；Linux 模式 rootfs 内 `/tmp` 正常可写。
 - 内置模式的命令可直接按真实路径访问已授权的真实路径挂载，仅 SAF 挂载与 `/mnt/knowledge` 资料库对命令不可见（需用文件工具读取或拷入工作区）。Linux 模式仅真实路径 `/mnt/<别名>` 可见，SAF 与 `/mnt/knowledge` 均不挂载到 Linux shell（资料库内容用文件工具读写，或经 `copy_knowledge_to_linux` 拷入 `/home/session/inbox`）。完整四层隔离矩阵见 `references/runtime-isolation.md`。
