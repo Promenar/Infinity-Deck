@@ -87,22 +87,21 @@ enum class EmptyChatStyle {
     }
 }
 
-/** 由种子色生成配色的算法：前 4 项对应 Material Color Utilities 标准方案，[BRIGHT] 为锁定原色相的高饱和明亮方案。 */
+/** 由种子色生成配色的三档风格：柔和（低饱和沉稳）、标准（贴近原色均衡对比）、明亮（锁定原色相高饱和活力）。 */
 enum class InfinitySchemeStyle {
     /** 柔和：压低种子色饱和度，整体沉稳。 */
     TONAL_SPOT,
-    /** 鲜艳：主色保持高饱和。 */
-    VIBRANT,
-    /** 忠实：主色尽量贴近所选颜色。 */
+    /** 标准：贴近所选种子色，饱和与对比均衡。 */
     FIDELITY,
-    /** 表现力：辅色与第三色偏移色相，对比更强。 */
-    EXPRESSIVE,
     /** 明亮：锁定原色相，深浅模式均呈现高饱和通透亮色。 */
     BRIGHT;
 
     companion object {
-        internal fun fromPreferenceValue(value: String?): InfinitySchemeStyle =
-            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: TONAL_SPOT
+        internal fun fromPreferenceValue(value: String?): InfinitySchemeStyle = when {
+            value.equals("vibrant", ignoreCase = true) -> FIDELITY
+            value.equals("expressive", ignoreCase = true) -> BRIGHT
+            else -> entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: TONAL_SPOT
+        }
     }
 }
 

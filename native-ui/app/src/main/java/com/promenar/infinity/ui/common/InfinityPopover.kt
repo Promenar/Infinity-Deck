@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -262,37 +263,39 @@ fun InfinityPopover(
         },
         properties = PopupProperties(focusable = true, dismissOnBackPress = dismissible, dismissOnClickOutside = dismissible),
     ) {
-        AnimatedVisibility(
-            visibleState = visibleState,
-            enter = fadeIn(tween(InfinityMotion.DurationShort)) +
-                scaleIn(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedDecelerate), initialScale = 0.92f, transformOrigin = origin),
-            exit = fadeOut(tween(PopoverExitMillis)) +
-                scaleOut(tween(PopoverExitMillis, easing = InfinityMotion.EmphasizedAccelerate), targetScale = 0.96f, transformOrigin = origin),
-        ) {
-            val scheme = MaterialTheme.colorScheme
-            val dark = scheme.surface.luminance() < 0.5f
-            Surface(
-                shape = PopoverShape,
-                color = if (dark) InfinityObsidianDialogContainer else scheme.surfaceContainerLowest,
-                contentColor = scheme.onSurface,
-                border = BorderStroke(
-                    1.dp,
-                    if (dark) InfinityPureWhite.copy(alpha = 0.13f) else scheme.outlineVariant.copy(alpha = 0.55f),
-                ),
-                shadowElevation = 12.dp,
-                modifier = modifier
-                    .width(popoverWidth)
-                    .heightIn(max = maxHeight)
-                    .then(if (title != null) Modifier.semantics { paneTitle = title } else Modifier)
-                    .testTag(InfinityPopoverTags.POPOVER),
+        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+            AnimatedVisibility(
+                visibleState = visibleState,
+                enter = fadeIn(tween(InfinityMotion.DurationShort)) +
+                    scaleIn(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedDecelerate), initialScale = 0.92f, transformOrigin = origin),
+                exit = fadeOut(tween(PopoverExitMillis)) +
+                    scaleOut(tween(PopoverExitMillis, easing = InfinityMotion.EmphasizedAccelerate), targetScale = 0.96f, transformOrigin = origin),
             ) {
-                Column(
-                    modifier = Modifier.obsidianTopGlint(
-                        color = if (dark) InfinityPureWhite.copy(alpha = 0.15f) else Color.Transparent,
-                        cornerRadius = 16.dp,
+                val scheme = MaterialTheme.colorScheme
+                val dark = scheme.surface.luminance() < 0.5f
+                Surface(
+                    shape = PopoverShape,
+                    color = if (dark) InfinityObsidianDialogContainer else scheme.surfaceContainerLowest,
+                    contentColor = scheme.onSurface,
+                    border = BorderStroke(
+                        1.dp,
+                        if (dark) InfinityPureWhite.copy(alpha = 0.13f) else scheme.outlineVariant.copy(alpha = 0.55f),
                     ),
-                    content = content,
-                )
+                    shadowElevation = 12.dp,
+                    modifier = modifier
+                        .width(popoverWidth)
+                        .heightIn(max = maxHeight)
+                        .then(if (title != null) Modifier.semantics { paneTitle = title } else Modifier)
+                        .testTag(InfinityPopoverTags.POPOVER),
+                ) {
+                    Column(
+                        modifier = Modifier.obsidianTopGlint(
+                            color = if (dark) InfinityPureWhite.copy(alpha = 0.15f) else Color.Transparent,
+                            cornerRadius = 16.dp,
+                        ),
+                        content = content,
+                    )
+                }
             }
         }
     }

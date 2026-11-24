@@ -91,7 +91,7 @@ internal fun composerWashAnchor(scopeCenter: Offset, width: Float, height: Float
 /** 没有运行坞点阵屏时，环境光柔光中心距浮岛右缘的距离。 */
 internal const val ComposerWashFallbackEndDp = 90f
 
-/** 各阶段柔光的颜色序号（0 主色、1 第三色）与亮度 0..1。 */
+/** 各阶段柔光的颜色序号（0 主色、1 第三色、2 审批警示色）与亮度 0..1。 */
 private fun washLevel(phase: GenerationMotionPhase, t: Float, act: Float): Float = when (phase) {
     GenerationMotionPhase.WAIT -> 0.35f + 0.35f * breath(t, 3.2f)
     GenerationMotionPhase.STREAM -> 0.55f + 0.45f * act
@@ -100,8 +100,11 @@ private fun washLevel(phase: GenerationMotionPhase, t: Float, act: Float): Float
     GenerationMotionPhase.RETRY -> 0.15f + 0.3f * evenBlink(t)
 }
 
-private fun washUsesTertiary(phase: GenerationMotionPhase): Boolean =
-    phase == GenerationMotionPhase.TOOL || phase == GenerationMotionPhase.APPROVAL
+internal fun washColorIndex(phase: GenerationMotionPhase): Int = when (phase) {
+    GenerationMotionPhase.TOOL -> 1
+    GenerationMotionPhase.APPROVAL -> 2
+    else -> 0
+}
 
 @Composable
 private fun AmbientWash(state: ComposerGlowState, frosted: Boolean, modifier: Modifier) {
@@ -115,7 +118,7 @@ private fun AmbientWash(state: ComposerGlowState, frosted: Boolean, modifier: Mo
             val rx = size.width * 0.78f
             val ry = maxOf(size.height * 0.95f, 56.dp.toPx())
             fun gradient(color: Color) = RadialGradient(0f, 0f, rx, color.toArgb(), color.copy(alpha = 0f).toArgb(), Shader.TileMode.CLAMP)
-            val shaders = arrayOf(gradient(palette.a), gradient(palette.b), gradient(errorColor))
+            val shaders = arrayOf(gradient(palette.a), gradient(palette.b), gradient(palette.approval), gradient(errorColor))
             val rimPad = 16.dp.toPx()
             val rimHeight = 1.5.dp.toPx()
             fun rimGradient(color: Color): Shader {
@@ -124,7 +127,11 @@ private fun AmbientWash(state: ComposerGlowState, frosted: Boolean, modifier: Mo
                 return LinearGradient(rimPad, 0f, (size.width - rimPad).coerceAtLeast(rimPad + 1f), 0f,
                     intArrayOf(edge, edge, peakCol, edge), floatArrayOf(0f, 0.25f, 0.75f, 1f), Shader.TileMode.CLAMP)
             }
-            val rimShaders = if (frosted) arrayOf(rimGradient(palette.a), rimGradient(palette.b), rimGradient(errorColor)) else null
+            val rimShaders = if (frosted) {
+                arrayOf(rimGradient(palette.a), rimGradient(palette.b), rimGradient(palette.approval), rimGradient(errorColor))
+            } else {
+                null
+            }
             val local = Matrix()
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             onDrawBehind {
@@ -150,10 +157,10 @@ private fun AmbientWash(state: ComposerGlowState, frosted: Boolean, modifier: Mo
                 if (gen > 0f) for (phase in GenerationMotionPhase.entries) {
                     val weight = motion.weight(phase)
                     if (weight <= 0.004f) continue
-                    wash(if (washUsesTertiary(phase)) 1 else 0, peak * gen * weight * washLevel(phase, time, state.act))
+                    wash(washColorIndex(phase), peak * gen * weight * washLevel(phase, time, state.act))
                 }
                 // 出错的整圈泛色在内部柔光与顶边受光线上同样平滑退去。
-                wash(2, peak * 1.3f * error)
+                wash(3, peak * 1.3f * error)
             }
         },
     )

@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.common
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -135,9 +134,8 @@ private fun WaveDots(modifier: Modifier, dotSize: Dp, gap: Dp, lift: Dp) {
     val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
     val clock = rememberMotionClock(running = animate)
     val motion = LocalGenerationMotion.current
-    val primary = MaterialTheme.colorScheme.primary
-    val tertiary = MaterialTheme.colorScheme.tertiary
-    val colors = remember(primary, tertiary) { listOf(primary, hueMidpoint(primary, tertiary), tertiary) }
+    val palette = rememberMotionPalette()
+    val colors = remember(palette.a, palette.mid, palette.b) { listOf(palette.a, palette.mid, palette.b) }
     val painter = remember { IndicatorPainter() }
     Canvas(
         modifier
@@ -149,11 +147,15 @@ private fun WaveDots(modifier: Modifier, dotSize: Dp, gap: Dp, lift: Dp) {
         val restY = size.height - radius
         val liftPx = lift.toPx()
         if (!animate) {
-            val color = when (motion.shown ?: GenerationMotionPhase.STREAM) {
-                GenerationMotionPhase.TOOL, GenerationMotionPhase.APPROVAL -> null
-                else -> colors
+            val phase = motion.shown ?: GenerationMotionPhase.STREAM
+            for (index in 0..2) {
+                val dotColor = when (phase) {
+                    GenerationMotionPhase.TOOL -> palette.b
+                    GenerationMotionPhase.APPROVAL -> palette.approval
+                    else -> colors[index]
+                }
+                drawCircle(dotColor, radius, Offset(radius + step * index, restY))
             }
-            for (index in 0..2) drawCircle(color?.get(index) ?: tertiary, radius, Offset(radius + step * index, restY))
             return@Canvas
         }
         // 时间只在绘制阶段读取，动画只触发重绘。
@@ -164,7 +166,7 @@ private fun WaveDots(modifier: Modifier, dotSize: Dp, gap: Dp, lift: Dp) {
             val weight = motion.weight(phase)
             if (weight <= 0.004f) continue
             for (index in 0..2) {
-                val (raised, color, alpha) = waveDot(phase, index, t, act, painter, colors)
+                val (raised, color, alpha) = waveDot(phase, index, t, act, painter, colors, palette.approval)
                 drawCircle(
                     color = color,
                     radius = radius,
@@ -184,6 +186,7 @@ private fun waveDot(
     act: Float,
     painter: IndicatorPainter,
     colors: List<Color>,
+    approvalColor: Color,
 ): Triple<Float, Color, Float> = when (phase) {
     GenerationMotionPhase.WAIT -> {
         val raised = generationDotLift(fract(t / 2.4f), index)
@@ -198,6 +201,6 @@ private fun waveDot(
         val on = floor(t * 5).toInt() % 3 == index
         Triple(if (on) 0.8f else 0f, colors[2], if (on) 1f else 0.3f)
     }
-    GenerationMotionPhase.APPROVAL -> Triple(0f, colors[2], 0.4f + 0.6f * slowBlink(t))
+    GenerationMotionPhase.APPROVAL -> Triple(0f, approvalColor, 0.4f + 0.6f * slowBlink(t))
     GenerationMotionPhase.RETRY -> Triple(0f, colors[0], 0.15f + 0.35f * evenBlink(t))
 }

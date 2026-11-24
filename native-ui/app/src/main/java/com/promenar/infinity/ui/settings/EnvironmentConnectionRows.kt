@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.WorkHistory
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +27,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.data.proxy.BuiltInProxyState
 import com.promenar.infinity.data.tailnet.TailnetState
 import com.promenar.infinity.data.termux.TermuxAvailability
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
@@ -37,13 +39,14 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 设置首页“执行环境与连接”五行的状态；各项尚未读取时为 null，副标题显示“读取中”。 */
+/** 设置首页“执行环境与连接”各行的状态；各项尚未读取时为 null，副标题显示“读取中”。 */
 internal data class EnvironmentConnectionState(
     val linuxState: LinuxRuntimeState? = null,
     val linuxAgentEnabled: Boolean = true,
     val termuxAvailability: TermuxAvailability? = null,
     val sshHostCount: Int? = null,
     val tailscaleState: TailnetState? = null,
+    val builtInProxyState: BuiltInProxyState? = null,
 )
 
 /** 收集各行状态：Termux 在每次回到前台时于 IO 线程重新检测。 */
@@ -56,6 +59,7 @@ internal fun rememberEnvironmentConnectionState(): EnvironmentConnectionState {
         application.sshHostStore.observeHosts().flowOn(Dispatchers.IO)
     }.collectAsState(initial = null)
     val tailscaleState by application.tailnetManager.state.collectAsState()
+    val builtInProxyState by application.builtInProxyManager.state.collectAsState()
     var termuxAvailability by remember { mutableStateOf<TermuxAvailability?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -74,6 +78,7 @@ internal fun rememberEnvironmentConnectionState(): EnvironmentConnectionState {
         termuxAvailability = termuxAvailability,
         sshHostCount = sshHosts?.size,
         tailscaleState = tailscaleState,
+        builtInProxyState = builtInProxyState,
     )
 }
 
@@ -117,6 +122,15 @@ internal fun ColumnScope.EnvironmentConnectionRows(
         route = NavDestinations.TAILSCALE_CONFIG,
         selectedRoute = selectedRoute,
         onOpen = onOpen,
+    )
+    EnvironmentRow(
+        icon = Icons.Rounded.Public,
+        title = stringResource(R.string.settings_proxy_entry),
+        subtitle = state.builtInProxyState?.let { builtInProxySummarySubtitle(it) } ?: loading,
+        route = NavDestinations.BUILT_IN_PROXY,
+        selectedRoute = selectedRoute,
+        onOpen = onOpen,
+        modifier = Modifier.testTag("built_in_proxy_entry"),
     )
     EnvironmentRow(
         icon = Icons.Rounded.WorkHistory,

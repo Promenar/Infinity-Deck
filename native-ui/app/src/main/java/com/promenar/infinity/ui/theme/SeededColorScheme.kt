@@ -7,12 +7,10 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import com.google.android.material.color.utilities.Hct
 import com.google.android.material.color.utilities.DynamicScheme
-import com.google.android.material.color.utilities.SchemeExpressive
 import com.google.android.material.color.utilities.SchemeFidelity
 import com.google.android.material.color.utilities.SchemeTonalSpot
-import com.google.android.material.color.utilities.SchemeVibrant
 
-/** 使用 Google Material Color Utilities 按 [style] 生成与 Material 3 同源的色板，缺省为 Tonal Spot；[InfinitySchemeStyle.BRIGHT] 锁定原色相并提升深浅色通透活力。 */
+/** 使用 Google Material Color Utilities 按 [style] 生成与 Material 3 同源的色板，缺省为柔和；[InfinitySchemeStyle.BRIGHT] 锁定原色相并提升深浅色通透活力。 */
 // Material Color Utilities 官方 Java 指南直接使用这些 API；Android artifact 的
 // library-group 注解并不代表运行时不稳定，因此在这一个适配边界内集中抑制。
 @SuppressLint("RestrictedApi")
@@ -23,10 +21,7 @@ internal fun seededColorScheme(seed: Color, dark: Boolean, style: InfinityScheme
     }
     val scheme: DynamicScheme = when (style) {
         InfinitySchemeStyle.TONAL_SPOT -> SchemeTonalSpot(hct, dark, 0.0)
-        InfinitySchemeStyle.VIBRANT -> SchemeVibrant(hct, dark, 0.0)
-        InfinitySchemeStyle.FIDELITY -> SchemeFidelity(hct, dark, 0.0)
-        InfinitySchemeStyle.EXPRESSIVE -> SchemeExpressive(hct, dark, 0.0)
-        InfinitySchemeStyle.BRIGHT -> SchemeFidelity(hct, dark, 0.0)
+        InfinitySchemeStyle.FIDELITY, InfinitySchemeStyle.BRIGHT -> SchemeFidelity(hct, dark, 0.0)
     }
     val base = if (dark) InfinityDarkColorScheme else InfinityLightColorScheme
     fun Int.composeColor() = Color(this)

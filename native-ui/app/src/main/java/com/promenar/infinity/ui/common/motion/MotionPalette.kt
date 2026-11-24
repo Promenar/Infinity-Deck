@@ -14,13 +14,17 @@ import com.promenar.infinity.ui.common.hueMidpoint
 import com.promenar.infinity.ui.theme.infinityDomainColors
 
 /**
- * 灯语动效的配色，全部跟随主题色：[a] 为主色灯，[b] 为第三色（扮演交换机面板上的琥珀灯），[mid] 为两者色相中点，
- * [hot] 为高亮灯芯。浅色主题的主色偏深，提亮加饱和后才像“发光”。
+ * 灯语动效的统一配色源：
+ * - [a] 主色灯（等待、流式主通道与重试），跟随主题主色；
+ * - [b] 第三色灯（工具执行与流式点缀），跟随主题第三色；
+ * - [approval] 等待审批警示灯，固定取领域警示色，使运行坞点阵屏、细灯带、浮岛漫光、外圈流光与行内指示在所有配色风格下保持上下完全一致；
+ * - [mid] 为 [a] 与 [b] 的色相中点，[hot] 为高亮灯芯。浅色主题提亮加饱和后才像“发光”。
  */
 @Immutable
 internal data class MotionPalette(
     val a: Color,
     val b: Color,
+    val approval: Color,
     val mid: Color,
     val hot: Color,
     val outline: Color,
@@ -34,22 +38,54 @@ internal data class MotionPalette(
     val faceplate: Color get() = if (dark) InfinityPureBlack.copy(alpha = 0.5f) else InfinityLedFaceplateLight
 
     val leds: List<Color> get() = listOf(a, b)
+
+    val approvalLeds: List<Color> get() = listOf(a, approval)
+
+    /** 按生成阶段返回统一的双色灯槽（0 主色、1 阶段强调色）；审批阶段所有动效表面共享警示色。 */
+    fun phaseLeds(phase: GenerationMotionPhase?): List<Color> =
+        if (phase == GenerationMotionPhase.APPROVAL) approvalLeds else leds
+
+    /** 工具阶段返回第三色，等待审批阶段返回警示色，供单色外圈、背光与指示复用。 */
+    fun phaseAccent(phase: GenerationMotionPhase): Color =
+        if (phase == GenerationMotionPhase.APPROVAL) approval else b
+}
+
+internal fun resolveMotionPalette(
+    primary: Color,
+    tertiary: Color,
+    warning: Color,
+    outlineVariant: Color,
+    onSurfaceVariant: Color,
+    dark: Boolean,
+): MotionPalette {
+    val a = if (dark) primary else vividAccent(primary)
+    val b = if (dark) tertiary else vividAccent(tertiary)
+    val approval = if (dark) warning else vividAccent(warning)
+    return MotionPalette(
+        a = a,
+        b = b,
+        approval = approval,
+        mid = hueMidpoint(a, b),
+        hot = if (dark) lerp(a, InfinityPureWhite, 0.55f) else a,
+        outline = outlineVariant,
+        muted = onSurfaceVariant,
+        dark = dark,
+    )
 }
 
 @Composable
 internal fun rememberMotionPalette(): MotionPalette {
     val scheme = MaterialTheme.colorScheme
-    val dark = MaterialTheme.infinityDomainColors.isDark
-    return remember(scheme.primary, scheme.tertiary, scheme.outlineVariant, scheme.onSurfaceVariant, dark) {
-        val a = if (dark) scheme.primary else vividAccent(scheme.primary)
-        val b = if (dark) scheme.tertiary else vividAccent(scheme.tertiary)
-        MotionPalette(
-            a = a,
-            b = b,
-            mid = hueMidpoint(a, b),
-            hot = if (dark) lerp(a, InfinityPureWhite, 0.55f) else a,
-            outline = scheme.outlineVariant,
-            muted = scheme.onSurfaceVariant,
+    val domain = MaterialTheme.infinityDomainColors
+    val dark = domain.isDark
+    val warning = domain.warning
+    return remember(scheme.primary, scheme.tertiary, warning, scheme.outlineVariant, scheme.onSurfaceVariant, dark) {
+        resolveMotionPalette(
+            primary = scheme.primary,
+            tertiary = scheme.tertiary,
+            warning = warning,
+            outlineVariant = scheme.outlineVariant,
+            onSurfaceVariant = scheme.onSurfaceVariant,
             dark = dark,
         )
     }

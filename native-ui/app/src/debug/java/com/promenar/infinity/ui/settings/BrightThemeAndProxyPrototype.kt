@@ -210,10 +210,8 @@ private fun SchemeSwatchComparisonCard(dark: Boolean) {
     )
     val styles: List<Pair<String, (Color) -> ColorScheme>> = listOf(
         "柔和" to { c -> seededColorScheme(c, dark, InfinitySchemeStyle.TONAL_SPOT) },
-        "鲜艳" to { c -> seededColorScheme(c, dark, InfinitySchemeStyle.VIBRANT) },
-        "忠实" to { c -> seededColorScheme(c, dark, InfinitySchemeStyle.FIDELITY) },
-        "表现力" to { c -> seededColorScheme(c, dark, InfinitySchemeStyle.EXPRESSIVE) },
-        "明亮(新)" to { c -> brightColorScheme(c, dark) },
+        "标准" to { c -> seededColorScheme(c, dark, InfinitySchemeStyle.FIDELITY) },
+        "明亮" to { c -> brightColorScheme(c, dark) },
     )
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -324,17 +322,15 @@ private fun BrightThemeAndHeadersBody(dark: Boolean) {
             // 2. 五种配色风格跨种子色对比
             SchemeSwatchComparisonCard(dark = dark)
 
-            // 3. 外观 → 配色风格选择列表（新增第 5 项「明亮」）
+            // 3. 外观 → 配色风格选择列表（柔和 / 标准 / 明亮）
             InfinitySettingsSection(title = "配色风格（外观设置）") {
                 val styleItems = listOf(
                     Triple(Icons.Rounded.Palette, "柔和", "压低饱和度，整体沉稳。"),
-                    Triple(Icons.Rounded.ColorLens, "鲜艳", "强调色保持高饱和。"),
-                    Triple(Icons.Rounded.Brush, "忠实", "尽量贴近你选的颜色。"),
-                    Triple(Icons.Rounded.AutoAwesome, "表现力", "辅色偏移色相，对比更强。"),
+                    Triple(Icons.Rounded.Brush, "标准", "贴近所选颜色，明暗与对比均衡。"),
                     Triple(Icons.Rounded.WbSunny, "明亮", "锁定原色相，呈现高饱和活力亮色。"),
                 )
                 styleItems.forEachIndexed { idx, (icon, title, desc) ->
-                    val selected = idx == 4
+                    val selected = idx == 2
                     InfinitySettingsItem(
                         icon = icon,
                         title = title,

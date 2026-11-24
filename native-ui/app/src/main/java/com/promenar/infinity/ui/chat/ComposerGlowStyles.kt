@@ -127,7 +127,7 @@ private fun breathePhase(phase: GenerationMotionPhase, state: ComposerGlowState,
         GenerationMotionPhase.WAIT -> Triple(breath(t, 3.6f) * 0.75f, colorA, palette.mid)
         GenerationMotionPhase.STREAM -> Triple((0.5f - 0.5f * cos(2 * PI.toFloat() * state.breathPhase)) * (0.7f + 0.3f * state.act), colorA, colorB)
         GenerationMotionPhase.TOOL -> Triple(min(1f, heartbeat(t)), colorB, colorB)
-        GenerationMotionPhase.APPROVAL -> Triple(slowBlink(t) * 0.85f, colorB, colorB)
+        GenerationMotionPhase.APPROVAL -> Triple(slowBlink(t) * 0.85f, palette.approval, palette.approval)
         GenerationMotionPhase.RETRY -> Triple(0.35f * evenBlink(t), colorA, colorA)
     }
 }
@@ -168,7 +168,7 @@ internal fun DrawScope.drawPhaseBorder(gen: Float, time: Float, motion: Generati
             GenerationMotionPhase.WAIT -> palette.a to 0.12f + 0.18f * breath(time, 3.2f)
             GenerationMotionPhase.STREAM -> palette.a to 0.15f + 0.2f * breath(time, 2.6f)
             GenerationMotionPhase.TOOL -> palette.b to 0.2f + 0.25f * breath(time, 1.2f)
-            GenerationMotionPhase.APPROVAL -> palette.b to 0.25f + 0.5f * slowBlink(time)
+            GenerationMotionPhase.APPROVAL -> palette.approval to 0.25f + 0.5f * slowBlink(time)
             GenerationMotionPhase.RETRY -> palette.a to 0.08f + 0.17f * evenBlink(time)
         }
         drawEdgeStroke(gen * weight * alpha, 1f, cornerPx, color, color, paints)
@@ -267,10 +267,11 @@ private fun DrawScope.drawMesh(canvas: ComposeCanvas, phase: GenerationMotionPha
     }
     val native = canvas.nativeCanvas
     val radius = 22 * k
+    val warmColor = palette.phaseAccent(phase)
     for (i in 0 until 6) {
         val level = p.ledLevel[i]
         if (level <= 0f) continue
-        val color = if (p.ledWarm[i]) palette.b else palette.a
+        val color = if (p.ledWarm[i]) warmColor else palette.a
         p.glowPaint.shader = RadialGradient(p.ledX[i], p.ledY[i], radius, color.copy(alpha = clamp01((if (palette.dark) 0.22f else 0.16f) * level * alpha)).toArgb(), color.copy(alpha = 0f).toArgb(), Shader.TileMode.CLAMP)
         native.drawCircle(p.ledX[i], p.ledY[i], radius, p.glowPaint)
     }
@@ -300,8 +301,8 @@ private fun DrawScope.drawMesh(canvas: ComposeCanvas, phase: GenerationMotionPha
         row++
         y += pitch * 0.866f
     }
-    val holeColor = if (warm) palette.b else palette.a
-    val hotColor = if (!warm) palette.hot else if (palette.dark) lerp(palette.b, InfinityPureWhite, 0.45f) else palette.b
+    val holeColor = if (warm) warmColor else palette.a
+    val hotColor = if (!warm) palette.hot else if (palette.dark) lerp(warmColor, InfinityPureWhite, 0.45f) else warmColor
     p.holePaint.blendMode = BlendMode.SRC_OVER
     for (i in 0 until 7) {
         if (p.holes[i].isEmpty) continue
@@ -416,7 +417,7 @@ private fun drawLedStrip(
             if (intensity < 0.1f) leds.offDot(x, y, sz) else leds.dot(if (amber) 1 else 0, intensity, x, y, sz, gz)
         }
     }
-    leds.draw(native, palette.leds, palette.dark, blur = 3 * k, offColor = palette.a.copy(alpha = if (palette.dark) 0.1f else 0.16f), alpha = alpha)
+    leds.draw(native, palette.phaseLeds(phase), palette.dark, blur = 3 * k, offColor = palette.a.copy(alpha = if (palette.dark) 0.1f else 0.16f), alpha = alpha)
 }
 
 /** 运行坞细灯带的高度与左右留白。 */
@@ -898,5 +899,5 @@ private fun DrawScope.drawSweepGrid(canvas: ComposeCanvas, phase: GenerationMoti
         y += pitch
         row++
     }
-    leds.draw(canvas.nativeCanvas, palette.leds, palette.dark, blur = 3 * k, alpha = alpha)
+    leds.draw(canvas.nativeCanvas, palette.phaseLeds(phase), palette.dark, blur = 3 * k, alpha = alpha)
 }

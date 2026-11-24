@@ -24,11 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Palette
@@ -435,16 +433,14 @@ private fun CustomColorChoice(color: Color?, onClick: () -> Unit) {
     }
 }
 
-/** 配色风格：决定种子色如何展开成整套配色；跟随系统取色时不可用。 */
+/** 配色风格：决定种子色如何展开成整套配色（柔和 / 标准 / 明亮）；跟随系统取色时不可用。 */
 @Composable
 private fun SchemeStyleSelector(selected: InfinitySchemeStyle, enabled: Boolean, onSelect: (InfinitySchemeStyle) -> Unit) {
     var show by remember { mutableStateOf(false) }
     val anchor = rememberInfinityPopoverAnchor()
     val options = listOf(
         Triple(InfinitySchemeStyle.TONAL_SPOT, R.string.theme_scheme_tonal_spot, R.string.theme_scheme_tonal_spot_desc),
-        Triple(InfinitySchemeStyle.VIBRANT, R.string.theme_scheme_vibrant, R.string.theme_scheme_vibrant_desc),
         Triple(InfinitySchemeStyle.FIDELITY, R.string.theme_scheme_fidelity, R.string.theme_scheme_fidelity_desc),
-        Triple(InfinitySchemeStyle.EXPRESSIVE, R.string.theme_scheme_expressive, R.string.theme_scheme_expressive_desc),
         Triple(InfinitySchemeStyle.BRIGHT, R.string.theme_scheme_bright, R.string.theme_scheme_bright_desc),
     )
     InfinityValueRow(
@@ -461,9 +457,7 @@ private fun SchemeStyleSelector(selected: InfinitySchemeStyle, enabled: Boolean,
             val isSelected = selected == style
             val styleIcon = when (style) {
                 InfinitySchemeStyle.TONAL_SPOT -> Icons.Rounded.Palette
-                InfinitySchemeStyle.VIBRANT -> Icons.Rounded.ColorLens
                 InfinitySchemeStyle.FIDELITY -> Icons.Rounded.Brush
-                InfinitySchemeStyle.EXPRESSIVE -> Icons.Rounded.AutoAwesome
                 InfinitySchemeStyle.BRIGHT -> Icons.Rounded.WbSunny
             }
             InfinityOptionItem(

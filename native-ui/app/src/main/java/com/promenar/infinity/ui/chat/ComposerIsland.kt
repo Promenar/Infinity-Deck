@@ -365,7 +365,7 @@ internal fun Modifier.composerIslandGlow(
             val haloGen = generating * haloScale
             if (outerHalo && aurora && generating > 0f) {
                 drawHaloRing(haloGen * tool * (0.12f + 0.45f * breath(time, 1.2f)), 12f, 9f, cornerPx, colorB, colorB, outlinePaints)
-                drawHaloRing(haloGen * approval * (0.1f + 0.5f * slowBlink(time)), 12f, 9f, cornerPx, colorB, colorB, outlinePaints)
+                drawHaloRing(haloGen * approval * (0.1f + 0.5f * slowBlink(time)), 12f, 9f, cornerPx, palette.approval, palette.approval, outlinePaints)
             }
             if (outerHalo && style == ComposerGlowStyle.BREATHE && generating > 0f) {
                 drawBreatheHalo(haloGen, state, motion, cornerPx, palette, colorA, colorB, outlinePaints)
@@ -399,7 +399,7 @@ internal fun Modifier.composerIslandGlow(
                         )
                     }
                     drawEdgeStroke(generating * tool * (0.45f + 0.5f * breath(time, 1.2f)), 2f, cornerPx, colorB, colorB, outlinePaints)
-                    drawEdgeStroke(generating * approval * (0.35f + 0.65f * slowBlink(time)), 2f, cornerPx, colorB, colorB, outlinePaints)
+                    drawEdgeStroke(generating * approval * (0.35f + 0.65f * slowBlink(time)), 2f, cornerPx, palette.approval, palette.approval, outlinePaints)
                     drawEdgeStroke(generating * retry * (0.12f + 0.3f * evenBlink(time)), 1.4f, cornerPx, colorA, colorA, outlinePaints)
                 }
                 // 仅材质光不画描边，生成状态只靠浮岛材质与运行坞点阵屏。

@@ -343,7 +343,7 @@ fun InfinityDropdownMenu(
         }
         val colors = infinityMenuColors()
         val shape = MenuShape
-        CompositionLocalProvider(LocalInfinityMenuStagger provides stagger) {
+        CompositionLocalProvider(LocalInfinityMenuStagger provides stagger, LocalRowHeightGroup provides null) {
             Surface(
                 shape = shape,
                 color = colors.container,

@@ -220,21 +220,23 @@ class ThemePreferenceStoreTest {
         store.setComposerGlowStyle(ComposerGlowStyle.SWEEP_GRID)
         store.setGenerationIndicatorStyle(GenerationIndicatorStyle.PORTS)
         store.setEmptyChatStyle(EmptyChatStyle.MOBIUS_LED)
-        store.setSchemeStyle(InfinitySchemeStyle.VIBRANT)
+        store.setSchemeStyle(InfinitySchemeStyle.FIDELITY)
 
         assertThat(store.state.value.motion.composer).isEqualTo(ComposerGlowStyle.SWEEP_GRID)
         assertThat(store.state.value.motion.indicator).isEqualTo(GenerationIndicatorStyle.PORTS)
         assertThat(store.state.value.motion.emptyChat).isEqualTo(EmptyChatStyle.MOBIUS_LED)
-        assertThat(store.state.value.schemeStyle).isEqualTo(InfinitySchemeStyle.VIBRANT)
+        assertThat(store.state.value.schemeStyle).isEqualTo(InfinitySchemeStyle.FIDELITY)
         verify { editor.putString("motion_composer_glow", "sweep_grid") }
         verify { editor.putString("motion_generation_indicator", "ports") }
         verify { editor.putString("motion_empty_chat", "mobius_led") }
-        verify { editor.putString("theme_scheme_style", "vibrant") }
+        verify { editor.putString("theme_scheme_style", "fidelity") }
 
         store.setSchemeStyle(InfinitySchemeStyle.BRIGHT)
         assertThat(store.state.value.schemeStyle).isEqualTo(InfinitySchemeStyle.BRIGHT)
         verify { editor.putString("theme_scheme_style", "bright") }
         assertThat(InfinitySchemeStyle.fromPreferenceValue("bright")).isEqualTo(InfinitySchemeStyle.BRIGHT)
+        assertThat(InfinitySchemeStyle.fromPreferenceValue("vibrant")).isEqualTo(InfinitySchemeStyle.FIDELITY)
+        assertThat(InfinitySchemeStyle.fromPreferenceValue("expressive")).isEqualTo(InfinitySchemeStyle.BRIGHT)
     }
 
     @Test

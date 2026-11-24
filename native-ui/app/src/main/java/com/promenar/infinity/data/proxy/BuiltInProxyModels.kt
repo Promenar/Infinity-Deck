@@ -55,6 +55,7 @@ data class BuiltInProxyState(
     val fallbackReason: String? = null,
     val nodes: List<ProxyNodeItem> = emptyList(),
     val error: String? = null,
+    val listenPort: Int? = null,
 ) {
     val running: Boolean get() = phase == BuiltInProxyPhase.RUNNING
 }
@@ -98,6 +99,7 @@ interface BuiltInProxyController {
     suspend fun removeSubscription(id: String)
     suspend fun validateYaml(yaml: String): ProxyYamlValidation
     suspend fun readAdvancedYaml(): String?
+    suspend fun readEditableYaml(): String
     suspend fun setAdvancedYaml(yaml: String?): ProxyYamlValidation
     suspend fun syncAdvancedYaml()
     suspend fun testLatency(nodeIds: List<String>, url: String? = null, timeoutMillis: Long = 5_000): List<ProxyLatencyResult>

@@ -80,7 +80,7 @@ internal enum class RemoteSegment(val token: String) { SSH("ssh"), GIT("git"), T
 internal fun tailscaleNeedsAttention(phase: TailnetPhase?): Boolean = phase == TailnetPhase.NEEDS_LOGIN || phase == TailnetPhase.FAILED
 
 /** 设置页中与远程相关、但不在面板里管理的入口。 */
-enum class RemoteSettingsLink { LINUX, TERMUX, BACKGROUND }
+enum class RemoteSettingsLink { LINUX, TERMUX, BACKGROUND, BUILT_IN_PROXY }
 
 /**
  * 会话“远程”面板：SSH、Git 凭据、Tailscale、网络四段，各段复用设置页的内容与状态。
@@ -198,7 +198,11 @@ internal fun RemotePage(
                                 segment = RemoteSegment.SSH.token
                             },
                         )
-                        RemoteSegment.NETWORK -> NetworkAccessSettingsScreen(onBack = {}, onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token })
+                        RemoteSegment.NETWORK -> NetworkAccessSettingsScreen(
+                            onBack = {},
+                            onOpenTailscale = { segment = RemoteSegment.TAILSCALE.token },
+                            onOpenBuiltInProxy = onOpenSettings?.let { open -> { open(RemoteSettingsLink.BUILT_IN_PROXY) } },
+                        )
                     }
                 }
             }

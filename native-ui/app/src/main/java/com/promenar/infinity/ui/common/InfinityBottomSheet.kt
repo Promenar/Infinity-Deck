@@ -41,6 +41,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -151,11 +152,14 @@ fun InfinityModalSheet(
             }
         },
     ) {
-        InfinityWindowBackScope {
-            val handoff = if (contentDragsSheet) Modifier else Modifier.nestedScroll(NoSheetHandoff)
-            when (height) {
-                InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().fillMaxHeight().then(handoff), content = content)
-                InfinitySheetHeight.Content -> if (contentDragsSheet) content() else Column(Modifier.fillMaxWidth().then(handoff), content = content)
+        // 弹层内容不得继承父级分组卡片的等高登记表，避免打开面板时父页面列表行高度跳变。
+        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+            InfinityWindowBackScope {
+                val handoff = if (contentDragsSheet) Modifier else Modifier.nestedScroll(NoSheetHandoff)
+                when (height) {
+                    InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().fillMaxHeight().then(handoff), content = content)
+                    InfinitySheetHeight.Content -> if (contentDragsSheet) content() else Column(Modifier.fillMaxWidth().then(handoff), content = content)
+                }
             }
         }
     }
@@ -196,48 +200,50 @@ private fun InfinityCenteredSheet(
             usePlatformDefaultWidth = false,
         ),
     ) {
-        InfinityWindowBackScope {
-            // 对话框窗口占满宽度；两侧留白点按同样视为点外部。
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = dismissOutside,
-                        onClick = onDismissRequest,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                val scheme = MaterialTheme.colorScheme
-                val dark = scheme.surface.luminance() < 0.5f
-                Surface(
-                    shape = RoundedCornerShape(26.dp),
-                    color = containerColor,
-                    contentColor = scheme.onSurface,
-                    border = BorderStroke(
-                        1.dp,
-                        if (dark) InfinityPureWhite.copy(alpha = 0.12f) else scheme.outlineVariant.copy(alpha = 0.56f),
-                    ),
-                    shadowElevation = 12.dp,
-                    modifier = modifier
-                        .padding(horizontal = 32.dp)
-                        .widthIn(max = 640.dp)
+        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+            InfinityWindowBackScope {
+                // 对话框窗口占满宽度；两侧留白点按同样视为点外部。
+                Box(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (height == InfinitySheetHeight.Full) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight))
-                        .testTag(InfinitySheetTags.CENTERED),
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = dismissOutside,
+                            onClick = onDismissRequest,
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Column(
-                        modifier = Modifier
+                    val scheme = MaterialTheme.colorScheme
+                    val dark = scheme.surface.luminance() < 0.5f
+                    Surface(
+                        shape = RoundedCornerShape(26.dp),
+                        color = containerColor,
+                        contentColor = scheme.onSurface,
+                        border = BorderStroke(
+                            1.dp,
+                            if (dark) InfinityPureWhite.copy(alpha = 0.12f) else scheme.outlineVariant.copy(alpha = 0.56f),
+                        ),
+                        shadowElevation = 12.dp,
+                        modifier = modifier
+                            .padding(horizontal = 32.dp)
+                            .widthIn(max = 640.dp)
                             .fillMaxWidth()
-                            .then(if (height == InfinitySheetHeight.Full) Modifier.fillMaxHeight() else Modifier)
-                            .obsidianTopGlint(
-                                color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
-                                cornerRadius = 26.dp,
-                            )
-                            .padding(top = 20.dp),
-                        content = content,
-                    )
+                            .then(if (height == InfinitySheetHeight.Full) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight))
+                            .testTag(InfinitySheetTags.CENTERED),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(if (height == InfinitySheetHeight.Full) Modifier.fillMaxHeight() else Modifier)
+                                .obsidianTopGlint(
+                                    color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
+                                    cornerRadius = 26.dp,
+                                )
+                                .padding(top = 20.dp),
+                            content = content,
+                        )
+                    }
                 }
             }
         }

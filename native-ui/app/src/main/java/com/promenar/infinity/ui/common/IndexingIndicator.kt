@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.common
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -17,7 +16,6 @@ import com.promenar.infinity.ui.common.motion.rememberMotionPalette
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.GenerationIndicatorStyle
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
-import com.promenar.infinity.ui.theme.infinityDomainColors
 
 /**
  * 资料索引指示：样式跟随外观设置里的生成状态指示，按 [state] 的阶段与进度绘制。
@@ -36,7 +34,7 @@ fun IndexingIndicator(
     val clock = rememberMotionClock(running = animate)
     val palette = rememberMotionPalette()
     val painter = remember { IndexIndicatorPainter() }
-    val amber = MaterialTheme.infinityDomainColors.warning
+    val amber = palette.approval
     val designSize = indexIndicatorDesignSize(kind)
     Canvas(modifier.size(designSize.width * scale, designSize.height * scale)) {
         val time = if (animate) clock.time else 0.37f

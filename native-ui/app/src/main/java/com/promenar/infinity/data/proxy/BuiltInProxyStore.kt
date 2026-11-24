@@ -196,6 +196,16 @@ class BuiltInProxyStore(
     @Synchronized
     fun readAdvancedYaml(): String? = readSecrets().advancedYaml
 
+    /** 返回供高级编辑器直接编辑的 YAML：已有自定义原文时原样返回，否则导出当前托管节点为易读缩进 YAML。 */
+    @Synchronized
+    fun readEditableYaml(): String {
+        val stored = readSecrets()
+        stored.advancedYaml?.let { return it }
+        val activeNodes = metadata.active.nodes
+        if (activeNodes.isEmpty()) return "proxies: []\n"
+        return formatReadableProxyYaml(activeNodes, stored.nodes)
+    }
+
     @Synchronized
     internal fun setAdvancedYaml(yaml: String?, configs: List<ProxyNodeConfig>) {
         val stored = readSecrets()
@@ -321,4 +331,119 @@ class BuiltInProxyStore(
         internal const val KEY_METADATA = "settings_v1"
         private const val MAX_NODES = 512
     }
+}
+
+private val YAML_KEY_PRIORITY = listOf("name", "type", "server", "port")
+private val YAML_PLAIN_SAFE = Regex("^[A-Za-z0-9][A-Za-z0-9._/+-]*$")
+private val YAML_RESERVED_WORDS = setOf("true", "false", "null", "yes", "no", "on", "off", "~")
+
+internal fun formatReadableProxyYaml(
+    nodes: List<ProxyNodeItem>,
+    configs: Map<String, JsonObject>,
+): String = buildString {
+    append("proxies:\n")
+    nodes.forEach { node ->
+        val raw = configs[node.id] ?: throw IOException("内置代理节点配置缺失")
+        val merged = linkedMapOf<String, JsonElement>()
+        merged["name"] = JsonPrimitive(node.name)
+        YAML_KEY_PRIORITY.forEach { key ->
+            if (key != "name") raw[key]?.let { merged[key] = it }
+        }
+        raw.keys.filterNot { it in merged }.sorted().forEach { key ->
+            raw[key]?.let { merged[key] = it }
+        }
+        val entries = merged.entries.toList()
+        entries.forEachIndexed { idx, (key, value) ->
+            val prefix = if (idx == 0) "  - " else "    "
+            appendYamlEntry(this, prefix, 4, key, value)
+        }
+    }
+}
+
+private fun appendYamlEntry(out: StringBuilder, prefix: String, indent: Int, key: String, value: JsonElement) {
+    val safeKey = formatYamlKey(key)
+    when (value) {
+        is JsonObject -> {
+            if (value.isEmpty()) {
+                out.append(prefix).append(safeKey).append(": {}\n")
+            } else {
+                out.append(prefix).append(safeKey).append(":\n")
+                value.keys.sorted().forEach { childKey ->
+                    val childVal = value[childKey] ?: return@forEach
+                    appendYamlEntry(out, " ".repeat(indent + 2), indent + 2, childKey, childVal)
+                }
+            }
+        }
+        is JsonArray -> {
+            if (value.isEmpty()) {
+                out.append(prefix).append(safeKey).append(": []\n")
+            } else {
+                out.append(prefix).append(safeKey).append(":\n")
+                value.forEach { item ->
+                    appendYamlSequenceItem(out, indent + 2, item)
+                }
+            }
+        }
+        is JsonPrimitive -> {
+            out.append(prefix).append(safeKey).append(": ").append(formatYamlPrimitive(value, forceQuote = key == "name")).append('\n')
+        }
+    }
+}
+
+private fun appendYamlSequenceItem(out: StringBuilder, indent: Int, value: JsonElement) {
+    val pad = " ".repeat(indent)
+    when (value) {
+        is JsonObject -> {
+            if (value.isEmpty()) {
+                out.append(pad).append("- {}\n")
+            } else {
+                val keys = value.keys.sorted()
+                keys.forEachIndexed { idx, key ->
+                    val childVal = value[key] ?: return@forEachIndexed
+                    val prefix = if (idx == 0) "$pad- " else "$pad  "
+                    appendYamlEntry(out, prefix, indent + 2, key, childVal)
+                }
+            }
+        }
+        is JsonArray -> {
+            if (value.isEmpty()) {
+                out.append(pad).append("- []\n")
+            } else {
+                out.append(pad).append("-\n")
+                value.forEach { appendYamlSequenceItem(out, indent + 2, it) }
+            }
+        }
+        is JsonPrimitive -> {
+            out.append(pad).append("- ").append(formatYamlPrimitive(value, forceQuote = false)).append('\n')
+        }
+    }
+}
+
+private fun formatYamlKey(key: String): String =
+    if (YAML_PLAIN_SAFE.matches(key) && key.lowercase() !in YAML_RESERVED_WORDS) key else quoteYamlString(key)
+
+private fun formatYamlPrimitive(primitive: JsonPrimitive, forceQuote: Boolean): String {
+    if (!primitive.isString) return primitive.content
+    val text = primitive.content
+    val needsQuote = forceQuote ||
+        text.isEmpty() ||
+        !YAML_PLAIN_SAFE.matches(text) ||
+        text.lowercase() in YAML_RESERVED_WORDS ||
+        text.toDoubleOrNull() != null
+    return if (needsQuote) quoteYamlString(text) else text
+}
+
+private fun quoteYamlString(text: String): String = buildString(text.length + 2) {
+    append('"')
+    text.forEach { ch ->
+        when (ch) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            '\t' -> append("\\t")
+            else -> append(ch)
+        }
+    }
+    append('"')
 }

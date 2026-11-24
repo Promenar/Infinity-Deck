@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -21,11 +22,16 @@ import com.promenar.infinity.R
 import com.promenar.infinity.domain.network.AgentNetworkSnapshot
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
+import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
 @Composable
-fun NetworkAccessSettingsScreen(onBack: () -> Unit, onOpenTailscale: () -> Unit) {
+fun NetworkAccessSettingsScreen(
+    onBack: () -> Unit,
+    onOpenTailscale: () -> Unit,
+    onOpenBuiltInProxy: (() -> Unit)? = null,
+) {
     val access = (LocalContext.current.applicationContext as InfinityApplication).agentNetworkAccess
     val snapshot by access.snapshot.collectAsStateWithLifecycle()
     InfinitySettingsPageLayout(
@@ -36,6 +42,7 @@ fun NetworkAccessSettingsScreen(onBack: () -> Unit, onOpenTailscale: () -> Unit)
         NetworkAccessSettingsContent(
             snapshot = snapshot,
             onOpenTailscale = onOpenTailscale,
+            onOpenBuiltInProxy = onOpenBuiltInProxy,
             modifier = Modifier.padding(padding),
         )
     }
@@ -54,11 +61,25 @@ internal fun tailnetSummarySegments(snapshot: AgentNetworkSnapshot): List<String
     return listOf(phase)
 }
 
-/** 设置页正文：显示 Tailscale 状态与按工具展开的网络路径总表。 */
+@Composable
+internal fun proxySummarySegments(snapshot: AgentNetworkSnapshot): List<String> {
+    val phase = stringResource(
+        when {
+            !snapshot.builtInProxyAvailable -> R.string.network_proxy_missing
+            !snapshot.builtInProxyEnabled -> R.string.network_proxy_disabled
+            !snapshot.builtInProxyRunning -> R.string.network_proxy_stopped
+            else -> R.string.network_proxy_running
+        },
+    )
+    return listOf(phase)
+}
+
+/** 设置页正文：显示 Tailscale、内置代理状态与按工具展开的网络路径总表。 */
 @Composable
 internal fun NetworkAccessSettingsContent(
     snapshot: AgentNetworkSnapshot,
     onOpenTailscale: () -> Unit,
+    onOpenBuiltInProxy: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -78,6 +99,25 @@ internal fun NetworkAccessSettingsContent(
                 subtitleMaxLines = 2,
                 modifier = Modifier.testTag("network_tailnet_entry"),
             )
+            if (onOpenBuiltInProxy != null) {
+                InfinitySettingsItem(
+                    icon = Icons.Rounded.Public,
+                    title = stringResource(R.string.network_proxy_title),
+                    subtitleSegments = proxySummarySegments(snapshot),
+                    onClick = onOpenBuiltInProxy,
+                    showChevron = true,
+                    subtitleMaxLines = 2,
+                    modifier = Modifier.testTag("network_proxy_entry"),
+                )
+            } else {
+                InfinitySettingsRowLayout(
+                    icon = Icons.Rounded.Public,
+                    title = stringResource(R.string.network_proxy_title),
+                    subtitleSegments = proxySummarySegments(snapshot),
+                    subtitleMaxLines = 2,
+                    modifier = Modifier.testTag("network_proxy_entry"),
+                )
+            }
         }
         InfinitySettingsSection(
             title = stringResource(R.string.network_section_matrix),

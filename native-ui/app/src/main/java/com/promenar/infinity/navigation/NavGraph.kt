@@ -89,6 +89,7 @@ object NavDestinations {
     const val COMMAND_OUTPUT = "command_output/{sessionId}/{messageId}/{toolCallId}"
     const val NETWORK_ACCESS = "network_access"
     const val TAILSCALE_CONFIG = "tailscale_config"
+    const val BUILT_IN_PROXY = "built_in_proxy"
     const val SSH_TERMINAL = "ssh_terminal/{alias}"
     const val KEYCHAIN = "keychain"
     const val KEYCHAIN_SSH_KEYS = "keychain_ssh_keys"
@@ -457,6 +458,7 @@ private fun ChatHeroDestination(
                     com.promenar.infinity.ui.remote.RemoteSettingsLink.LINUX -> NavDestinations.LINUX_ENVIRONMENT
                     com.promenar.infinity.ui.remote.RemoteSettingsLink.TERMUX -> NavDestinations.TERMUX_CONFIG
                     com.promenar.infinity.ui.remote.RemoteSettingsLink.BACKGROUND -> NavDestinations.BACKGROUND_ACTIVITY
+                    com.promenar.infinity.ui.remote.RemoteSettingsLink.BUILT_IN_PROXY -> NavDestinations.BUILT_IN_PROXY
                 }
                 navController.navigate(route) { launchSingleTop = true }
             },
@@ -633,6 +635,7 @@ internal fun NavGraphBuilder.settingsDestinations(
                 providerId = providerId,
                 onNavigateBack = { navigator.back() },
                 onOpenTailscaleSettings = { navigator.open(NavDestinations.TAILSCALE_CONFIG) { launchSingleTop = true } },
+                onOpenBuiltInProxySettings = { navigator.open(NavDestinations.BUILT_IN_PROXY) { launchSingleTop = true } },
                 onNavigateToModels = {
                     val pid = providerId ?: ""
                     navigator.open(NavDestinations.providerModels(pid)) {
@@ -648,8 +651,10 @@ internal fun NavGraphBuilder.settingsDestinations(
                         }
                     }
                 },
-                onSave = { protocolType, baseUrl, credential, model, name ->
-                    saveProviderConfiguration(app, providerId, protocolType, baseUrl, credential, model, name)
+                onSave = { protocolType, baseUrl, credential, model, name, useBuiltInProxy ->
+                    saveProviderConfiguration(
+                        app, providerId, protocolType, baseUrl, credential, model, name, useBuiltInProxy,
+                    )
                 },
             )
         }
@@ -774,6 +779,7 @@ internal fun NavGraphBuilder.settingsDestinations(
             com.promenar.infinity.ui.settings.NetworkAccessSettingsScreen(
                 onBack = { navigator.back() },
                 onOpenTailscale = { navigator.open(NavDestinations.TAILSCALE_CONFIG) },
+                onOpenBuiltInProxy = { navigator.open(NavDestinations.BUILT_IN_PROXY) },
             )
         }
     }
@@ -825,6 +831,12 @@ internal fun NavGraphBuilder.settingsDestinations(
     composablePage(NavDestinations.TAILSCALE_CONFIG) { entry ->
         navigator.Page(entry) {
             com.promenar.infinity.ui.settings.TailscaleSettingsScreen(onBack = { navigator.back() })
+        }
+    }
+
+    composablePage(NavDestinations.BUILT_IN_PROXY) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.settings.ProxySettingsScreen(onBack = { navigator.back() })
         }
     }
 

@@ -61,7 +61,6 @@ import com.promenar.infinity.ui.common.motion.rememberMotionPalette
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
-import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlin.math.max
 import kotlinx.coroutines.delay
 
@@ -203,8 +202,6 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
     val digits = LocalInfinityMotionStyles.current.scopeDigits
     val palette = rememberMotionPalette()
     val painter = remember { ComposerLightsPainter() }
-    // 待批准的“!”与盾牌同用警示色，不随主题第二灯色变化。
-    val approvalColors = listOf(palette.a, MaterialTheme.infinityDomainColors.warning)
     if (glow != null) {
         DisposableEffect(glow) { onDispose { glow.scopeCenterInRoot = Offset.Unspecified } }
     }
@@ -233,7 +230,7 @@ internal fun RunDockScope(mode: RunDockScopeMode, modifier: Modifier = Modifier)
                 if (weight <= 0.004f) continue
                 drawScopeFrame(
                     native, k, sx, sy, cols, rows, phase, gen * weight, time, motion, palette, painter, digits,
-                    colors = if (phase == GenerationMotionPhase.APPROVAL) approvalColors else palette.leds, drawOff = false,
+                    colors = palette.phaseLeds(phase), drawOff = false,
                     stepReadouts = false,
                 )
             }

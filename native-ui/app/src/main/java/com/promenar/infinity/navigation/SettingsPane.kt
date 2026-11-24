@@ -71,6 +71,7 @@ internal val SettingsPaneRoots: List<String> = listOf(
     NavDestinations.TERMUX_CONFIG,
     NavDestinations.SSH_CONFIG,
     NavDestinations.TAILSCALE_CONFIG,
+    NavDestinations.BUILT_IN_PROXY,
     NavDestinations.NETWORK_ACCESS,
     NavDestinations.BACKGROUND_ACTIVITY,
     NavDestinations.KEYCHAIN,
@@ -159,6 +160,7 @@ private val OpenedFromSessionRoots: Set<String> = setOf(
     NavDestinations.TERMUX_CONFIG,
     NavDestinations.SSH_CONFIG,
     NavDestinations.TAILSCALE_CONFIG,
+    NavDestinations.BUILT_IN_PROXY,
     NavDestinations.NETWORK_ACCESS,
     NavDestinations.BACKGROUND_ACTIVITY,
 )

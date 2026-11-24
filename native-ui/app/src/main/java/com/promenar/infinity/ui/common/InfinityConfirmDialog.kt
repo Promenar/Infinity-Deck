@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
@@ -97,37 +98,39 @@ fun InfinityConfirmDialog(
     content: @Composable (() -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-        DialogWindowBackdrop()
-        // 预览与截图只渲染首帧，直接从终态开始。
-        val settled = LocalInspectionMode.current
-        val alpha = remember { Animatable(if (settled) 1f else 0f) }
-        val scale = remember { Animatable(if (settled) 1f else DIALOG_ENTER_SCALE) }
-        LaunchedEffect(Unit) {
-            launch { alpha.animateTo(1f, tween(DIALOG_FADE_MILLIS)) }
-            launch { scale.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow)) }
+        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+            DialogWindowBackdrop()
+            // 预览与截图只渲染首帧，直接从终态开始。
+            val settled = LocalInspectionMode.current
+            val alpha = remember { Animatable(if (settled) 1f else 0f) }
+            val scale = remember { Animatable(if (settled) 1f else DIALOG_ENTER_SCALE) }
+            LaunchedEffect(Unit) {
+                launch { alpha.animateTo(1f, tween(DIALOG_FADE_MILLIS)) }
+                launch { scale.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow)) }
+            }
+            InfinityConfirmDialogCard(
+                title = title,
+                message = message,
+                confirmText = confirmText,
+                cancelText = cancelText,
+                onConfirm = onConfirm,
+                onCancel = onCancel,
+                isDestructive = isDestructive,
+                confirmButtonModifier = confirmButtonModifier,
+                cancelButtonModifier = cancelButtonModifier,
+                modifier = modifier.graphicsLayer {
+                    this.alpha = alpha.value
+                    scaleX = scale.value
+                    scaleY = scale.value
+                },
+                confirmEnabled = confirmEnabled,
+                cancelEnabled = cancelEnabled,
+                messageSegments = messageSegments,
+                icon = icon,
+                titleTrailing = titleTrailing,
+                content = content,
+            )
         }
-        InfinityConfirmDialogCard(
-            title = title,
-            message = message,
-            confirmText = confirmText,
-            cancelText = cancelText,
-            onConfirm = onConfirm,
-            onCancel = onCancel,
-            isDestructive = isDestructive,
-            confirmButtonModifier = confirmButtonModifier,
-            cancelButtonModifier = cancelButtonModifier,
-            modifier = modifier.graphicsLayer {
-                this.alpha = alpha.value
-                scaleX = scale.value
-                scaleY = scale.value
-            },
-            confirmEnabled = confirmEnabled,
-            cancelEnabled = cancelEnabled,
-            messageSegments = messageSegments,
-            icon = icon,
-            titleTrailing = titleTrailing,
-            content = content,
-        )
     }
 }
 

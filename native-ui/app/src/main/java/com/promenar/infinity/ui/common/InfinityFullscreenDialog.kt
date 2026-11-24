@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.common
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -38,6 +39,8 @@ fun InfinityFullscreenDialog(
             }
             onDispose {}
         }
-        content()
+        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+            content()
+        }
     }
 }

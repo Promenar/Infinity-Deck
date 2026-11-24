@@ -80,6 +80,7 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.local.inference.SlotState
 import com.promenar.infinity.data.model.CredentialUpdate
 import com.promenar.infinity.data.model.ProviderSummary
+import com.promenar.infinity.data.proxy.BuiltInProxyUnavailableException
 import com.promenar.infinity.data.remote.UnifiedProviderConfig
 import com.promenar.infinity.data.remote.provider.ProviderConnectionProbe
 import com.promenar.infinity.data.remote.provider.ProviderConnectionProbeResult
@@ -177,6 +178,8 @@ internal data class ProviderFormUiState(
     /** 云端提供商的 API 源（公网或 Tailscale 内网）；本地推理为 null。 */
     val apiSource: ProviderApiSourceState? = null,
     val tailnetInfo: ProviderTailnetInfo = ProviderTailnetInfo(),
+    val useBuiltInProxy: Boolean = false,
+    val builtInProxyInfo: ProviderBuiltInProxyInfo = ProviderBuiltInProxyInfo(),
     /** “删除提供商”行：已保存的提供商可删，内置默认灰显并说明原因，新建时不出现。 */
     val deleteEntry: UnavailableReasons.ProviderDeleteEntry = UnavailableReasons.ProviderDeleteEntry.HIDDEN,
 )
@@ -199,8 +202,10 @@ internal data class ProviderFormActions(
     val onSessionHeaderName: (String) -> Unit = {},
     val onLocalPrimaryAction: () -> Unit = {},
     val onApiSourceSelected: (ProviderApiSource) -> Unit = {},
+    val onUseBuiltInProxyChange: (Boolean) -> Unit = {},
     val onTailnetPeerSelected: (com.promenar.infinity.data.tailnet.TailnetPeer) -> Unit = {},
     val onOpenTailscaleSettings: () -> Unit = {},
+    val onOpenBuiltInProxySettings: () -> Unit = {},
     val onDelete: () -> Unit = {},
 )
 
@@ -452,9 +457,10 @@ fun ProviderFormScreen(
     providerId: String? = null,
     onNavigateBack: () -> Unit,
     onOpenTailscaleSettings: () -> Unit = {},
+    onOpenBuiltInProxySettings: () -> Unit = {},
     onNavigateToModels: () -> Unit = {},
     onNavigateToLocalModels: () -> Unit = {},
-    onSave: suspend (ProtocolType, String, CredentialUpdate, String, String?) -> String = { _, _, _, _, _ -> "" },
+    onSave: suspend (ProtocolType, String, CredentialUpdate, String, String?, Boolean) -> String = { _, _, _, _, _, _ -> "" },
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val resources = androidx.compose.ui.platform.LocalResources.current
@@ -489,11 +495,13 @@ fun ProviderFormScreen(
     var recoveringUnknownProtocol by remember { mutableStateOf(false) }
     // API 源不保存：未手动切换时跟随地址自动识别。
     var manualApiSource by remember { mutableStateOf<ProviderApiSource?>(null) }
+    var useBuiltInProxy by remember { mutableStateOf(false) }
     // 新建提供商时测试结果在保存拿到 ID 后再记录；编辑时记录载入时的连接参数，用于判断保存是否改了连接。
     var lastProbeResult by remember { mutableStateOf<ProviderConnectionProbeResult?>(null) }
-    var loadedConnection by remember { mutableStateOf<Pair<ProtocolType, String>?>(null) }
+    var loadedConnection by remember { mutableStateOf<Triple<ProtocolType, String, Boolean>?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val tailnetState by app.tailnetManager.state.collectAsStateWithLifecycle()
+    val proxyState by app.builtInProxyManager.state.collectAsStateWithLifecycle()
     val connectionProbe = ProviderConnectionProbe.processScoped
     val scope = rememberCoroutineScope()
 
@@ -508,6 +516,7 @@ fun ProviderFormScreen(
                     config.protocolType is ProtocolType.Local && !app.localInferenceRuntimeGate.isAvailable
                 name = config.name.takeUnless(::isDefaultProviderName).orEmpty()
                 baseUrl = config.baseUrl
+                useBuiltInProxy = config.useBuiltInProxy
                 hasCredential = config.hasApiKey || config.hasVertexCredentials
                 originalUsesVertex = config.hasVertexCredentials
                 legacyUnsupportedProtocol = config.protocolType.takeIf(::isRetiredProviderProtocol)
@@ -533,7 +542,7 @@ fun ProviderFormScreen(
                 } else {
                     variantProtocol = null
                 }
-                loadedConnection = config.protocolType to config.baseUrl
+                loadedConnection = Triple(config.protocolType, config.baseUrl, config.useBuiltInProxy)
             } else {
                 viewModel.getUnsupportedProviderSummary(providerId)?.let { unsupported ->
                     recoveringUnknownProtocol = true
@@ -568,6 +577,8 @@ fun ProviderFormScreen(
     val apiSource = if (effectiveProtocol is ProtocolType.Local) null
         else providerApiSourceState(baseUrl, manualApiSource, tailnetState)
     val showsTailnet = apiSource?.selected == ProviderApiSource.TAILNET
+    val effectiveUseBuiltInProxy = useBuiltInProxy && apiSource?.selected == ProviderApiSource.PUBLIC
+    val activeProxyNodeName = proxyState.activeNode?.let { id -> proxyState.nodes.firstOrNull { it.id == id }?.name }
     LaunchedEffect(showsTailnet, tailnetState.phase) {
         // 设备列表在设置页之外不会主动刷新；切到 Tailscale 内网时取一次最新节点。
         if (showsTailnet && tailnetState.phase == com.promenar.infinity.data.tailnet.TailnetPhase.RUNNING) {
@@ -589,7 +600,8 @@ fun ProviderFormScreen(
         check(sessionHeaderNameValid) { "会话请求头名称无效" }
         val savedEnabled = sessionHeadersEnabled
         val savedName = sessionHeaderName
-        val savedId = onSave(protocol, url, credential, model, providerName)
+        val savedProxy = effectiveUseBuiltInProxy
+        val savedId = onSave(protocol, url, credential, model, providerName, savedProxy)
         viewModel.saveProviderSessionHeaders(savedId, savedEnabled, savedName)
         savedId
     }
@@ -602,7 +614,7 @@ fun ProviderFormScreen(
             scope.launch {
                 try {
                     val testedCurrentInput = connectionTestState != ProviderConnectionTestState.Idle
-                    val connectionChanged = loadedConnection != (effectiveProtocol to baseUrl) ||
+                    val connectionChanged = loadedConnection != Triple(effectiveProtocol, baseUrl, effectiveUseBuiltInProxy) ||
                         credentialUpdate !is CredentialUpdate.Preserve
                     val savedId = saveWithSessionHeaders(
                         effectiveProtocol,
@@ -665,6 +677,8 @@ fun ProviderFormScreen(
                                     serviceAccountJson = if (selectedUsesVertex) credential else "",
                                     projectId = "",
                                     location = VERTEX_DEFAULT_LOCATION,
+                                    useBuiltInProxy = effectiveUseBuiltInProxy,
+                                    providerId = providerId,
                                 ))
                             } finally {
                                 transient.fill('\u0000')
@@ -672,6 +686,11 @@ fun ProviderFormScreen(
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
+                    } catch (_: BuiltInProxyUnavailableException) {
+                        ProviderConnectionProbeResult.Failure(
+                            com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure.NETWORK_UNAVAILABLE,
+                            detail = resources.getString(R.string.provider_form_test_failed_proxy_unavailable),
+                        )
                     } catch (_: Exception) {
                         ProviderConnectionProbeResult.Failure(
                             com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure.NETWORK_UNAVAILABLE,
@@ -690,7 +709,9 @@ fun ProviderFormScreen(
                         ProviderConnectionTestState.Unavailable
                     }
                     is ProviderConnectionProbeResult.Failure -> {
-                        val reasonText = when (probeResult.reason) {
+                        val reasonText = probeResult.detail?.takeIf {
+                            probeResult.reason == com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure.NETWORK_UNAVAILABLE
+                        } ?: when (probeResult.reason) {
                             com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure.AUTHENTICATION_REJECTED ->
                                 resources.getString(R.string.provider_form_test_failed_auth)
                             com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure.NETWORK_UNAVAILABLE ->
@@ -751,6 +772,7 @@ fun ProviderFormScreen(
                         CredentialUpdate.Preserve,
                         "",
                         null,
+                        false,
                     )
                     onNavigateToLocalModels()
                 } catch (cancelled: CancellationException) {
@@ -797,6 +819,12 @@ fun ProviderFormScreen(
                 selfName = tailnetState.summary?.selfName,
                 tailnetName = tailnetState.summary?.tailnetName,
                 peers = tailnetState.peers,
+            ),
+            useBuiltInProxy = useBuiltInProxy,
+            builtInProxyInfo = ProviderBuiltInProxyInfo(
+                available = app.builtInProxyManager.available,
+                running = proxyState.running,
+                activeNodeName = activeProxyNodeName,
             ),
             deleteEntry = UnavailableReasons.providerDeleteEntry(providerId),
         ),
@@ -862,6 +890,11 @@ fun ProviderFormScreen(
             onSessionHeaderName = { sessionHeaderName = it },
             onLocalPrimaryAction = launchLocalPrimary,
             onApiSourceSelected = { manualApiSource = it },
+            onUseBuiltInProxyChange = {
+                useBuiltInProxy = it
+                connectionTestState = ProviderConnectionTestState.Idle
+                connectionTestFailureMessage = null
+            },
             onTailnetPeerSelected = { peer ->
                 com.promenar.infinity.data.tailnet.TailnetEndpoints.addressForPeer(peer, baseUrl)?.let { address ->
                     baseUrl = address
@@ -870,6 +903,7 @@ fun ProviderFormScreen(
                 }
             },
             onOpenTailscaleSettings = onOpenTailscaleSettings,
+            onOpenBuiltInProxySettings = onOpenBuiltInProxySettings,
             onDelete = { showDeleteConfirm = true },
         ),
     )
@@ -1158,6 +1192,10 @@ private fun ProviderInterfaceSection(
                 tailnet = state.tailnetInfo,
                 onSourceSelected = actions.onApiSourceSelected,
                 onOpenTailscaleSettings = actions.onOpenTailscaleSettings,
+                useBuiltInProxy = state.useBuiltInProxy,
+                builtInProxy = state.builtInProxyInfo,
+                onUseBuiltInProxyChange = actions.onUseBuiltInProxyChange,
+                onOpenBuiltInProxySettings = actions.onOpenBuiltInProxySettings,
             )
             InfinityGroupDivider()
         }

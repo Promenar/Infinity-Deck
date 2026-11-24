@@ -143,8 +143,8 @@ private fun LedBatch.led(level: Int, amber: Boolean, x: Float, y: Float, w: Floa
     }
 }
 
-private fun DrawScope.flushLeds(leds: LedBatch, k: Float, alpha: Float, palette: MotionPalette) {
-    drawIntoCanvas { leds.draw(it.nativeCanvas, palette.leds, palette.dark, blur = 3f * k, offColor = palette.off, whitenFrom = 1, alpha = alpha) }
+private fun DrawScope.flushLeds(leds: LedBatch, k: Float, alpha: Float, palette: MotionPalette, phase: GenerationMotionPhase) {
+    drawIntoCanvas { leds.draw(it.nativeCanvas, palette.phaseLeds(phase), palette.dark, blur = 3f * k, offColor = palette.off, whitenFrom = 1, alpha = alpha) }
 }
 
 private fun Float.lit(): Int = if (this > 0.5f) 2 else 1
@@ -193,7 +193,7 @@ private fun DrawScope.drawPorts(
         leds.led(actLevel, actAmber, x + pad + sz + inner, ly, sz, sz, k)
         x += pw + gap
     }
-    flushLeds(leds, k, alpha, palette)
+    flushLeds(leds, k, alpha, palette, phase)
 }
 
 /**
@@ -246,7 +246,7 @@ private fun DrawScope.drawMatrix(
         }
         leds.led(level, amber, x, y, sz, sz, 0.6f * k)
     }
-    flushLeds(leds, k, alpha, palette)
+    flushLeds(leds, k, alpha, palette, phase)
 }
 
 /**
@@ -299,7 +299,7 @@ private fun DrawScope.drawStacked(
         }
         leds.led(level, amber, x, y, w, h, 0.8f * k)
     }
-    flushLeds(leds, k, alpha, palette)
+    flushLeds(leds, k, alpha, palette, phase)
 }
 
 /**
@@ -346,7 +346,7 @@ private fun DrawScope.drawBays(
         leds.led(power, powerAmber, x + 1.6f * k, y + 1.8f * k, 1.8f * k, 1.8f * k, 0.6f * k)
         leds.led(activity, activityAmber, x + 4.4f * k, y + 2.1f * k, 3.6f * k, 1.2f * k, 0.6f * k)
     }
-    flushLeds(leds, k, alpha, palette)
+    flushLeds(leds, k, alpha, palette, phase)
 }
 
 /**
@@ -389,7 +389,7 @@ private fun DrawScope.drawInfinityLine(
                 infinityTails(native, cx, cy, a, k, palette, painter) { draw -> draw(q * Tau, palette.b, 0.9f, alpha) }
             }
             GenerationMotionPhase.APPROVAL ->
-                infinityBase(native, cx, cy, a, k, palette.b, (0.25f + 0.6f * slowBlink(t)) * alpha, 1.6f, painter)
+                infinityBase(native, cx, cy, a, k, palette.approval, (0.25f + 0.6f * slowBlink(t)) * alpha, 1.6f, painter)
             GenerationMotionPhase.RETRY ->
                 infinityBase(native, cx, cy, a, k, palette.a, (0.1f + 0.3f * evenBlink(t)) * alpha, 1.1f, painter)
         }
@@ -520,7 +520,7 @@ private fun DrawScope.drawInfinityLed(
         if (intensity < 0.08f) beads.offDot(x, y, sz) else beads.dot(if (isAmber) 1 else 0, intensity, x, y, sz, gz)
     }
     drawIntoCanvas {
-        beads.draw(it.nativeCanvas, palette.leds, palette.dark, blur = 3f * k, offColor = palette.a.copy(alpha = if (palette.dark) 0.13f else 0.18f), alpha = alpha)
+        beads.draw(it.nativeCanvas, palette.phaseLeds(phase), palette.dark, blur = 3f * k, offColor = palette.a.copy(alpha = if (palette.dark) 0.13f else 0.18f), alpha = alpha)
     }
 }
 

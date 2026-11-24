@@ -135,6 +135,8 @@ class BuiltInProxyManager(
 
     override suspend fun readAdvancedYaml(): String? = withContext(dispatcher) { store.readAdvancedYaml() }
 
+    override suspend fun readEditableYaml(): String = withContext(dispatcher) { store.readEditableYaml() }
+
     override suspend fun setAdvancedYaml(yaml: String?): ProxyYamlValidation {
         if (yaml.isNullOrBlank()) {
             update { store.setAdvancedYaml(null, emptyList()) }
@@ -334,6 +336,7 @@ class BuiltInProxyManager(
             fallbackReason = reported?.fallbackReason?.takeIf { it.length <= 128 },
             nodes = options.nodes,
             error = error,
+            listenPort = if (phase == BuiltInProxyPhase.RUNNING) mutableEndpoint.value?.port else null,
         )
     }
 

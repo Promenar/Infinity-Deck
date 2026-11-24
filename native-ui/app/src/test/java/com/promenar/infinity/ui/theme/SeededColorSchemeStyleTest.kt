@@ -19,22 +19,24 @@ class SeededColorSchemeStyleTest {
     }
 
     @Test
-    fun `高饱和种子色在柔和风格下被压低，在忠实与鲜艳风格下保持鲜明`() {
+    fun `高饱和种子色在柔和风格下被压低，在标准与明亮风格下保持鲜明`() {
         val seed = Color(0xFFFF1744)
         val soft = seededColorScheme(seed, dark = false, style = InfinitySchemeStyle.TONAL_SPOT).primary
-        val faithful = seededColorScheme(seed, dark = false, style = InfinitySchemeStyle.FIDELITY).primary
-        val vibrant = seededColorScheme(seed, dark = false, style = InfinitySchemeStyle.VIBRANT).primary
+        val standard = seededColorScheme(seed, dark = false, style = InfinitySchemeStyle.FIDELITY).primary
+        val bright = seededColorScheme(seed, dark = false, style = InfinitySchemeStyle.BRIGHT).primary
 
-        assertThat(saturation(faithful)).isGreaterThan(saturation(soft) + 0.2f)
-        assertThat(saturation(vibrant)).isGreaterThan(saturation(soft))
+        assertThat(saturation(standard)).isGreaterThan(saturation(soft) + 0.2f)
+        assertThat(saturation(bright)).isGreaterThan(saturation(soft) + 0.2f)
     }
 
     @Test
-    fun `表现力风格的第三色与柔和风格不同`() {
-        val seed = Color(0xFF6366F1)
+    fun `三档配色风格在深色模式下呈现柔和到标准再到明亮的递增饱和梯度`() {
+        val seed = InfinityIceBlueSeed
         val soft = seededColorScheme(seed, dark = true, style = InfinitySchemeStyle.TONAL_SPOT)
-        val expressive = seededColorScheme(seed, dark = true, style = InfinitySchemeStyle.EXPRESSIVE)
-        assertThat(expressive.tertiary).isNotEqualTo(soft.tertiary)
+        val standard = seededColorScheme(seed, dark = true, style = InfinitySchemeStyle.FIDELITY)
+        val bright = seededColorScheme(seed, dark = true, style = InfinitySchemeStyle.BRIGHT)
+        assertThat(saturation(bright.primary)).isGreaterThan(saturation(soft.primary))
+        assertThat(standard.primary).isNotEqualTo(soft.primary)
     }
 
     private fun contrast(a: Color, b: Color): Float {

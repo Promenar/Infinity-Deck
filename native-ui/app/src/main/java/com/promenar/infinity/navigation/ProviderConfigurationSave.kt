@@ -21,9 +21,11 @@ internal suspend fun saveProviderConfiguration(
     credential: CredentialUpdate,
     model: String,
     name: String?,
+    useBuiltInProxy: Boolean? = null,
 ): String = withContext(Dispatchers.IO) {
     val providerManager = ProviderManager.getInstance()
     val existingSummary = providerId?.let(providerManager::getProviderSummary)
+    val resolvedUseProxy = useBuiltInProxy ?: existingSummary?.useBuiltInProxy ?: false
     val credentialPresent = when (credential) {
         is CredentialUpdate.Replace -> true
         CredentialUpdate.Clear -> false
@@ -37,13 +39,13 @@ internal suspend fun saveProviderConfiguration(
         protocolType = protocolType,
         hasApiKey = credentialPresent && protocolType !is ProtocolType.Google_VertexAI,
         hasVertexCredentials = credentialPresent && protocolType is ProtocolType.Google_VertexAI,
-        useBuiltInProxy = existingSummary?.useBuiltInProxy ?: false,
+        useBuiltInProxy = resolvedUseProxy,
     )
     when (providerId) {
         null -> {
             val mainConfig = providerManager.getProviderSummary(DEFAULT_PROVIDER_ID)
             if (mainConfig == null || (!mainConfig.hasApiKey && !mainConfig.hasVertexCredentials)) {
-                app.updateProvider(protocolType, baseUrl, credential, model, name)
+                app.updateProvider(protocolType, baseUrl, credential, model, name, resolvedUseProxy)
                 DEFAULT_PROVIDER_ID
             } else {
                 val id = "extra_${UUID.randomUUID()}"
@@ -52,7 +54,7 @@ internal suspend fun saveProviderConfiguration(
             }
         }
         DEFAULT_PROVIDER_ID -> {
-            app.updateProvider(protocolType, baseUrl, credential, model, name)
+            app.updateProvider(protocolType, baseUrl, credential, model, name, resolvedUseProxy)
             providerId
         }
         else -> {

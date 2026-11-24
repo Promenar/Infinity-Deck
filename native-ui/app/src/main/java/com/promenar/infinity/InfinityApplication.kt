@@ -3458,9 +3458,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         credentialUpdate: com.promenar.infinity.data.model.CredentialUpdate,
         model: String,
         name: String? = null,
+        useBuiltInProxy: Boolean? = null,
     ) {
         ProviderManager.getInstance().updateMainProvider(
-            protocolType, baseUrl, credentialUpdate, model, name,
+            protocolType, baseUrl, credentialUpdate, model, name, useBuiltInProxy,
         )
         localProviderOverride = null
         _providerConfigurationVersion.value += 1

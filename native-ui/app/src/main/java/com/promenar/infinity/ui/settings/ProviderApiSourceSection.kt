@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lan
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,8 +53,10 @@ import com.promenar.infinity.data.tailnet.TailnetPeer
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinitySettingsRowLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.common.SettingsToggle
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -70,6 +73,13 @@ data class ProviderTailnetInfo(
     val peers: List<TailnetPeer> = emptyList(),
 )
 
+/** 提供商编辑页公网代理开关所需的内置代理状态摘要。 */
+data class ProviderBuiltInProxyInfo(
+    val available: Boolean = true,
+    val running: Boolean = false,
+    val activeNodeName: String? = null,
+)
+
 /** 独立的“接口来源”分组；提供商表单里改用 [ProviderApiSourceRows] 并入“接口”分组卡片。 */
 @Composable
 internal fun ProviderApiSourceSection(
@@ -77,22 +87,39 @@ internal fun ProviderApiSourceSection(
     tailnet: ProviderTailnetInfo,
     onSourceSelected: (ProviderApiSource) -> Unit,
     onOpenTailscaleSettings: () -> Unit,
+    useBuiltInProxy: Boolean = false,
+    builtInProxy: ProviderBuiltInProxyInfo = ProviderBuiltInProxyInfo(),
+    onUseBuiltInProxyChange: (Boolean) -> Unit = {},
+    onOpenBuiltInProxySettings: () -> Unit = {},
 ) {
     InfinitySettingsSection(
         title = stringResource(R.string.provider_api_source_title),
         footer = stringResource(R.string.provider_api_source_footer),
     ) {
-        ProviderApiSourceRows(source, tailnet, onSourceSelected, onOpenTailscaleSettings)
+        ProviderApiSourceRows(
+            source = source,
+            tailnet = tailnet,
+            onSourceSelected = onSourceSelected,
+            onOpenTailscaleSettings = onOpenTailscaleSettings,
+            useBuiltInProxy = useBuiltInProxy,
+            builtInProxy = builtInProxy,
+            onUseBuiltInProxyChange = onUseBuiltInProxyChange,
+            onOpenBuiltInProxySettings = onOpenBuiltInProxySettings,
+        )
     }
 }
 
-/** 公网 | Tailscale 内网 分段选择；选中 Tailscale 时下方展开内置 Tailscale 状态行。用于分组卡片内。 */
+/** 公网 | Tailscale 内网 分段选择；选中公网时展示内置代理按需开关，选中 Tailscale 时展示内置 Tailscale 状态行。 */
 @Composable
 internal fun ProviderApiSourceRows(
     source: ProviderApiSourceState,
     tailnet: ProviderTailnetInfo,
     onSourceSelected: (ProviderApiSource) -> Unit,
     onOpenTailscaleSettings: () -> Unit,
+    useBuiltInProxy: Boolean = false,
+    builtInProxy: ProviderBuiltInProxyInfo = ProviderBuiltInProxyInfo(),
+    onUseBuiltInProxyChange: (Boolean) -> Unit = {},
+    onOpenBuiltInProxySettings: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxWidth()) {
         val options = listOf(
@@ -115,6 +142,37 @@ internal fun ProviderApiSourceRows(
             modifier = Modifier.testTag(PROVIDER_API_SOURCE_TAG),
         )
         AnimatedVisibility(
+            visible = source.selected == ProviderApiSource.PUBLIC,
+            enter = InfinityMotion.expandIn,
+            exit = InfinityMotion.shrinkOut,
+        ) {
+            Column {
+                InfinityGroupDivider()
+                SettingsToggle(
+                    title = stringResource(R.string.provider_proxy_toggle_title),
+                    description = stringResource(
+                        if (useBuiltInProxy) R.string.provider_proxy_toggle_desc_on else R.string.provider_proxy_toggle_desc_off,
+                    ),
+                    checked = useBuiltInProxy,
+                    onCheckedChange = onUseBuiltInProxyChange,
+                    icon = Icons.Rounded.Public,
+                    modifier = Modifier.testTag(PROVIDER_PROXY_TOGGLE_TAG),
+                )
+                AnimatedVisibility(
+                    visible = useBuiltInProxy,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    Column {
+                        InfinityGroupDivider()
+                        Box(Modifier.padding(start = InfinitySpacing.RowHorizontal, end = 8.dp, top = 4.dp, bottom = 4.dp)) {
+                            BuiltInProxyStatusRow(builtInProxy, onOpenBuiltInProxySettings)
+                        }
+                    }
+                }
+            }
+        }
+        AnimatedVisibility(
             visible = source.selected == ProviderApiSource.TAILNET,
             enter = InfinityMotion.expandIn,
             exit = InfinityMotion.shrinkOut,
@@ -125,6 +183,71 @@ internal fun ProviderApiSourceRows(
                     BuiltInTailscaleRow(source.builtIn, tailnet, onOpenTailscaleSettings)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BuiltInProxyStatusRow(
+    proxy: ProviderBuiltInProxyInfo,
+    onOpenBuiltInProxySettings: () -> Unit,
+) {
+    val colors = MaterialTheme.infinityDomainColors
+    val scheme = MaterialTheme.colorScheme
+    val dotColor = when {
+        proxy.running -> colors.signalOn
+        !proxy.available -> scheme.outline
+        else -> colors.signalPending
+    }
+    val title = stringResource(
+        when {
+            proxy.running -> R.string.provider_proxy_status_running
+            !proxy.available -> R.string.provider_proxy_status_unavailable
+            else -> R.string.provider_proxy_status_off
+        },
+    )
+    val detail = when {
+        proxy.running && !proxy.activeNodeName.isNullOrBlank() ->
+            stringResource(R.string.provider_proxy_status_active_node, proxy.activeNodeName)
+        !proxy.running -> stringResource(R.string.provider_proxy_status_warning)
+        else -> null
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+            .testTag(PROVIDER_PROXY_STATUS_TAG)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .background(dotColor, CircleShape),
+        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurface)
+            detail?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (proxy.running) scheme.onSurfaceVariant else colors.warning,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (proxy.available) {
+            InfinityPillButton(
+                text = stringResource(
+                    if (proxy.running) R.string.provider_proxy_action_settings else R.string.provider_proxy_action_enable,
+                ),
+                onClick = onOpenBuiltInProxySettings,
+                compact = true,
+                tone = if (proxy.running) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
+                modifier = Modifier.testTag(PROVIDER_PROXY_ACTION_TAG),
+            )
         }
     }
 }
@@ -382,6 +505,9 @@ private fun peerDetail(peer: TailnetPeer): String = listOfNotNull(
 ).joinToString(" · ")  // wrap-check: allow 调用处为单行省略
 
 internal const val PROVIDER_API_SOURCE_TAG = "provider_api_source"
+internal const val PROVIDER_PROXY_TOGGLE_TAG = "provider_proxy_toggle"
+internal const val PROVIDER_PROXY_STATUS_TAG = "provider_proxy_status"
+internal const val PROVIDER_PROXY_ACTION_TAG = "provider_proxy_action"
 internal const val PROVIDER_TAILNET_STATUS_TAG = "provider_tailnet_status"
 internal const val PROVIDER_TAILNET_ACTION_TAG = "provider_tailnet_action"
 internal const val PROVIDER_ADDRESS_HINT_TAG = "provider_address_hint"
