@@ -47,6 +47,18 @@ def prepare_worktree(worktree: Path, sha: str) -> None:
         shutil.copyfile(ROOT / "native-ui" / "local.properties", local_props)
 
 
+def has_user_gradle_jvmargs() -> bool:
+    gradle_home = Path(os.environ.get("GRADLE_USER_HOME", str(Path.home() / ".gradle")))
+    props_file = gradle_home / "gradle.properties"
+    if not props_file.is_file():
+        return False
+    for line in props_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and stripped.startswith("org.gradle.jvmargs"):
+            return True
+    return False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sha", default="HEAD", help="要构建的提交，默认主检出的 HEAD")
@@ -60,8 +72,13 @@ def main() -> None:
     native = worktree / "native-ui"
     tasks = [":app:assembleSideloadRelease"] + ([":app:assemblePlayRelease"] if args.play else [])
     print(f"构建 {sha[:8]} · {' '.join(tasks)} · {worktree}", flush=True)
+    # 复用用户级 gradle.properties 的统一守护进程参数，避免临时覆写分裂出第二个常驻 GradleDaemon
+    cmd = ["./gradlew"]
+    if not has_user_gradle_jvmargs():
+        cmd.append("-Dorg.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=1g")
+    cmd.extend(tasks)
     subprocess.run(
-        ["./gradlew", "-Dorg.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=1g", *tasks],
+        cmd,
         cwd=native, env=signing_env(), check=True,
     )
     sideload = native / "app/build/outputs/apk/sideload/release/app-sideload-release.apk"

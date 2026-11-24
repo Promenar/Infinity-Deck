@@ -544,7 +544,9 @@ class TailnetBinaryTest(ApkFixtureTestCase):
 
     def test_allows_go_symbol_runs_and_reserved_ranges_only_in_tailnet_binary(self) -> None:
         content = (
-            b"sk-configip-forwarding-offavailable-versionunknown 10.0.0.0 100.64.0.0 172.16.0.0 192.168.0.0 "
+            b"sk-configip-forwarding-offavailable-versionunknown "
+            b"sk-configip-forwarding-offavailable-versionDiacriticalAcute "
+            b"10.0.0.0 100.64.0.0 172.16.0.0 192.168.0.0 "
             b"100.115.92.0 100.100.100.100 10.076.76.10 10.276.76.10"
         )
         verify_release_apk.scan_sensitive_content(self.make_apk({"lib/arm64-v8a/libnxtailnet.so": content}))

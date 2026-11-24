@@ -98,7 +98,8 @@ SITE_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
 PROXY_BINARY_PATTERN = re.compile(r"lib/([^/]+)/libnxproxy\.so\Z")
 TAILNET_BINARY_PATTERN = re.compile(r"lib/([^/]+)/libnxtailnet\.so\Z")
 TAILNET_ALLOWANCES: dict[str, re.Pattern[bytes]] = {
-    "疑似 OpenAI 兼容密钥": re.compile(rb"sk-[a-z-]+"),
+    # Go 链接器合并的静态串中，available-version 紧邻 html 实体名 DiacriticalAcute；真实 API 密钥含数字或随机大小写混合，仍照常拦截。
+    "疑似 OpenAI 兼容密钥": re.compile(rb"sk-[a-z-]+(?:DiacriticalAcute)?"),
     "私网或 CGNAT 测试地址": re.compile(
         rb"10\.0\.0\.0|100\.64\.0\.0|172\.16\.0\.0|192\.168\.0\.0|100\.115\.92\.0|100\.100\.100\.100|10\.[02]76\.76\.10"
     ),
