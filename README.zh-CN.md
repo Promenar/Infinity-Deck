@@ -135,7 +135,7 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.74.1-beta`（versionCode `219`）。自上一公开版 `v0.70.4-beta` 以来累计交付：独立用户态 **内置代理**（`libnxproxy.so`，免系统 VPN、关闭零内存、与 Tailscale P2P 原生直连共存、YAML/Base64 订阅与分享链接导入、单节点与支持右侧把手即按即拖/长按拖拽/边缘自动滚动的顺序降级模式、高级 YAML 编辑器与内核预校验、提供商按需勾选开关、内置浏览器与 Agent 公网自动路由及 Alpine Linux `$INFINITY_PROXY_*` 按需注入）；零硬编码 **ComfyUI** 全能提交器框架（14 个 `comfy_*` 工具与双执行环境自动切换）及 16KB 页对齐 `arm64-v8a` 精简 **FFmpeg 9.1 / ffprobe**（`libx264`）；内置模式唯一真实 Android 路径体系、**L1 / L2** 按命令风险分级审批与不可审批的毁灭性根目录破坏硬拦截防线，以及 Linux 后台任务保活加固；三形态统一检视器（大页签左右滑切与吸顶页签对齐）、全站 4 级黑曜石浮层与零行高跳变隔离、资料库「文件」四分类与一步工作区管理、三档原色相配色风格（**柔和 / 标准 / 明亮**）、对话/资料统一 `34dp` 圆形 `+` 主按钮及全部 5 阶段生成动效上下同色同步。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
+- **当前版本**：`v0.74.2-beta`（versionCode `220`）。自上一公开版 `v0.70.4-beta` 以来累计交付：独立用户态 **内置代理**（`libnxproxy.so`，免系统 VPN、关闭零内存、与 Tailscale P2P 原生直连共存、YAML/Base64 订阅与分享链接导入、单节点与支持右侧把手即按即拖/长按拖拽/边缘自动滚动的顺序降级模式、高级 YAML 编辑器与内核预校验、提供商按需勾选开关、内置浏览器与 Agent 公网自动路由及 Alpine Linux `$INFINITY_PROXY_*` 按需注入）；零硬编码 **ComfyUI** 全能提交器框架（14 个 `comfy_*` 工具与双执行环境自动切换）及 16KB 页对齐 `arm64-v8a` 精简 **FFmpeg 9.1 / ffprobe**（`libx264`）；内置模式唯一真实 Android 路径体系、**L1 / L2** 按命令风险分级审批与不可审批的毁灭性根目录破坏硬拦截防线，以及 Linux 后台任务保活加固；三形态统一检视器（大页签左右滑切与吸顶页签对齐）、全站 4 级黑曜石浮层与零行高跳变隔离、资料库「文件」四分类与一步工作区管理、三档原色相配色风格（**柔和 / 标准 / 明亮**）、对话/资料统一 `34dp` 圆形 `+` 主按钮及全部 5 阶段生成动效上下同色同步。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
 
 ### 从源码构建
 

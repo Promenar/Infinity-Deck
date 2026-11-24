@@ -132,7 +132,7 @@ class BuiltinExecDeviceTest {
         val value = result.json()
         assertWithMessage(value.toString()).that(result.succeeded).isTrue()
         val stdout = value.getValue("stdout").jsonPrimitive.content.lines()
-        assertThat(stdout[0]).isEqualTo("\$INFINITY_WORKSPACE")
+        assertThat(stdout[0]).isEqualTo(workspace.canonicalPath)
         assertThat(stdout[1]).isEqualTo(BuildConfig.PACKAGED_PYTHON_VERSION)
         assertThat(value.paths("added")).containsExactly("/out", "/out/r.csv").inOrder()
         assertThat(value.paths("removed")).containsExactly("/gone.txt")

@@ -132,7 +132,7 @@ class DirectoryWorkspaceDeviceTest {
         val before = privateEntries()
         val shell = json(service.runShell(privateRoot.uuid, "s", "pwd; echo \"\$INFINITY_WORKSPACE_KIND\"; echo hi > note.txt", null, 60).toJson().toString())
         assertWithMessage(shell.toString()).that(shell.getValue("exit_code").jsonPrimitive.int).isEqualTo(0)
-        assertThat(shell.getValue("stdout").jsonPrimitive.content.lines().take(2)).containsExactly("\$INFINITY_WORKSPACE", "project").inOrder()
+        assertThat(shell.getValue("stdout").jsonPrimitive.content.lines().take(2)).containsExactly(project.canonicalPath, "project").inOrder()
         assertThat(shell).doesNotContainKey("workspace_changes")
         assertThat(File(project, "note.txt").readText()).isEqualTo("hi\n")
         assumeTrue("当前 ABI 没有内置 Python，跳过内置 git", python.isAvailable)
