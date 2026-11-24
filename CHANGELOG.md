@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.73.6-beta] - 2026-11-24
+
+- **修复资料页 `LibraryNoticeEffect` 在消费提示后首帧取消底部提示条的缺陷（[LibraryScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryScreen.kt)、[LibraryLocationManagementTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/library/LibraryLocationManagementTest.kt)）**：
+  - 修复 `LibraryNoticeEffect` 在 `LaunchedEffect(notice)` 内先调用 `viewModel.consumeNotice()` 将 `notice` 置空再挂起调用 `snackbar.showSnackbar(...)`，导致下一帧重组立即取消协程、所有资料页底部提示（含工作区被会话/智能体引用无法移出、已删除/已移出/已取消快捷固定等）首帧闪消的问题；改为在独立的 `rememberCoroutineScope()` 中先关闭旧提示再展示新提示（错误与引用拦截提示使用 `SnackbarDuration.Long`，成功提示使用 `SnackbarDuration.Short`），并补充契约回归测试。
+
 ## [0.73.5-beta] - 2026-11-24
 
 - **重构资料库「文件」位置四分组与工作区管理闭环、补全文件夹完整路径详情并修复 ComfyUI 窄屏 `Tailnet` 徽章裁切（[FileManagerContracts.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/files/FileManagerContracts.kt)、[DefaultFileLocationsSource.kt](native-ui/app/src/main/java/com/promenar/infinity/data/files/DefaultFileLocationsSource.kt)、[DefaultPinnedFolderStore.kt](native-ui/app/src/main/java/com/promenar/infinity/data/files/DefaultPinnedFolderStore.kt)、[WorkspaceLibrary.kt](native-ui/app/src/main/java/com/promenar/infinity/data/workspace/WorkspaceLibrary.kt)、[InfinitySettingsItem.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinitySettingsItem.kt)、[FileManagerHeader.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/files/FileManagerHeader.kt)、[FileManagerDialogs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/files/FileManagerDialogs.kt)、[LibraryLocationDialogs.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryLocationDialogs.kt)、[LibraryNav.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryNav.kt)、[LibraryFilesHost.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryFilesHost.kt)、[LibraryViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryViewModel.kt)、[ComfySettingsScreens.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfySettingsScreens.kt)）**：

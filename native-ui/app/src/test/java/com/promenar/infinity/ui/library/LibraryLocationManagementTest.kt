@@ -98,4 +98,17 @@ class LibraryLocationManagementTest {
         store.unpinLocation("workspace:w1")
         assertThat(store.observePins().first()).containsExactly(FileRef("kb", "/帝国暗面"))
     }
+
+    @Test
+    fun `资料页提示在独立协程作用域展示，避免 consumeNotice 触发首帧取消`() {
+        val rel = "main/java/com/promenar/infinity/ui/library/LibraryScreen.kt"
+        val file = listOf("src/$rel", "app/src/$rel", "native-ui/app/src/$rel")
+            .map { java.io.File(it) }
+            .first { it.exists() }
+        val source = file.readText()
+        val body = source.substringAfter("private fun LibraryNoticeEffect(")
+        assertThat(body).contains("rememberCoroutineScope()")
+        assertThat(body).contains("noticeScope.launch")
+        assertThat(body).contains("snackbar.showSnackbar(")
+    }
 }

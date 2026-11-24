@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -24,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -52,6 +54,7 @@ import com.promenar.infinity.ui.hub.HubListPaneWidth
 import com.promenar.infinity.ui.hub.HubStripWidth
 import com.promenar.infinity.ui.rag.RagViewModel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /** 资料页的测试标签（与 UiTags 分开，避免与资源管理器组件的标签段冲突）。 */
 object LibraryTags {
@@ -462,6 +465,7 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
     val refSessions = stringResource(R.string.library_workspace_referenced_sessions)
     val refAgents = stringResource(R.string.library_workspace_referenced_agents)
     val withReason = stringResource(R.string.library_notice_with_reason)
+    val noticeScope = rememberCoroutineScope()
     LaunchedEffect(notice) {
         val current = notice ?: return@LaunchedEffect
         viewModel.consumeNotice()
@@ -478,6 +482,12 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
                 else -> refAgents.format(current.agents)
             }
         } ?: return@LaunchedEffect
-        snackbar.showSnackbar(text)
+        val duration = if (current is LibraryNotice.ActionDone) SnackbarDuration.Short else SnackbarDuration.Long
+        // 在独立组合作用域内展示提示：consumeNotice() 将 key 置空后，LaunchedEffect(notice) 会在下一帧取消，
+        // 不能直接在 LaunchedEffect 协程里挂起等待 showSnackbar，否则提示会首帧闪消。
+        noticeScope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            snackbar.showSnackbar(message = text, duration = duration)
+        }
     }
 }
