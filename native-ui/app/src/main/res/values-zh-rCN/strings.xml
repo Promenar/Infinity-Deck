@@ -1627,6 +1627,7 @@
     <string name="proxy_advanced_sync_action">同步回托管列表</string>
     <string name="proxy_section_nodes_single">节点列表（单选，%1$d 已启用）</string>
     <string name="proxy_section_nodes_fallback">节点列表（顺序降级，%1$d 已启用）</string>
+    <string name="proxy_nodes_fallback_footer">按住右侧拖拽把手或长按节点上下拖动可调整降级顺序；点按节点可测速、置顶或删除。</string>
     <string name="proxy_nodes_empty_title">暂无代理节点</string>
     <string name="proxy_nodes_empty_desc">导入订阅链接、粘贴节点分享链接，或通过高级 YAML 手动编写。</string>
     <string name="proxy_nodes_empty_action">立即导入</string>
@@ -1637,6 +1638,10 @@
     <string name="proxy_node_latency_disabled">已停用</string>
     <string name="proxy_node_move_up_cd">上移节点</string>
     <string name="proxy_node_move_down_cd">下移节点</string>
+    <string name="proxy_node_drag_handle_cd">拖动调整顺序</string>
+    <string name="proxy_node_move_top">移至首位</string>
+    <string name="proxy_node_move_up">上移一位</string>
+    <string name="proxy_node_move_down">下移一位</string>
     <string name="proxy_node_more_cd">节点操作</string>
     <string name="proxy_node_test_single">测速</string>
     <string name="proxy_node_delete">删除节点</string>

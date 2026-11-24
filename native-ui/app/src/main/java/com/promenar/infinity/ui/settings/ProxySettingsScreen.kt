@@ -2,9 +2,16 @@ package com.promenar.infinity.ui.settings
 
 import android.app.Application
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +36,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.MoreVert
@@ -40,6 +48,7 @@ import androidx.compose.material.icons.rounded.RssFeed
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.VerticalAlignTop
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -54,27 +63,45 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
@@ -111,6 +138,7 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal enum class ProxyImportTab { SUBSCRIPTION, URI }
@@ -319,10 +347,76 @@ internal fun ProxySettingsContent(
     var pendingDeleteSub by remember { mutableStateOf<ProxySubscription?>(null) }
     var pendingDeleteNode by remember { mutableStateOf<ProxyNodeItem?>(null) }
 
+    val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    val reorderState = remember { ProxyNodeReorderState() }
+    val latestNodes by rememberUpdatedState(settings.nodes)
+    val latestOnMoveNode by rememberUpdatedState(actions.onMoveNode)
+    val dividerHeightPx = with(density) { 1.dp.toPx() }
+    LaunchedEffect(dividerHeightPx) { reorderState.updateDividerHeight(dividerHeightPx) }
+    LaunchedEffect(settings.nodes) { reorderState.reconcilePersisted(settings.nodes) }
+    LaunchedEffect(fallbackMode) {
+        if (!fallbackMode) {
+            reorderState.cancelDrag()
+            reorderState.clearPendingOrder()
+        }
+    }
+    LaunchedEffect(reorderState.pendingOrderIds) {
+        if (reorderState.pendingOrderIds != null) {
+            delay(600L)
+            reorderState.clearPendingOrder()
+        }
+    }
+
+    var listTopInWindow by remember { mutableFloatStateOf(0f) }
+    var listBottomInWindow by remember { mutableFloatStateOf(0f) }
+    var draggedRowBaseTopInWindow by remember { mutableFloatStateOf(0f) }
+    var draggedRowHeightPx by remember { mutableFloatStateOf(0f) }
+
+    // 拖近视口顶底热区时平滑自动滚动外层列表，并同步推进换位，支持长订阅列表跨屏排序。
+    LaunchedEffect(reorderState.draggingId) {
+        val activeDragId = reorderState.draggingId ?: return@LaunchedEffect
+        val edgeZonePx = with(density) { 72.dp.toPx() }
+        val maxStepPx = with(density) { 14.dp.toPx() }
+        while (reorderState.draggingId == activeDragId) {
+            withFrameNanos { }
+            val viewportHeight = listBottomInWindow - listTopInWindow
+            if (viewportHeight <= 0f || draggedRowHeightPx <= 0f) continue
+            val visualTop = draggedRowBaseTopInWindow + reorderState.dragOffsetY
+            val visualBottom = visualTop + draggedRowHeightPx
+            val step = when {
+                visualTop < listTopInWindow + edgeZonePx &&
+                    listState.canScrollBackward &&
+                    reorderState.canDragUp(activeDragId) -> {
+                    val ratio = ((listTopInWindow + edgeZonePx - visualTop) / edgeZonePx).coerceIn(0.15f, 1f)
+                    -maxStepPx * ratio
+                }
+                visualBottom > listBottomInWindow - edgeZonePx &&
+                    listState.canScrollForward &&
+                    reorderState.canDragDown(activeDragId) -> {
+                    val ratio = ((visualBottom - (listBottomInWindow - edgeZonePx)) / edgeZonePx).coerceIn(0.15f, 1f)
+                    maxStepPx * ratio
+                }
+                else -> 0f
+            }
+            if (step != 0f) {
+                val consumed = listState.scrollBy(step)
+                if (consumed != 0f && reorderState.onDragDelta(consumed)) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+            }
+        }
+    }
+
     LazyColumn(
         state = listState,
         modifier = modifier
             .fillMaxSize()
+            .onGloballyPositioned { coords ->
+                val rect = coords.boundsInWindow()
+                listTopInWindow = rect.top
+                listBottomInWindow = rect.bottom
+            }
             .testTag(ProxyTags.LIST),
         contentPadding = contentPadding,
     ) {
@@ -408,37 +502,94 @@ internal fun ProxySettingsContent(
                 if (fallbackMode) R.string.proxy_section_nodes_fallback else R.string.proxy_section_nodes_single,
                 enabledNodes.size,
             )
-            InfinitySettingsSection(title = sectionTitle) {
+            val sectionFooter = if (fallbackMode && settings.nodes.isNotEmpty()) {
+                stringResource(R.string.proxy_nodes_fallback_footer)
+            } else {
+                null
+            }
+            InfinitySettingsSection(title = sectionTitle, footer = sectionFooter) {
                 if (settings.nodes.isEmpty()) {
                     ProxyEmptyNodesCard(onImport = actions.onOpenImport)
                 } else {
+                    val displayedNodes = reorderState.displayNodes(settings.nodes)
+                    val isAnyDragging = reorderState.isDragging
                     var rank = 0
-                    settings.nodes.forEachIndexed { index, node ->
-                        if (index > 0) InfinityGroupDivider()
+                    displayedNodes.forEachIndexed { index, node ->
+                        val isDragging = reorderState.draggingId == node.id
+                        val prevDragging = index > 0 && reorderState.draggingId == displayedNodes[index - 1].id
                         val nodeRank = if (node.enabled) ++rank else null
                         val isSelected = if (fallbackMode) {
-                            proxyState.activeNode == node.id || (proxyState.activeNode == null && nodeRank == 1)
+                            if (isAnyDragging) {
+                                nodeRank == 1
+                            } else {
+                                proxyState.activeNode == node.id || (proxyState.activeNode == null && nodeRank == 1)
+                            }
                         } else {
                             settings.activeNode == node.id
                         }
-                        ProxyNodeRow(
-                            node = node,
-                            rank = nodeRank,
-                            index = index,
-                            totalCount = settings.nodes.size,
-                            fallbackMode = fallbackMode,
-                            selected = isSelected,
-                            hasAdvancedYaml = settings.hasAdvancedYaml,
-                            sourceLabel = resolveNodeSourceLabel(node, subscriptionNames, settings.hasAdvancedYaml),
-                            latency = state.latencies[node.id],
-                            testing = node.id in state.testingNodeIds,
-                            onSelect = { if (node.enabled) actions.onSelectNode(node.id) },
-                            onEnabledChange = { actions.onNodeEnabledChange(node.id, it) },
-                            onMoveUp = { actions.onMoveNode(node.id, -1) },
-                            onMoveDown = { actions.onMoveNode(node.id, 1) },
-                            onTestLatency = { actions.onTestSingleLatency(node.id) },
-                            onDelete = { pendingDeleteNode = node },
-                        )
+                        key(node.id) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .zIndex(if (isDragging) 2f else 0f),
+                            ) {
+                                if (index > 0) {
+                                    // 保持分隔线恒定占位，拖拽相邻项时仅隐去可见度，避免容器总高跳变。
+                                    Box(Modifier.alpha(if (isDragging || prevDragging) 0f else 1f)) {
+                                        InfinityGroupDivider()
+                                    }
+                                }
+                                ProxyNodeRow(
+                                    node = node,
+                                    rank = nodeRank,
+                                    index = index,
+                                    totalCount = displayedNodes.size,
+                                    fallbackMode = fallbackMode,
+                                    selected = isSelected,
+                                    hasAdvancedYaml = settings.hasAdvancedYaml,
+                                    sourceLabel = resolveNodeSourceLabel(node, subscriptionNames, settings.hasAdvancedYaml),
+                                    latency = state.latencies[node.id],
+                                    testing = node.id in state.testingNodeIds,
+                                    isDragging = isDragging,
+                                    isAnyDragging = isAnyDragging,
+                                    dragOffsetY = if (isDragging) reorderState.dragOffsetY else 0f,
+                                    onMeasuredHeight = { heightPx -> reorderState.updateRowHeight(node.id, heightPx) },
+                                    onDraggedLayout = { topY, heightPx ->
+                                        draggedRowBaseTopInWindow = topY
+                                        draggedRowHeightPx = heightPx
+                                    },
+                                    onDragStart = {
+                                        if (!reorderState.isDragging && reorderState.startDrag(node.id, latestNodes)) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
+                                    },
+                                    onDragDelta = { deltaY ->
+                                        if (reorderState.draggingId == node.id && reorderState.onDragDelta(deltaY)) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        if (reorderState.draggingId == node.id) {
+                                            reorderState.finishDrag()?.let { (movedId, delta) ->
+                                                latestOnMoveNode(movedId, delta)
+                                            }
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        if (reorderState.draggingId == node.id) {
+                                            reorderState.cancelDrag()
+                                        }
+                                    },
+                                    onSelect = { if (node.enabled) actions.onSelectNode(node.id) },
+                                    onEnabledChange = { actions.onNodeEnabledChange(node.id, it) },
+                                    onMoveTop = { if (index > 0) latestOnMoveNode(node.id, -index) },
+                                    onMoveUp = { if (index > 0) latestOnMoveNode(node.id, -1) },
+                                    onMoveDown = { if (index < displayedNodes.lastIndex) latestOnMoveNode(node.id, 1) },
+                                    onTestLatency = { actions.onTestSingleLatency(node.id) },
+                                    onDelete = { pendingDeleteNode = node },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -801,8 +952,18 @@ private fun ProxyNodeRow(
     sourceLabel: String,
     latency: ProxyLatencyResult?,
     testing: Boolean,
+    isDragging: Boolean,
+    isAnyDragging: Boolean,
+    dragOffsetY: Float,
+    onMeasuredHeight: (Float) -> Unit,
+    onDraggedLayout: (topInWindow: Float, heightPx: Float) -> Unit,
+    onDragStart: () -> Unit,
+    onDragDelta: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
     onSelect: () -> Unit,
     onEnabledChange: (Boolean) -> Unit,
+    onMoveTop: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onTestLatency: () -> Unit,
@@ -811,6 +972,39 @@ private fun ProxyNodeRow(
     val scheme = MaterialTheme.colorScheme
     val domain = MaterialTheme.infinityDomainColors
     var menuExpanded by remember { mutableStateOf(false) }
+    val canDrag = fallbackMode && totalCount > 1
+
+    val latestOnDragStart by rememberUpdatedState(onDragStart)
+    val latestOnDragDelta by rememberUpdatedState(onDragDelta)
+    val latestOnDragEnd by rememberUpdatedState(onDragEnd)
+    val latestOnDragCancel by rememberUpdatedState(onDragCancel)
+    val latestOnMoveUp by rememberUpdatedState(onMoveUp)
+    val latestOnMoveDown by rememberUpdatedState(onMoveDown)
+
+    // 邻近行被拖拽挤位时做短促平滑滑入，避免瞬间闪跳；系统“移除动画”开启时 Compose 会自动将时长缩至 0。
+    var measuredHeightPx by remember(node.id) { mutableFloatStateOf(0f) }
+    var lastStableIndex by remember(node.id) { mutableIntStateOf(index) }
+    val settleOffset = remember(node.id) { Animatable(0f) }
+    LaunchedEffect(index, isDragging, isAnyDragging) {
+        val prev = lastStableIndex
+        lastStableIndex = index
+        if (!isDragging && isAnyDragging && prev != index && measuredHeightPx > 0f) {
+            val deltaPx = (prev - index) * measuredHeightPx
+            settleOffset.snapTo(deltaPx)
+            settleOffset.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedDecelerate),
+            )
+        } else if (isDragging || !isAnyDragging) {
+            settleOffset.snapTo(0f)
+        }
+    }
+
+    val dragScale by animateFloatAsState(
+        targetValue = if (isDragging) 1.01f else 1f,
+        animationSpec = tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedDecelerate),
+        label = "proxyNodeDragScale",
+    )
 
     val latencyText = when {
         !node.enabled -> stringResource(R.string.proxy_node_latency_disabled)
@@ -829,20 +1023,101 @@ private fun ProxyNodeRow(
 
     val moveUpLabel = stringResource(R.string.proxy_node_move_up_cd)
     val moveDownLabel = stringResource(R.string.proxy_node_move_down_cd)
+    val dragHandleLabel = stringResource(R.string.proxy_node_drag_handle_cd)
+    val dragBg = if (domain.isDark) InfinityObsidianDialogChip else scheme.surfaceContainerHighest
+    val rowShape = RoundedCornerShape(14.dp)
+    val canUp = index > 0
+    val canDown = index < totalCount - 1
 
-    Box(Modifier.fillMaxWidth()) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onSizeChanged { size ->
+                val h = size.height.toFloat()
+                if (h > 0f) {
+                    measuredHeightPx = h
+                    onMeasuredHeight(h)
+                }
+            }
+            .onGloballyPositioned { coords ->
+                if (isDragging) {
+                    onDraggedLayout(coords.positionInWindow().y, coords.size.height.toFloat())
+                }
+            }
+            .graphicsLayer {
+                translationY = if (isDragging) dragOffsetY else settleOffset.value
+                scaleX = dragScale
+                scaleY = dragScale
+            }
+            .then(
+                if (isDragging) {
+                    Modifier
+                        .padding(horizontal = 4.dp)
+                        .shadow(elevation = 10.dp, shape = rowShape, clip = false)
+                        .clip(rowShape)
+                        .background(dragBg)
+                        .border(1.dp, scheme.primary.copy(alpha = 0.72f), rowShape)
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .semantics {
+                    if (canDrag) {
+                        val a11yActions = mutableListOf<CustomAccessibilityAction>()
+                        if (canUp) {
+                            a11yActions += CustomAccessibilityAction(moveUpLabel) {
+                                latestOnMoveUp()
+                                true
+                            }
+                        }
+                        if (canDown) {
+                            a11yActions += CustomAccessibilityAction(moveDownLabel) {
+                                latestOnMoveDown()
+                                true
+                            }
+                        }
+                        if (a11yActions.isNotEmpty()) {
+                            customActions = a11yActions
+                        }
+                    }
+                }
                 .then(
                     when {
-                        fallbackMode -> Modifier.clickable(role = Role.Button, onClick = { menuExpanded = true })
+                        fallbackMode -> Modifier.clickable(
+                            enabled = !isAnyDragging,
+                            role = Role.Button,
+                            onClick = { menuExpanded = true },
+                        )
                         node.enabled -> Modifier.clickable(role = Role.RadioButton, onClick = onSelect)
                         else -> Modifier
                     },
                 )
-                .alpha(if (node.enabled) 1f else 0.58f)
-                .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp)
+                .pointerInput(node.id, canDrag) {
+                    if (!canDrag) return@pointerInput
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = {
+                            menuExpanded = false
+                            latestOnDragStart()
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            latestOnDragDelta(dragAmount.y)
+                        },
+                        onDragEnd = { latestOnDragEnd() },
+                        onDragCancel = { latestOnDragCancel() },
+                    )
+                }
+                .alpha(if (node.enabled || isDragging) 1f else 0.58f)
+                .padding(
+                    start = 16.dp,
+                    end = if (fallbackMode) 8.dp else 12.dp,
+                    top = 10.dp,
+                    bottom = 10.dp,
+                )
                 .testTag(ProxyTags.node(node.id)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -880,7 +1155,7 @@ private fun ProxyNodeRow(
                     Text(
                         text = node.name,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (selected && node.enabled) FontWeight.SemiBold else FontWeight.Normal,
+                        fontWeight = if ((selected && node.enabled) || isDragging) FontWeight.SemiBold else FontWeight.Normal,
                         color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -901,39 +1176,6 @@ private fun ProxyNodeRow(
                     color = scheme.onSurfaceVariant,
                     maxLines = 1,
                 )
-            }
-
-            if (fallbackMode && node.enabled) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val canUp = index > 0
-                    val canDown = index < totalCount - 1
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(scheme.surfaceContainerHighest)
-                            .alpha(if (canUp) 1f else 0.35f)
-                            .clickable(enabled = canUp, role = Role.Button, onClick = onMoveUp)
-                            .semantics { contentDescription = moveUpLabel }
-                            .testTag(ProxyTags.nodeMoveUp(node.id)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Rounded.ArrowUpward, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(scheme.surfaceContainerHighest)
-                            .alpha(if (canDown) 1f else 0.35f)
-                            .clickable(enabled = canDown, role = Role.Button, onClick = onMoveDown)
-                            .semantics { contentDescription = moveDownLabel }
-                            .testTag(ProxyTags.nodeMoveDown(node.id)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Rounded.ArrowDownward, contentDescription = null, tint = scheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                    }
-                }
             }
 
             if (!fallbackMode) {
@@ -981,8 +1223,46 @@ private fun ProxyNodeRow(
             Switch(
                 checked = node.enabled,
                 onCheckedChange = onEnabledChange,
+                enabled = !isAnyDragging,
                 modifier = Modifier.testTag(ProxyTags.nodeSwitch(node.id)),
             )
+
+            if (fallbackMode) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 34.dp, height = 40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (isDragging) scheme.primary.copy(alpha = 0.16f) else scheme.surfaceContainerHighest.copy(alpha = 0f),
+                        )
+                        .alpha(if (canDrag) 1f else 0.35f)
+                        .pointerInput(node.id, canDrag) {
+                            if (!canDrag) return@pointerInput
+                            detectVerticalDragGestures(
+                                onDragStart = {
+                                    menuExpanded = false
+                                    latestOnDragStart()
+                                },
+                                onVerticalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    latestOnDragDelta(dragAmount)
+                                },
+                                onDragEnd = { latestOnDragEnd() },
+                                onDragCancel = { latestOnDragCancel() },
+                            )
+                        }
+                        .semantics { contentDescription = dragHandleLabel }
+                        .testTag(ProxyTags.nodeDragHandle(node.id)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.DragHandle,
+                        contentDescription = null,
+                        tint = if (isDragging) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.78f),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
         }
 
         if (fallbackMode) {
@@ -1000,6 +1280,36 @@ private fun ProxyNodeRow(
                         onTestLatency()
                     },
                 )
+                if (canUp) {
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.proxy_node_move_top)) },
+                        leadingIcon = { Icon(Icons.Rounded.VerticalAlignTop, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            menuExpanded = false
+                            onMoveTop()
+                        },
+                    )
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.proxy_node_move_up)) },
+                        leadingIcon = { Icon(Icons.Rounded.ArrowUpward, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        modifier = Modifier.testTag(ProxyTags.nodeMoveUp(node.id)),
+                        onClick = {
+                            menuExpanded = false
+                            onMoveUp()
+                        },
+                    )
+                }
+                if (canDown) {
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.proxy_node_move_down)) },
+                        leadingIcon = { Icon(Icons.Rounded.ArrowDownward, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        modifier = Modifier.testTag(ProxyTags.nodeMoveDown(node.id)),
+                        onClick = {
+                            menuExpanded = false
+                            onMoveDown()
+                        },
+                    )
+                }
                 if (!hasAdvancedYaml) {
                     InfinityMenuItem(
                         text = { Text(stringResource(R.string.proxy_node_delete)) },
@@ -1328,6 +1638,7 @@ internal object ProxyTags {
     fun subscription(id: String) = "proxy_subscription:$id"
     fun node(id: String) = "proxy_node:$id"
     fun nodeSwitch(id: String) = "proxy_node_switch:$id"
+    fun nodeDragHandle(id: String) = "proxy_node_drag:$id"
     fun nodeMoveUp(id: String) = "proxy_node_up:$id"
     fun nodeMoveDown(id: String) = "proxy_node_down:$id"
 }

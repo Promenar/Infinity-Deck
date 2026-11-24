@@ -1634,6 +1634,7 @@
     <string name="proxy_advanced_sync_action">Sync to managed list</string>
     <string name="proxy_section_nodes_single">Nodes (Single, %1$d enabled)</string>
     <string name="proxy_section_nodes_fallback">Nodes (Fallback, %1$d enabled)</string>
+    <string name="proxy_nodes_fallback_footer">Drag the right handle or long-press a node to reorder fallback priority; tap a node to test, pin to top, or delete.</string>
     <string name="proxy_nodes_empty_title">No proxy nodes yet</string>
     <string name="proxy_nodes_empty_desc">Import a subscription link, paste node share URIs, or edit YAML directly.</string>
     <string name="proxy_nodes_empty_action">Import now</string>
@@ -1644,6 +1645,10 @@
     <string name="proxy_node_latency_disabled">Disabled</string>
     <string name="proxy_node_move_up_cd">Move node up</string>
     <string name="proxy_node_move_down_cd">Move node down</string>
+    <string name="proxy_node_drag_handle_cd">Drag to reorder</string>
+    <string name="proxy_node_move_top">Move to top</string>
+    <string name="proxy_node_move_up">Move up</string>
+    <string name="proxy_node_move_down">Move down</string>
     <string name="proxy_node_more_cd">Node actions</string>
     <string name="proxy_node_test_single">Test latency</string>
     <string name="proxy_node_delete">Delete node</string>
