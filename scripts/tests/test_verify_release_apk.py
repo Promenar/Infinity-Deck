@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -606,6 +607,77 @@ class PackagedFfmpegTest(ApkFixtureTestCase):
         non_elf = self.full_ffmpeg_entries() | {"lib/arm64-v8a/libavcodec_nxff.so": b"#!/bin/sh"}
         with self.assertRaisesRegex(verify_release_apk.VerificationError, "不是 ELF"):
             verify_release_apk.verify_packaged_ffmpeg(self.make_apk(non_elf))
+
+
+class PackagedHostToolsTest(ApkFixtureTestCase):
+    library_names = (
+        "libnxgit.so", "libnxgit-remote-https.so", "libnxgitssh.so", "libnxrg.so",
+        "libnxfd.so", "libnxjq.so", "libnxsqlite3.so", "libnxzstd.so",
+        "libnxbsdtar.so", "libnxrsync.so", "libnxtoolshim.so",
+    )
+    prefix = "lib/arm64-v8a/"
+
+    def make_tools_apk(self, entries: dict[str, bytes], compression=zipfile.ZIP_DEFLATED) -> Path:
+        apk = self.make_apk({})
+        with zipfile.ZipFile(apk, "w", compression) as archive:
+            for name, data in entries.items():
+                archive.writestr(name, data)
+        return apk
+
+    @staticmethod
+    def executable(machine=183, align=16384, flags=5, entry=64, shim=True) -> bytes:
+        ident = b"\x7fELF\x02\x01\x01" + bytes(9)
+        interpreter = b"/system/bin/linker64\0" if not shim else b""
+        phnum = 1 if shim else 2
+        interp_offset = 64 + 56 * phnum
+        size = interp_offset + len(interpreter)
+        header = struct.pack("<16sHHIQQQIHHHHHH", ident, 3, machine, 1, entry, 64, 0, 0, 64, 56, phnum, 0, 0, 0)
+        load = struct.pack("<IIQQQQQQ", 1, flags, 0, 0, 0, size, size, align)
+        interp = struct.pack("<IIQQQQQQ", 3, 4, interp_offset, 0, 0, len(interpreter), 0, 1) if not shim else b""
+        return header + load + interp + interpreter
+
+    def tools(self) -> dict[str, bytes]:
+        return {self.prefix + lib: self.executable(shim=lib == "libnxtoolshim.so") for lib in self.library_names}
+
+    def test_complete_sideload_and_empty_play(self) -> None:
+        verify_release_apk.verify_packaged_host_tools(self.make_tools_apk(self.tools()), "sideload")
+        verify_release_apk.verify_packaged_host_tools(
+            self.make_apk({"lib/arm64-v8a/libnxffmpeg.so": b"existing"}), "play"
+        )
+        verify_release_apk.verify_packaged_host_tools(
+            self.make_apk({"lib/x86_64/libpystdlib.so": b"x86"}), "sideload"
+        )
+
+    def test_rejects_every_new_tool_on_play(self) -> None:
+        for lib in self.library_names:
+            for prefix in (self.prefix, "lib/x86_64/", "assets/tools/"):
+                with self.subTest(lib=lib, prefix=prefix):
+                    apk = self.make_apk({prefix + lib: self.executable()})
+                    with self.assertRaisesRegex(verify_release_apk.VerificationError, "play"):
+                        verify_release_apk.verify_packaged_host_tools(apk, "play")
+
+    def test_rejects_missing_wrong_arch_unaligned_wx_and_misplaced_tools(self) -> None:
+        filename = self.prefix + "libnxtoolshim.so"
+        entries = self.tools()
+        missing = {name: data for name, data in entries.items() if name != filename}
+        cases = (
+            (missing, "缺少 libnxtoolshim"),
+            (entries | {filename: self.executable(machine=62)}, "架构"),
+            (entries | {filename: self.executable(align=4096)}, "16 KiB"),
+            (entries | {filename: self.executable(align=24000)}, "16 KiB"),
+            (entries | {filename: self.executable(flags=7)}, r"W\+X"),
+            (entries | {filename: self.executable(entry=0)}, "入口"),
+            (entries | {filename: self.executable(shim=False)}, "解释器"),
+            (entries | {self.prefix + "libnxgit.so": self.executable()}, "缺少 Android ELF 解释器"),
+            (entries | {filename: b"\x7fELF"}, "ELF64"),
+            (entries | {"lib/x86_64/libnxgit.so": self.executable()}, "路径"),
+        )
+        for contents, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(verify_release_apk.VerificationError, message):
+                    verify_release_apk.verify_packaged_host_tools(self.make_tools_apk(contents), "sideload")
+        with self.assertRaisesRegex(verify_release_apk.VerificationError, "压缩"):
+            verify_release_apk.verify_packaged_host_tools(self.make_apk(entries), "sideload")
 
 
 class ChecksumVerificationTest(ApkFixtureTestCase):

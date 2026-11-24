@@ -85,6 +85,13 @@ class ReleaseWorkflowReliabilityTest(unittest.TestCase):
         self.assertIn("test-results/testSideloadDebugUnitTest", source)
         self.assertIn("if: always()", source)
 
+    def test_only_release_build_installs_android_rust_target(self) -> None:
+        install = "rustup target add aarch64-linux-android"
+        build = workflow_job("build-release")
+        self.assertEqual(RELEASE.count(install), 1)
+        self.assertIn(install, build)
+        self.assertLess(build.index(install), build.index(":app:assembleSideloadRelease"))
+
     def test_local_gate_documents_list_both_distribution_unit_tests(self) -> None:
         # 发行流水线不跑单测，两个渠道的 JVM 单测只由本机门禁覆盖；门禁清单不能再次只列侧载。
         agents_gate = next(

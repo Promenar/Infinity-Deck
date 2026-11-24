@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
@@ -137,6 +138,13 @@ PACKAGED_FFMPEG_LIBRARIES: tuple[str, ...] = (
     "libswresample_nxff.so",
     "libswscale_nxff.so",
 )
+
+PACKAGED_HOST_TOOL_LIBRARIES = (
+    "libnxgit.so", "libnxgit-remote-https.so", "libnxgitssh.so", "libnxrg.so",
+    "libnxfd.so", "libnxjq.so", "libnxsqlite3.so", "libnxzstd.so",
+    "libnxbsdtar.so", "libnxrsync.so", "libnxtoolshim.so",
+)
+HOST_TOOL_ABI_DIRECTORY = "lib/arm64-v8a/"
 
 # 打包 Python 须带构建期预编译的哈希 pyc：缺少时每次启动解释器都重新编译，内置 git 与 Git 面板在真机上慢约十倍。
 PYTHON_BYTECODE_MODULES: dict[str, tuple[str, ...]] = {
@@ -437,6 +445,89 @@ def verify_packaged_ffmpeg(apk: Path) -> None:
         raise VerificationError("内置 FFmpeg 校验失败：" + "；".join(problems))
 
 
+def verify_host_tool_elf(stream, size: int, library: str) -> None:
+    """检查 AArch64 可执行 ELF、入口、内存段与解释器。"""
+    header = stream.read(64)
+    if len(header) != 64 or header[:7] != b"\x7fELF\x02\x01\x01":
+        raise VerificationError("不是 64 位小端 ELF64")
+    elf_type, machine, version, entry, phoff = struct.unpack_from("<HHIQQ", header, 16)
+    ehsize, phentsize, phnum = struct.unpack_from("<HHH", header, 52)
+    is_shim = library == "libnxtoolshim.so"
+    if machine != ANDROID_ELF_MACHINES["arm64-v8a"]:
+        raise VerificationError("架构不是 arm64-v8a")
+    if (elf_type != 3 and (not is_shim or elf_type != 2)) or version != 1 or not entry:
+        raise VerificationError("ELF 类型或执行入口无效")
+    if ehsize != 64 or phentsize != 56 or not phnum or phoff < ehsize or phoff + phnum * phentsize > size:
+        raise VerificationError("ELF 程序头无效")
+
+    stream.seek(phoff)
+    interpreter = None
+    entry_is_executable = False
+    for _ in range(phnum):
+        program = stream.read(phentsize)
+        if len(program) != phentsize:
+            raise VerificationError("ELF 程序头截断")
+        kind, flags, offset, address, _, filesz, memsz, align = struct.unpack("<IIQQQQQQ", program)
+        if offset + filesz > size:
+            raise VerificationError("ELF 段超出文件")
+        if kind == 1:  # PT_LOAD
+            if align < 16384 or align & (align - 1) or (address - offset) % align:
+                raise VerificationError("PT_LOAD 未按至少 16 KiB 对齐")
+            if flags & 3 == 3:
+                raise VerificationError("PT_LOAD 为 W+X")
+            if filesz > memsz:
+                raise VerificationError("PT_LOAD 文件大小超过内存大小")
+            entry_is_executable |= (flags & 1) != 0 and address <= entry < address + filesz
+        elif kind == 3:  # PT_INTERP
+            if is_shim or interpreter is not None or filesz != len(b"/system/bin/linker64\0"):
+                raise VerificationError("ELF 解释器不符合运行环境")
+            interpreter = offset
+        elif kind == 0x6474E551 and flags & 1:  # PT_GNU_STACK
+            raise VerificationError("ELF 要求可执行栈")
+
+    if not entry_is_executable:
+        raise VerificationError("ELF 执行入口不在可执行段内")
+    if not is_shim:
+        if interpreter is None:
+            raise VerificationError("缺少 Android ELF 解释器")
+        stream.seek(interpreter)
+        if stream.read(len(b"/system/bin/linker64\0")) != b"/system/bin/linker64\0":
+            raise VerificationError("ELF 解释器不是 Android linker64")
+
+
+def verify_packaged_host_tools(apk: Path, distribution: str) -> None:
+    """侧载 arm64 APK 必须带完整工具集，Play APK 禁止所有新增工具。"""
+    problems: list[str] = []
+    seen: set[str] = set()
+    has_arm64 = False
+    with zipfile.ZipFile(apk) as archive:
+        for info in archive.infolist():
+            name = info.filename.replace("\\", "/")
+            has_arm64 |= name.startswith(HOST_TOOL_ABI_DIRECTORY) and name.endswith(".so")
+            library = name.rsplit("/", 1)[-1].lower()
+            if library not in PACKAGED_HOST_TOOL_LIBRARIES:
+                continue
+            if distribution == "play":
+                problems.append(f"play 不得包含 {name}")
+                continue
+            if info.filename != HOST_TOOL_ABI_DIRECTORY + library or library in seen:
+                problems.append(f"工具路径无效或重复：{name}")
+                continue
+            seen.add(library)
+            if info.compress_type != zipfile.ZIP_DEFLATED:
+                problems.append(f"{name} 须压缩存放以便安装时解压")
+                continue
+            try:
+                with archive.open(info) as stream:
+                    verify_host_tool_elf(stream, info.file_size, library)
+            except VerificationError as error:
+                problems.append(f"{name}：{error}")
+    if distribution == "sideload" and has_arm64:
+        problems.extend(f"arm64-v8a 缺少 {lib}" for lib in PACKAGED_HOST_TOOL_LIBRARIES if lib not in seen)
+    if problems:
+        raise VerificationError("内置宿主工具校验失败：" + "；".join(problems))
+
+
 def parse_badging(output: str) -> dict[str, str]:
     package_lines = [line for line in output.splitlines() if line.startswith("package: ")]
     if len(package_lines) != 1:
@@ -617,6 +708,7 @@ def main() -> int:
     verify_tailnet_binary(apk)
     verify_proxy_binary(apk)
     verify_packaged_ffmpeg(apk)
+    verify_packaged_host_tools(apk, args.distribution)
     verify_linux_runtime(apk, args.distribution)
     verify_badging(apk, args.expected_package, args.expected_version_code, args.expected_version_name)
     verify_signature(apk, args.expected_cert_sha256)

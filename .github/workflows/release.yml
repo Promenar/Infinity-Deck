@@ -316,6 +316,9 @@ jobs:
             native-ui/app/tailnet/go.sum
             native-ui/app/proxy/go.sum
 
+      - name: 安装 Rust Android 交叉编译目标
+        run: rustup target add aarch64-linux-android
+
       - name: 配置 Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
         with:

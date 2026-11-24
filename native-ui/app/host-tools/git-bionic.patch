@@ -1,0 +1,16 @@
+--- a/run-command.c
++++ b/run-command.c
+@@ -531,2 +531,4 @@
+-	CHECK_BUG(pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &as->cs),
+-		"disabling cancellation");
++#ifndef __BIONIC__
++	CHECK_BUG(pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &as->cs),
++		"disabling cancellation");
++#endif
+@@ -542,2 +544,4 @@
+-	CHECK_BUG(pthread_setcancelstate(as->cs, NULL),
+-		"re-enabling cancellation");
++#ifndef __BIONIC__
++	CHECK_BUG(pthread_setcancelstate(as->cs, NULL),
++		"re-enabling cancellation");
++#endif

@@ -1,6 +1,7 @@
 import com.android.compose.screenshot.tasks.PreviewScreenshotUpdateTask
 import com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask
 import com.promenar.infinity.buildlogic.BuildPackagedFfmpeg
+import com.promenar.infinity.buildlogic.BuildPackagedHostTools
 import com.promenar.infinity.buildlogic.BuildProxyBinary
 import com.promenar.infinity.buildlogic.BuildTailnetBinary
 import com.promenar.infinity.buildlogic.BuildLinuxRuntime
@@ -8,6 +9,7 @@ import com.promenar.infinity.buildlogic.FetchVerifiedFile
 import com.android.build.api.variant.BuildConfigField
 import com.promenar.infinity.buildlogic.GenerateLauncherIcons
 import com.promenar.infinity.buildlogic.PackagedFfmpegInputs
+import com.promenar.infinity.buildlogic.PackagedHostToolsInputs
 import com.promenar.infinity.buildlogic.PackagedPythonRelease
 import com.promenar.infinity.buildlogic.PackagedPythonWheels
 import com.promenar.infinity.buildlogic.PreparePackagedPython
@@ -290,6 +292,36 @@ val buildPackagedFfmpegArm64V8a = tasks.register<BuildPackagedFfmpeg>("buildPack
     outputDirectory.set(layout.buildDirectory.dir("generated/packagedFfmpeg/arm64-v8a"))
 }
 
+// 仅 arm64-v8a 侧载版生成宿主工具。-Pinfinity.hostTools=false 可跳过本地打包。
+val hostToolsEnabled = providers.gradleProperty("infinity.hostTools").map(String::toBoolean).getOrElse(true)
+val hostToolsCacheDir = providers.gradleProperty("infinity.hostToolsCacheDir")
+    .map { File(it) }
+    .orElse(provider { File(gradle.gradleUserHomeDir, "caches/infinity-host-tools") })
+val hostToolsSourcesDir = layout.dir(hostToolsCacheDir.map { File(it, "src") })
+val fetchPackagedHostTools = PackagedHostToolsInputs.load(file("host-tools/host-tools-android.properties").toPath()).map { source ->
+    val suffix = source.name().replaceFirstChar { it.uppercaseChar() }
+    tasks.register<FetchVerifiedFile>("fetchPackagedHostTools$suffix") {
+        url.set(source.url())
+        sha256.set(source.sha256())
+        outputFile.set(hostToolsSourcesDir.map { it.file(source.archive()) })
+    }
+}
+val buildPackagedHostToolsArm64V8a = tasks.register<BuildPackagedHostTools>("buildPackagedHostToolsArm64V8a") {
+    sourceArchives.from(fetchPackagedHostTools.map { it.flatMap(FetchVerifiedFile::getOutputFile) })
+    buildInputs.from(fileTree("host-tools") { include("*.c", "*.h", "*.patch", "*.py", "*.properties") })
+    buildScript.set(layout.projectDirectory.file("host-tools/build-android-host-tools.sh"))
+    releaseVerifier.set(rootProject.layout.projectDirectory.file("../scripts/verify-release-apk.py"))
+    apiLevel.set(android.defaultConfig.minSdk ?: 31)
+    ndkDirectory.set(androidComponents.sdkComponents.ndkDirectory)
+    sourceDirectory.set(hostToolsSourcesDir)
+    cacheDirectory.set(layout.dir(hostToolsCacheDir.map { File(it, "built") }))
+    outputDirectory.set(layout.buildDirectory.dir("generated/packagedHostTools"))
+    rustIdentity.set(providers.exec {
+        workingDir(projectDir)
+        commandLine("bash", "-c", "rustc -vV && cargo -V")
+    }.standardOutput.asText.map(String::trim))
+}
+
 // 内置 Tailscale 节点（tsnet）：app/tailnet 的 Go 程序以固定 Go 版本与 go.sum 编译为 libnxtailnet.so，随两个渠道打包。
 // 宿主需要 Go 1.21 及以上（GOTOOLCHAIN 精确切换到登记版本）；-Pinfinity.goExecutable 指定 go，
 // -Pinfinity.tailnet=false 跳过（运行时报告不可用，发行校验会拒绝缺少该库的 APK）。
@@ -391,6 +423,13 @@ androidComponents.onVariants { variant ->
     if (variant.productFlavors.any { it.first == "distribution" && it.second == "sideload" } && "arm64-v8a" in pythonAbis) {
         variant.sources.jniLibs?.addGeneratedSourceDirectory(buildLinuxRuntime, BuildLinuxRuntime::getOutputDirectory)
         variant.sources.assets?.addGeneratedSourceDirectory(prepareLinuxRuntimeAssets, PrepareLinuxRuntimeAssets::getOutputDirectory)
+        if (hostToolsEnabled) {
+            variant.sources.jniLibs?.addGeneratedSourceDirectory(
+                buildPackagedHostToolsArm64V8a, BuildPackagedHostTools::getOutputDirectory
+            )
+            // 工具已由 NDK strip 和发行规则校验，保持 APK 内的 ELF 与验证产物一致。
+            variant.packaging.jniLibs.keepDebugSymbols.addAll(BuildPackagedHostTools.OUTPUT_LIBRARIES.map { "**/$it" })
+        }
     }
     preparePackagedPython.filterKeys { it in pythonAbis }.values.forEach { prepare ->
         variant.sources.jniLibs?.addGeneratedSourceDirectory(prepare, PreparePackagedPython::getOutputDirectory)
