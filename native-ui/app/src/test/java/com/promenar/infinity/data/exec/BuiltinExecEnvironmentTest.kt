@@ -152,6 +152,31 @@ class BuiltinExecEnvironmentTest {
         assertThat(Files.readSymbolicLink(File(binDir, "ffprobe").toPath())).isEqualTo(ffprobeLib.absoluteFile.toPath())
     }
 
+    @Test fun `内置PATH发现随包工具且保持Git经现有入口执行`() {
+        val tools = listOf("rg", "fd", "jq", "sqlite3", "zstd", "bsdtar", "rsync")
+        tools.forEach { File(pythonDir, "libnx$it.so").writeText("elf") }
+        listOf("libnxgit.so", "libnxgit-remote-https.so", "libnxgitssh.so").forEach { File(pythonDir, it).writeText("elf") }
+        val env = environment(null).forWorkspace(File(work, "ws"))
+        val binDir = File(work, "exec-bin")
+        assertThat(env.getValue("PATH").substringBefore(File.pathSeparator)).isEqualTo(binDir.path)
+        assertThat(binDir.list()!!.toList()).containsExactlyElementsIn(tools)
+        tools.forEach {
+            assertThat(Files.readSymbolicLink(File(binDir, it).toPath())).isEqualTo(File(pythonDir, "libnx$it.so").toPath())
+        }
+        assertThat(environment(null).shellPrelude()).contains("-m infinity_git")
+    }
+
+    @Test fun `拒绝把符号链接目录前置到内置PATH`() {
+        File(pythonDir, PackagedPython.FFMPEG).writeText("elf")
+        File(pythonDir, PackagedPython.FFPROBE).writeText("elf")
+        val target = File(work, "outside").apply { mkdirs() }
+        val binDir = File(work, "exec-bin")
+        Files.createSymbolicLink(binDir.toPath(), target.toPath())
+        val env = environment(null).forWorkspace(File(work, "ws"))
+        assertThat(env.getValue("PATH").split(File.pathSeparator)).doesNotContain(binDir.path)
+        assertThat(target.list()!!.toList()).isEmpty()
+    }
+
     @Test fun `内置 Tailscale 未运行时不设置任何代理变量`() {
         val env = environment(null).forWorkspace(File(work, "ws"))
         assertThat(env.keys.filter { it.lowercase().endsWith("_proxy") }).isEmpty()

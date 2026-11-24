@@ -101,6 +101,7 @@ object ToolExecutionPolicy {
             mode != ExecutionMode.WORKSPACE -> null
             toolName == "delete_file" -> ApprovalGrantCategory.DELETE
             toolName == "shell_exec" -> shellGrantCategory(arguments, usesLinux)
+            toolName == GitExecArguments.TOOL_NAME -> gitGrantCategory(arguments)
             CommandToolClassification.backendFor(toolName, usesLinux) != null -> ApprovalGrantCategory.COMMAND
             usesLinux && ToolExecutionTargets.isPathMutation(toolName) && isLinuxRootfsTarget(resolvedTarget) -> ApprovalGrantCategory.LINUX_ROOTFS
             !usesLinux && ToolExecutionTargets.isPathMutation(toolName) && isOutsideWorkspaceTarget(resolvedTarget) -> ApprovalGrantCategory.OUTSIDE_WORKSPACE
@@ -114,6 +115,14 @@ object ToolExecutionPolicy {
             ?: return ApprovalGrantCategory.COMMAND
         val decision = ShellCommandSafetyClassifier.classifyShell(command, usesLinux = usesLinux)
         return if (decision.verdict == CommandSafetyVerdict.SAFE_READ_ONLY) null else ApprovalGrantCategory.COMMAND
+    }
+
+    private fun gitGrantCategory(arguments: String): ApprovalGrantCategory? {
+        val request = runCatching {
+            GitExecArguments.parse(kotlinx.serialization.json.Json.parseToJsonElement(arguments) as kotlinx.serialization.json.JsonObject)
+        }.getOrNull() ?: return ApprovalGrantCategory.COMMAND
+        val readOnly = ShellCommandSafetyClassifier.classifyGitArguments(request.args).verdict == CommandSafetyVerdict.SAFE_READ_ONLY
+        return if (readOnly) null else ApprovalGrantCategory.COMMAND
     }
 
     private fun requiresNonGrantableApproval(toolName: String, risk: ToolRisk, resolvedTarget: String?): Boolean =

@@ -34,11 +34,11 @@ class ShellExecSkill(private val service: BuiltinExecService, private val jobs: 
     override val risk = ToolRisk.PROCESS
     override val description: String get() = "在本机用系统 /system/bin/sh 执行命令（POSIX sh 与系统 toybox，可用命令随设备不同），无需 Termux；" +
         "python3/python 调用内置 Python 3.14（仅 arm64 设备）；git 为内置 dulwich 包装，支持 clone/status/add/commit/log/diff/branch/checkout/pull/push 等常用子命令，" +
-        "远端只支持 HTTPS，提交前需 git config user.name 与 user.email，不支持的子命令返回 GIT_UNSUPPORTED。" +
+        "HTTPS 可使用应用保存的 Git 凭据，SSH 可使用已保存且固定主机密钥的 SSH 主机。提交前需 git config user.name 与 user.email，不支持的子命令返回 GIT_UNSUPPORTED。" +
         (if (service.pipAvailable) "pip install 可安装纯 Python 包到应用用户目录（含原生扩展的包即使装上也无法导入），安装后可直接 import。" else "") +
         "python3、git" + (if (service.pipAvailable) "、pip" else "") + " 是本次 shell 中的函数，子 sh 脚本与 subprocess 中不可见" +
         "（可改用 python3 -m infinity_git" + (if (service.pipAvailable) " / python3 -m infinity_pip" else "") + "，或用 . 脚本 在当前 shell 执行）。" + workspaceNote() +
-        "需要 apt 包、编译工具链、SSH 远端 git 或原生 Python 扩展时改用 termux_exec 或 ssh_exec。"
+        "需要 apt 包、编译工具链或原生 Python 扩展时改用 termux_exec 或 ssh_exec。"
     override val mcpServerId: String? = null
     override val parametersSchema = """{"type":"object","properties":{"command":{"type":"string","description":"在 sh -c 中执行的命令"},${ExecToolArguments.TITLE_SCHEMA},"timeout_seconds":{"type":"integer","description":"1–600 秒，默认 60"},"stdin":{"type":"string","description":"可选标准输入；Linux 交互命令请省略"},"yield_after_seconds":{"type":"integer","description":"Linux 前台自动让出阈值，0 关闭自动让出，用户和插队仍可让出；默认 min(15,timeout_seconds)，不得超过 timeout_seconds"},${BACKGROUND_EXEC_SCHEMA},${SecretCapture.schema}},"required":["command"],"additionalProperties":false}"""
     private val validator = ToolSchemaValidator()

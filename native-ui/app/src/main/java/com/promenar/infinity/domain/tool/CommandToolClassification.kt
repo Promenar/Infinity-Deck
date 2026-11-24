@@ -5,6 +5,7 @@ enum class CommandToolBackend { BUILTIN_SHELL, BUILTIN_PYTHON, LINUX, TERMUX, SS
 object CommandToolClassification {
     fun backendFor(toolName: String, usesLinux: Boolean = false): CommandToolBackend? = when (toolName) {
         "shell_exec" -> if (usesLinux) CommandToolBackend.LINUX else CommandToolBackend.BUILTIN_SHELL
+        GitExecArguments.TOOL_NAME -> CommandToolBackend.BUILTIN_SHELL
         "job_input" -> CommandToolBackend.LINUX
         "python_exec" -> if (usesLinux) CommandToolBackend.LINUX else CommandToolBackend.BUILTIN_PYTHON
         "termux_exec" -> CommandToolBackend.TERMUX

@@ -93,6 +93,21 @@ class LinuxGitCredentialProxyIntegrationTest {
         assertAuthenticated()
     }
 
+    @Test fun `原生Git经通用HTTPS路由匿名读取仓库`() {
+        val origin = "http://127.0.0.1:${proxy.port}"
+        git(
+            "-c", "url.$origin/https/.insteadOf=https://",
+            "-c", "http.$origin/.extraHeader=${GitCredentialProxy.NONCE_HEADER}: ${scope.nonce}",
+            "ls-remote", "https://public.test/public/repo.git",
+        ).success()
+        assertThat(upstream.failures).isEmpty()
+        assertThat(upstream.requests).isNotEmpty()
+        upstream.requests.forEach { request ->
+            assertThat(request.authorization).isNull()
+            assertThat(request.nonce).isNull()
+        }
+    }
+
     @Test fun `不可达环境代理不会劫持应用凭据代理`() {
         val environment = LinuxGitEnvironment.from(lease()) + mapOf(
             "HTTP_PROXY" to "http://127.0.0.1:1", "http_proxy" to "http://127.0.0.1:1",

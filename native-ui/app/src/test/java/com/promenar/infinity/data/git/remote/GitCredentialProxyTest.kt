@@ -114,6 +114,111 @@ class GitCredentialProxyTest {
         scope.close()
     }
 
+    @Test fun `通用HTTPS路由支持匿名访问且过滤客户端认证信息`() {
+        mapping.ports["public.test"] = upstream.port
+        nonces.issue().use { scope ->
+            val response = send(
+                "GET /https/reader@public.test/o/r/info/refs?service=git-upload-pack HTTP/1.1",
+                scope.nonce, "Authorization: Basic synthetic", "Cookie: sample=1",
+            )
+            assertThat(response.status).isEqualTo(200)
+            val request = upstream.requests.single()
+            assertThat(request.target).isEqualTo("/o/r/info/refs?service=git-upload-pack")
+            assertThat(request.header("authorization")).isNull()
+            assertThat(request.header("cookie")).isNull()
+            assertThat(request.header(GitCredentialProxy.NONCE_HEADER)).isNull()
+        }
+    }
+
+    @Test fun `通用HTTPS路由用主机匹配已存凭据并拒绝URL口令`() {
+        nonces.issue().use { scope ->
+            val path = "/o/r/info/refs?service=git-upload-pack"
+            assertThat(send("GET /https/reader@git.test$path HTTP/1.1", scope.nonce).status).isEqualTo(200)
+            assertThat(upstream.requests.single().header("authorization")).isEqualTo(basic)
+            listOf("reader:sample", "reader%3asample", "reader%253asample", "a@reader").forEach { userInfo ->
+                val rejected = send("GET /https/$userInfo@git.test$path HTTP/1.1", scope.nonce)
+                assertRejected(rejected, 403, "HOST_REJECTED")
+                assertThat(rejected.raw).doesNotContain(userInfo)
+            }
+            assertThat(upstream.requests).hasSize(1)
+        }
+    }
+
+    @Test fun `通用HTTPS路由校验租约和智能协议路径`() {
+        mapping.ports["public.test"] = upstream.port
+        val base = "/https/public.test/o/r"
+        assertRejected(send("GET $base/info/refs?service=git-upload-pack HTTP/1.1", null), 403, "NONCE_REJECTED")
+        nonces.issue().use { scope ->
+            assertRejected(send("GET $base/HEAD HTTP/1.1", scope.nonce), 403, "PATH_REJECTED")
+            assertRejected(send("GET $base/../r/info/refs?service=git-upload-pack HTTP/1.1", scope.nonce), 403, "PATH_REJECTED")
+        }
+        assertThat(upstream.requests).isEmpty()
+    }
+
+    @Test fun `匿名HTTPS跨主机重定向经代理且两个请求都不发送凭据`() {
+        FakeUpstream().use { second ->
+            mapping.ports["public.test"] = upstream.port
+            mapping.ports["mirror.test"] = second.port
+            val path = "/o/r/info/refs?service=git-upload-pack"
+            upstream.respond { _, out ->
+                out.raw("HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:${second.port}$path\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            }
+            nonces.issue().use { scope ->
+                val redirected = send("GET /https/public.test$path HTTP/1.1", scope.nonce)
+                assertThat(redirected.status).isEqualTo(302)
+                assertThat(redirected.header("location")).isEqualTo("http://127.0.0.1:$port/https/mirror.test$path")
+                assertThat(second.requests).isEmpty()
+                assertThat(send("GET /https/mirror.test$path HTTP/1.1", scope.nonce).status).isEqualTo(200)
+                listOf(upstream.requests.single(), second.requests.single()).forEach { request ->
+                    assertThat(request.header("authorization")).isNull()
+                    assertThat(request.header(GitCredentialProxy.NONCE_HEADER)).isNull()
+                }
+                val authenticated = send("GET /https/git.test$path HTTP/1.1", scope.nonce)
+                assertRejected(authenticated, 502, "REDIRECT_REJECTED")
+                assertThat(authenticated.header("location")).isNull()
+                assertThat(second.requests).hasSize(1)
+            }
+        }
+    }
+
+    @Test fun `匿名HTTPS重定向不能获得另一主机保存的凭据`() {
+        FakeUpstream().use { second ->
+            mapping.ports["public.test"] = upstream.port
+            mapping.ports["git.test"] = second.port
+            val path = "/o/r/info/refs?service=git-upload-pack"
+            upstream.respond { _, out ->
+                out.raw("HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:${second.port}$path\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            }
+            nonces.issue().use { scope ->
+                val response = send("GET /https/public.test$path HTTP/1.1", scope.nonce)
+                assertRejected(response, 502, "REDIRECT_REJECTED")
+                assertThat(response.header("location")).isNull()
+                assertThat(second.requests).isEmpty()
+            }
+        }
+    }
+
+    @Test fun `匿名重定向在租约期间保持匿名且下一条命令可使用新凭据`() {
+        FakeUpstream().use { second ->
+            mapping.ports["public.test"] = upstream.port
+            mapping.ports["mirror.test"] = second.port
+            val path = "/o/r/info/refs?service=git-upload-pack"
+            upstream.respond { _, out ->
+                out.raw("HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:${second.port}$path\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            }
+            nonces.issue().use { scope ->
+                assertThat(send("GET /https/public.test$path HTTP/1.1", scope.nonce).status).isEqualTo(302)
+                store.save("mirror.test", "octo", token.toByteArray())
+                assertThat(send("GET /https/mirror.test$path HTTP/1.1", scope.nonce).status).isEqualTo(200)
+                assertThat(second.requests.single().header("authorization")).isNull()
+            }
+            nonces.issue().use { scope ->
+                assertThat(send("GET /https/mirror.test$path HTTP/1.1", scope.nonce).status).isEqualTo(200)
+                assertThat(second.requests.last().header("authorization")).isEqualTo(basic)
+            }
+        }
+    }
+
     @Test fun `非智能协议路径与路径穿越被拒绝`() {
         val scope = nonces.issue()
         listOf(

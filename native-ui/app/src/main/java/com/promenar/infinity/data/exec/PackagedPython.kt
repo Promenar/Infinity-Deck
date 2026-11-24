@@ -9,7 +9,7 @@ import java.io.File
  * 以及改名为 libpyext_<模块>.so 的原生扩展。
  * 全部代码都从打包库目录加载，不解压、不从应用数据目录 execve 或 dlopen。
  */
-class PackagedPython(private val nativeLibraryDir: File) {
+class PackagedPython(internal val nativeLibraryDir: File) {
     val launcher: File get() = File(nativeLibraryDir, LAUNCHER)
     val stdlib: File get() = File(nativeLibraryDir, STDLIB)
     val site: File get() = File(nativeLibraryDir, SITE)

@@ -43,26 +43,33 @@ class GitRemoteBroker(
     private val diagnostics: (String) -> Unit = {},
     private val githubApi: GitHubApiEndpoint? = null,
 ) : GitRemoteSessions, AutoCloseable {
-    override suspend fun open(): GitRemoteLease = withContext(Dispatchers.IO) {
-        val scope = nonces.issue()
-        val environment = linkedMapOf(ENV_NONCE to scope.nonce)
-        val hosts = runCatching { credentials.hosts() }.getOrDefault(emptySet())
-        if (hosts.isNotEmpty()) {
-            proxy?.let { start("proxy", it::start) }?.let { port ->
-                environment[ENV_HTTP_PROXY] = "127.0.0.1:$port"
-                environment[ENV_CREDENTIAL_HOSTS] = hosts.joinToString(",")
+    override suspend fun open(): GitRemoteLease {
+        var issued: GitNonceRegistry.Scope? = null
+        try {
+            return withContext(Dispatchers.IO) {
+                val scope = nonces.issue().also { issued = it }
+                val environment = linkedMapOf(ENV_NONCE to scope.nonce)
+                val hosts = runCatching { credentials.hosts() }.getOrDefault(emptySet())
+                proxy?.let { start("proxy", it::start) }?.let { port ->
+                    environment[ENV_HTTP_PROXY] = "127.0.0.1:$port"
+                    if (hosts.isNotEmpty()) environment[ENV_CREDENTIAL_HOSTS] = hosts.joinToString(",")
+                }
+                if (GitCredentialStore.GITHUB_HOST in hosts && githubApi != null) {
+                    runCatching { githubApi.start() }.onSuccess {
+                        environment[ENV_GH_SOCKET] = com.promenar.infinity.data.linux.LinuxGhConfig.GUEST_SOCKET
+                        environment[ENV_CREDENTIAL_HOSTS] = hosts.joinToString(",")
+                    }.onFailure { diagnostics("git-broker: gh START_FAILED") }
+                }
+                sshBridge?.let { start("ssh", it::start) }?.let { port -> environment[ENV_SSH_BRIDGE] = "127.0.0.1:$port" }
+                object : GitRemoteLease {
+                    override val environment: Map<String, String> = environment
+                    override fun close() = scope.close()
+                }
             }
-        }
-        if (GitCredentialStore.GITHUB_HOST in hosts && githubApi != null) {
-            runCatching { githubApi.start() }.onSuccess {
-                environment[ENV_GH_SOCKET] = com.promenar.infinity.data.linux.LinuxGhConfig.GUEST_SOCKET
-                environment[ENV_CREDENTIAL_HOSTS] = hosts.joinToString(",")
-            }.onFailure { diagnostics("git-broker: gh START_FAILED") }
-        }
-        sshBridge?.let { start("ssh", it::start) }?.let { port -> environment[ENV_SSH_BRIDGE] = "127.0.0.1:$port" }
-        object : GitRemoteLease {
-            override val environment: Map<String, String> = environment
-            override fun close() = scope.close()
+        } catch (failure: Throwable) {
+            // 切回调用方协程时也可能取消，尚未交付的租约仍由 broker 负责。
+            issued?.close()
+            throw failure
         }
     }
 

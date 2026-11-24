@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.git.remote
 
+import okhttp3.Authenticator
+import okhttp3.CookieJar
 import okhttp3.Credentials
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -32,13 +34,14 @@ interface GitUpstream {
 }
 
 /**
- * Git HTTPS 凭据注入代理：监听 127.0.0.1 随机端口，接受 `http://127.0.0.1:<端口>/<主机键>/<仓库路径>` 形式的请求。
+ * Git HTTPS 代理：监听 127.0.0.1 随机端口。
  *
  * - 请求头 [NONCE_HEADER] 必须是当前仍在执行的命令的 nonce；
  * - 只放行 git 智能协议：`GET …/info/refs?service=git-upload-pack|git-receive-pack`、`POST …/git-upload-pack|git-receive-pack`；
- * - 主机键必须已在 Git 凭据中配置，代理按该主机的用户名与令牌加 `Authorization: Basic` 后经 HTTPS 转发；
+ * - `/https/<主机键>/<仓库路径>` 可匿名转发。已配置主机使用该主机的用户名与令牌；
+ * - 兼容路径 `/<主机键>/<仓库路径>` 只服务已配置主机；
  * - 请求与响应体都流式转发，响应以 chunked 编码返回，每个连接只处理一个请求；
- * - 重定向到已配置主机时改写为代理地址，指向其它主机时拒绝，避免 nonce 随重定向发给第三方。
+ * - 所有允许的重定向改写为回环代理地址，并保持重定向前后的凭据使用状态一致。
  *
  * 代理自身拒绝的请求与上游认证失败带 [ERROR_HEADER] 响应头与中文说明，由 infinity_git 转成错误信息；任何响应、日志与异常都不含令牌。
  */
@@ -54,6 +57,8 @@ class GitCredentialProxy(
     private val client: OkHttpClient = httpClient.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
+        .authenticator(Authenticator.NONE)
+        .cookieJar(CookieJar.NO_COOKIES)
         .readTimeout(10, TimeUnit.MINUTES)
         .writeTimeout(10, TimeUnit.MINUTES)
         .build()
@@ -93,7 +98,7 @@ class GitCredentialProxy(
             ?: return reject(output, 403, "NONCE_REJECTED", "nonce 缺失、无效或所属命令已结束；Git 凭据代理只服务正在执行的命令。")
         if (!scope.register(connection)) return
         try {
-            val route = route(head) ?: return
+            val route = route(head, scope)
             if (route is Route.Rejected) return reject(output, route.status, route.code, route.message)
             forward(route as Route.Accepted, head, input, output, socket, scope, connection)
         } finally {
@@ -107,19 +112,41 @@ class GitCredentialProxy(
     }
 
     private sealed interface Route {
-        data class Accepted(val hostKey: String, val path: String, val query: String?, val post: Boolean) : Route
+        data class Accepted(
+            val hostKey: String,
+            val path: String,
+            val query: String?,
+            val post: Boolean,
+            val credentialHosts: Set<String>,
+            val generalHttps: Boolean,
+        ) : Route {
+            val credentialed: Boolean get() = hostKey in credentialHosts
+        }
         data class Rejected(val status: Int, val code: String, val message: String) : Route
     }
 
-    private fun route(head: RequestHead): Route? {
+    private fun route(head: RequestHead, scope: GitNonceRegistry.Scope): Route {
         val target = head.target
         if (!target.startsWith("/") || '#' in target) return Route.Rejected(400, "BAD_REQUEST", "请求地址无效。")
         val path = target.substringBefore('?')
         val query = if ('?' in target) target.substringAfter('?') else null
-        val hostKey = path.removePrefix("/").substringBefore('/')
-        val rest = path.removePrefix("/").let { if ('/' in it) "/" + it.substringAfter('/') else "" }
-        if (GitCredentialHost.normalize(hostKey) != hostKey || hostKey !in credentials.hosts()) {
-            return Route.Rejected(403, "HOST_NOT_CONFIGURED", "主机 ${hostKey.take(80)} 未在 Git 凭据中配置，代理不转发。")
+        val generalHttps = path.startsWith(HTTPS_PREFIX)
+        val hostAndPath = path.removePrefix(if (generalHttps) HTTPS_PREFIX else "/")
+        val authority = hostAndPath.substringBefore('/')
+        val rest = hostAndPath.removePrefix(authority)
+        val hostKey = if (generalHttps) {
+            if ('@' in authority && !URL_USERNAME.matches(authority.substringBefore('@'))) {
+                return Route.Rejected(403, "HOST_REJECTED", "Git HTTPS 远端地址仅可包含用户名，请通过应用设置保存凭据。")
+            }
+            GitCredentialHost.normalize(authority.substringAfter('@'))
+                ?: return Route.Rejected(403, "HOST_REJECTED", "Git HTTPS 主机或端口无效。")
+        } else {
+            authority.takeIf { GitCredentialHost.normalize(it) == it }
+                ?: return Route.Rejected(403, "HOST_NOT_CONFIGURED", "主机未在 Git 凭据中配置，代理不转发。")
+        }
+        val credentialHosts = if (generalHttps) scope.httpsCredentialHosts(credentials::hosts) else credentials.hosts()
+        if (!generalHttps && hostKey !in credentialHosts) {
+            return Route.Rejected(403, "HOST_NOT_CONFIGURED", "主机 $hostKey 未在 Git 凭据中配置，代理不转发。")
         }
         if (!safePath(rest)) return Route.Rejected(403, "PATH_REJECTED", "只允许 git 智能协议路径。")
         val accepted = when (head.method) {
@@ -128,7 +155,7 @@ class GitCredentialProxy(
             else -> false
         }
         if (!accepted) return Route.Rejected(403, "PATH_REJECTED", "只允许 git 智能协议路径（info/refs、git-upload-pack、git-receive-pack）。")
-        return Route.Accepted(hostKey, rest, query, head.method == "POST")
+        return Route.Accepted(hostKey, rest, query, head.method == "POST", credentialHosts, generalHttps)
     }
 
     private fun forward(
@@ -140,15 +167,15 @@ class GitCredentialProxy(
         scope: GitNonceRegistry.Scope,
         connection: GitHttpConnection,
     ) {
-        val username = credentials.username(route.hostKey)
-        val token = credentials.token(route.hostKey)
-        if (username == null || token == null) {
-            token?.fill(0)
-            return reject(output, 403, "HOST_NOT_CONFIGURED", "主机 ${route.hostKey} 的 Git 凭据不可用，请在设置中重新保存。")
-        }
-        val authorization = try {
-            Credentials.basic(username, String(token, Charsets.UTF_8), Charsets.UTF_8)
-        } finally { token.fill(0) }
+        val authorization = if (route.credentialed) {
+            val username = credentials.username(route.hostKey)
+                ?: return reject(output, 403, "HOST_NOT_CONFIGURED", "主机 ${route.hostKey} 的 Git 凭据不可用，请在设置中重新保存。")
+            val token = credentials.token(route.hostKey)
+                ?: return reject(output, 403, "HOST_NOT_CONFIGURED", "主机 ${route.hostKey} 的 Git 凭据不可用，请在设置中重新保存。")
+            try {
+                Credentials.basic(username, String(token, Charsets.UTF_8), Charsets.UTF_8)
+            } finally { token.fill(0) }
+        } else null
         val body = if (route.post) {
             val length = head.header("content-length")
             val chunked = head.header("transfer-encoding")?.lowercase()?.contains("chunked") == true
@@ -166,7 +193,7 @@ class GitCredentialProxy(
         val url = upstream.url(route.hostKey).newBuilder().encodedPath(route.path).encodedQuery(route.query).build()
         val request = Request.Builder().url(url).apply {
             FORWARDED_REQUEST_HEADERS.forEach { name -> head.header(name)?.let { header(name, it) } }
-            header("Authorization", authorization)
+            authorization?.let { header("Authorization", it) }
             if (body != null) post(body) else get()
         }.build()
         // 读请求体与等待上游处理 pack 可能很久，读超时放宽到与上游一致。
@@ -181,15 +208,21 @@ class GitCredentialProxy(
                 return writeError(output, 502, "UPSTREAM_FAILED", "连接 ${route.hostKey} 失败（${failure.javaClass.simpleName}）。")
             }
             response.use {
-                authFailure(route.hostKey, response.code)?.let { (status, code, message) -> return reject(output, status, code, message) }
+                if (route.credentialed) {
+                    authFailure(route.hostKey, response.code)?.let { (status, code, message) -> return reject(output, status, code, message) }
+                }
                 var location: String? = null
                 if (response.isRedirect) {
                     val target = response.header("Location")?.let { response.request.url.resolve(it) }
                     val key = target?.let(upstream::hostKey)
-                    if (target == null || key == null || key !in credentials.hosts()) {
-                        return reject(output, 502, "REDIRECT_REJECTED", "${route.hostKey} 重定向到未配置 Git 凭据的地址，已拒绝。")
+                    if (target == null || key == null || GitCredentialHost.normalize(key) != key ||
+                        target.encodedUsername.isNotEmpty() || target.encodedPassword.isNotEmpty() ||
+                        (key in route.credentialHosts) != route.credentialed
+                    ) {
+                        return reject(output, 502, "REDIRECT_REJECTED", "${route.hostKey} 重定向到不符合 Git HTTPS 凭据边界的地址，已拒绝。")
                     }
-                    location = "http://127.0.0.1:${server.port}/$key${target.encodedPath}" +
+                    val prefix = if (route.generalHttps) HTTPS_PREFIX else "/"
+                    location = "http://127.0.0.1:${server.port}$prefix$key${target.encodedPath}" +
                         (target.encodedQuery?.let { "?$it" } ?: "")
                 }
                 val headers = StringBuilder("HTTP/1.1 ${response.code} ${reason(response.code)}\r\n")
@@ -266,6 +299,8 @@ class GitCredentialProxy(
         const val NONCE_HEADER = "X-Infinity-Git-Nonce"
         const val ERROR_HEADER = "X-Infinity-Git-Error"
         private const val CREDENTIAL_SETTINGS = "设置 → 执行环境与连接 → Git 凭据"
+        private const val HTTPS_PREFIX = "/https/"
+        private val URL_USERNAME = Regex("[A-Za-z0-9._~!$&'()*+,;=-]{1,256}")
         private const val INFO_REFS = "/info/refs"
         private val SMART_SERVICES = listOf("git-upload-pack", "git-receive-pack")
         private val SMART_QUERIES = SMART_SERVICES.map { "service=$it" }.toSet()

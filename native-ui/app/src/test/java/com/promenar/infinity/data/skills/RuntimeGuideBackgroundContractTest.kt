@@ -130,7 +130,8 @@ class RuntimeGuideBackgroundContractTest {
         assertThat(builtinGuidance).contains("\$TMPDIR")
         assertThat(builtinGuidance).contains("\$INFINITY_WORKSPACE")
         assertThat(builtinGuidance).contains("真实 Android 路径")
-        assertThat(builtinGuidance).contains("FFmpeg/ffprobe 已加入 PATH")
+        listOf("ffmpeg", "ffprobe", "rg", "fd", "jq", "sqlite3", "zstd", "bsdtar", "rsync", "PATH", "command -v")
+            .forEach { assertWithMessage(it).that(builtinGuidance).contains(it) }
         assertThat(builtinGuidance).contains("Linux 虚拟环境")
     }
 

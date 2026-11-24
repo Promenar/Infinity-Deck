@@ -40,6 +40,7 @@
    - Linux 模式运行在 Alpine rootfs 内，`/tmp` 正常可写。
 4. **内置 FFmpeg/ffprobe 与 Linux FFmpeg 的能力边界**：
    - **内置模式（`arm64-v8a`）**：应用自带精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，为控包体裁掉了 `lavfi` 等虚拟输入设备）。宿主已将符号链接目录前置进 `PATH`，因此 **`shell_exec`、`python_exec`（及 Python `subprocess`/`shutil.which`）与 `ComfySubmitterRunner(BUILTIN_PYTHON)` 三处均可直接调用 `ffmpeg`/`ffprobe`**；同时保留 `INFINITY_FFMPEG` / `INFINITY_FFPROBE` 环境变量。
+   - `shell_exec`、`python_exec` 也将随 APK 提供的 `rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync` 加入内置模式的 `PATH`。以当前环境的工具探测结果为准。
    - **内置模式 `python3` / `git` / `pip`**：这三者在 `shell_exec` 中以当前 shell 函数提供，子 shell 与 `subprocess` 不可见；脚本内调打包 Python 用 `sys.executable` 或 `$INFINITY_PYTHON`，调内置 Git/Pip 用 `python3 -m infinity_git` / `python3 -m infinity_pip`。
    - **Linux 模式**：因 Alpine 使用 musl libc、与 Android Bionic ABI 不兼容，Linux 会话（含 `ComfySubmitterRunner(LINUX)`）一律使用 Alpine 自身 `apk add` 安装的工具，不混用 Android 打包二进制。
 5. **资料库与关键运行数据保护**：

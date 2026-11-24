@@ -8,6 +8,7 @@
   - 当前会话激活 **Linux 运行模式** 且内置 Linux 环境就绪时，干跑校验与正式执行均自动在 **Linux 虚拟环境**（`python3`）中运行，直接消费 Linux 内通过 `apk add` 安装的 `ffmpeg`、`ffprobe` 与第三方 Python 包（Alpine 为 musl ABI，不混用 Android 打包二进制）。
   - 其它情况（内置模式、Linux 未就绪、制作面板等无会话触发）均在应用打包的独立 **内置 Python 3.14** 中运行；`arm64-v8a` 已内置精简 FFmpeg 9.1 / `ffprobe` 9.1（含 8-bit `libx264`，不含 `lavfi` 虚拟输入），并通过 `runDir/bin` 符号链接前置进 `PATH`，脚本与子进程可直接调用。
   - 干跑自检与正式运行始终使用同一执行环境，并在 `comfy_list_hosts`、`comfy_save_submitter`、`comfy_preflight_workflow`、`comfy_run_workflow` 中返回 `execution_runtime`（`LINUX` 或 `BUILTIN_PYTHON`）与工具探测状态 `available_tools`。
+  - 提交器使用单次运行目录和独立的工具配置。声明外部工具依赖时，以该提交器的 `available_tools` 和干跑结果为准。
   - 耗时超过 20 秒的 `comfy_run_workflow` 会自动转入后台任务（支持 `run_in_background: true`），后续可用 `job_wait` / `job_status` / `job_stop` 管理。
 - **路径隔离与零凭据暴露**：
   - 宿主机在一过性运行目录内隔离执行提交器；在 Linux 模式下通过 `/mnt/comfy_run` 与 `/mnt/comfy_stage` 自动完成宿主机与 guest 路径双向换算，并默认设置 `PYTHONDONTWRITEBYTECODE=1`（防止向技能目录写入 `.pyc`）。

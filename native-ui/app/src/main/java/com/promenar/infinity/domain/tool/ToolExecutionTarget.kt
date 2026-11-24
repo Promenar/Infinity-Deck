@@ -80,6 +80,16 @@ object ToolExecutionTargets {
             val code = args.string("code")?.takeIf(String::isNotBlank) ?: return null
             return tuple("process", if (usesLinux) "linux" else "python", code)
         }
+        if (tool.function.name == GitExecArguments.TOOL_NAME && tool.sourceId == "builtin") {
+            val request = runCatching { GitExecArguments.parse(args) }.getOrNull() ?: return null
+            val identity = JsonArray(listOf(
+                JsonPrimitive(if (usesLinux) "linux" else "builtin"),
+                request.cwd?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull,
+                JsonArray(request.args.map(::JsonPrimitive)),
+                JsonPrimitive(request.background),
+            ))
+            return tuple("process", "builtin", identity.toString())
+        }
         if (tool.risk == ToolRisk.PROCESS) {
             val host = when (tool.function.name) {
                 "termux_exec" -> "termux"

@@ -457,7 +457,15 @@ object ShellCommandSafetyClassifier {
         }
     }
 
-    private fun isReadOnlyGit(args: List<String>): Boolean {
+    /** 结构化 Git 参数直接分类，避免经 shell 引号或词法转换改变 argv。 */
+    fun classifyGitArguments(args: List<String>): CommandSafetyDecision =
+        if (args.any { it.contains(SECRET_STORE_TOKEN, ignoreCase = true) } || !isReadOnlyGit(args, structured = true)) {
+            CommandSafetyDecision(CommandSafetyVerdict.REQUIRES_APPROVAL)
+        } else {
+            CommandSafetyDecision(CommandSafetyVerdict.SAFE_READ_ONLY)
+        }
+
+    private fun isReadOnlyGit(args: List<String>, structured: Boolean = false): Boolean {
         var i = 0
         while (i < args.size && args[i].startsWith("-")) {
             val flag = args[i]
@@ -467,7 +475,7 @@ object ShellCommandSafetyClassifier {
                     i += 2
                 }
                 flag == "--no-pager" || flag == "-P" || flag == "--literal-pathspecs" || flag == "--glob-pathspecs" -> i++
-                flag == "--version" || flag == "-v" || flag == "--help" -> return i == args.lastIndex
+                flag == "--version" || flag == "-v" || flag == "--help" -> return !structured && i == args.lastIndex
                 flag.startsWith("--git-dir=") || flag.startsWith("--work-tree=") -> i++
                 else -> return false // 拒绝 -c / --exec-path 等可注入执行的全局参数
             }
@@ -475,6 +483,20 @@ object ShellCommandSafetyClassifier {
         if (i >= args.size) return false
         val sub = args[i]
         val rest = args.subList(i + 1, args.size)
+        if (structured) {
+            // Git 可接受部分长选项缩写。只读分类也拒绝这些缩写。
+            val blocked = listOf("--output", "--ext-diff", "--textconv", "--filters", "--show-signature", "--help")
+            if (rest.takeWhile { it != "--" }.any { arg ->
+                    arg.startsWith("--") && blocked.any { it.startsWith(arg.substringBefore('=')) }
+                }
+            ) return false
+            when (sub) {
+                "remote" -> return rest.isEmpty() || rest == listOf("-v") || rest == listOf("--verbose") ||
+                    rest.firstOrNull() == "get-url" ||
+                    (rest.take(2) == listOf("show", "-n") && (rest.size == 2 || rest.size == 3 && !rest.last().startsWith("-")))
+                "config", "stash", "grep", "rev-list", "show-ref", "name-rev" -> return false
+            }
+        }
         return when (sub) {
             in GIT_READ_ONLY_SUBCOMMANDS -> rest.none { it == "--output" || it.startsWith("--output=") || it.startsWith("--ext-diff") }
             "branch" -> isReadOnlyGitBranch(rest)

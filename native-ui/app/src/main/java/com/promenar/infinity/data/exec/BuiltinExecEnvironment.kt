@@ -29,6 +29,8 @@ class BuiltinExecEnvironment(
     private val skillsDirectory: File = File(homeDirectory.parentFile, "agent_skills"),
     private val binDirectory: File = File(tempDirectory.parentFile ?: tempDirectory, "exec-bin"),
 ) {
+    private val hostTools = PackagedHostTools(python.nativeLibraryDir)
+
     val pythonAvailable: Boolean get() = python.isAvailable
 
     /** 侧载渠道开放 pip；Play 渠道 `pip` 返回 PIP_UNSUPPORTED。 */
@@ -58,10 +60,6 @@ class BuiltinExecEnvironment(
             if (python.ffmpegAvailable) {
                 environment["INFINITY_FFMPEG"] = python.ffmpeg.path
                 environment["INFINITY_FFPROBE"] = python.ffprobe.path
-                ensureBundledToolShims()?.let { shimsDir ->
-                    val currentPath = environment["PATH"].orEmpty()
-                    environment["PATH"] = if (currentPath.isBlank()) shimsDir.path else "${shimsDir.path}${File.pathSeparator}$currentPath"
-                }
             }
             caBundle()?.let { environment["SSL_CERT_FILE"] = it.path }
             userPackages?.let { packages ->
@@ -75,35 +73,43 @@ class BuiltinExecEnvironment(
                 environment["PIP_PROGRESS_BAR"] = "off"
             }
         }
+        ensureBundledToolShims()?.let { shimsDir ->
+            val currentPath = environment["PATH"].orEmpty()
+            environment["PATH"] = if (currentPath.isBlank()) shimsDir.path else "${shimsDir.path}${File.pathSeparator}$currentPath"
+        }
         return environment.withLegacyWorkspaceAliases()
     }
 
-    /** 维护指向打包工具（ffmpeg/ffprobe）的符号链接目录并前置进 PATH，使 shell_exec、python_exec 及子进程行为与 ComfyUI 提交器一致。 */
+    /** 内置命令及其子进程的打包工具入口。Git 的远端认证和执行策略由现有 shell 函数接管。 */
+    @Synchronized
     private fun ensureBundledToolShims(): File? {
-        if (!python.ffmpegAvailable) return null
-        if (!binDirectory.isDirectory && !binDirectory.mkdirs()) return null
-        val shims = listOf("ffmpeg" to python.ffmpeg, "ffprobe" to python.ffprobe)
-        var anyReady = false
-        for ((name, target) in shims) {
-            if (!target.isFile) continue
-            val link = File(binDirectory, name).toPath()
-            val targetPath = target.absoluteFile.toPath()
-            runCatching {
-                val upToDate = Files.isSymbolicLink(link) && Files.readSymbolicLink(link) == targetPath
-                if (!upToDate) {
-                    if (Files.exists(link, NOFOLLOW_LINKS) && Files.isDirectory(link, NOFOLLOW_LINKS)) {
-                        logger.warning("exec-bin/$name 为普通目录，保留现状")
-                        return@runCatching
-                    }
-                    Files.deleteIfExists(link)
-                    Files.createSymbolicLink(link, targetPath)
+        val shims = hostTools.availableTools() - "git"
+        if (shims.isEmpty()) return null
+        return runCatching {
+            val directory = binDirectory.toPath()
+            if (!Files.exists(directory, NOFOLLOW_LINKS)) Files.createDirectories(directory)
+            check(Files.isDirectory(directory, NOFOLLOW_LINKS))
+            // 先核对目录中的已有条目，避免把外部加入的可执行文件放到 PATH 前面。
+            Files.newDirectoryStream(directory).use { entries ->
+                entries.forEach { link ->
+                    val name = link.fileName.toString()
+                    check(name in PackagedHostTools.TOOLS && name != "git" && Files.isSymbolicLink(link))
+                    val existing = Files.readSymbolicLink(link)
+                    check(existing.isAbsolute && existing.fileName.toString() == "libnx$name.so")
+                    if (name !in shims) Files.delete(link)
                 }
-                anyReady = true
-            }.onFailure {
-                logger.warning("无法维护内置工具符号链接 exec-bin/$name：${it.message}")
             }
-        }
-        return binDirectory.takeIf { anyReady }
+            for ((name, target) in shims) {
+                val link = directory.resolve(name)
+                val targetPath = target.absoluteFile.toPath()
+                if (Files.isSymbolicLink(link)) {
+                    if (Files.readSymbolicLink(link) == targetPath) continue
+                    Files.delete(link)
+                }
+                Files.createSymbolicLink(link, targetPath)
+            }
+            binDirectory
+        }.onFailure { logger.warning("内置工具目录校验或维护失败（${it.javaClass.simpleName}）") }.getOrNull()
     }
 
     /** 链接冲突只记录状态；保留用户已有文件、目录与符号链接。 */

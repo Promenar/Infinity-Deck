@@ -200,7 +200,9 @@ object SystemPromptSections {
         val usesLinux = runMode == SessionRunMode.LINUX
         if ("shell_exec" in toolNames) {
             appendLine("- " + shellRuntimeGuidance(linuxState, runMode))
-            if (!usesLinux) appendLine("- python_exec 与 python_sandbox 使用打包 Python；arm64 内置精简 FFmpeg/ffprobe 已加入 PATH，在 shell_exec 与 python_exec 中均可直接调用。")
+            if (!usesLinux) {
+                appendLine("- python_exec 与 python_sandbox 使用打包 Python。内置 shell_exec 和 python_exec 将 APK 提供的 ffmpeg、ffprobe、rg、fd、jq、sqlite3、zstd、bsdtar、rsync 加入 PATH。用 command -v 查询当前设备上的可用性。")
+            }
         }
         if (toolNames.any { it == "sftp_upload" || it == "sftp_download" }) {
             appendLine("- 二进制或大文件用 sftp_upload/sftp_download（最多 4 GiB），文本小改动用 sftp_read/sftp_write；local_scope 默认 workspace，Play 版及非 Linux 会话不可用 linux 范围。")

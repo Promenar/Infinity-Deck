@@ -4,6 +4,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 每条 shell_exec / python_exec 命令一个一次性 nonce：命令开始前签发，命令结束（含超时、取消、异常）时吊销。
@@ -16,8 +17,15 @@ class GitNonceRegistry(private val random: SecureRandom = SecureRandom()) {
     /** 一条命令的 nonce 作用域；[close] 即吊销。 */
     inner class Scope internal constructor(val nonce: String, private val digest: String) : AutoCloseable {
         private val resources = mutableSetOf<AutoCloseable>()
+        private val initialHttpsCredentialHosts = AtomicReference<Set<String>?>(null)
         @Volatile var revoked = false
             private set
+
+        /** 通用 HTTPS 路由在本次租约内沿用首次请求的主机授权状态。令牌仍在每次请求时读取。 */
+        internal fun httpsCredentialHosts(readHosts: () -> Set<String>): Set<String> =
+            initialHttpsCredentialHosts.get() ?: readHosts().toSet().let { hosts ->
+                initialHttpsCredentialHosts.updateAndGet { it ?: hosts }!!
+            }
 
         /** 登记随命令结束一并关闭的连接；已吊销时立即关闭并返回 false。 */
         fun register(resource: AutoCloseable): Boolean {

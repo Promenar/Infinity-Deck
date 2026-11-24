@@ -1,10 +1,54 @@
 package com.promenar.infinity.domain.tool
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.remote.protocol.ProtocolTool
+import com.promenar.infinity.data.remote.protocol.ProtocolToolFunction
 import com.promenar.infinity.domain.model.ExecutionMode
 import org.junit.Test
 
 class ToolExecutionPolicyTest {
+    @Test
+    fun `结构化Git读取免审批且变更网络模糊参数归命令审批`() {
+        assertThat(CommandToolClassification.backendFor("git_exec", usesLinux = true))
+            .isEqualTo(CommandToolBackend.BUILTIN_SHELL)
+        listOf(
+            """{"args":["status","--short"]}""",
+            """{"args":["-C","目录 名称","log","--oneline"]}""",
+            """{"args":["branch","--list"]}""",
+            """{"args":["tag","--list"]}""",
+            """{"args":["remote","show","-n","origin"]}""",
+            """{"args":["status"],"background":true}""",
+        ).forEach { args ->
+            assertThat(ToolExecutionPolicy.grantCategory(ExecutionMode.WORKSPACE, "git_exec", ToolRisk.PROCESS, args)).isNull()
+        }
+        listOf(
+            """{"args":["checkout","main"]}""",
+            """{"args":["remote","show","origin"]}""",
+            """{"args":["diff","--output","report"]}""",
+            """{"args":["log","--out=report"]}""",
+            """{"args":["log","--help"]}""",
+            """{"args":["cat-file","--filters","HEAD:file"]}""",
+            """{"args":[7]}""",
+            """{"args":["status"],"timeout_seconds":601}""",
+        ).forEach { args ->
+            assertThat(ToolExecutionPolicy.grantCategory(ExecutionMode.WORKSPACE, "git_exec", ToolRisk.PROCESS, args))
+                .isEqualTo(ApprovalGrantCategory.COMMAND)
+            assertThat(ToolExecutionPolicy.grantCategory(ExecutionMode.FULL_ACCESS, "git_exec", ToolRisk.PROCESS, args)).isNull()
+        }
+    }
+
+    @Test
+    fun `Git审批目标区分工作目录运行模式与argv边界`() {
+        val tool = ProtocolTool(function = ProtocolToolFunction("git_exec", "", "{}"), risk = ToolRisk.PROCESS)
+        val original = """{"args":["add","a b"],"cwd":"/workspace/a"}"""
+        val target = ToolExecutionTargets.extract(tool, original)
+        assertThat(target).isNotNull()
+        assertThat(ToolExecutionTargets.extract(tool, original.replace("/a", "/b"))).isNotEqualTo(target)
+        assertThat(ToolExecutionTargets.extract(tool, original.replace("a b", "a\",\"b"))).isNotEqualTo(target)
+        assertThat(ToolExecutionTargets.extract(tool, original, usesLinux = true)).isNotEqualTo(target)
+        assertThat(ToolExecutionTargets.extract(tool, """{"args":"add a b"}""")).isNull()
+    }
+
     @Test
     fun `两档按工具能力与显式目标审批而非泛化风险`() {
         val commands = mapOf(
