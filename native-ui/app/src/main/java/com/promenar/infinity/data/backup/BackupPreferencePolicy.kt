@@ -89,7 +89,7 @@ internal object BackupPreferencePolicy {
         // 连接探测结果与模型同步时间仅描述当前设备，不随备份迁移。
         "provider_status" to setOf("statuses"),
         "settings" to setOf(
-            "local_models_enabled", "local_auto_load", "last_local_model",
+            "local_models_enabled", "local_auto_load", "local_auto_load_on_startup", "last_local_model",
             "last_local_embedding_model", "last_local_rerank_model", "unlimited_auto_confirmed",
             "termux_integration_enabled", "ssh_agent_host_management", "ssh_terminal_idle_disconnect", "script_approve_writes",
             "skill_store_last_checked",

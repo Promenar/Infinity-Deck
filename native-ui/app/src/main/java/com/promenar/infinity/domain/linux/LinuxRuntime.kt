@@ -212,6 +212,7 @@ data class LinuxProcessLaunch(
     val environment: Map<String, String>,
     /** 宿主侧工作目录，供 ProcessBuilder.directory 使用。 */
     val hostWorkingDirectory: File,
+    val memoryBudgetBytes: Long? = null,
 ) {
     val command: List<String> get() = listOf(executable) + arguments
 

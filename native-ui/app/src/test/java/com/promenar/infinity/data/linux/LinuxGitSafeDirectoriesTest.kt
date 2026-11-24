@@ -60,13 +60,13 @@ class LinuxGitSafeDirectoriesTest {
         val mount = temporary.resolve("shared").toFile().apply { mkdirs() }
         val environment = builder().build(LinuxLaunchSpec(emptyList(), workspace, listOf(LinuxBind(mount, "/mnt/shared")),
             environment = mapOf("GIT_CONFIG_COUNT" to "1", "GIT_CONFIG_KEY_0" to "http.x.proxy", "GIT_CONFIG_VALUE_0" to ""))).environment
-        assertEquals("5", environment["GIT_CONFIG_COUNT"])
+        assertEquals("10", environment["GIT_CONFIG_COUNT"])
         assertEquals("http.x.proxy", environment["GIT_CONFIG_KEY_0"])
         assertEquals(listOf("/workspace", "/workspace/*", "/mnt/shared", "/mnt/shared/*"), (1..4).map {
             assertEquals("safe.directory", environment["GIT_CONFIG_KEY_$it"])
             environment.getValue("GIT_CONFIG_VALUE_$it")
         })
-        assertFalse(builder().build(LinuxLaunchSpec(emptyList())).environment.containsKey("GIT_CONFIG_COUNT"))
+        assertEquals("5", builder().build(LinuxLaunchSpec(emptyList())).environment["GIT_CONFIG_COUNT"])
     }
 
     /** 用本机 git 模拟属主不一致：配置只来自注入的环境，根下仓库可用，根外仓库仍被拒绝。 */

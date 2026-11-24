@@ -21,7 +21,7 @@ internal class LinuxPackageBackend(context: Context, runtime: LinuxRuntime, host
     )
     val packages: LinuxPackageManager = LinuxPackageService(runtime, provenance, LinuxPackageCommandExecutor { launch, output ->
         val control = BuiltinCommandControl()
-        val request = BuiltinCommandRequest(launch.command, launch.hostWorkingDirectory, launch.environment, timeoutSeconds = 600)
+        val request = launch.commandRequest(600)
         host.keepAlive.hold(
             ExecRunInfo(UUID.randomUUID().toString(), ExecRunKind.LINUX, ExecRunInfo.summarize(launch.command.joinToString(" ")), 600, System.currentTimeMillis()),
             control::requestStop,

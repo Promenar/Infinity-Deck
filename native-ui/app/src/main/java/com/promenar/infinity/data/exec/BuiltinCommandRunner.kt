@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.exec
 
 import com.promenar.infinity.domain.tool.ToolOutputStream
+import com.promenar.infinity.data.linux.LinuxMemoryWatch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,7 @@ data class BuiltinCommandRequest(
     val terminal: Boolean = false,
     val outputLimitOverride: Int? = null,
     val outputTransform: CommandOutputTransform? = null,
+    val memoryWatch: (() -> LinuxMemoryWatch)? = null,
 ) {
     override fun toString(): String = "BuiltinCommandRequest(arguments=${argv.size}, timeoutSeconds=$timeoutSeconds, terminal=$terminal)"
 }
@@ -45,6 +47,9 @@ data class BuiltinCommandOutput(
     val stoppedByUser: Boolean = false,
     /** 等待期间本进程被系统暂停（后台冻结或设备休眠）的累计毫秒数；不计入超时。 */
     val pausedMillis: Long = 0L,
+    val memoryPressureCancelled: Boolean = false,
+    val peakMemoryBytes: Long? = null,
+    val forkEnosysDetected: Boolean = false,
 )
 
 /** 在进入日志、实时输出和有界收集器之前处理完整分块。 */
@@ -212,6 +217,7 @@ class BuiltinCommandRunner(
         pidFile.parentFile?.mkdirs()
         val persistentIdentity = processGroupFile != null || logFile != null
         try {
+            val memoryWatch = request.memoryWatch?.invoke()
             val builder = ProcessBuilder(launchCommand(request, pidFile, persistentIdentity && requireBackgroundIdentity))
                 .directory(request.workingDirectory)
                 .redirectErrorStream(logFile != null)
@@ -246,7 +252,12 @@ class BuiltinCommandRunner(
                 val safe = eventNormalizer?.accept?.invoke(ToolOutputStream.STDOUT, text) ?: text
                 if (safe.isNotEmpty()) control.outputEvents?.invoke(ToolOutputStream.STDOUT, safe)
             }
-            fun clean(stream: ToolOutputStream, text: String) = request.outputTransform?.accept?.invoke(stream, text) ?: text
+            val stdoutFork = memoryWatch?.let { ForkEnosysDetector() }
+            val stderrFork = memoryWatch?.let { ForkEnosysDetector() }
+            fun clean(stream: ToolOutputStream, text: String): String {
+                (if (stream == ToolOutputStream.STDOUT) stdoutFork else stderrFork)?.accept(text)
+                return request.outputTransform?.accept?.invoke(stream, text) ?: text
+            }
             fun tail(stream: ToolOutputStream) = request.outputTransform?.finish?.invoke(stream).orEmpty()
             fun normalizedText(text: String) = normalized?.accept?.invoke(ToolOutputStream.STDOUT, text) ?: text
             fun terminalSnapshot(text: String): String =
@@ -346,15 +357,24 @@ class BuiltinCommandRunner(
             onStarted()
             control.started.complete(Unit)
             val wait = try {
-                await(process, request.timeoutSeconds, control, logFile == null || request.terminal, persistentIdentity)
+                var pgid: Int? = null
+                await(process, request.timeoutSeconds, control, logFile == null || request.terminal, persistentIdentity,
+                    memoryWatch?.let { watch ->
+                        { millis ->
+                            if (pgid == null) pgid = readProcessGroup(pidFile)
+                            watch.check(pgid, millis)
+                        }
+                    },
+                )
             } catch (cancelled: CancellationException) {
                 withContext(NonCancellable) { if(request.terminal) process.destroy(); terminate(process, pidFile, logFile != null); settled=true }
                 throw cancelled
             }
             val signalled = wait.outcome != WaitOutcome.EXITED
             if (signalled) {
-                if (request.terminal) process.destroy()
-                terminate(process, pidFile, logFile != null)
+                val memoryCancelled = wait.outcome == WaitOutcome.MEMORY_CANCELLED
+                if (request.terminal && !memoryCancelled) process.destroy()
+                terminate(process, pidFile, logFile != null, memoryCancelled)
             } else {
                 // 主进程已退出；同组后台进程不能跨过写锁继续运行。
                 readProcessGroup(pidFile)?.let { runCatching { signaller.signal(it, SIGKILL) } }
@@ -384,6 +404,9 @@ class BuiltinCommandRunner(
                 killedExternally = exit == SIGNAL_EXIT_BASE + SIGKILL,
                 stoppedByUser = wait.outcome == WaitOutcome.STOPPED,
                 pausedMillis = wait.pausedNanos / 1_000_000,
+                memoryPressureCancelled = wait.outcome == WaitOutcome.MEMORY_CANCELLED,
+                peakMemoryBytes = memoryWatch?.peakMemoryBytes,
+                forkEnosysDetected = stdoutFork?.detected == true || stderrFork?.detected == true,
             )
             } catch (failure:Throwable) {
                 if(!settled) withContext(NonCancellable) { if(request.terminal) process.destroy(); terminate(process,pidFile,logFile!=null) }
@@ -419,13 +442,14 @@ class BuiltinCommandRunner(
         listOfNotNull(File(shell).parentFile, File("/system/bin"), File("/usr/bin"), File("/bin"))
             .map { File(it, name) }.firstOrNull(File::canExecute)?.path ?: File(File(shell).parentFile, name).path
 
-    private enum class WaitOutcome { EXITED, TIMED_OUT, STOPPED }
+    private enum class WaitOutcome { EXITED, TIMED_OUT, STOPPED, MEMORY_CANCELLED }
     private class WaitResult(val outcome: WaitOutcome, val pausedNanos: Long)
 
     /** 监视进程结束、超时或停止。可转入后台的进程用挂起轮询，等待期间归还共享 IO 线程。 */
     private suspend fun await(
         process: Process, timeoutSeconds: Int, control: BuiltinCommandControl,
         excludePauses: Boolean, suspendPolling: Boolean,
+        memoryExceeded: ((Long) -> Boolean)?,
     ): WaitResult {
         val step = TimeUnit.MILLISECONDS.toNanos(pollMillis)
         val pauseThreshold = TimeUnit.MILLISECONDS.toNanos(pauseThresholdMillis)
@@ -438,6 +462,9 @@ class BuiltinCommandRunner(
             val desired = control.timeoutSecondsOverride ?: timeoutSeconds
             if (desired != budget) { remaining += TimeUnit.SECONDS.toNanos((desired - budget).toLong()); budget = desired }
             if (control.stopRequested) return WaitResult(WaitOutcome.STOPPED, paused)
+            if (memoryExceeded?.invoke(TimeUnit.NANOSECONDS.toMillis(last)) == true && process.isAlive) {
+                return WaitResult(WaitOutcome.MEMORY_CANCELLED, paused)
+            }
             val interval = minOf(step, remaining.coerceAtLeast(1))
             val exited = if (suspendPolling) {
                 if (process.isAlive) delay(TimeUnit.NANOSECONDS.toMillis(interval).coerceAtLeast(1))
@@ -471,7 +498,9 @@ class BuiltinCommandRunner(
         }
     }
 
-    private suspend fun terminate(process: Process, pidFile: File, fullGrace: Boolean = false) {
+    private suspend fun terminate(
+        process: Process, pidFile: File, fullGrace: Boolean = false, memoryEmergency: Boolean = false,
+    ) {
         val group = readProcessGroup(pidFile) ?: awaitProcessGroup(pidFile)
         if (group == null) {
             process.destroyForcibly()
@@ -479,11 +508,17 @@ class BuiltinCommandRunner(
             return
         }
         runCatching { signaller.signal(group, SIGTERM) }
+        val grace = if (memoryEmergency) minOf(500, killGraceMillis) else killGraceMillis
         val started = System.nanoTime()
-        val exited = runInterruptible { process.waitFor(killGraceMillis, TimeUnit.MILLISECONDS) }
-        if (fullGrace) kotlinx.coroutines.delay((killGraceMillis - (System.nanoTime() - started) / 1_000_000).coerceAtLeast(0))
+        val exited = runInterruptible { process.waitFor(grace, TimeUnit.MILLISECONDS) }
+        if (fullGrace) delay((grace - (System.nanoTime() - started) / 1_000_000).coerceAtLeast(0))
+        if (memoryEmergency && !exited) {
+            // proot 用 SIGQUIT 清理独立进程组里的 tracee，再由宿主杀掉原进程组残留。
+            runCatching { signaller.signal(group, SIGQUIT) }
+            runInterruptible { process.waitFor(250, TimeUnit.MILLISECONDS) }
+        }
         runCatching { signaller.signal(group, SIGKILL) }
-        if (!exited) {
+        if (process.isAlive) {
             process.destroyForcibly()
             runInterruptible { process.waitFor(killGraceMillis, TimeUnit.MILLISECONDS) }
         }
@@ -511,6 +546,7 @@ class BuiltinCommandRunner(
     companion object {
         const val OUTPUT_LIMIT = 32_000
         const val MAX_TIMEOUT_SECONDS = 600
+        private const val SIGQUIT = 3
         const val SIGKILL = 9
         const val SIGTERM = 15
         private const val SIGNAL_EXIT_BASE = 128
@@ -521,6 +557,24 @@ class BuiltinCommandRunner(
             "(__infinity_printf=\$6; set -- \$__infinity_fields; case \"\${20}\" in ''|*[!0-9]*) exit 125;; esac; \"\$__infinity_printf\" '%s' \"\${20}\") > \"\$1.start\" || exit 125; " +
             "{ [ -z \"\$2\" ] || \"\$6\" '%s\\n' \"\$2\"; \"\$4\" \"\$1.start\"; } > \"\$1.identity.tmp\" && \"\$5\" \"\$1.identity.tmp\" \"\$1.identity\" || exit 125; " +
             "elif [ \"\$3\" = 1 ]; then exit 125; fi; shift 6; exec \"\$@\""
+    }
+}
+
+/** 保留匹配所需的短尾部，跨读取块识别错误，避免受公开输出截断影响。 */
+private class ForkEnosysDetector {
+    private var tail = ""
+    var detected = false
+        private set
+
+    fun accept(text: String) {
+        if (detected) return
+        val joined = tail + text
+        detected = joined.contains(MARKER)
+        tail = if (detected) "" else joined.takeLast(MARKER.length - 1)
+    }
+
+    private companion object {
+        const val MARKER = "can't fork: Function not implemented"
     }
 }
 

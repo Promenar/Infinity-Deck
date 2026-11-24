@@ -47,7 +47,7 @@ class LocalModelSlotStoreTest {
     }
 
     @Test
-    fun `保存与读取三个槽位并自动开启重启加载标记`() {
+    fun `保存与读取三个槽位时保持默认关闭自动加载`() {
         val settings = fakePrefs()
         val legacy = fakePrefs()
         val store = LocalModelSlotStore(settings, legacy)
@@ -56,7 +56,8 @@ class LocalModelSlotStoreTest {
         store.saveSlotPath(SlotType.EMBEDDING, "/models/bge-m3.gguf")
         store.saveSlotPath(SlotType.RERANK, "/models/bge-reranker.gguf")
 
-        assertThat(settings.getBoolean(LocalModelSlotStore.KEY_LOCAL_AUTO_LOAD, false)).isTrue()
+        assertThat(settings.contains(LocalModelSlotStore.KEY_LOCAL_AUTO_LOAD)).isFalse()
+        assertThat(store.readAutoLoadOnStartup()).isFalse()
         assertThat(store.readAllSlotPaths()).containsExactly(
             SlotType.MAIN, "/models/qwen.gguf",
             SlotType.EMBEDDING, "/models/bge-m3.gguf",
@@ -66,11 +67,12 @@ class LocalModelSlotStoreTest {
 
     @Test
     fun `卸载槽位与删除文件时同步清理对应持久化记录`() {
-        val settings = fakePrefs()
+        val settings = fakePrefs(mapOf(LocalModelSlotStore.KEY_LOCAL_AUTO_LOAD to true))
         val legacy = fakePrefs(mapOf(LocalModelSlotStore.KEY_MAIN_MODEL to "/models/legacy.gguf"))
         val store = LocalModelSlotStore(settings, legacy)
 
         assertThat(store.readSlotPath(SlotType.MAIN)).isEqualTo("/models/legacy.gguf")
+        store.writeAutoLoadOnStartup(true)
         store.clearSlot(SlotType.MAIN)
         assertThat(store.readSlotPath(SlotType.MAIN)).isNull()
         assertThat(legacy.contains(LocalModelSlotStore.KEY_MAIN_MODEL)).isFalse()
@@ -83,7 +85,8 @@ class LocalModelSlotStoreTest {
         assertThat(settings.getBoolean(LocalModelSlotStore.KEY_LOCAL_AUTO_LOAD, false)).isTrue()
 
         store.clearSlot(SlotType.RERANK)
-        assertThat(settings.getBoolean(LocalModelSlotStore.KEY_LOCAL_AUTO_LOAD, true)).isFalse()
+        assertThat(settings.getBoolean(LocalModelSlotStore.KEY_LOCAL_AUTO_LOAD, false)).isTrue()
+        assertThat(store.readAutoLoadOnStartup()).isTrue()
     }
 
     @Test
@@ -94,7 +97,10 @@ class LocalModelSlotStoreTest {
         store.saveSlotPath(SlotType.EMBEDDING, "/models/embed.gguf")
         store.saveSlotPath(SlotType.RERANK, "/models/missing.gguf")
 
+        assertThat(store.readRestorableSlotPaths(true, "/models/pinned.gguf")).isEmpty()
+        store.writeAutoLoadOnStartup(true)
         assertThat(store.readRestorableSlotPaths(localModelsEnabled = false)).isEmpty()
+        assertThat(store.readRestorableSlotPaths(true, autoLoadOnStartup = false)).isEmpty()
 
         val existing = setOf("/models/pinned.gguf", "/models/embed.gguf")
         assertThat(

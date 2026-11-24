@@ -439,6 +439,7 @@ class BackupPreferenceInventoryTest {
         listOf(
             "local_models_enabled",
             "local_auto_load",
+            "local_auto_load_on_startup",
             "last_local_model",
             "last_local_embedding_model",
             "last_local_rerank_model",

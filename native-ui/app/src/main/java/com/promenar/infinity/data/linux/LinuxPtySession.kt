@@ -7,6 +7,7 @@ import com.promenar.infinity.domain.linux.LinuxProcessLaunch
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -16,6 +17,8 @@ internal class LinuxPtySession(launch: LinuxProcessLaunch, client: TerminalSessi
     init {
         require("--kill-on-exit" in launch.arguments) { "Terminal launch requires proot --kill-on-exit" }
     }
+
+    private val memoryBudgetBytes = launch.memoryBudgetBytes
 
     override val session = TerminalSession(
         launch.executable,
@@ -36,6 +39,29 @@ internal class LinuxPtySession(launch: LinuxProcessLaunch, client: TerminalSessi
     override suspend fun write(text: String) = withContext(Dispatchers.IO) {
         // ByteQueue 有界且会阻塞，长命令不能在主线程等待 PTY 排空。
         writeLinuxPtyInput(text, { session.isRunning }, session::write)
+    }
+
+    override suspend fun watchMemory() {
+        val watch = memoryBudgetBytes?.let(LinuxResourceGovernor::watch) ?: return
+        val pid = processId()
+        if (pid <= 1) return
+        while (processId() == pid && session.isRunning) {
+            if (watch.check(pid, android.os.SystemClock.elapsedRealtime())) {
+                withContext(NonCancellable) {
+                    signal(-pid, OsConstants.SIGTERM)
+                    delay(500)
+                    if (processId() == pid && session.isRunning) {
+                        // 登录 shell 的作业可在独立进程组内，由 proot 清理所有 tracee。
+                        signal(pid, OsConstants.SIGQUIT)
+                        delay(250)
+                    }
+                    signal(-pid, OsConstants.SIGKILL)
+                    if (processId() == pid && session.isRunning) session.finishIfRunning()
+                }
+                return
+            }
+            delay(250)
+        }
     }
 
     override suspend fun terminate() = withContext(Dispatchers.IO) {

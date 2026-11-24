@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 
 /**
  * 持久化本地推理三个槽位（主生成器、嵌入、重排序）上次成功加载的模型路径。
- * 属于设备本机状态（不随跨设备备份迁移），用于在重开本地推理或应用启动时自动恢复。
+ * 属于设备本机状态，自动恢复由独立的显式偏好控制。
  */
 internal class LocalModelSlotStore(
     private val settingsPrefs: SharedPreferences,
@@ -28,12 +28,19 @@ internal class LocalModelSlotStore(
         }
     }
 
+    fun readAutoLoadOnStartup(): Boolean = settingsPrefs.getBoolean(KEY_LOCAL_AUTO_LOAD_ON_STARTUP, false)
+
+    fun writeAutoLoadOnStartup(enabled: Boolean) {
+        settingsPrefs.edit().putBoolean(KEY_LOCAL_AUTO_LOAD_ON_STARTUP, enabled).apply()
+    }
+
     fun readRestorableSlotPaths(
         localModelsEnabled: Boolean,
         pinnedMainPath: String? = null,
+        autoLoadOnStartup: Boolean = readAutoLoadOnStartup(),
         fileExists: (String) -> Boolean = { true },
     ): Map<SlotType, String> {
-        if (!localModelsEnabled) return emptyMap()
+        if (!localModelsEnabled || !autoLoadOnStartup) return emptyMap()
         val saved = readAllSlotPaths()
         return buildMap {
             val mainCandidate = pinnedMainPath?.takeIf { it.isNotBlank() } ?: saved[SlotType.MAIN]
@@ -53,7 +60,6 @@ internal class LocalModelSlotStore(
         if (modelPath.isBlank()) return
         settingsPrefs.edit()
             .putString(keyFor(slot), modelPath)
-            .putBoolean(KEY_LOCAL_AUTO_LOAD, true)
             .apply()
         if (slot == SlotType.MAIN) {
             legacyProviderPrefs?.edit()?.putString(KEY_MAIN_MODEL, modelPath)?.apply()
@@ -61,10 +67,8 @@ internal class LocalModelSlotStore(
     }
 
     fun clearSlot(slot: SlotType) {
-        val remainingAny = SlotType.entries.any { it != slot && readSlotPath(it) != null }
         settingsPrefs.edit()
             .remove(keyFor(slot))
-            .putBoolean(KEY_LOCAL_AUTO_LOAD, remainingAny)
             .apply()
         if (slot == SlotType.MAIN) {
             legacyProviderPrefs?.edit()?.remove(KEY_MAIN_MODEL)?.apply()
@@ -88,6 +92,7 @@ internal class LocalModelSlotStore(
 
     companion object {
         const val KEY_LOCAL_AUTO_LOAD = "local_auto_load"
+        const val KEY_LOCAL_AUTO_LOAD_ON_STARTUP = "local_auto_load_on_startup"
         const val KEY_MAIN_MODEL = "last_local_model"
         const val KEY_EMBEDDING_MODEL = "last_local_embedding_model"
         const val KEY_RERANK_MODEL = "last_local_rerank_model"

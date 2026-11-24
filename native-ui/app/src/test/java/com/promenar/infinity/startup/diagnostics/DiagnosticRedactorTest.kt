@@ -150,6 +150,9 @@ class DiagnosticRedactorTest {
                 "killedExternally" to kotlinx.serialization.json.JsonPrimitive(false),
                 "maxRuntimeMinutes" to kotlinx.serialization.json.JsonPrimitive(120),
                 "elapsedMs" to kotlinx.serialization.json.JsonPrimitive(81234),
+                "memoryPressureCancelled" to kotlinx.serialization.json.JsonPrimitive(true),
+                "forkEnosys" to kotlinx.serialization.json.JsonPrimitive("/data/local/private/model.gguf"),
+                "peakMemoryMb" to kotlinx.serialization.json.JsonPrimitive(960),
                 "stdout" to kotlinx.serialization.json.JsonPrimitive("Bearer secret-token"),
             ),
         )
@@ -159,6 +162,9 @@ class DiagnosticRedactorTest {
         assertThat(ended["stoppedByUser"]?.toString()).isEqualTo("false")
         assertThat(ended["killedExternally"]?.toString()).isEqualTo("false")
         assertThat(ended["elapsedMs"]?.toString()).isEqualTo("81234")
+        assertThat(ended["memoryPressureCancelled"]?.toString()).isEqualTo("true")
+        assertThat(ended["forkEnosys"]).isNull()
+        assertThat(ended["peakMemoryMb"]?.toString()).isEqualTo("960")
         assertThat(ended["stdout"]).isNull()
     }
 

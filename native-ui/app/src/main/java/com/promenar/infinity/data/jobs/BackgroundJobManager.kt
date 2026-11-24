@@ -2,6 +2,10 @@ package com.promenar.infinity.data.jobs
 
 import com.promenar.infinity.data.proxy.BuiltInProxyConfig
 import com.promenar.infinity.data.exec.*
+import com.promenar.infinity.data.linux.MIB
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.longOrNull
 import com.promenar.infinity.data.secret.SessionSecretVault
 import com.promenar.infinity.data.secret.SecretOutputRedactor
 import com.promenar.infinity.domain.secret.SecretIoLimits
@@ -479,9 +483,25 @@ class BackgroundJobManager(
                                 withContext(NonCancellable) { watcher?.cancelAndJoin(); prepared.afterRun() }
                             }
                         }
-                        val terminal=when {linuxRemoved -> "FAILED"; output.stoppedByUser -> "STOPPED"; output.timedOut -> "TIMED_OUT"; else -> "EXITED"}
-                        val endedRecord = current.copy(state=terminal,exitCode=output.exitCode,endedAtMillis=now(),guidance=if(linuxRemoved) messages(RunModeMessage.LINUX_UNAVAILABLE) else if(actualKind == BackgroundJobRunner.LINUX) LinuxMissingCommandGuidance.hint(output.exitCode, readJobLogTail(log).text, messages) else null)
-                        emitJobEndDiagnostic(endedRecord, timedOut = output.timedOut, stoppedByUser = output.stoppedByUser, killedExternally = output.killedExternally)
+                        val processFailure = output.processFailure()
+                        val terminal = when {
+                            linuxRemoved -> "FAILED"
+                            output.stoppedByUser -> "STOPPED"
+                            output.timedOut -> "TIMED_OUT"
+                            processFailure != null -> "FAILED"
+                            else -> "EXITED"
+                        }
+                        val guidance = when {
+                            linuxRemoved -> messages(RunModeMessage.LINUX_UNAVAILABLE)
+                            processFailure != null -> "${processFailure.first}：${processFailure.second}"
+                            actualKind == BackgroundJobRunner.LINUX -> LinuxMissingCommandGuidance.hint(output.exitCode, readJobLogTail(log).text, messages)
+                            else -> null
+                        }
+                        val endedRecord = current.copy(state = terminal, exitCode = output.exitCode, endedAtMillis = now(), guidance = guidance)
+                        emitJobEndDiagnostic(
+                            endedRecord, output.timedOut, output.stoppedByUser, output.killedExternally,
+                            output.memoryPressureCancelled, output.forkEnosysDetected, output.peakMemoryBytes?.div(MIB),
+                        )
                         finish(endedRecord,handle)
                         if(!started.isCompleted) started.completeExceptionally(JobAccessException("JOB_STOPPED","任务在进程启动前被停止。"))
                     } catch (failure:Exception) {
@@ -577,7 +597,12 @@ class BackgroundJobManager(
                             store.put(terminal); publish(); handle.terminal.complete(Unit)
                             result.complete(safeValue)
                             if (yielded.get()) {
-                                emitJobEndDiagnostic(terminal, timedOut = value.timedOut, stoppedByUser = value.errorCode == "EXEC_STOPPED", killedExternally = value.errorCode == "EXEC_PROCESS_KILLED")
+                                emitJobEndDiagnostic(
+                                    terminal, value.timedOut, value.errorCode == "EXEC_STOPPED", value.errorCode == "EXEC_PROCESS_KILLED",
+                                    (value.backendFields["memoryPressureCancelled"] as? JsonPrimitive)?.booleanOrNull == true,
+                                    (value.backendFields["forkEnosys"] as? JsonPrimitive)?.booleanOrNull == true,
+                                    (value.backendFields["peakMemoryMb"] as? JsonPrimitive)?.longOrNull,
+                                )
                             }
                             if (yielded.get() && sessionAllowed(record) && !handle.suppressCompletion) {
                                 try { dispatchCompletion(terminal, readJobLogTail(logFile(terminal))) } catch (_: Exception) { }
@@ -1512,6 +1537,9 @@ class BackgroundJobManager(
         timedOut: Boolean,
         stoppedByUser: Boolean,
         killedExternally: Boolean,
+        memoryPressureCancelled: Boolean = false,
+        forkEnosys: Boolean = false,
+        peakMemoryMb: Long? = null,
     ) {
         InfinityLogger.diagnostic("job.end", mapOf(
             "sessionId" to record.sessionId,
@@ -1521,6 +1549,9 @@ class BackgroundJobManager(
             "timedOut" to timedOut,
             "stoppedByUser" to stoppedByUser,
             "killedExternally" to killedExternally,
+            "memoryPressureCancelled" to memoryPressureCancelled,
+            "forkEnosys" to forkEnosys,
+            "peakMemoryMb" to peakMemoryMb,
             "maxRuntimeMinutes" to record.maxRuntimeMinutes,
             "elapsedMs" to ((record.endedAtMillis ?: now()) - record.startedAtMillis).coerceAtLeast(0L),
         ))

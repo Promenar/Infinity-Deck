@@ -50,6 +50,7 @@ class LinuxExecIntegrationTest {
             BackgroundJobLocation(workspace, workspace, true, false, sessionId = "s"), 1, "s")
         try {
             assertFinalGitEnvironment(prepared.request.environment)
+            assertThat(prepared.request.memoryWatch).isNotNull()
         } finally { prepared.close() }
     }
 
@@ -76,7 +77,8 @@ class LinuxExecIntegrationTest {
         val credentials = LinuxGitEnvironment.from(safeDirectoryLease)
         val start = credentials.getValue("GIT_CONFIG_COUNT").toInt()
         val roots = listOf("/workspace", "/workspace/*", "/mnt/gitprobe-root", "/mnt/gitprobe-root/*", "/mnt/skills", "/mnt/skills/*")
-        val count = start + roots.size
+        val resourceKeys = listOf("pack.threads", "pack.windowMemory", "core.packedGitLimit", "gc.auto", "fetch.writeCommitGraph")
+        val count = start + roots.size + resourceKeys.size
         assertThat(environment["GIT_CONFIG_COUNT"]).isEqualTo(count.toString())
         assertThat(environment.keys.filter { it.startsWith("GIT_CONFIG_KEY_") }).containsExactlyElementsIn((0 until count).map { "GIT_CONFIG_KEY_$it" })
         assertThat(environment.keys.filter { it.startsWith("GIT_CONFIG_VALUE_") }).containsExactlyElementsIn((0 until count).map { "GIT_CONFIG_VALUE_$it" })
@@ -88,6 +90,8 @@ class LinuxExecIntegrationTest {
             assertThat(environment["GIT_CONFIG_KEY_${start + index}"]).isEqualTo("safe.directory")
             assertThat(environment["GIT_CONFIG_VALUE_${start + index}"]).isEqualTo(path)
         }
+        val resourceStart = start + roots.size
+        assertThat((resourceStart until count).map { environment["GIT_CONFIG_KEY_$it"] }).containsExactlyElementsIn(resourceKeys).inOrder()
     }
 
     @Test fun `前后台Linux都追加git配置且内置命令不追加`() = runBlocking<Unit> {
@@ -945,8 +949,9 @@ private class FakeLinuxRuntime(root: File) : LinuxRuntime {
     override suspend fun prepareLaunch(spec: LinuxLaunchSpec): LinuxProcessLaunch {
         if(unavailableOnPrepare || state.value !is LinuxRuntimeState.Ready) throw LinuxUnavailableException(LinuxRuntimeState.NotInstalled(0))
         specs += spec
-        val environment = launchBuilder?.build(spec, maintainHomeConfiguration = false)?.environment
-            ?: (mapOf("PATH" to "/usr/bin:/bin") + spec.environment)
-        return LinuxProcessLaunch("/bin/sh", listOf("-c",spec.argv.last()), environment, checkNotNull(spec.workspace))
+        val launch = launchBuilder?.build(spec, maintainHomeConfiguration = false)
+        val environment = launch?.environment ?: (mapOf("PATH" to "/usr/bin:/bin") + spec.environment)
+        return LinuxProcessLaunch("/bin/sh", listOf("-c", spec.argv.last()), environment,
+            checkNotNull(spec.workspace), memoryBudgetBytes = launch?.memoryBudgetBytes)
     }
 }

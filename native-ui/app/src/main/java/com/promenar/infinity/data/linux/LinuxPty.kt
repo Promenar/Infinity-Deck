@@ -11,6 +11,7 @@ internal interface LinuxPty {
     val exitCode: Int?
     fun start()
     suspend fun write(text: String)
+    suspend fun watchMemory() = Unit
     suspend fun terminate()
 }
 

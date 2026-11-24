@@ -5,6 +5,7 @@ import com.promenar.infinity.data.proxy.BuiltInProxyEndpoint
 import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
 import com.promenar.infinity.data.tailnet.InstalledTailnetRouting
 import com.promenar.infinity.data.exec.withLegacyWorkspaceAliases
+import com.promenar.infinity.data.git.remote.LinuxGitEnvironment
 import com.promenar.infinity.domain.linux.LinuxLaunchSpec
 import com.promenar.infinity.domain.linux.LinuxProcessLaunch
 import java.io.File
@@ -26,8 +27,14 @@ class LinuxLaunchBuilder(
     private val tailnetEnvironment: () -> Map<String, String> = { InstalledTailnetRouting.routing.subprocessEnvironment() },
     private val messages: LinuxRuntimeMessages = LinuxRuntimeMessages(),
     private val builtInProxyEndpoint: () -> BuiltInProxyEndpoint? = { InstalledBuiltInProxyRouting.routing.endpoint.value },
+    private val resourceBudget: () -> LinuxResourceBudget = { LinuxResourceGovernor.system.budget() },
 ) {
-    fun build(spec: LinuxLaunchSpec, maintainHomeConfiguration: Boolean = true): LinuxProcessLaunch {
+    fun build(
+        spec: LinuxLaunchSpec,
+        maintainHomeConfiguration: Boolean = true,
+        // Android 17 优先用 ptrace 路径，避开 proot 自身的 seccomp 加速兼容问题。
+        prootNoSeccomp: Boolean = android.os.Build.VERSION.SDK_INT >= 37,
+    ): LinuxProcessLaunch {
         val tmp = File(cacheDirectory, "proot-tmp")
         val shm = File(cacheDirectory, "proot-shm")
         listOf(tmp, shm).forEach { check(it.isDirectory || it.mkdirs()) { messages(LinuxRuntimeMessage.TEMP_DIRECTORY) } }
@@ -91,11 +98,15 @@ class LinuxLaunchBuilder(
         builtInProxyEndpoint()?.let { environment.putAll(BuiltInProxyConfig.environment(it)) }
         LinuxGitSafeDirectories.appendTo(environment, listOfNotNull("/workspace".takeIf { spec.workspace != null }) + spec.mounts.map { it.guestPath })
         if (spec.wakeInbox != null) environment[LinuxWakeLimits.ENVIRONMENT_VARIABLE] = LinuxWakeLimits.GUEST_DIRECTORY
+        val budget = resourceBudget()
+        budget.applyTo(environment)
+        LinuxGitEnvironment.appendResourceConfiguration(environment, budget)
+        if (prootNoSeccomp) environment["PROOT_NO_SECCOMP"] = "1" else environment.remove("PROOT_NO_SECCOMP")
         val runtimeEnvironment = environment.withLegacyWorkspaceAliases()
         // 旧受管忽略区块清理失败不阻止命令启动；修复启动不改 rootfs 配置。
         if (maintainHomeConfiguration) runCatching { LinuxLaunchGitIgnore.cleanupOnce(rootfs, runtimeEnvironment) }
         if (maintainHomeConfiguration) LinuxWakeScript.installForLaunch(rootfs)
-        return LinuxProcessLaunch(proot.executable.path, arguments, runtimeEnvironment, spec.workspace ?: rootfs)
+        return LinuxProcessLaunch(proot.executable.path, arguments, runtimeEnvironment, spec.workspace ?: rootfs, budget.jobMemoryBudgetBytes)
     }
 
     private companion object {

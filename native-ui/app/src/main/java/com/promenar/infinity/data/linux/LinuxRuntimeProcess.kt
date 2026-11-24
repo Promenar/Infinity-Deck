@@ -407,7 +407,7 @@ class ProcessLinuxRuntime(
                     override fun readAgentEnabled() = prefs.getBoolean(KEY_AGENT_ENABLED, true)
                     override fun writeAgentEnabled(enabled: Boolean) { check(prefs.edit().putBoolean(KEY_AGENT_ENABLED, enabled).commit()) { messages(LinuxRuntimeMessage.PREFERENCE_FAILED) } }
                 }, keepAlive, packages, mirrors, { launch, timeout ->
-                    runner.run(BuiltinCommandRequest(launch.command, launch.hostWorkingDirectory, launch.environment, timeoutSeconds = timeout))
+                    runner.run(launch.commandRequest(timeout))
                 }, operationSummary = { maintenance -> context.getString(
                     if (maintenance) R.string.linux_runtime_reset_summary else R.string.linux_runtime_install_summary,
                 ) }, messages = messages)

@@ -117,8 +117,11 @@ class LinuxLaunchTest {
         }
     }
 
-    @Test fun `白名单环境不继承宿主且用户覆盖最后生效`() {
-        val launch = builder().build(LinuxLaunchSpec(emptyList(), environment = mapOf("HOME" to "/root/custom", "HTTPS_PROXY" to "custom")))
+    @Test fun `白名单环境接受普通覆盖并加入受管资源配置`() {
+        val launch = builder().build(
+            LinuxLaunchSpec(emptyList(), environment = mapOf("HOME" to "/root/custom", "HTTPS_PROXY" to "custom")),
+            prootNoSeccomp = false,
+        )
         assertEquals("/root/custom", launch.environment["HOME"])
         assertEquals("custom", launch.environment["HTTPS_PROXY"])
         assertEquals("1", launch.environment["PIP_BREAK_SYSTEM_PACKAGES"])
@@ -129,7 +132,10 @@ class LinuxLaunchTest {
             setOf(
                 "PROOT_LOADER", "PROOT_TMP_DIR", "HOME", "PATH", "LANG", "TERM", "TZ",
                 "PIP_BREAK_SYSTEM_PACKAGES", "PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX", "SHELL", "HTTPS_PROXY",
-            ),
+                "OMP_NUM_THREADS", "RAYON_NUM_THREADS", "GOMAXPROCS", "GOMEMLIMIT", "UV_THREADPOOL_SIZE", "MAKEFLAGS",
+                "NODE_OPTIONS", "NX_PROOT_NICE", "NX_PROOT_CPU_LIST", "NX_PROOT_NOFILE", "NX_PROOT_DISABLE_CORE",
+                "GIT_CONFIG_COUNT",
+            ) + (0..4).flatMap { listOf("GIT_CONFIG_KEY_$it", "GIT_CONFIG_VALUE_$it") },
             launch.environment.keys,
         )
         assertFalse(launch.environment.containsKey("INFINITY_WORKSPACE"))

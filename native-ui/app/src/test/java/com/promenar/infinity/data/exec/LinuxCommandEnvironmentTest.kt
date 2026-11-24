@@ -45,6 +45,13 @@ class LinuxCommandEnvironmentTest {
         assertEquals(mapOf("GIT_CONFIG_COUNT" to "0", "PATH" to "/usr/bin", "SHARED" to "launch"), launch)
     }
 
+    @Test fun `租约和保密槽位保留启动器选定的资源限制与兼容策略`() {
+        val launch = mapOf("OMP_NUM_THREADS" to "2", "NODE_OPTIONS" to "--max-old-space-size=512",
+            "NX_PROOT_NOFILE" to "4096")
+        val overrides = launch.mapValues { "0" } + ("PROOT_NO_SECCOMP" to "1")
+        assertEquals(launch, linuxCommandEnvironment(launch, overrides, overrides))
+    }
+
     @Test fun `本机git用合并后的凭据和挂载配置放行根及子仓库并拒绝根外仓库`() {
         val git = listOf("/usr/bin/git", "git").firstOrNull {
             runCatching { run(it, temporary.toFile(), isolated, "--version").first == 0 }.getOrDefault(false)

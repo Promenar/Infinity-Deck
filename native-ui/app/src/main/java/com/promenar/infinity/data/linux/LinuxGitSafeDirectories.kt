@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.linux
 
+import com.promenar.infinity.data.git.remote.LinuxGitEnvironment
+
 /**
  * 共享存储上的文件在 guest 内属主为媒体存储提供者，而 guest 进程以 root 运行，git 会以 dubious ownership 拒绝。
  * 这里只信任本次启动绑定的工作区与挂载根，经 `GIT_CONFIG_*` 以命令行作用域注入：
@@ -22,15 +24,6 @@ internal object LinuxGitSafeDirectories {
 
     /** 追加在已有 `GIT_CONFIG_COUNT` 条目（如凭据代理配置）之后；计数无法解析时保持原样，由 git 报告原配置错误。 */
     fun appendTo(environment: MutableMap<String, String>, roots: List<String>) {
-        val values = values(roots)
-        if (values.isEmpty()) return
-        val start = environment[COUNT]?.let { it.toIntOrNull()?.takeIf { count -> count >= 0 } ?: return } ?: 0
-        values.forEachIndexed { offset, value ->
-            environment["GIT_CONFIG_KEY_${start + offset}"] = KEY
-            environment["GIT_CONFIG_VALUE_${start + offset}"] = value
-        }
-        environment[COUNT] = (start + values.size).toString()
+        LinuxGitEnvironment.appendConfiguration(environment, values(roots).map { KEY to it })
     }
-
-    private const val COUNT = "GIT_CONFIG_COUNT"
 }

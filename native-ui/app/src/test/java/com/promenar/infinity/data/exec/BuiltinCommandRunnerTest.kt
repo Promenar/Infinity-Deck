@@ -43,6 +43,40 @@ class BuiltinCommandRunnerTest {
         BuiltinCommandRequest(listOf("/bin/sh", "-c", command), work, env, stdin, timeout)
 
     @Test
+    fun `普通命令没有资源采样且意外信号保留既有错误码`() = runBlocking<Unit> {
+        val output = runner().run(request("kill -KILL $$"))
+        assertThat(output.killedExternally).isTrue()
+        assertThat(output.peakMemoryBytes).isNull()
+        assertThat(output.processFailure()?.first).isEqualTo("EXEC_PROCESS_KILLED")
+        assertThat(output.copy(peakMemoryBytes = 128L * 1024 * 1024).processFailure()?.second).contains("128 MiB")
+    }
+
+    @Test
+    fun `内存连续越限结束进程且峰值与外部信号区分`() = runBlocking<Unit> {
+        val watch = com.promenar.infinity.data.linux.LinuxMemoryWatch(100, { 125 }, { false })
+        val output = runner().run(request("sleep 10").copy(memoryWatch = { watch }))
+        assertThat(output.exitCode).isNull()
+        assertThat(output.memoryPressureCancelled).isTrue()
+        assertThat(output.peakMemoryBytes).isEqualTo(125)
+        assertThat(output.killedExternally).isFalse()
+        assertThat(output.processFailure()?.first).isEqualTo("EXEC_MEMORY_LIMIT_CANCELLED")
+    }
+
+    @Test
+    fun `fork ENOSYS 早于输出尾部截断仍可被识别`() = runBlocking<Unit> {
+        val watch = com.promenar.infinity.data.linux.LinuxMemoryWatch(100, { null }, { false })
+        val output = runner(outputLimit = 8).run(
+            request("echo \"sh: can't fork: Function not implemented\" >&2; echo truncated-truncated >&2; exit 42")
+                .copy(memoryWatch = { watch }),
+        )
+        assertThat(output.stderr).isEqualTo("uncated\n")
+        assertThat(output.forkEnosysDetected).isTrue()
+        assertThat(output.exitCode).isEqualTo(42)
+        assertThat(output.processFailure()?.first).isEqualTo("EXEC_FORK_ENOSYS")
+        assertThat(output.copy(exitCode = 0).processFailure()).isNull()
+    }
+
+    @Test
     fun `后台进程等待时单路IO仍能执行其他工作`() = runBlocking<Unit> {
         val io = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1)
         val confined = BuiltinCommandRunner(

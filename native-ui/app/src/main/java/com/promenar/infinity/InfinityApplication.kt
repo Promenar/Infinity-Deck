@@ -2409,6 +2409,11 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     override fun onCreate() {
         super.onCreate()
         if (android.os.Process.isIsolated()) return
+        if (com.promenar.infinity.distribution.DistributionCapabilities.linuxRuntimeAvailable) {
+            startupScope.launch(Dispatchers.IO) {
+                com.promenar.infinity.data.linux.LinuxResourceGovernor.initialize(this@InfinityApplication)
+            }
+        }
         agentNetworkSettings
         getSharedPreferences("infinity_settings", MODE_PRIVATE).edit().remove("mcp_allow_loopback_http").apply()
         getSharedPreferences(com.promenar.infinity.data.tailnet.TailnetSettingsStore.PREFERENCES_NAME, MODE_PRIVATE)
@@ -2753,9 +2758,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         val slotStore = com.promenar.infinity.data.local.inference.LocalModelSlotStore(settingsPrefs, prefs)
         val savedSlots = slotStore.readAllSlotPaths()
         val localModelsEnabled = settingsPrefs.getBoolean("local_models_enabled", false)
-        val autoLoadEnabled = localRevision != null ||
-            settingsPrefs.getBoolean("local_auto_load", false) ||
-            savedSlots.isNotEmpty()
+        val autoLoadEnabled = slotStore.readAutoLoadOnStartup()
         val lastModelToLoad = localInferenceRuntimeGate.startupModelPath(
             localModelsEnabled = localModelsEnabled,
             autoLoadEnabled = autoLoadEnabled,
@@ -3586,8 +3589,17 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         secretStore.get(id)?.toString(Charsets.UTF_8)?.trim().orEmpty()
 
     @Suppress("DEPRECATION")
+    override fun onLowMemory() {
+        super.onLowMemory()
+        com.promenar.infinity.data.linux.LinuxResourceGovernor.signalCriticalMemory()
+    }
+
+    @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
+        if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) {
+            com.promenar.infinity.data.linux.LinuxResourceGovernor.signalCriticalMemory()
+        }
         when (level) {
             ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
             ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> {

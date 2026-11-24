@@ -169,6 +169,18 @@ internal class LinuxTerminalSessionsImpl(
                     entry.pty.start()
                     publish()
                 }
+                if (launch.memoryBudgetBytes != null) {
+                    val memoryWatcher = scope.launch(ioDispatcher) {
+                        try {
+                            entry.pty.watchMemory()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (failure: Exception) {
+                            InfinityLogger.logError("LinuxTerminal.watchMemory", failure)
+                        }
+                    }
+                    entry.ended.invokeOnCompletion { memoryWatcher.cancel() }
+                }
                 if (initialCommand != null) {
                     // 终端回显只含字面反斜杠；只有 shell 执行 printf 后才会产生真正的 OSC 标记。
                     // 同一输出随后清屏并清空滚动区，擦掉握手命令的两次回显（tty 与行编辑器）。

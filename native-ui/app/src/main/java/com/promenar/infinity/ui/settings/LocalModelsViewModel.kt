@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.local.inference.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,7 +18,11 @@ import com.promenar.infinity.R
 import kotlinx.coroutines.launch
 import java.io.File
 
-class LocalModelsViewModel(application: Application) : ViewModel() {
+class LocalModelsViewModel internal constructor(
+    application: Application,
+    private val ioDispatcher: CoroutineDispatcher,
+) : ViewModel() {
+    constructor(application: Application) : this(application, Dispatchers.IO)
 
     private val app = application as InfinityApplication
     private val appContext = app.applicationContext
@@ -45,6 +52,8 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
         prefs.getBoolean("local_models_enabled", false)
     )
     val isEngineEnabled: StateFlow<Boolean> = _isEngineEnabled.asStateFlow()
+    private val mutableAutoLoadOnStartup = MutableStateFlow(slotStore.readAutoLoadOnStartup())
+    val autoLoadOnStartup: StateFlow<Boolean> = mutableAutoLoadOnStartup.asStateFlow()
 
     private val _availableModels = MutableStateFlow<List<StoredModel>>(emptyList())
     val availableModels: StateFlow<List<StoredModel>> = _availableModels.asStateFlow()
@@ -110,25 +119,28 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
 
     fun loadModel(slot: SlotType, modelPath: String) {
         viewModelScope.launch {
-            edits.withLock {
-                if (!_isEngineEnabled.value) return@withLock
-                val pin = revisions.read().takeIf { slot == SlotType.MAIN }
-                if (pin != null && (pin.path != modelPath || !revisions.verify(pin))) {
-                    _modelError.value = R.string.recording_model_locked
-                    return@withLock
-                }
-                _modelError.value = null
-                engine.loadModel(slot, modelPath)
-                    .onSuccess {
-                        slotStore.saveSlotPath(slot, modelPath)
-                        _savedSlotPaths.value = slotStore.readAllSlotPaths()
-                    }
-                    .onFailure { failure ->
-                        if (failure is CancellationException) throw failure
-                        _modelError.value = R.string.local_models_load_failed
-                    }
-            }
+            edits.withLock { loadModelLocked(slot, modelPath) }
         }
+    }
+
+    private suspend fun loadModelLocked(slot: SlotType, modelPath: String, restoring: Boolean = false) {
+        if (!_isEngineEnabled.value) return
+        val pin = revisions.read().takeIf { slot == SlotType.MAIN }
+        if (pin != null && (pin.path != modelPath || !revisions.verify(pin))) {
+            _modelError.value = R.string.recording_model_locked
+            return
+        }
+        if (!_isEngineEnabled.value || (restoring && !autoLoadOnStartup.value)) return
+        _modelError.value = null
+        engine.loadModel(slot, modelPath)
+            .onSuccess {
+                slotStore.saveSlotPath(slot, modelPath)
+                _savedSlotPaths.value = slotStore.readAllSlotPaths()
+            }
+            .onFailure { failure ->
+                if (failure is CancellationException) throw failure
+                _modelError.value = R.string.local_models_load_failed
+            }
     }
 
     fun unloadModel(slot: SlotType) {
@@ -178,33 +190,40 @@ class LocalModelsViewModel(application: Application) : ViewModel() {
         installer.pause()
     }
 
+    fun setAutoLoadOnStartup(enabled: Boolean) {
+        slotStore.writeAutoLoadOnStartup(enabled)
+        mutableAutoLoadOnStartup.value = enabled
+    }
+
     fun setEngineEnabled(enabled: Boolean) {
         _isEngineEnabled.value = enabled
         prefs.edit().putBoolean("local_models_enabled", enabled).apply()
-        if (enabled) {
-            val toRestore = slotStore.readRestorableSlotPaths(
-                localModelsEnabled = true,
-                pinnedMainPath = revisions.read()?.path,
-                fileExists = { File(it).isFile },
-            )
-            toRestore.forEach { (slot, path) ->
-                val current = when (slot) {
-                    SlotType.MAIN -> mainSlot.value
-                    SlotType.EMBEDDING -> embeddingSlot.value
-                    SlotType.RERANK -> rerankSlot.value
+        if (enabled && !autoLoadOnStartup.value) return
+        viewModelScope.launch {
+            edits.withLock {
+                if (_isEngineEnabled.value != enabled) return@withLock
+                if (!enabled) {
+                    // 关闭总开关只卸载内存模型，保留已保存路径。
+                    SlotType.entries.forEach { engine.unloadModel(it) }
+                    return@withLock
                 }
-                if (!current.isLoaded && !current.isLoading) {
-                    loadModel(slot, path)
+
+                val toRestore = withContext(ioDispatcher) {
+                    slotStore.readRestorableSlotPaths(
+                        localModelsEnabled = true,
+                        pinnedMainPath = revisions.read()?.path,
+                        autoLoadOnStartup = autoLoadOnStartup.value,
+                        fileExists = { File(it).isFile },
+                    )
                 }
-            }
-        } else {
-            // 关闭总开关只卸载内存模型，保留已保存的槽位路径，方便再次开启或启动时自动恢复。
-            viewModelScope.launch {
-                edits.withLock {
-                    if (_isEngineEnabled.value) return@withLock
-                    engine.unloadModel(SlotType.MAIN)
-                    engine.unloadModel(SlotType.EMBEDDING)
-                    engine.unloadModel(SlotType.RERANK)
+                for ((slot, path) in toRestore) {
+                    if (!_isEngineEnabled.value || !autoLoadOnStartup.value) break
+                    val current = when (slot) {
+                        SlotType.MAIN -> mainSlot.value
+                        SlotType.EMBEDDING -> embeddingSlot.value
+                        SlotType.RERANK -> rerankSlot.value
+                    }
+                    if (!current.isLoaded && !current.isLoading) loadModelLocked(slot, path, restoring = true)
                 }
             }
         }

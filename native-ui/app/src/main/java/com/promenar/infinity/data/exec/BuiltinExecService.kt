@@ -6,6 +6,8 @@ import com.promenar.infinity.data.secret.SecretCapture
 import com.promenar.infinity.domain.secret.SecretIoLimits
 import com.promenar.infinity.data.git.remote.GitRemoteSessions
 import com.promenar.infinity.data.git.remote.LinuxGitEnvironment
+import com.promenar.infinity.data.linux.commandRequest
+import com.promenar.infinity.data.linux.MIB
 import com.promenar.infinity.data.repository.WorkspaceChangeReport
 import com.promenar.infinity.data.repository.WorkspaceCommandHost
 import com.promenar.infinity.data.repository.WorkspaceCommandOutcome
@@ -97,7 +99,7 @@ class BuiltinExecService(
         val spec = linuxExecSpec(source, root, kind, sessionId?.let { visibleMounts(it) }.orEmpty(), File(system.getValue("INFINITY_SKILLS")), home, launchBinding, workspaceDirectory,
             wakeInbox = sessionId?.let { wakeInbox(it) })
         val launch = checkNotNull(linuxRuntime).prepareLaunch(spec.copy(environment = spec.environment + gitEnvironment))
-        BuiltinCommandRequest(launch.command, launch.hostWorkingDirectory, launch.environment + ("TERM" to "xterm-256color"), stdin, seconds, terminal = true)
+        launch.commandRequest(seconds, stdin, terminal = true)
     }
 
     suspend fun runShell(
@@ -399,13 +401,13 @@ class BuiltinExecService(
         )
         val root = checkNotNull(physicalRoot)
         val settled = if (kind == ExecRunKind.LINUX) "会话私有索引已安排后台整理。" else if (directory != null) "自选工作区不做对账，可用 git status 查看改动。" else "工作区已按当前磁盘状态对账。"
+        val processFailure = output.processFailure()
         val (errorCode, guidance) = when {
             output.stoppedByUser -> "EXEC_STOPPED" to
                 "命令已被停止（job_stop、通知栏或聊天界面的停止），已结束整个进程组；${settled}若不是你调用 job_stop 停止的，不要自动重试，先询问用户。"
             output.timedOut -> "EXEC_TIMEOUT" to
                 "命令在 $timeoutSeconds 秒内未结束，已结束整个进程组；${settled}可增大 timeout_seconds（最多 600）或拆分任务。"
-            output.killedExternally -> "EXEC_PROCESS_KILLED" to
-                "命令进程被系统结束（SIGKILL），可能是内存不足或后台被冻结；$settled"
+            processFailure != null -> processFailure.first to (processFailure.second + settled)
             outcome.reconcileError != null -> "WORKSPACE_RECONCILE_FAILED" to
                 "命令已执行，但工作区索引未能更新（${outcome.reconcileError}）；文件工具可能看到旧状态，可再运行一次 shell_exec（如 true）重新对账。"
             else -> null to warningGuidance(outcome.changes)
@@ -423,7 +425,7 @@ class BuiltinExecService(
             stderrTruncated = output.stderrTruncated,
             removedWhenTruncated = CommandTruncation.HEAD_REMOVED,
             backendFields = JsonObject(
-                fields +
+                fields + output.resourceFields() +
                     (if (output.pausedMillis >= PAUSE_REPORT_MILLIS) mapOf("paused_ms" to JsonPrimitive(output.pausedMillis)) else emptyMap()),
             ),
         )
@@ -572,4 +574,23 @@ class BuiltinExecService(
             }
         }
     }
+}
+
+internal fun BuiltinCommandOutput.processFailure(): Pair<String, String>? {
+    val peak = peakMemoryBytes?.let { "实测进程树内存峰值 ${it / MIB} MiB。" }.orEmpty()
+    return when {
+        memoryPressureCancelled -> "EXEC_MEMORY_LIMIT_CANCELLED" to
+            "Linux 进程树超出内存预算或系统发出低内存信号，已结束任务。$peak 可检查是否有本地模型常驻，或拆分任务。"
+        killedExternally -> "EXEC_PROCESS_KILLED" to
+            "命令进程被系统结束（SIGKILL），可能是内存不足或后台被冻结。$peak"
+        forkEnosysDetected && exitCode != 0 -> "EXEC_FORK_ENOSYS" to
+            "Linux 虚拟环境的进程创建系统调用受限（ENOSYS），命令未能正常创建子进程。"
+        else -> null
+    }
+}
+
+internal fun BuiltinCommandOutput.resourceFields() = buildMap {
+    if (memoryPressureCancelled) put("memoryPressureCancelled", JsonPrimitive(true))
+    if (forkEnosysDetected) put("forkEnosys", JsonPrimitive(true))
+    peakMemoryBytes?.let { put("peakMemoryMb", JsonPrimitive(it / MIB)) }
 }
