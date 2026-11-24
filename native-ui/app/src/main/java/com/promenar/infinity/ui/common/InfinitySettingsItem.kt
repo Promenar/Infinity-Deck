@@ -1,6 +1,8 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -24,6 +26,7 @@ import androidx.compose.ui.unit.Dp
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.breakableIdentifier
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun InfinitySettingsItem(
     icon: ImageVector? = null,
@@ -53,20 +56,37 @@ fun InfinitySettingsItem(
     subtitleContent: (@Composable () -> Unit)? = null,
     /** 多段元数据标题使用 [InfinityMetaLine]，并沿用标题的行数和横滑规则。 */
     titleSegments: List<String>? = null,
+    /** 可选长按动作；非空时使用 combinedClickable 并保留原有短按与尾部样式。 */
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
 ) {
     val haptics = LocalInfinityHaptics.current
     // 单选行在选中项变化时轻振；按钮行是导航或打开面板，不振动。
     val radioSelected = selected.takeIf { role == Role.RadioButton }
+    val clickModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(
+            enabled = enabled,
+            role = role,
+            onClickLabel = onClickLabel,
+            onLongClickLabel = onLongClickLabel,
+            onLongClick = onLongClick,
+            onClick = {
+                radioSelected?.let(haptics::select)
+                onClick()
+            },
+        )
+    } else {
+        Modifier.clickable(enabled = enabled, role = role, onClickLabel = onClickLabel) {
+            radioSelected?.let(haptics::select)
+            onClick()
+        }
+    }
     InfinitySettingsRowLayout(
         title = title,
         titleSegments = titleSegments,
         subtitle = subtitle,
         icon = icon,
-        modifier = modifier.semantics { if (selected != null) this.selected = selected }
-            .clickable(enabled = enabled, role = role, onClickLabel = onClickLabel) {
-                radioSelected?.let(haptics::select)
-                onClick()
-            },
+        modifier = modifier.semantics { if (selected != null) this.selected = selected }.then(clickModifier),
         enabled = enabled,
         leadingSpacer = leadingSpacer,
         titleTextStyle = titleTextStyle,

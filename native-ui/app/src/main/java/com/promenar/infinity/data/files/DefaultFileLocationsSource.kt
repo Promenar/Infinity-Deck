@@ -10,6 +10,7 @@ import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationCapabilities
 import com.promenar.infinity.domain.files.FileLocationKind
+import com.promenar.infinity.domain.files.FileLocationStorageKind
 import com.promenar.infinity.domain.files.FileLocationsSource
 import com.promenar.infinity.domain.storage.ExternalMount
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.transformLatest
@@ -42,6 +44,9 @@ internal class DefaultFileLocationsSource(
     private val invalidateGitStatus: () -> Unit = {},
     private val cachedGitStatus: suspend (String) -> GitInspectResult<GitStatus>? = { null },
     private val cachedWorkspaceGitStatus: suspend (SessionWorkspace.Directory) -> GitInspectResult<GitStatus>? = { null },
+    private val agentWorkspaceIds: Flow<List<String>> = flowOf(emptyList()),
+    private val projectsRootPath: () -> String? = { null },
+    private val linuxHomePath: () -> String? = { "/root" },
 ) : FileLocationsSource {
     private val knownGitStatus = java.util.concurrent.ConcurrentHashMap<String, GitStatus>()
     private val gitRefresh = MutableStateFlow(0)
@@ -54,17 +59,20 @@ internal class DefaultFileLocationsSource(
 
     /** 先发出不含 Git 信息的位置，避免逐个项目读取 Git 状态时侧栏长时间为空；随后补发带 Git 信息的结果。 */
     override fun observeLibraryLocations(): Flow<List<FileLocation>> =
-        combine(sessions, workspaces, linuxReady, mountSnapshot, gitRefresh) { rows, registered, linux, attached, _ ->
-            LibrarySnapshot(rows, registered, linux, attached)
-        }.onStart { invalidateGitStatus() }.transformLatest { snapshot ->
+        combine(
+            combine(sessions, workspaces, linuxReady, mountSnapshot, agentWorkspaceIds) { rows, registered, linux, attached, agentWs ->
+                LibrarySnapshot(rows, registered, linux, attached, agentWs)
+            },
+            gitRefresh,
+        ) { snapshot, _ -> snapshot }.onStart { invalidateGitStatus() }.transformLatest { snapshot ->
             emit(libraryLocations(snapshot, git = false))
             emit(libraryLocations(snapshot, git = true))
         }.distinctUntilChanged()
 
     /** 置顶校验只需要位置 ID：沿用资料位置的组成规则，但不读取 Git 状态，避免每个资源管理器都为全部项目跑一遍 Git。 */
     fun observeLibraryLocationIds(): Flow<Set<String>> =
-        combine(sessions, workspaces, linuxReady, mountSnapshot) { rows, registered, linux, attached ->
-            libraryLocations(LibrarySnapshot(rows, registered, linux, attached), git = false, useCached = false).mapTo(mutableSetOf()) { it.id }
+        combine(sessions, workspaces, linuxReady, mountSnapshot, agentWorkspaceIds) { rows, registered, linux, attached, agentWs ->
+            libraryLocations(LibrarySnapshot(rows, registered, linux, attached, agentWs), git = false, useCached = false).mapTo(mutableSetOf()) { it.id }
         }.distinctUntilChanged()
 
     private data class LibrarySnapshot(
@@ -72,18 +80,30 @@ internal class DefaultFileLocationsSource(
         val registered: List<WorkspaceEntity>,
         val linux: Boolean,
         val attached: List<ExternalMount>,
+        val agentWorkspaceIds: List<String> = emptyList(),
     )
 
     private suspend fun libraryLocations(snapshot: LibrarySnapshot, git: Boolean, useCached: Boolean = true): List<FileLocation> {
-        val (rows, registered, linux, attached) = snapshot
+        val (rows, registered, linux, attached, agentWsIds) = snapshot
         return withContext(Dispatchers.IO) {
             val visibleSessions = rows.filterNot(::isSystemSession)
             val result = mutableListOf(libraryLocation(), sessionsLocation())
             val worktreeIds = mutableSetOf<String>()
             val sessionByWorkspace = visibleSessions.filter { it.workspaceId != null && it.worktreeDirectory == null }.groupBy { it.workspaceId }
+            val sessionRefsByWorkspace = rows.mapNotNull { it.workspaceId }.groupingBy { it }.eachCount()
+            val agentRefsByWorkspace = agentWsIds.groupingBy { it }.eachCount()
             registered.filter { it.kind in setOf(WorkspaceEntity.KIND_PROJECT, WorkspaceEntity.KIND_SHARED) }.forEach { workspace ->
                 val directory = resolveWorkspace(workspace.id) as? SessionWorkspace.Directory
-                result += workspaceLocation(workspace, sessionByWorkspace[workspace.id]?.firstOrNull()?.id, linux, directory, git, useCached)
+                result += workspaceLocation(
+                    workspace = workspace,
+                    sessionId = sessionByWorkspace[workspace.id]?.firstOrNull()?.id,
+                    linux = linux,
+                    directory = directory,
+                    git = git,
+                    useCached = useCached,
+                    referenceSessions = sessionRefsByWorkspace[workspace.id] ?: 0,
+                    referenceAgents = agentRefsByWorkspace[workspace.id] ?: 0,
+                )
             }
             visibleSessions.filter { it.worktreeDirectory != null }.forEach { session ->
                 val resolved = resolveSession(session.id)
@@ -167,12 +187,24 @@ internal class DefaultFileLocationsSource(
             gitDetached = status?.detached == true, gitHeadShortSha = status?.head?.take(7),
         )
     }
-    internal fun linuxLocation() = FileLocation("linux:home", FileLocationKind.LINUX_HOME, titles.linux,
-        FileLocationCapabilities(writable = true, deletable = true, archive = true, terminal = true))
+    internal fun linuxLocation() = FileLocation(
+        id = "linux:home",
+        kind = FileLocationKind.LINUX_HOME,
+        title = titles.linux,
+        capabilities = FileLocationCapabilities(writable = true, deletable = true, archive = true, terminal = true),
+        storageKind = FileLocationStorageKind.LINUX_HOME,
+        displayPath = linuxHomePath(),
+    )
 
     private suspend fun workspaceLocation(
-        workspace: WorkspaceEntity, sessionId: String?, linux: Boolean, directory: SessionWorkspace.Directory?, git: Boolean = true,
+        workspace: WorkspaceEntity,
+        sessionId: String?,
+        linux: Boolean,
+        directory: SessionWorkspace.Directory?,
+        git: Boolean = true,
         useCached: Boolean = true,
+        referenceSessions: Int = 0,
+        referenceAgents: Int = 0,
     ): FileLocation {
         val available = directory != null
         val key = "workspace:${workspace.id}"
@@ -187,9 +219,26 @@ internal class DefaultFileLocationsSource(
                 is GitInspectResult.Failure -> null
             }.also { if (it == null) knownGitStatus.remove(key) else knownGitStatus[key] = it }
         }
+        val isBranch = workspace.kind == BranchWorktreeWorkspaceResolver.KIND
+        val storageKind = when {
+            isBranch -> FileLocationStorageKind.BRANCH_WORKTREE
+            workspace.kind == WorkspaceEntity.KIND_SHARED -> FileLocationStorageKind.SHARED_STORAGE
+            workspace.location.startsWith("session-") -> FileLocationStorageKind.RETAINED_SESSION
+            else -> FileLocationStorageKind.APP_PROJECT
+        }
+        val storageName = when {
+            isBranch -> null
+            workspace.kind == WorkspaceEntity.KIND_SHARED -> compactSharedDisplayPath(workspace.location)
+            else -> workspace.location
+        }
+        val displayPath = directory?.root?.let { runCatching { it.canonicalPath }.getOrDefault(it.path) } ?: when (workspace.kind) {
+            WorkspaceEntity.KIND_PROJECT -> projectsRootPath()?.let { "${it.trimEnd('/')}/${workspace.location}" }
+            WorkspaceEntity.KIND_SHARED -> workspace.location
+            else -> null
+        }
         return FileLocation(
             id = "workspace:${workspace.id}",
-            kind = if (workspace.kind == BranchWorktreeWorkspaceResolver.KIND) FileLocationKind.BRANCH_WORKTREE else FileLocationKind.PROJECT,
+            kind = if (isBranch) FileLocationKind.BRANCH_WORKTREE else FileLocationKind.PROJECT,
             title = workspace.displayName,
             capabilities = FileLocationCapabilities(writable = available, deletable = available, archive = available,
                 git = status != null, terminal = available && linux && sessionId != null),
@@ -197,15 +246,30 @@ internal class DefaultFileLocationsSource(
             gitChangeCount = status?.changeCount?.takeUnless { status.truncated },
             gitDetached = status?.detached == true,
             gitHeadShortSha = status?.head?.take(7),
+            storageKind = storageKind,
+            workspaceId = if (isBranch) null else workspace.id,
+            storageName = storageName,
+            displayPath = displayPath,
+            referenceSessions = referenceSessions,
+            referenceAgents = referenceAgents,
         )
     }
 
     private fun externalLocation(mount: ExternalMount): FileLocation {
         val lost = mount.unavailableReason != null || !mountAvailable(mount)
         val writable = !mount.readOnly && mount.sourceType != "knowledge_base" && !lost
-        return FileLocation("external:${mount.id}", FileLocationKind.EXTERNAL_FOLDER, mount.alias,
-            FileLocationCapabilities(writable = writable, deletable = writable, archive = writable, terminal = false),
-            accessLost = lost)
+        val storageName = if (mount.sourceType == "real_path") compactSharedDisplayPath(mount.sourceId) else null
+        return FileLocation(
+            id = "external:${mount.id}",
+            kind = FileLocationKind.EXTERNAL_FOLDER,
+            title = mount.alias,
+            capabilities = FileLocationCapabilities(writable = writable, deletable = writable, archive = writable, terminal = false),
+            accessLost = lost,
+            storageKind = FileLocationStorageKind.EXTERNAL_MOUNT,
+            mountId = mount.id,
+            storageName = storageName,
+            displayPath = mount.sourceId,
+        )
     }
 
     companion object {
@@ -240,4 +304,19 @@ internal fun sessionFolderNames(rows: List<SessionEntity>): Map<String, String> 
         result[session.id] = name
     }
     return result
+}
+
+/** 手机共享存储路径的紧凑副标题：剥离主存储卷前缀，深层路径保留末两级。 */
+internal fun compactSharedDisplayPath(raw: String): String {
+    val trimmed = raw.trim().trimEnd('/')
+    val withoutPrimary = listOf("/storage/emulated/0", "/sdcard", "/storage/self/primary")
+        .firstOrNull { trimmed == it || trimmed.startsWith("$it/") }
+        ?.let { prefix -> trimmed.removePrefix(prefix).ifEmpty { "/" } }
+        ?: trimmed
+    val segments = withoutPrimary.split('/').filter(String::isNotEmpty)
+    return when {
+        segments.isEmpty() -> "/"
+        segments.size <= 2 -> "/" + segments.joinToString("/")
+        else -> "…/" + segments.takeLast(2).joinToString("/")
+    }
 }

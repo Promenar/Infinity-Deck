@@ -55,12 +55,13 @@ data class FileHostAction(
     val onInvoke: (List<FileItem>) -> Unit,
 )
 
-/** 作用于当前文件夹的宿主动作，出现在页头“更多”菜单末尾，例如 Linux“在终端中打开”。 */
+/** 作用于当前文件夹的宿主动作，出现在页头“更多”菜单末尾，例如 Linux“在终端中打开”或工作区“删除工作区”。 */
 @Immutable
 data class FileFolderAction(
     val id: String,
     val icon: ImageVector,
     val label: String,
+    val destructive: Boolean = false,
     /** 参数为当前位置 id 与位置内路径。 */
     val onInvoke: (locationId: String, path: String) -> Unit,
 )

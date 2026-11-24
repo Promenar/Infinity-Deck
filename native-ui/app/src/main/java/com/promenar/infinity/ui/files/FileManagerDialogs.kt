@@ -21,20 +21,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileItem
+import com.promenar.infinity.domain.files.FileLocation
+import com.promenar.infinity.domain.files.FileLocationKind
+import com.promenar.infinity.domain.files.FileLocationStorageKind
+import com.promenar.infinity.domain.files.fullDisplayPath
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.files.state.FileManagerUiState
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.breakableIdentifier
 import com.promenar.infinity.ui.theme.forInput
+import kotlinx.coroutines.delay
 
 /*
  * 资源管理器的对话框：新建、重命名、删除确认、压缩命名、粘贴为文件与详情。
@@ -153,14 +162,20 @@ internal fun FileManagerDialogHost(
                 confirmButtonModifier = Modifier.testTag(UiTags.FM_DIALOG_CONFIRM),
             )
         }
-        is FileManagerDialog.Details -> FileDetailsDialog(
-            title = dialog.items.singleOrNull()?.name ?: pluralStringResource(R.plurals.fm_selected_count, dialog.items.size, dialog.items.size),
-            rows = detailsRows(dialog.items, state),
-            onDismiss = onDismiss,
-        )
+        is FileManagerDialog.Details -> {
+            val single = dialog.items.singleOrNull()
+            val copyPath = single?.let { state.location?.fullDisplayPath(it.ref.path) }
+            FileDetailsDialog(
+                title = single?.name ?: pluralStringResource(R.plurals.fm_selected_count, dialog.items.size, dialog.items.size),
+                detailRows = detailsInfoRows(dialog.items, state),
+                copyPath = copyPath,
+                onDismiss = onDismiss,
+            )
+        }
         FileManagerDialog.FolderDetails -> FileDetailsDialog(
             title = state.currentFolderTitle(),
-            rows = folderDetailsRows(state),
+            detailRows = folderDetailsInfoRows(state),
+            copyPath = state.location?.fullDisplayPath(state.path),
             onDismiss = onDismiss,
         )
     }
@@ -220,35 +235,64 @@ internal fun FileNameDialog(
     )
 }
 
-/** 详情：标签与值两列，值可折行。 */
+/** 详情弹窗中的单行键值项；[monospace] 为 true 时以等宽可折行字体展示完整路径。 */
+internal data class FileInfoRow(val label: String, val value: String, val monospace: Boolean = false)
+
+/** 详情：标签与值两列，值可折行；提供 [copyPath] 时在左侧渲染“复制路径”胶囊按钮。 */
 @Composable
-internal fun FileDetailsDialog(title: String, rows: List<Pair<String, String>>, onDismiss: () -> Unit) {
+internal fun FileDetailsDialog(
+    title: String,
+    detailRows: List<FileInfoRow>,
+    onDismiss: () -> Unit,
+    copyPath: String? = null,
+) {
+    val clipboard = LocalClipboardManager.current
+    var copied by remember(copyPath) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1_500)
+            copied = false
+        }
+    }
     InfinityConfirmDialog(
         title = title,
         message = "",
         confirmText = stringResource(R.string.fm_close),
-        cancelText = null,
+        cancelText = copyPath?.let { stringResource(if (copied) R.string.fm_path_copied else R.string.fm_copy_path) },
         onConfirm = onDismiss,
-        onCancel = onDismiss,
+        onCancel = {
+            if (copyPath != null) {
+                clipboard.setText(AnnotatedString(copyPath))
+                copied = true
+            } else {
+                onDismiss()
+            }
+        },
+        onDismissRequest = onDismiss,
         confirmButtonModifier = Modifier.testTag(UiTags.FM_DIALOG_CONFIRM),
-        content = { FileInfoRows(rows) },
+        content = { FileInfoDetailRows(detailRows) },
     )
 }
 
 @Composable
-internal fun FileInfoRows(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) {
+internal fun FileInfoRows(rows: List<Pair<String, String>>, modifier: Modifier = Modifier) =
+    FileInfoDetailRows(rows.map { (k, v) -> FileInfoRow(k, v) }, modifier)
+
+@Composable
+internal fun FileInfoDetailRows(rows: List<FileInfoRow>, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-        rows.forEach { (label, value) ->
+        rows.forEach { row ->
             Row(Modifier.fillMaxWidth()) {
                 Text(
-                    text = label,
+                    text = row.label,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.width(96.dp),
                 )
                 Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = if (row.monospace) row.value.breakableIdentifier() else row.value,
+                    style = if (row.monospace) MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace)
+                    else MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
@@ -262,41 +306,101 @@ internal fun locationPathText(state: FileManagerUiState): String =
     state.fullCrumbs().joinToString(" › ") { it.title }
 
 @Composable
-private fun detailsRows(items: List<FileItem>, state: FileManagerUiState): List<Pair<String, String>> {
+internal fun locationOriginText(location: FileLocation): String = when (location.storageKind) {
+    FileLocationStorageKind.BUILTIN -> stringResource(
+        if (location.kind == FileLocationKind.KNOWLEDGE_BASE) R.string.fm_info_origin_builtin_kb
+        else R.string.fm_info_origin_builtin_sessions,
+    )
+    FileLocationStorageKind.RETAINED_SESSION -> stringResource(R.string.fm_info_origin_retained_session)
+    FileLocationStorageKind.APP_PROJECT -> stringResource(R.string.fm_info_origin_app_project)
+    FileLocationStorageKind.BRANCH_WORKTREE -> stringResource(R.string.fm_info_origin_branch_worktree)
+    FileLocationStorageKind.SHARED_STORAGE -> stringResource(R.string.fm_info_origin_shared_storage)
+    FileLocationStorageKind.EXTERNAL_MOUNT -> stringResource(R.string.fm_info_origin_external_mount)
+    FileLocationStorageKind.LINUX_HOME -> stringResource(R.string.fm_info_origin_linux_home)
+}
+
+@Composable
+internal fun workspaceReferenceText(sessions: Int, agents: Int): String = when {
+    sessions > 0 && agents > 0 -> stringResource(R.string.fm_info_ref_both, sessions, agents)
+    sessions > 0 -> stringResource(R.string.fm_info_ref_sessions, sessions)
+    agents > 0 -> stringResource(R.string.fm_info_ref_agents, agents)
+    else -> stringResource(R.string.fm_info_ref_none)
+}
+
+/** 一级位置列表长按打开“文件夹详情”时复用的属性表（含来源、完整路径、引用状态与 Git）。 */
+@Composable
+internal fun locationQuickDetailsRows(location: FileLocation, relativePath: String = "/"): List<FileInfoRow> {
+    val rows = mutableListOf<FileInfoRow>()
+    val cleanRel = relativePath.trim().trim('/')
+    val crumbText = if (cleanRel.isEmpty()) location.title else "${location.title} › ${cleanRel.replace("/", " › ")}"
+    rows += FileInfoRow(stringResource(R.string.fm_info_location), crumbText)
+    rows += FileInfoRow(stringResource(R.string.fm_info_origin), locationOriginText(location))
+    location.fullDisplayPath(relativePath)?.let { fullPath ->
+        rows += FileInfoRow(stringResource(R.string.fm_info_full_path), fullPath, monospace = true)
+    }
+    if (location.workspaceId != null) {
+        rows += FileInfoRow(
+            stringResource(R.string.fm_info_references),
+            workspaceReferenceText(location.referenceSessions, location.referenceAgents),
+        )
+    }
+    location.gitLabel()?.let { rows += FileInfoRow(stringResource(R.string.fm_info_git), it) }
+    return rows
+}
+
+@Composable
+private fun detailsInfoRows(items: List<FileItem>, state: FileManagerUiState): List<FileInfoRow> {
     val single = items.singleOrNull()
-    val rows = mutableListOf(stringResource(R.string.fm_info_location) to locationPathText(state))
+    val rows = mutableListOf(FileInfoRow(stringResource(R.string.fm_info_location), locationPathText(state)))
     if (single != null) {
-        rows += stringResource(R.string.fm_info_type) to stringResource(
-            if (single.isDirectory) R.string.fm_info_type_folder else R.string.fm_info_type_file,
+        state.location?.fullDisplayPath(single.ref.path)?.let { fullPath ->
+            rows += FileInfoRow(stringResource(R.string.fm_info_full_path), fullPath, monospace = true)
+        }
+        rows += FileInfoRow(
+            stringResource(R.string.fm_info_type),
+            stringResource(if (single.isDirectory) R.string.fm_info_type_folder else R.string.fm_info_type_file),
         )
         if (single.isDirectory) {
-            single.childCount?.let { rows += stringResource(R.string.fm_info_items) to pluralStringResource(R.plurals.fm_item_count, it, it) }
+            single.childCount?.let { rows += FileInfoRow(stringResource(R.string.fm_info_items), pluralStringResource(R.plurals.fm_item_count, it, it)) }
         } else {
-            rows += stringResource(R.string.fm_info_size) to formatFileSize(single.sizeBytes)
+            rows += FileInfoRow(stringResource(R.string.fm_info_size), formatFileSize(single.sizeBytes))
         }
-        rows += stringResource(R.string.fm_info_modified) to formatFileTime(single.lastModified)
+        rows += FileInfoRow(stringResource(R.string.fm_info_modified), formatFileTime(single.lastModified))
         single.knowledge?.let { knowledge ->
             val status = stringResource(knowledgeStateLabel(knowledge.state))
-            rows += stringResource(R.string.fm_info_knowledge) to (knowledge.failureReason?.let { "$status\n${knowledgeFailureText(it)}" } ?: status)
+            rows += FileInfoRow(
+                stringResource(R.string.fm_info_knowledge),
+                knowledge.failureReason?.let { "$status\n${knowledgeFailureText(it)}" } ?: status,
+            )
         }
     } else {
-        rows += stringResource(R.string.fm_info_items) to pluralStringResource(R.plurals.fm_item_count, items.size, items.size)
-        rows += stringResource(R.string.fm_info_size) to formatFileSize(items.filterNot { it.isDirectory }.sumOf { it.sizeBytes })
+        rows += FileInfoRow(stringResource(R.string.fm_info_items), pluralStringResource(R.plurals.fm_item_count, items.size, items.size))
+        rows += FileInfoRow(stringResource(R.string.fm_info_size), formatFileSize(items.filterNot { it.isDirectory }.sumOf { it.sizeBytes }))
     }
     return rows
 }
 
 @Composable
-private fun folderDetailsRows(state: FileManagerUiState): List<Pair<String, String>> {
+private fun folderDetailsInfoRows(state: FileManagerUiState): List<FileInfoRow> {
     val folders = state.items.count { it.isDirectory }
     val files = state.items.size - folders
-    val rows = mutableListOf(
-        stringResource(R.string.fm_info_location) to locationPathText(state),
-        stringResource(R.string.fm_info_folders) to pluralStringResource(R.plurals.fm_item_count, folders, folders),
-        stringResource(R.string.fm_info_files) to pluralStringResource(R.plurals.fm_item_count, files, files),
-        stringResource(R.string.fm_info_size) to formatFileSize(state.items.filterNot { it.isDirectory }.sumOf { it.sizeBytes }),
-    )
-    state.location?.freeBytes?.let { rows += stringResource(R.string.fm_info_free) to formatFileSize(it) }
-    state.location?.gitLabel()?.let { rows += stringResource(R.string.fm_info_git) to it }
+    val rows = mutableListOf(FileInfoRow(stringResource(R.string.fm_info_location), locationPathText(state)))
+    state.location?.let { loc ->
+        rows += FileInfoRow(stringResource(R.string.fm_info_origin), locationOriginText(loc))
+        loc.fullDisplayPath(state.path)?.let { fullPath ->
+            rows += FileInfoRow(stringResource(R.string.fm_info_full_path), fullPath, monospace = true)
+        }
+        if (loc.workspaceId != null) {
+            rows += FileInfoRow(
+                stringResource(R.string.fm_info_references),
+                workspaceReferenceText(loc.referenceSessions, loc.referenceAgents),
+            )
+        }
+    }
+    rows += FileInfoRow(stringResource(R.string.fm_info_folders), pluralStringResource(R.plurals.fm_item_count, folders, folders))
+    rows += FileInfoRow(stringResource(R.string.fm_info_files), pluralStringResource(R.plurals.fm_item_count, files, files))
+    rows += FileInfoRow(stringResource(R.string.fm_info_size), formatFileSize(state.items.filterNot { it.isDirectory }.sumOf { it.sizeBytes }))
+    state.location?.freeBytes?.let { rows += FileInfoRow(stringResource(R.string.fm_info_free), formatFileSize(it)) }
+    state.location?.gitLabel()?.let { rows += FileInfoRow(stringResource(R.string.fm_info_git), it) }
     return rows
 }

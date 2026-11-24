@@ -52,6 +52,8 @@ class DefaultFileManagerServices(
                 cachedWorkspaceGitStatus = { workspaceGit.cachedStatus(it) },
                 titles = LocationTitles(app.getString(R.string.file_manager_location_library),
                     app.getString(R.string.file_manager_location_sessions), app.getString(R.string.file_manager_location_linux)),
+                agentWorkspaceIds = app.database.agentDao().observeAll().map { agents -> agents.mapNotNull { it.defaultWorkspaceId } },
+                projectsRootPath = { runCatching { app.sessionWorkspaceResolver.projectsRoot.canonicalPath }.getOrDefault(app.sessionWorkspaceResolver.projectsRoot.path) },
             )
             val backends = FileManagerBackends(app)
             val guard = FileMutationGuard(app.sessionExecutionGate, isSessionBusy)

@@ -1700,7 +1700,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
 
-    /** 知识库“工作区”分组：只读浏览已登记目录，单个文件复制进知识库后经索引协调器入队。 */
+    /** 知识库与资料页工作区管理：只读浏览、单文件入库、重命名及按存储类型安全清理。 */
     val workspaceLibrary: com.promenar.infinity.data.workspace.WorkspaceLibrary by lazy {
         com.promenar.infinity.data.workspace.WorkspaceLibrary(
             workspaceDao = database.workspaceDao(),
@@ -1708,6 +1708,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             backendFor = sessionWorkspaceResolver::backend,
             knowledge = workspaceRepository,
             indexEvents = pendingDocumentIndexCoordinator,
+            projectsRoot = sessionWorkspaceResolver.projectsRoot,
+            onRemoved = { id -> fileManagerServices.pins.unpinLocation("workspace:$id") },
         )
     }
 

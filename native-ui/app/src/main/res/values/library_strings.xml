@@ -6,10 +6,40 @@
 
     <string name="library_group_views">Browse</string>
     <string name="library_group_locations">Locations</string>
-    <string name="library_group_pins">Pinned folders</string>
+    <string name="library_group_builtin_locations">Built-in</string>
+    <string name="library_group_app_workspaces">App workspaces</string>
+    <string name="library_group_app_workspaces_footer">Long-press an item to rename, inspect its full path, or delete it. This group hides automatically once empty.</string>
+    <string name="library_group_external_paths">External paths</string>
+    <string name="library_group_pins">Pinned</string>
     <string name="library_group_remembered">What agents remember</string>
     <string name="library_locations_more">More locations (%1$d)</string>
     <string name="library_locations_less">Show fewer</string>
+
+    <string name="library_location_retained_session">Retained session</string>
+    <string name="library_location_app_workspace">App workspace</string>
+    <string name="library_location_branch_worktree">Branch worktree</string>
+    <string name="library_location_external_mount">External mount</string>
+    <string name="library_location_action_rename">Rename</string>
+    <string name="library_location_action_rename_workspace">Rename workspace</string>
+    <string name="library_location_action_details">Folder details</string>
+    <string name="library_location_action_delete_workspace">Delete workspace</string>
+    <string name="library_location_action_remove_list">Remove from list</string>
+    <string name="library_location_action_unpin">Unpin shortcut</string>
+    <string name="library_workspace_delete_title">Delete workspace?</string>
+    <string name="library_workspace_delete_message_files">Remove \"%1$s\" and permanently delete its app-internal folder and all local files (%2$d files, %3$s). This cannot be undone.</string>
+    <string name="library_workspace_delete_message_empty">Remove \"%1$s\" and delete its empty app-internal folder. This cannot be undone.</string>
+    <string name="library_workspace_delete_confirm">Delete</string>
+    <string name="library_workspace_unlink_title">Remove from locations?</string>
+    <string name="library_workspace_unlink_message">Only removes \"%1$s\" from the locations list. Original files on your device storage will not be deleted.</string>
+    <string name="library_workspace_unlink_confirm">Remove</string>
+    <string name="library_workspace_referenced_sessions_agents">Still bound by %1$d conversation(s) and %2$d agent(s). Switch their workspace first.</string>
+    <string name="library_workspace_referenced_sessions">Still bound by %1$d conversation(s). Switch their workspace first.</string>
+    <string name="library_workspace_referenced_agents">Still set as default workspace by %1$d agent(s). Change it first.</string>
+    <string name="library_notice_workspace_renamed">Workspace renamed</string>
+    <string name="library_notice_workspace_deleted">Workspace and local files deleted</string>
+    <string name="library_notice_workspace_removed">Removed from locations</string>
+    <string name="library_notice_pin_removed">Shortcut unpinned</string>
+    <string name="library_notice_workspace_action_failed">Action failed</string>
 
     <string name="library_page_overview">Overview</string>
     <string name="library_page_recent">Recent</string>

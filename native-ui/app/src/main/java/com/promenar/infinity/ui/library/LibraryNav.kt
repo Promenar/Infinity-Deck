@@ -10,8 +10,10 @@ import com.promenar.infinity.ui.theme.InfinityMotion
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +48,7 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.ReportProblem
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.SdStorage
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Start
 import androidx.compose.material.icons.rounded.Terminal
@@ -78,7 +81,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationKind
+import com.promenar.infinity.domain.files.FileLocationStorageKind
 import com.promenar.infinity.domain.files.FileRef
+import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityPaneHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
@@ -94,6 +99,16 @@ import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.onSelectionIndicator
 import com.promenar.infinity.ui.theme.selectionIndicator
 
+/** 左列与外屏文件页的导航分组语义。 */
+internal enum class LibraryNavGroupKind {
+    VIEWS,
+    BUILTIN_LOCATIONS,
+    APP_WORKSPACES,
+    EXTERNAL_PATHS,
+    PINS,
+    REMEMBERED,
+}
+
 /** 左列与图标条的一项。 */
 @Immutable
 internal data class LibraryNavEntry(
@@ -102,14 +117,18 @@ internal data class LibraryNavEntry(
     val title: String,
     val subtitle: String? = null,
     val badge: String? = null,
+    val location: FileLocation? = null,
+    val pinRef: FileRef? = null,
 )
 
 @Immutable
 internal data class LibraryNavGroup(
+    val kind: LibraryNavGroupKind,
     val title: String,
     val entries: List<LibraryNavEntry>,
     val foldable: Boolean = false,
-    /** 组末的操作行（例如“外部文件夹”），不随折叠隐藏，点按执行 [onAction] 而不是打开页面。 */
+    val footer: String? = null,
+    /** 组末的操作行（例如“添加外部文件夹”），不随折叠隐藏，点按执行 [onAction] 而不是打开页面。 */
     val action: LibraryNavEntry? = null,
     val onAction: () -> Unit = {},
 )
@@ -117,13 +136,17 @@ internal data class LibraryNavGroup(
 /** 左列超过这个数量的位置折叠起来。 */
 private const val VISIBLE_LOCATIONS = 6
 
-internal fun FileLocation.navIcon(): ImageVector = when (kind) {
-    FileLocationKind.KNOWLEDGE_BASE -> Icons.Rounded.LocalLibrary
-    FileLocationKind.SESSION_WORKSPACE -> Icons.Rounded.FolderShared
-    FileLocationKind.PROJECT -> Icons.Rounded.Work
-    FileLocationKind.LINUX_HOME -> Icons.Rounded.Terminal
-    FileLocationKind.EXTERNAL_FOLDER -> Icons.Rounded.FolderOpen
-    FileLocationKind.BRANCH_WORKTREE -> Icons.Rounded.AccountTree
+internal fun FileLocation.navIcon(): ImageVector = when (storageKind) {
+    FileLocationStorageKind.SHARED_STORAGE -> Icons.Rounded.SdStorage
+    FileLocationStorageKind.EXTERNAL_MOUNT -> Icons.Rounded.FolderOpen
+    FileLocationStorageKind.BRANCH_WORKTREE -> Icons.Rounded.AccountTree
+    FileLocationStorageKind.LINUX_HOME -> Icons.Rounded.Terminal
+    FileLocationStorageKind.APP_PROJECT, FileLocationStorageKind.RETAINED_SESSION -> Icons.Rounded.Work
+    FileLocationStorageKind.BUILTIN -> when (kind) {
+        FileLocationKind.KNOWLEDGE_BASE -> Icons.Rounded.LocalLibrary
+        FileLocationKind.SESSION_WORKSPACE -> Icons.Rounded.FolderShared
+        else -> Icons.Rounded.FolderOpen
+    }
 }
 
 internal fun pinTitle(ref: FileRef): String = ref.path.trimEnd('/').substringAfterLast('/').ifEmpty { ref.path }
@@ -145,7 +168,32 @@ internal fun pinLabels(ref: FileRef, locations: LibraryLocations): Pair<String, 
     }
 }
 
-/** 左列四组导航。“智能体常用”需要引用回链，等后续工作提供数据后再加入视图组。 */
+@Composable
+private fun FileLocation.navSubtitle(accessLostText: String): String? {
+    if (accessLost) return accessLostText
+    val git = gitLabel()
+    val originAndName = when (storageKind) {
+        FileLocationStorageKind.BUILTIN, FileLocationStorageKind.LINUX_HOME -> null
+        FileLocationStorageKind.RETAINED_SESSION -> listOfNotNull(
+            git ?: stringResource(R.string.library_location_retained_session),
+            storageName,
+        ).joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
+        FileLocationStorageKind.APP_PROJECT -> listOfNotNull(
+            git ?: stringResource(R.string.library_location_app_workspace).takeIf { storageName == null || storageName == title },
+            storageName?.takeIf { it != title || git != null },
+        ).joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
+        FileLocationStorageKind.BRANCH_WORKTREE -> git ?: stringResource(R.string.library_location_branch_worktree)
+        FileLocationStorageKind.SHARED_STORAGE -> listOfNotNull(git, storageName)
+            .joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
+        FileLocationStorageKind.EXTERNAL_MOUNT -> listOfNotNull(
+            git,
+            storageName ?: stringResource(R.string.library_location_external_mount),
+        ).joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
+    }
+    return originAndName ?: git
+}
+
+/** 左列与外屏文件页共用的分组导航：内置位置、应用内工作区、外部路径、已固定四分明晰。 */
 @Composable
 internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGroup> {
     val pending by host.viewModel.pending.collectAsStateWithLifecycle()
@@ -153,8 +201,25 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
     val locations by host.viewModel.locations.collectAsStateWithLifecycle()
     val newBadge = overview?.newLongTermMemories?.takeIf { it > 0 }?.toString()
     val accessLost = stringResource(R.string.library_location_access_lost)
+    val categorized = remember(locations.locations) { categorizeLibraryLocations(locations.locations) }
+
+    @Composable
+    fun toEntry(location: FileLocation) = LibraryNavEntry(
+        key = LibraryPageKeys.browse(FileRef(location.id, "/")),
+        icon = location.navIcon(),
+        title = location.title,
+        subtitle = location.navSubtitle(accessLost),
+        location = location,
+    )
+
+    val builtinEntries = categorized.builtin.map { toEntry(it) }
+    val appWorkspaceEntries = categorized.appWorkspaces.map { toEntry(it) }
+    val externalEntries = categorized.externalPaths.map { toEntry(it) }
+    val locationById = remember(locations.locations) { locations.locations.associateBy { it.id } }
+
     return listOf(
         LibraryNavGroup(
+            kind = LibraryNavGroupKind.VIEWS,
             title = stringResource(R.string.library_group_views),
             entries = listOf(
                 LibraryNavEntry(LibraryPageKeys.OVERVIEW, Icons.Rounded.Dashboard, stringResource(R.string.library_page_overview)),
@@ -169,15 +234,21 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
             ),
         ),
         LibraryNavGroup(
-            title = stringResource(R.string.library_group_locations),
-            entries = locations.locations.map { location ->
-                LibraryNavEntry(
-                    key = LibraryPageKeys.browse(FileRef(location.id, "/")),
-                    icon = location.navIcon(),
-                    title = location.title,
-                    subtitle = if (location.accessLost) accessLost else location.gitLabel(),
-                )
-            },
+            kind = LibraryNavGroupKind.BUILTIN_LOCATIONS,
+            title = stringResource(R.string.library_group_builtin_locations),
+            entries = builtinEntries,
+        ),
+        LibraryNavGroup(
+            kind = LibraryNavGroupKind.APP_WORKSPACES,
+            title = stringResource(R.string.library_group_app_workspaces),
+            entries = appWorkspaceEntries,
+            foldable = true,
+            footer = stringResource(R.string.library_group_app_workspaces_footer),
+        ),
+        LibraryNavGroup(
+            kind = LibraryNavGroupKind.EXTERNAL_PATHS,
+            title = stringResource(R.string.library_group_external_paths),
+            entries = externalEntries,
             foldable = true,
             // 资料页级外部文件夹：挂在资料页上，不随会话删除。
             action = LibraryNavEntry(
@@ -188,6 +259,7 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
             onAction = host.onManageMounts,
         ),
         LibraryNavGroup(
+            kind = LibraryNavGroupKind.PINS,
             title = stringResource(R.string.library_group_pins),
             entries = locations.pins.map { ref ->
                 val (title, subtitle) = pinLabels(ref, locations)
@@ -196,10 +268,13 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
                     icon = Icons.Rounded.PushPin,
                     title = title,
                     subtitle = subtitle,
+                    location = locationById[ref.locationId],
+                    pinRef = ref,
                 )
             },
         ),
         LibraryNavGroup(
+            kind = LibraryNavGroupKind.REMEMBERED,
             title = stringResource(R.string.library_group_remembered),
             entries = listOf(
                 LibraryNavEntry(LibraryPageKeys.MEMORY, Icons.Rounded.Psychology, stringResource(R.string.library_page_memory), badge = newBadge),
@@ -207,7 +282,7 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
                 LibraryNavEntry(LibraryPageKeys.GRAPH, Icons.Rounded.Hub, stringResource(R.string.library_page_graph)),
             ),
         ),
-    ).filter { it.entries.isNotEmpty() }
+    ).filter { it.entries.isNotEmpty() || it.action != null }
 }
 
 /** 内屏左列：标题、添加入口、问资料与四组导航。 */
@@ -234,22 +309,38 @@ internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> 
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = InfinitySpacing.XLarge),
         ) {
             groups.forEach { group ->
-                item(key = "group-${group.title}") { LibraryNavGroupTitle(group.title) }
+                item(key = "group-${group.kind}") { LibraryNavGroupTitle(group.title) }
                 val folded = group.foldable && !locationsExpanded && group.entries.size > VISIBLE_LOCATIONS
                 val visible = if (folded) group.entries.take(VISIBLE_LOCATIONS) else group.entries
                 // 同组只要有一项带第二行（如 Git 分支），整组都按双行高排版。
                 val twoLine = group.entries.any { it.subtitle != null }
-                items(visible, key = { "nav-${group.title}-${it.key}" }) { entry ->
-                    LibraryNavRow(
-                        entry,
-                        selected = entry.key == selected,
-                        twoLine = twoLine,
-                        onClick = { host.navigator.openRoot(entry.key) },
-                        modifier = Modifier.animateItem(),
-                    )
+                items(visible, key = { "nav-${group.kind}-${it.key}" }) { entry ->
+                    val locationActions = host.locationActions
+                    val hasContextMenu = locationActions != null && (entry.location != null || entry.pinRef != null)
+                    var menuOpen by remember(entry.key) { mutableStateOf(false) }
+                    Box(Modifier.animateItem()) {
+                        LibraryNavRow(
+                            entry,
+                            selected = entry.key == selected,
+                            twoLine = twoLine,
+                            onClick = { host.navigator.openRoot(entry.key) },
+                            onLongClick = if (hasContextMenu) ({ menuOpen = true }) else null,
+                        )
+                        if (hasContextMenu) {
+                            InfinityDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                LibraryLocationContextMenuItems(
+                                    entryTitle = entry.title,
+                                    location = entry.location,
+                                    pinRef = entry.pinRef,
+                                    actions = locationActions,
+                                    dismiss = { menuOpen = false },
+                                )
+                            }
+                        }
+                    }
                 }
                 if (group.foldable && group.entries.size > VISIBLE_LOCATIONS) {
-                    item(key = "fold-${group.title}") {
+                    item(key = "fold-${group.kind}") {
                         LibraryFoldRow(
                             modifier = Modifier.animateItem(),
                             twoLine = twoLine,
@@ -264,7 +355,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> 
                     }
                 }
                 group.action?.let { action ->
-                    item(key = "action-${group.title}") {
+                    item(key = "action-${group.kind}") {
                         LibraryNavRow(action, selected = false, twoLine = twoLine, onClick = group.onAction, modifier = Modifier.animateItem())
                     }
                 }
@@ -288,6 +379,7 @@ private fun LibraryNavGroupTitle(title: String) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LibraryNavRow(
     entry: LibraryNavEntry,
@@ -295,6 +387,7 @@ internal fun LibraryNavRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     twoLine: Boolean = entry.subtitle != null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     // 选中高亮随切换渐变，与设置页左列一致。
     val container by animateColorAsState(
@@ -307,13 +400,18 @@ internal fun LibraryNavRow(
         tween(InfinityMotion.DurationShort),
         label = "nav-row-content",
     )
+    val clickMod = if (onLongClick != null) {
+        Modifier.combinedClickable(role = Role.Tab, onClick = onClick, onLongClick = onLongClick)
+    } else {
+        Modifier.clickable(role = Role.Tab, onClick = onClick)
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = InfinitySpacing.ScreenHorizontal)
             .clip(MaterialTheme.shapes.large)
             .background(container)
-            .clickable(role = Role.Tab, onClick = onClick)
+            .then(clickMod)
             .heightIn(min = navRowHeight(twoLine))
             .padding(horizontal = InfinitySpacing.Medium, vertical = InfinitySpacing.Small)
             .testTag(LibraryTags.navItem(entry.key)),
@@ -361,14 +459,18 @@ private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit,
     }
 }
 
-/** 展开后的图标条：浏览、首个位置与智能体记住的。 */
+/** 展开后的图标条：浏览、首个内置位置与智能体记住的。 */
 @Composable
 internal fun LibraryStrip(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)
     val selected = libraryRootKey(host.navigator.stack)
     val entries = groups.flatMap { group ->
-        if (group.foldable) group.entries.take(1) else group.entries
-    }.filterNot { it.icon == Icons.Rounded.PushPin }
+        when (group.kind) {
+            LibraryNavGroupKind.VIEWS, LibraryNavGroupKind.REMEMBERED -> group.entries
+            LibraryNavGroupKind.BUILTIN_LOCATIONS -> group.entries.take(1)
+            LibraryNavGroupKind.APP_WORKSPACES, LibraryNavGroupKind.EXTERNAL_PATHS, LibraryNavGroupKind.PINS -> emptyList()
+        }
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -510,21 +612,45 @@ internal fun LibraryPageHeader(
     }
 }
 
-/** 外屏“文件”页的位置与固定项：与设置页相同的圆角分组列表，行尾带箭头。 */
+/** 外屏“文件”页的分类位置与已固定项：四分组圆角列表，行尾保持小三角箭头，长按条目打开黑曜石管理菜单。 */
 @Composable
 internal fun LibraryLocationRows(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)
-    groups.filter { it.foldable || it.entries.any { e -> e.icon == Icons.Rounded.PushPin } }.forEach { group ->
-        InfinitySettingsSection(title = group.title) {
+    val locationActions = host.locationActions
+    groups.filter {
+        it.kind in setOf(
+            LibraryNavGroupKind.BUILTIN_LOCATIONS,
+            LibraryNavGroupKind.APP_WORKSPACES,
+            LibraryNavGroupKind.EXTERNAL_PATHS,
+            LibraryNavGroupKind.PINS,
+        )
+    }.forEach { group ->
+        InfinitySettingsSection(title = group.title, footer = group.footer) {
             group.entries.forEach { entry ->
-                InfinitySettingsItem(
-                    icon = entry.icon,
-                    title = entry.title,
-                    subtitle = entry.subtitle,
-                    onClick = { host.navigator.push(entry.key) },
-                    showChevron = true,
-                    modifier = Modifier.testTag(LibraryTags.navItem(entry.key)),
-                )
+                val hasContextMenu = locationActions != null && (entry.location != null || entry.pinRef != null)
+                var menuOpen by remember(entry.key) { mutableStateOf(false) }
+                Box(Modifier.fillMaxWidth()) {
+                    InfinitySettingsItem(
+                        icon = entry.icon,
+                        title = entry.title,
+                        subtitle = entry.subtitle,
+                        onClick = { host.navigator.push(entry.key) },
+                        onLongClick = if (hasContextMenu) ({ menuOpen = true }) else null,
+                        showChevron = true,
+                        modifier = Modifier.testTag(LibraryTags.navItem(entry.key)),
+                    )
+                    if (hasContextMenu) {
+                        InfinityDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            LibraryLocationContextMenuItems(
+                                entryTitle = entry.title,
+                                location = entry.location,
+                                pinRef = entry.pinRef,
+                                actions = locationActions,
+                                dismiss = { menuOpen = false },
+                            )
+                        }
+                    }
+                }
             }
             group.action?.let { action ->
                 InfinitySettingsItem(

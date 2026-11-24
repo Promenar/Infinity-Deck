@@ -34,8 +34,8 @@
     <string name="fm_view_grid">网格视图</string>
     <string name="fm_show_hidden">显示隐藏文件</string>
     <string name="fm_hide_hidden">不显示隐藏文件</string>
-    <string name="fm_pin">固定到侧栏</string>
-    <string name="fm_unpin">从侧栏取消固定</string>
+    <string name="fm_pin">固定为快捷入口</string>
+    <string name="fm_unpin">取消快捷固定</string>
     <string name="fm_folder_details">文件夹详情</string>
     <string name="fm_open">打开</string>
     <string name="fm_open_with">打开方式</string>
@@ -141,6 +141,23 @@
     <string name="fm_info_files">文件</string>
     <string name="fm_info_free">可用空间</string>
     <string name="fm_info_git">Git 分支</string>
+    <string name="fm_info_origin">来源</string>
+    <string name="fm_info_full_path">完整路径</string>
+    <string name="fm_info_references">引用状态</string>
+    <string name="fm_info_ref_none">未被会话或智能体引用</string>
+    <string name="fm_info_ref_sessions">被 %1$d 个会话绑定</string>
+    <string name="fm_info_ref_agents">被 %1$d 个智能体绑定</string>
+    <string name="fm_info_ref_both">被 %1$d 个会话、%2$d 个智能体绑定</string>
+    <string name="fm_info_origin_builtin_kb">应用内资料库（默认建索引）</string>
+    <string name="fm_info_origin_builtin_sessions">会话私有工作区汇总</string>
+    <string name="fm_info_origin_retained_session">保留的会话文件夹（不进备份，卸载删除）</string>
+    <string name="fm_info_origin_app_project">应用内工作区（不进备份，卸载删除）</string>
+    <string name="fm_info_origin_branch_worktree">Git 分支 worktree 工作区</string>
+    <string name="fm_info_origin_shared_storage">手机共享存储工作区</string>
+    <string name="fm_info_origin_external_mount">外部授权挂载文件夹</string>
+    <string name="fm_info_origin_linux_home">Alpine Linux 环境主目录</string>
+    <string name="fm_copy_path">复制路径</string>
+    <string name="fm_path_copied">已复制</string>
 
     <!-- 复制到 / 移动到 -->
     <plurals name="fm_target_title_copy">

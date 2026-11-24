@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.document.external.ExternalMarkdown
 import com.promenar.infinity.data.library.LibraryKnowledgeModule
+import com.promenar.infinity.data.workspace.WorkspaceDeleteResult
+import com.promenar.infinity.data.workspace.WorkspaceDeleteSummary
+import com.promenar.infinity.data.workspace.WorkspaceLibrary
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileManagerServices
 import com.promenar.infinity.domain.files.FileOpException
@@ -41,8 +44,22 @@ import kotlinx.coroutines.withContext
 sealed interface LibraryNotice {
     data class ActionDone(val kind: Kind) : LibraryNotice
     data class ActionFailed(val kind: Kind, val reason: String?) : LibraryNotice
+    /** 移除或删除工作区时因仍被会话/智能体引用而阻止。 */
+    data class WorkspaceReferenced(val sessions: Int, val agents: Int) : LibraryNotice
 
-    enum class Kind { RETRY, REBUILD, GRAPH, IMPORT, NOTE, CLEAR_FRAGMENTS, DELETE_FRAGMENT }
+    enum class Kind {
+        RETRY,
+        REBUILD,
+        GRAPH,
+        IMPORT,
+        NOTE,
+        CLEAR_FRAGMENTS,
+        DELETE_FRAGMENT,
+        WORKSPACE_RENAMED,
+        WORKSPACE_DELETED,
+        WORKSPACE_REMOVED,
+        PIN_REMOVED,
+    }
 }
 
 /** 抽取知识图谱前展示给用户确认的用量估算。 */
@@ -64,6 +81,8 @@ class LibraryViewModel(
     private val knowledge: LibraryKnowledgeSource,
     private val files: FileManagerServices,
     private val citations: KnowledgeCitationRepository,
+    private val workspaceLibrary: WorkspaceLibrary? = null,
+    private val removeExternalMountAction: (suspend (String) -> Unit)? = null,
 ) : ViewModel() {
 
     val overview: StateFlow<LibraryOverview?> = knowledge.observeOverview()
@@ -239,6 +258,54 @@ class LibraryViewModel(
         viewModelScope.launch { runCatchingCancellable { knowledge.markMemoriesSeen() } }
     }
 
+    suspend fun inspectWorkspaceDelete(workspaceId: String): WorkspaceDeleteSummary? =
+        runCatchingCancellable { workspaceLibrary?.inspectDelete(workspaceId) }
+
+    fun renameWorkspace(workspaceId: String, newName: String) {
+        val library = workspaceLibrary ?: return
+        launchNotice(LibraryNotice.Kind.WORKSPACE_RENAMED) {
+            if (library.rename(workspaceId, newName)) null else "NOT_FOUND"
+        }
+    }
+
+    fun deleteWorkspace(workspaceId: String, deleteProjectFiles: Boolean, onRemoved: () -> Unit = {}) {
+        val library = workspaceLibrary ?: return
+        val doneKind = if (deleteProjectFiles) LibraryNotice.Kind.WORKSPACE_DELETED else LibraryNotice.Kind.WORKSPACE_REMOVED
+        viewModelScope.launch {
+            try {
+                when (val result = library.deleteWorkspace(workspaceId, deleteProjectFiles)) {
+                    WorkspaceDeleteResult.Deleted, WorkspaceDeleteResult.Missing -> {
+                        onRemoved()
+                        _notice.value = LibraryNotice.ActionDone(doneKind)
+                    }
+                    is WorkspaceDeleteResult.Referenced -> {
+                        _notice.value = LibraryNotice.WorkspaceReferenced(result.sessions, result.agents)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _notice.value = LibraryNotice.ActionFailed(doneKind, e.message ?: e.javaClass.simpleName)
+            }
+        }
+    }
+
+    fun removeExternalMount(mountId: String, onRemoved: () -> Unit = {}) {
+        val remover = removeExternalMountAction ?: return
+        launchNotice(LibraryNotice.Kind.WORKSPACE_REMOVED) {
+            remover(mountId)
+            onRemoved()
+            null
+        }
+    }
+
+    fun unpinFolder(ref: FileRef) {
+        launchNotice(LibraryNotice.Kind.PIN_REMOVED) {
+            files.pins.unpin(ref)
+            null
+        }
+    }
+
     fun consumeNotice() {
         _notice.value = null
     }
@@ -283,6 +350,11 @@ class LibraryViewModel(
                 knowledge = LibraryKnowledgeModule.create(application),
                 files = application.fileManagerServices,
                 citations = application.knowledgeCitationRepository,
+                workspaceLibrary = application.workspaceLibrary,
+                removeExternalMountAction = { mountId ->
+                    application.externalFolderManager.remove(mountId)
+                    application.fileManagerServices.pins.unpinLocation("external:$mountId")
+                },
             ) as T
         }
     }

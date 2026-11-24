@@ -9,9 +9,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.LinkOff
 import com.promenar.infinity.data.files.isTextFile
 import com.promenar.infinity.domain.files.FileItem
+import com.promenar.infinity.domain.files.FileLocationStorageKind
 import com.promenar.infinity.domain.files.FolderCollectionSummary
 import com.promenar.infinity.domain.files.KnowledgeIndexState
 import com.promenar.infinity.navigation.NavDestinations
@@ -88,8 +92,40 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
     val detailsLabel = stringResource(R.string.library_doc_details)
     val editLabel = stringResource(R.string.library_doc_edit)
     val linuxEditLabel = stringResource(R.string.linux_file_host_details)
+    val renameWorkspaceLabel = stringResource(R.string.library_location_action_rename_workspace)
+    val deleteWorkspaceLabel = stringResource(R.string.library_location_action_delete_workspace)
+    val removeListLabel = stringResource(R.string.library_location_action_remove_list)
     val resources = LocalContext.current.resources
     val folderName = fm.path.trimEnd('/').substringAfterLast('/')
+    val atLocationRoot = fm.path.trimEnd('/').isEmpty()
+    val currentLocation = fm.location
+    val locationActions = host.locationActions
+    val rootManagementActions = buildList {
+        if (atLocationRoot && currentLocation != null && locationActions != null) {
+            val wsId = currentLocation.workspaceId
+            if (wsId != null) {
+                add(
+                    FileFolderAction("library-workspace-rename", Icons.Rounded.DriveFileRenameOutline, renameWorkspaceLabel) { _, _ ->
+                        locationActions.openRenameWorkspace(wsId, currentLocation.title)
+                    },
+                )
+            }
+            if (wsId != null || currentLocation.mountId != null) {
+                val deletesFiles = currentLocation.storageKind == FileLocationStorageKind.APP_PROJECT ||
+                    currentLocation.storageKind == FileLocationStorageKind.RETAINED_SESSION
+                add(
+                    FileFolderAction(
+                        id = if (deletesFiles) "library-workspace-delete" else "library-location-remove",
+                        icon = if (deletesFiles) Icons.Rounded.DeleteOutline else Icons.Rounded.LinkOff,
+                        label = if (deletesFiles) deleteWorkspaceLabel else removeListLabel,
+                        destructive = true,
+                    ) { _, _ ->
+                        locationActions.requestRemoveLocation(currentLocation)
+                    },
+                )
+            }
+        }
+    }
     fun refreshListing() {
         refreshKey++
         controller.refresh()
@@ -109,16 +145,21 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                         onClick = { settingsFolder = current.folderId to folderName },
                     )
                 },
-                folderActions = current?.let { folder ->
-                    listOf(
-                        FileFolderAction("library-current-extract", Icons.Rounded.AutoAwesome, extractLabel) { _, _ ->
-                            batchTarget = KgBatchTarget.Folder(folder.folderId)
-                        },
-                        FileFolderAction("library-current-settings", Icons.Rounded.Hub, settingsLabel) { _, _ ->
-                            settingsFolder = folder.folderId to folderName
-                        },
-                    )
-                }.orEmpty(),
+                folderActions = buildList {
+                    current?.let { folder ->
+                        add(
+                            FileFolderAction("library-current-extract", Icons.Rounded.AutoAwesome, extractLabel) { _, _ ->
+                                batchTarget = KgBatchTarget.Folder(folder.folderId)
+                            },
+                        )
+                        add(
+                            FileFolderAction("library-current-settings", Icons.Rounded.Hub, settingsLabel) { _, _ ->
+                                settingsFolder = folder.folderId to folderName
+                            },
+                        )
+                    }
+                    addAll(rootManagementActions)
+                },
                 hostActions = listOf(
                     FileHostAction(
                         id = "library-file-details", icon = Icons.Outlined.Info, label = detailsLabel,

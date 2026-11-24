@@ -214,6 +214,62 @@ class DefaultFileLocationsSourceTest {
         assertEquals(0, gitCalls.get())
     }
 
-    private fun status(branch: String?) = GitStatus(branch = branch, detached = false, head = "abc", unborn = false,
+    @Test fun `工作区与外部挂载填充完整路径来源分类与引用计数`() = runBlocking {
+        val retained = WorkspaceEntity("w-ret", WorkspaceEntity.KIND_PROJECT, "执行测试文件操作", "session-20261115-0002", 1)
+        val project = WorkspaceEntity("w-proj", WorkspaceEntity.KIND_PROJECT, "自建项目", "demo", 2)
+        val shared = WorkspaceEntity("w-shared", WorkspaceEntity.KIND_SHARED, "Personal-Archive", "/storage/emulated/0/Personal-Archive", 3)
+        val mount = ExternalMount("m1", "文档集", "real_path", "/storage/emulated/0/Docs/Work/Specs", ExternalMountPaths.LIBRARY_SCOPE, 4)
+        val locations = DefaultFileLocationsSource(
+            sessions = flowOf(listOf(SessionEntity("s1", "agent", workspaceId = "w-shared", createdAt = 1, updatedAt = 1))),
+            workspaces = flowOf(listOf(retained, project, shared)),
+            linuxReady = flowOf(true),
+            mounts = { flowOf(if (it == ExternalMountPaths.LIBRARY_SCOPE) listOf(mount) else emptyList()) },
+            resolveSession = { SessionWorkspace.Private },
+            resolveWorkspace = { id ->
+                when (id) {
+                    "w-ret" -> SessionWorkspace.Directory(retained, File("/fictional/projects/session-20261115-0002"))
+                    "w-proj" -> SessionWorkspace.Directory(project, File("/fictional/projects/demo"))
+                    "w-shared" -> SessionWorkspace.Directory(shared, File("/storage/emulated/0/Personal-Archive"))
+                    else -> SessionWorkspace.Private
+                }
+            },
+            mountAvailable = { true },
+            gitStatus = { GitInspectResult.Failure(GitInspectError.NotRepository) },
+            workspaceGitStatus = { GitInspectResult.Failure(GitInspectError.NotRepository) },
+            titles = LocationTitles("存储空间", "会话工作区", "Linux 主目录"),
+            agentWorkspaceIds = flowOf(listOf("w-shared", "w-proj")),
+        )
+        val items = withTimeout(5_000) { locations.observeLibraryLocations().first() }.associateBy { it.id }
+
+        val retLoc = items.getValue("workspace:w-ret")
+        assertEquals(com.promenar.infinity.domain.files.FileLocationStorageKind.RETAINED_SESSION, retLoc.storageKind)
+        assertEquals("w-ret", retLoc.workspaceId)
+        assertEquals("session-20261115-0002", retLoc.storageName)
+        assertEquals(0, retLoc.referenceSessions)
+        assertEquals(0, retLoc.referenceAgents)
+        assertTrue(retLoc.displayPath!!.endsWith("/fictional/projects/session-20261115-0002"))
+
+        val projLoc = items.getValue("workspace:w-proj")
+        assertEquals(com.promenar.infinity.domain.files.FileLocationStorageKind.APP_PROJECT, projLoc.storageKind)
+        assertEquals(1, projLoc.referenceAgents)
+
+        val sharedLoc = items.getValue("workspace:w-shared")
+        assertEquals(com.promenar.infinity.domain.files.FileLocationStorageKind.SHARED_STORAGE, sharedLoc.storageKind)
+        assertEquals("/Personal-Archive", sharedLoc.storageName)
+        assertEquals(1, sharedLoc.referenceSessions)
+        assertEquals(1, sharedLoc.referenceAgents)
+
+        val extLoc = items.getValue("external:m1")
+        assertEquals(com.promenar.infinity.domain.files.FileLocationStorageKind.EXTERNAL_MOUNT, extLoc.storageKind)
+        assertEquals("m1", extLoc.mountId)
+        assertEquals("…/Work/Specs", extLoc.storageName)
+        assertEquals("/storage/emulated/0/Docs/Work/Specs", extLoc.displayPath)
+
+        val linuxLoc = items.getValue("linux:home")
+        assertEquals(com.promenar.infinity.domain.files.FileLocationStorageKind.LINUX_HOME, linuxLoc.storageKind)
+        assertEquals("/root", linuxLoc.displayPath)
+    }
+
+    private fun status(branch: String?) = GitStatus(branch = branch, detached = false, head = null, unborn = false,
         staged = GitChangeList.Empty, unstaged = GitChangeList.Empty, untracked = GitChangeList.Empty)
 }

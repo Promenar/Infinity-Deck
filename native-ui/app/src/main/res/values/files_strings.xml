@@ -34,8 +34,8 @@
     <string name="fm_view_grid">Grid view</string>
     <string name="fm_show_hidden">Show hidden files</string>
     <string name="fm_hide_hidden">Hide hidden files</string>
-    <string name="fm_pin">Pin to sidebar</string>
-    <string name="fm_unpin">Unpin from sidebar</string>
+    <string name="fm_pin">Pin shortcut</string>
+    <string name="fm_unpin">Unpin shortcut</string>
     <string name="fm_folder_details">Folder details</string>
     <string name="fm_open">Open</string>
     <string name="fm_open_with">Open with</string>
@@ -150,6 +150,23 @@
     <string name="fm_info_files">Files</string>
     <string name="fm_info_free">Free space</string>
     <string name="fm_info_git">Git branch</string>
+    <string name="fm_info_origin">Source</string>
+    <string name="fm_info_full_path">Full path</string>
+    <string name="fm_info_references">References</string>
+    <string name="fm_info_ref_none">Not bound to any conversation or agent</string>
+    <string name="fm_info_ref_sessions">Bound to %1$d conversation(s)</string>
+    <string name="fm_info_ref_agents">Bound to %1$d agent(s)</string>
+    <string name="fm_info_ref_both">Bound to %1$d conversation(s), %2$d agent(s)</string>
+    <string name="fm_info_origin_builtin_kb">App library storage (indexed)</string>
+    <string name="fm_info_origin_builtin_sessions">Conversation private workspaces</string>
+    <string name="fm_info_origin_retained_session">Retained session folder (not backed up, removed on uninstall)</string>
+    <string name="fm_info_origin_app_project">App-internal workspace (not backed up, removed on uninstall)</string>
+    <string name="fm_info_origin_branch_worktree">Git branch worktree workspace</string>
+    <string name="fm_info_origin_shared_storage">Device shared storage workspace</string>
+    <string name="fm_info_origin_external_mount">Mounted external folder</string>
+    <string name="fm_info_origin_linux_home">Alpine Linux home directory</string>
+    <string name="fm_copy_path">Copy path</string>
+    <string name="fm_path_copied">Copied</string>
 
     <!-- 复制到 / 移动到 -->
     <plurals name="fm_target_title_copy">

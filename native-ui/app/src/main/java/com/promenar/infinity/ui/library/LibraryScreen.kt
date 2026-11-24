@@ -155,6 +155,7 @@ internal fun LibraryScreenContent(
 ) {
     val twoPane = layout is LibraryLayout.TwoPane
     val navigator = remember(state, twoPane) { LibraryNavigator(state, twoPane) }
+    val locationActions = rememberLibraryLocationActions(viewModel, navigator)
     val askState by askViewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -207,6 +208,7 @@ internal fun LibraryScreenContent(
     BackHandler(enabled = navigator.handlesBack) { navigator.handleBack() }
     LibraryNoticeEffect(viewModel, snackbar)
     LibraryGraphConfirmDialog(viewModel)
+    LibraryLocationActionDialogHost(locationActions)
     if (noteOpen) {
         LibraryNoteDialog(
             onDismiss = { noteOpen = false },
@@ -229,6 +231,7 @@ internal fun LibraryScreenContent(
         onOpenSession = onOpenSession,
         chunkLocator = com.promenar.infinity.data.library.ask.DefaultChunkLocator,
         onManageMounts = onManageMounts,
+        locationActions = locationActions,
     )
 
     LibrarySurface(Modifier.testTag(LibraryTags.SCREEN)) {
@@ -299,6 +302,8 @@ internal class LibraryPageHost(
     val locateRequest: DocumentLocateRequest? = null,
     /** 打开资料页级外部文件夹的管理面板。 */
     val onManageMounts: () -> Unit = {},
+    /** 资料页位置与快捷固定管理动作（长按菜单与目录页右上角共用）。 */
+    val locationActions: LibraryLocationActions? = null,
 )
 
 @Composable
@@ -435,6 +440,10 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
         LibraryNotice.Kind.IMPORT to stringResource(R.string.library_notice_import_done),
         LibraryNotice.Kind.NOTE to stringResource(R.string.library_notice_note_done),
         LibraryNotice.Kind.CLEAR_FRAGMENTS to stringResource(R.string.library_notice_clear_done),
+        LibraryNotice.Kind.WORKSPACE_RENAMED to stringResource(R.string.library_notice_workspace_renamed),
+        LibraryNotice.Kind.WORKSPACE_DELETED to stringResource(R.string.library_notice_workspace_deleted),
+        LibraryNotice.Kind.WORKSPACE_REMOVED to stringResource(R.string.library_notice_workspace_removed),
+        LibraryNotice.Kind.PIN_REMOVED to stringResource(R.string.library_notice_pin_removed),
     )
     val failedTexts = mapOf(
         LibraryNotice.Kind.RETRY to stringResource(R.string.library_notice_retry_failed),
@@ -444,7 +453,14 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
         LibraryNotice.Kind.NOTE to stringResource(R.string.library_notice_note_failed),
         LibraryNotice.Kind.CLEAR_FRAGMENTS to stringResource(R.string.library_notice_clear_failed),
         LibraryNotice.Kind.DELETE_FRAGMENT to stringResource(R.string.library_notice_delete_failed),
+        LibraryNotice.Kind.WORKSPACE_RENAMED to stringResource(R.string.library_notice_workspace_action_failed),
+        LibraryNotice.Kind.WORKSPACE_DELETED to stringResource(R.string.library_notice_workspace_action_failed),
+        LibraryNotice.Kind.WORKSPACE_REMOVED to stringResource(R.string.library_notice_workspace_action_failed),
+        LibraryNotice.Kind.PIN_REMOVED to stringResource(R.string.library_notice_workspace_action_failed),
     )
+    val refBoth = stringResource(R.string.library_workspace_referenced_sessions_agents)
+    val refSessions = stringResource(R.string.library_workspace_referenced_sessions)
+    val refAgents = stringResource(R.string.library_workspace_referenced_agents)
     val withReason = stringResource(R.string.library_notice_with_reason)
     LaunchedEffect(notice) {
         val current = notice ?: return@LaunchedEffect
@@ -455,6 +471,11 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
                 val base = failedTexts[current.kind]
                 val reason = current.reason?.takeIf { it.isNotBlank() }
                 if (base != null && reason != null) withReason.format(base, reason) else base
+            }
+            is LibraryNotice.WorkspaceReferenced -> when {
+                current.sessions > 0 && current.agents > 0 -> refBoth.format(current.sessions, current.agents)
+                current.sessions > 0 -> refSessions.format(current.sessions)
+                else -> refAgents.format(current.agents)
             }
         } ?: return@LaunchedEffect
         snackbar.showSnackbar(text)

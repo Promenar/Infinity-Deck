@@ -29,6 +29,38 @@ enum class FileLocationKind {
     BRANCH_WORKTREE,
 }
 
+/** 位置的存储来源细分；用于资料页四分组归类、详情来源说明与删除语义区分。 */
+enum class FileLocationStorageKind {
+    /** 内置存储（存储空间 / 会话工作区）。 */
+    BUILTIN,
+
+    /** 应用内自建项目工作区（位于 filesDir/projects）。 */
+    APP_PROJECT,
+
+    /** 删除会话时选择保留文件生成的应用内工作区（位于 filesDir/projects/session-*）。 */
+    RETAINED_SESSION,
+
+    /** Git 分支 worktree 工作区。 */
+    BRANCH_WORKTREE,
+
+    /** 已登记的手机共享存储目录（KIND_SHARED）。 */
+    SHARED_STORAGE,
+
+    /** 外部授权或实路径挂载文件夹（ExternalMount）。 */
+    EXTERNAL_MOUNT,
+
+    /** 本机 Alpine Linux 主目录。 */
+    LINUX_HOME,
+}
+
+internal fun defaultStorageKind(kind: FileLocationKind): FileLocationStorageKind = when (kind) {
+    FileLocationKind.KNOWLEDGE_BASE, FileLocationKind.SESSION_WORKSPACE -> FileLocationStorageKind.BUILTIN
+    FileLocationKind.PROJECT -> FileLocationStorageKind.APP_PROJECT
+    FileLocationKind.LINUX_HOME -> FileLocationStorageKind.LINUX_HOME
+    FileLocationKind.EXTERNAL_FOLDER -> FileLocationStorageKind.EXTERNAL_MOUNT
+    FileLocationKind.BRANCH_WORKTREE -> FileLocationStorageKind.BRANCH_WORKTREE
+}
+
 /** 位置支持的操作；界面据此隐藏不可用的菜单项。 */
 data class FileLocationCapabilities(
     val writable: Boolean,
@@ -56,7 +88,30 @@ data class FileLocation(
     val freeBytes: Long? = null,
     /** 外部文件夹授权已失效，需要重新授权。 */
     val accessLost: Boolean = false,
+    /** 存储来源细分，决定分组、详情说明与删除语义。 */
+    val storageKind: FileLocationStorageKind = defaultStorageKind(kind),
+    /** 已登记工作区主键（仅 KIND_PROJECT / KIND_SHARED 非空，分支 worktree 为 null）。 */
+    val workspaceId: String? = null,
+    /** 外部挂载记录主键（仅 EXTERNAL_MOUNT 非空）。 */
+    val mountId: String? = null,
+    /** 紧凑目录标识（例如 session-20261115-0002 或 /Personal-Archive），用于列表副标题。 */
+    val storageName: String? = null,
+    /** 根目录的完整物理路径或授权 URI（无直接 POSIX 路径的虚拟存储为 null）。 */
+    val displayPath: String? = null,
+    /** 引用该工作区的会话数（仅工作区位置有效）。 */
+    val referenceSessions: Int = 0,
+    /** 引用该工作区的智能体数（仅工作区位置有效）。 */
+    val referenceAgents: Int = 0,
 )
+
+/** 拼接当前位置的完整物理路径；SAF content URI 保持原串或补相对段说明。 */
+fun FileLocation.fullDisplayPath(relativePath: String): String? {
+    val base = displayPath?.takeIf { it.isNotBlank() } ?: return null
+    val clean = relativePath.trim().trim('/')
+    if (clean.isEmpty()) return base
+    if (base.startsWith("content://")) return "$base ($clean)"
+    return base.trimEnd('/') + "/" + clean
+}
 
 /** 位置内的一个条目引用。[path] 为规范化绝对路径，根目录为 "/"。 */
 data class FileRef(val locationId: String, val path: String)
@@ -240,6 +295,8 @@ interface PinnedFolderStore {
     /** 已满或已固定时返回 false。 */
     suspend fun pin(ref: FileRef): Boolean
     suspend fun unpin(ref: FileRef)
+    /** 移除指定位置下的全部快捷固定（例如工作区被删除或外部文件夹被卸载时）。 */
+    suspend fun unpinLocation(locationId: String) {}
 
     companion object {
         const val MAX_PINS = 6

@@ -572,7 +572,9 @@ private fun ColumnScope.FolderMoreMenu(state: FileManagerUiState, actions: FileM
         controller.toggleShowHidden()
     }
     InfinityMenuDivider()
-    if (actions.host.showPin) {
+    // 一级位置根目录本身已列在资料页侧栏中，不再提供重复“固定”；仅二级及以上子目录、具体会话目录与已有旧固定可切换。
+    val showPinAction = shouldShowPinAction(actions.host.showPin, state)
+    if (showPinAction) {
         MenuAction(Icons.Rounded.PushPin, if (state.pinned) R.string.fm_unpin else R.string.fm_pin, UiTags.FM_MENU_PIN) {
             dismiss()
             controller.togglePinCurrentFolder()
@@ -584,10 +586,16 @@ private fun ColumnScope.FolderMoreMenu(state: FileManagerUiState, actions: FileM
     }
     val locationId = state.location?.id
     if (locationId != null) {
+        var destructiveSeparated = false
         actions.host.folderActions.forEach { action ->
+            if (action.destructive && !destructiveSeparated) {
+                InfinityMenuDivider()
+                destructiveSeparated = true
+            }
             InfinityMenuItem(
                 text = { Text(action.label) },
                 leadingIcon = { Icon(action.icon, contentDescription = null, modifier = Modifier.size(MenuIconSize)) },
+                destructive = action.destructive,
                 onClick = {
                     dismiss()
                     action.onInvoke(locationId, state.path)
@@ -596,6 +604,15 @@ private fun ColumnScope.FolderMoreMenu(state: FileManagerUiState, actions: FileM
             )
         }
     }
+}
+
+/** 一级位置根目录（非 session:*）本身已是导航入口，仅在已固定（清理旧数据）或处于子目录/具体会话目录时显示固定菜单项。 */
+internal fun shouldShowPinAction(hostShowPin: Boolean, state: FileManagerUiState): Boolean {
+    if (!hostShowPin) return false
+    if (state.pinned) return true
+    val locationId = state.location?.id ?: return false
+    val isRoot = state.path.trimEnd('/').isEmpty()
+    return !isRoot || locationId.startsWith("session:")
 }
 
 @Composable

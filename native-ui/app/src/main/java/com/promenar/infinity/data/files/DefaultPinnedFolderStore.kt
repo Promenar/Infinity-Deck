@@ -77,4 +77,12 @@ internal class DefaultPinnedFolderStore(
         val normalized = ref.copy(path = normalizeFilePath(ref.path))
         mutex.withLock { persistence.write(persistence.read() - normalized) }
     }
+
+    override suspend fun unpinLocation(locationId: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val current = persistence.read()
+            val remaining = current.filterNot { it.locationId == locationId }
+            if (remaining.size != current.size) persistence.write(remaining)
+        }
+    }
 }

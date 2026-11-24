@@ -6,10 +6,40 @@
 
     <string name="library_group_views">浏览</string>
     <string name="library_group_locations">位置</string>
-    <string name="library_group_pins">固定的文件夹</string>
+    <string name="library_group_builtin_locations">内置位置</string>
+    <string name="library_group_app_workspaces">应用内工作区</string>
+    <string name="library_group_app_workspaces_footer">长按条目可重命名、查看完整路径或删除；全部清理后此分组自动隐藏。</string>
+    <string name="library_group_external_paths">外部路径</string>
+    <string name="library_group_pins">已固定</string>
     <string name="library_group_remembered">智能体记住的</string>
     <string name="library_locations_more">更多位置（%1$d）</string>
     <string name="library_locations_less">收起</string>
+
+    <string name="library_location_retained_session">保留的会话</string>
+    <string name="library_location_app_workspace">应用内工作区</string>
+    <string name="library_location_branch_worktree">分支工作区</string>
+    <string name="library_location_external_mount">外部挂载</string>
+    <string name="library_location_action_rename">重命名</string>
+    <string name="library_location_action_rename_workspace">重命名工作区</string>
+    <string name="library_location_action_details">文件夹详情</string>
+    <string name="library_location_action_delete_workspace">删除工作区</string>
+    <string name="library_location_action_remove_list">移出列表</string>
+    <string name="library_location_action_unpin">取消快捷固定</string>
+    <string name="library_workspace_delete_title">删除工作区？</string>
+    <string name="library_workspace_delete_message_files">将移除「%1$s」并永久删除应用内目录及其全部本地文件（%2$d 个文件，共 %3$s），此操作不可恢复。</string>
+    <string name="library_workspace_delete_message_empty">将移除「%1$s」并删除该应用内空目录，此操作不可恢复。</string>
+    <string name="library_workspace_delete_confirm">删除</string>
+    <string name="library_workspace_unlink_title">移出位置列表？</string>
+    <string name="library_workspace_unlink_message">仅将「%1$s」从位置列表中移除，不会删除手机存储中的原文件夹和文件。</string>
+    <string name="library_workspace_unlink_confirm">移出</string>
+    <string name="library_workspace_referenced_sessions_agents">仍被 %1$d 个会话和 %2$d 个智能体绑定，请先切换工作区后再移除</string>
+    <string name="library_workspace_referenced_sessions">仍被 %1$d 个会话绑定，请先在对应会话中切换工作区后再移除</string>
+    <string name="library_workspace_referenced_agents">仍被 %1$d 个智能体设为默认工作区，请先更改后再移除</string>
+    <string name="library_notice_workspace_renamed">工作区已重命名</string>
+    <string name="library_notice_workspace_deleted">工作区及本地文件已删除</string>
+    <string name="library_notice_workspace_removed">已移出位置列表</string>
+    <string name="library_notice_pin_removed">已取消快捷固定</string>
+    <string name="library_notice_workspace_action_failed">操作失败</string>
 
     <string name="library_page_overview">概览</string>
     <string name="library_page_recent">最近</string>

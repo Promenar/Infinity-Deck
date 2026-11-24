@@ -146,4 +146,107 @@ class WorkspaceLibraryTest {
         assertThrows(IllegalArgumentException::class.java) { runBlocking { library.rename("ws", "   ") } }
         assertThrows(IllegalArgumentException::class.java) { runBlocking { library.rename("ws", "x".repeat(81)) } }
     }
+
+    @Test fun `应用内工作区删除同步清理私有目录且不穿透内部符号链接`() = runBlocking<Unit> {
+        val temp = java.nio.file.Files.createTempDirectory("ws-del-test").toFile()
+        try {
+            val projectsRoot = File(temp, "projects").apply { mkdirs() }
+            val outsideFile = File(temp, "outside-keep.txt").apply { writeText("keep-me") }
+            val projectDir = File(projectsRoot, "session-20261115-0002").apply { mkdirs() }
+            File(projectDir, "sub").mkdirs()
+            File(projectDir, "sub/note.txt").writeText("hello")
+            java.nio.file.Files.createSymbolicLink(File(projectDir, "escape-link").toPath(), outsideFile.toPath())
+
+            val row = WorkspaceEntity("ws-proj", WorkspaceEntity.KIND_PROJECT, "执行测试文件操作", "session-20261115-0002", 1)
+            val removedIds = mutableListOf<String>()
+            coEvery { dao.getById("ws-proj") } returns row
+            coEvery { dao.countSessionReferences("ws-proj") } returns 0
+            coEvery { dao.countAgentReferences("ws-proj") } returns 0
+            coEvery { dao.deleteIfUnreferenced("ws-proj") } returns true
+
+            val libWithDisk = WorkspaceLibrary(
+                workspaceDao = dao,
+                resolveWorkspace = { SessionWorkspace.Directory(row, projectDir) },
+                backendFor = { backend },
+                knowledge = knowledge,
+                indexEvents = FileIndexEventSink { events += it },
+                io = Dispatchers.Unconfined,
+                projectsRoot = projectsRoot,
+                onRemoved = { removedIds += it },
+            )
+
+            val summary = libWithDisk.inspectDelete("ws-proj")!!
+            assertThat(summary.fileCount).isEqualTo(1)
+            assertThat(summary.totalBytes).isEqualTo(5L)
+            assertThat(summary.displayPath).isEqualTo(projectDir.canonicalPath)
+
+            assertThat(libWithDisk.deleteWorkspace("ws-proj", deleteProjectFiles = true)).isEqualTo(WorkspaceDeleteResult.Deleted)
+            assertThat(projectDir.exists()).isFalse()
+            assertThat(outsideFile.exists()).isTrue()
+            assertThat(outsideFile.readText()).isEqualTo("keep-me")
+            assertThat(removedIds).containsExactly("ws-proj")
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
+
+    @Test fun `应用内工作区删除遇并发引用冲突时回滚恢复原目录`() = runBlocking<Unit> {
+        val temp = java.nio.file.Files.createTempDirectory("ws-race-test").toFile()
+        try {
+            val projectsRoot = File(temp, "projects").apply { mkdirs() }
+            val projectDir = File(projectsRoot, "session-20261123-1819").apply { mkdirs() }
+            File(projectDir, "a.txt").writeText("abc")
+            val row = WorkspaceEntity("ws-race", WorkspaceEntity.KIND_PROJECT, "测试", "session-20261123-1819", 1)
+            coEvery { dao.getById("ws-race") } returns row
+            coEvery { dao.countSessionReferences("ws-race") } returnsMany listOf(0, 1)
+            coEvery { dao.countAgentReferences("ws-race") } returns 0
+            coEvery { dao.deleteIfUnreferenced("ws-race") } returns false
+
+            val libWithDisk = WorkspaceLibrary(
+                workspaceDao = dao,
+                resolveWorkspace = { SessionWorkspace.Directory(row, projectDir) },
+                backendFor = { backend },
+                knowledge = knowledge,
+                indexEvents = FileIndexEventSink { events += it },
+                io = Dispatchers.Unconfined,
+                projectsRoot = projectsRoot,
+            )
+
+            assertThat(libWithDisk.deleteWorkspace("ws-race", deleteProjectFiles = true))
+                .isEqualTo(WorkspaceDeleteResult.Referenced(1, 0))
+            assertThat(projectDir.exists()).isTrue()
+            assertThat(File(projectDir, "a.txt").readText()).isEqualTo("abc")
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
+
+    @Test fun `手机共享存储工作区移出列表时绝不触碰磁盘原文件`() = runBlocking<Unit> {
+        val temp = java.nio.file.Files.createTempDirectory("ws-shared-test").toFile()
+        try {
+            val sharedDir = File(temp, "Personal-Archive").apply { mkdirs() }
+            File(sharedDir, "important.md").writeText("keep")
+            val row = WorkspaceEntity("ws-shared", WorkspaceEntity.KIND_SHARED, "Personal-Archive", sharedDir.path, 1)
+            coEvery { dao.getById("ws-shared") } returns row
+            coEvery { dao.countSessionReferences("ws-shared") } returns 0
+            coEvery { dao.countAgentReferences("ws-shared") } returns 0
+            coEvery { dao.deleteIfUnreferenced("ws-shared") } returns true
+
+            val libWithDisk = WorkspaceLibrary(
+                workspaceDao = dao,
+                resolveWorkspace = { SessionWorkspace.Directory(row, sharedDir) },
+                backendFor = { backend },
+                knowledge = knowledge,
+                indexEvents = FileIndexEventSink { events += it },
+                io = Dispatchers.Unconfined,
+                projectsRoot = File(temp, "projects"),
+            )
+
+            assertThat(libWithDisk.deleteWorkspace("ws-shared", deleteProjectFiles = true)).isEqualTo(WorkspaceDeleteResult.Deleted)
+            assertThat(sharedDir.exists()).isTrue()
+            assertThat(File(sharedDir, "important.md").readText()).isEqualTo("keep")
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
 }

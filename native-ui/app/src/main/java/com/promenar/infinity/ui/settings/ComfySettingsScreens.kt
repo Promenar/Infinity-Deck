@@ -169,16 +169,23 @@ internal fun ComfyHubScreenContent(
                         ) {
                             Icon(Icons.Rounded.Dns, null, tint = scheme.primary, modifier = Modifier.size(22.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                InfinityScrollingLine(Modifier.fillMaxWidth()) {
-                                    Text(
-                                        text = host.name,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = scheme.onSurface,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    InfinityScrollingLine(Modifier.weight(1f, fill = false)) {
+                                        Text(
+                                            text = host.name,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = scheme.onSurface,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                        )
+                                    }
+                                    if (tailnet) ProductionStatusChip("Tailnet", ProductionTone.INFO)
                                 }
-                                InfinityTagScrollRow(spacing = 6.dp) {
+                                InfinityScrollingLine(Modifier.fillMaxWidth()) {
                                     Text(
                                         text = host.endpoint,
                                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
@@ -186,7 +193,6 @@ internal fun ComfyHubScreenContent(
                                         maxLines = 1,
                                         softWrap = false,
                                     )
-                                    if (tailnet) ProductionStatusChip("Tailnet", ProductionTone.INFO)
                                 }
                                 InfinityScrollingLine(Modifier.fillMaxWidth()) {
                                     InfinityMetaLine(
