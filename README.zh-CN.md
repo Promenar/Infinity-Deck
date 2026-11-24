@@ -25,8 +25,8 @@
 
 - **本地执行层**：内置免 Root 的 Alpine Linux（`arm64-v8a`，含 git、ripgrep、Python、Node.js、FFmpeg）及内置 Python 3.14 / QuickJS / 精简 `arm64-v8a` FFmpeg 与 ffprobe 工具链，可在设备端直接运行脚本、处理音视频、构建项目与转换文件，不依赖远程桌面主机在线。
 - **模型与端侧推理**：支持通过自有 API Key 接入主流大模型服务商与各类 Coding Plan 接口；内置基于 `llama.cpp` 的 GGUF 本地推理引擎（支持主对话、Embedding、Rerank 三槽位与 `16K / 8K / 4K` Prefix KV Cache）及基于 `sherpa-onnx` 的离线语音管线（X-ASR 流式转写、SenseVoice 二遍校准、说话人分段与声纹识别）。
-- **私有网络与远程运维**：内置用户态 Tailscale 节点（兼容自建 Headscale），不占用 Android 系统 VPN 槽位，使 SSH、私有模型端点、ComfyUI、MCP 服务与内置浏览器直达 `tailnet` 内网。
-- **知识库与创作工作台**：支持外部目录挂载与 `read_only / read_write` 分级受管读写、文档切片检索与实体知识图谱查询、离线录音富格式整理（表格 / Mermaid / ECharts / LaTeX 与长图 PNG/PDF 导出）、可交互多屏网页画布、图像局部重绘，以及集成离线 `Three.js` 3D 白模预演与剧本/资产/分镜/粗剪导出的制作面板。
+- **私有网络、内置代理与远程运维**：内置用户态 Tailscale 节点（兼容自建 Headscale）与独立用户态多协议内置代理（`libnxproxy.so`，免系统 VPN、关闭零常驻内存）共存互补——Tailnet / 局域网与 Tailscale P2P 始终原生直连，同时支持 AI 提供商按需勾选代理、内置浏览器与 Agent 公网工具自动生效，并在 Alpine Linux 内按需注入 `$INFINITY_PROXY_*`。
+- **知识库与创作工作台**：资料库「文件」四分类与一步确认工作区管理、外部目录 `read_only / read_write` 分级挂载、文档切片检索与实体知识图谱带编号引用溯源、离线录音富格式整理（表格 / Mermaid / ECharts / LaTeX 与长图 PNG/PDF 导出）、可交互多屏网页画布、零硬编码 ComfyUI 全能提交器框架（14 个 `comfy_*` 工具），以及集成离线 `Three.js` 3D 白模预演与剧本/资产/分镜/粗剪导出的制作面板。
 
 ## 目录
 
@@ -135,11 +135,11 @@
 
 - **运行要求**：Android 12（API 31）及以上。内置 Linux、端侧 GGUF 推理需 `arm64-v8a` 设备；Alpine 基础环境约 64 MB，含默认工具链（git、ripgrep、Python、Node.js、FFmpeg）约 470 MB，安装时可按需取消勾选。
 - **应用更新**：通过「设置 › 关于 › 检查更新」查询 GitHub 最新 Release 并跳转下载，应用不会在后台自动下载或静默安装 APK。
-- **当前版本**：`v0.74.1-beta`（versionCode `219`），为内置代理「顺序降级」模式新增手动拖拽排序（右侧外缘专用拖拽把手即按即拖 + 长按节点行上下拖、浮起态主色描边与首末边界防裁切、实时刷新 `#1/#2` 优先级、长列表边缘自动平滑滚动、松手单次原子落盘不中途重启内核，以及点按节点黑曜石菜单「移至首位 / 上移一位 / 下移一位」与 TalkBack 无障碍动作）；衔接 `v0.74.0-beta`（`218`），上线独立用户态 **内置代理**（`libnxproxy.so`，Sideload & Play 双渠道，不占用系统 `VpnService`，关闭零常驻内存），支持本机回环随机认证 HTTP/SOCKS5、YAML/Base64 订阅与主流分享链接导入、单节点与顺序降级（`fallback`）模式、一键测速及带内核校验的高级 YAML 编辑器，并与 Tailscale P2P 原生直连共存（Tailnet/局域网/回环始终直连）；提供商编辑页新增按需「经内置代理连接」开关（默认直连，代理未开严格失败不静默回退），内置浏览器与 Agent 公网工具自动生效，Alpine Linux 通过 `$INFINITY_PROXY_*` 按需调用且不全局劫持 `HTTP_PROXY`；同步将配色风格收口为 **柔和 / 标准 / 明亮** 三档，统一运行坞点阵屏、细灯带、漫光、浮岛流光与行内指示在全部 5 个生成阶段下的色彩一致性，并在全站浮层边界隔离 `LocalRowHeightGroup` 根治打开选择面板时的父卡片行高跳变；衔接 `v0.73.7-beta`（`217`），在外观设置「配色风格」新增 **明亮（`BRIGHT`）** 风格（锁定所选种子原色相不偏色，在深浅模式下均呈现高饱和通透活力亮色与自适应高对比度前景），并将「对话」与「资料」页头右上角 `+` 主操作统一收口至共享的 `34dp` 圆形 `primary / onPrimary` 按钮 `InfinityTabHeaderCircleAction`；衔接 `v0.73.6-beta`（`216`），修复资料页 `LibraryNoticeEffect` 在 `consumeNotice()` 置空 key 后首帧取消 `Snackbar` 导致工作区引用拦截与操作结果提示闪消的问题；衔接 `v0.73.5-beta`（`215`）重构资料库「文件」一级入口为「内置位置」（Linux 主目录按安装状态动态显隐）、「应用内工作区」（清空自动隐藏）、「外部路径」与「已固定」四分类并保持小三角箭头样式，补齐长按与目录右上角双入口黑曜石管理菜单、应用内工作区一步确认原子安全删除（不穿透符号链接、外部共享存储仅移出列表不删原文件）、消除根目录冗余「固定」按钮、增强「文件夹详情」完整路径展示与一键复制，并顺带修复 ComfyUI 外屏窄宽下主机行 `Tailnet` 徽章裁切；衔接 `v0.73.4-beta`（`214`）Linux 后台任务跨轮保活与本地回环回调（内置浏览器 OAuth 登录禁提前 `job_stop`）契约及 PTY 空输入/通知升格/分段续期 `PARTIAL_WAKE_LOCK`/`job.start`·`job.end` 诊断加固；衔接 `v0.73.3-beta`（`213`）补齐输入框「添加附件」菜单 `AttachmentActionMenu`（复用 `infinityMenuColors()` L3 黑曜石容器 + 细边 + 顶缘高光）及全站其余 7 处自定义浮层（生成统计浮卡、后台日志弹窗、资料新建笔记弹窗、3 处引导页弹层与 2 处 ComfyUI 编辑弹层）的熏黑主题化，清零散落原始 `AlertDialog`/`ModalBottomSheet`；衔接 `v0.73.2-beta`（`212`）透明与熏黑 `Surface` 显式透传 `onSurface` 内容色、`v0.73.1-beta`（`211`）竖屏抽屉提至 `Scaffold` 上层与 `statusBarsPadding()` 防遮挡修复及 `v0.73.0-beta`（`210`）统一检视器三形态（内屏零模糊熏黑实底 `360dp` 固定分栏、加宽 `560dp` / 浏览器铺满实时毛玻璃覆盖抽屉、竖屏全 8 页 `93%` 同窗口熏黑毛玻璃上滑抽屉）、大页签左右滑动切页（外层 `HorizontalPager` 自动与内部页签接力）、8 页两档顶栏与同款吸顶 `InfinityPanelTabs` 坐标统一（`Canvas` 升级吸顶页签 + 滑切，修复检视器内设置页误吃系统状态栏 Insets）及全站 4 级黑曜石熏黑浮层体系（底部弹层、居中面板、对话框、模型与上下文小面板、悬浮菜单、审批卡与子代理审批卡）。前序基于 `v0.72.4-beta`（`209`）宽窗口检视器纯固定分栏与全高覆盖抽屉重构、`v0.72.3-beta`（`208`）设置页骨架统一 `16dp` 顶距、`v0.72.2-beta`（`207`）悬浮毛玻璃 `1dp` 顶缘镜面细描边对齐，以及 `v0.72.1-beta`（`206`）与 `v0.72.0-beta`（`205`）内置模式唯一真实 Android 路径体系（文件工具、`shell_exec`、`python_exec` 与媒体存取共用真实规范路径、无前导 `/` 相对路径及双向 `/data/data` ⇄ `/data/user/0` 与 `/sdcard` 路径别名保护，仅无 POSIX 路径的 `/mnt/knowledge` 与 SAF 保留虚拟前缀）、关键运行时数据只读自诊断与加密密钥库 `infinity_encrypted_secrets.xml*` 硬隔离、L1/L2 按命令风险分级审批模型（默认「按风险审批」含严格零副作用只读白名单，「免批准」跳过常规动作且保留 L2 管理审批）及不可审批的毁灭性根目录破坏硬拦截防线（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`）。更早 `v0.71.6-beta`（`204`）统一内置 `arm64-v8a` FFmpeg/ffprobe `PATH` 符号链接并补齐 `infinity-deck` 运行时隔离契约；`v0.71.5-beta`（`203`）上线 ComfyUI 零硬编码全能提交器框架（10 类通用能力）、双执行环境自动切换（Linux / 内置 Python 3.14）、内置精简 `arm64-v8a` FFmpeg 9.1 / ffprobe + 8-bit `libx264`（`+2.69 MiB` APK 增量，16KB 页对齐，GPL-3.0）及 `STATEFUL_CHAIN` 3 处缺口闭合；`v0.71.0-beta`（`198`）在最新 GitHub 公开发行版 `v0.70.4-beta`（versionCode `196`）基础上落地独立 ComfyUI 兼容层与 14 个一等 `comfy_*` 工具。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
+- **当前版本**：`v0.74.1-beta`（versionCode `219`）。自上一公开版 `v0.70.4-beta` 以来累计交付：独立用户态 **内置代理**（`libnxproxy.so`，免系统 VPN、关闭零内存、与 Tailscale P2P 原生直连共存、YAML/Base64 订阅与分享链接导入、单节点与支持右侧把手即按即拖/长按拖拽/边缘自动滚动的顺序降级模式、高级 YAML 编辑器与内核预校验、提供商按需勾选开关、内置浏览器与 Agent 公网自动路由及 Alpine Linux `$INFINITY_PROXY_*` 按需注入）；零硬编码 **ComfyUI** 全能提交器框架（14 个 `comfy_*` 工具与双执行环境自动切换）及 16KB 页对齐 `arm64-v8a` 精简 **FFmpeg 9.1 / ffprobe**（`libx264`）；内置模式唯一真实 Android 路径体系、**L1 / L2** 按命令风险分级审批与不可审批的毁灭性根目录破坏硬拦截防线，以及 Linux 后台任务保活加固；三形态统一检视器（大页签左右滑切与吸顶页签对齐）、全站 4 级黑曜石浮层与零行高跳变隔离、资料库「文件」四分类与一步工作区管理、三档原色相配色风格（**柔和 / 标准 / 明亮**）、对话/资料统一 `34dp` 圆形 `+` 主按钮及全部 5 阶段生成动效上下同色同步。详细逐版记录见 [CHANGELOG.md](CHANGELOG.md) 与 [发行页面](https://github.com/Promenar/Infinity-Deck/releases)。
 
 ### 从源码构建
 
-需要 JDK 17+、Android SDK（API 36 / Build Tools 36.0.0 / NDK / CMake 3.22.1）、`PATH` 中的 `python3.14`（预编译内置 Python 标准库与依赖字节码）以及 Go 1.21+（编译内置 Tailscale 动态库 `libnxtailnet.so`）。
+需要 JDK 17+、Android SDK（API 36 / Build Tools 36.0.0 / NDK / CMake 3.22.1）、`PATH` 中的 `python3.14`（预编译内置 Python 标准库与依赖字节码）以及 Go 1.21+（编译内置 Tailscale 动态库 `libnxtailnet.so` 与内置代理动态库 `libnxproxy.so`）。
 
 ```bash
 cd native-ui
@@ -157,7 +157,7 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 - 端侧 GGUF 推理（`llama.cpp`）：支持 `MAIN`（对话与工具调用）、`EMBEDDING`、`RERANK` 三槽位独立管理与重启自动恢复；支持 `Q8_0` KV 缓存量化、跨轮前缀 KV 复用与按可用内存自适应 `16K / 8K / 4K` 上下文；已加载的主槽位模型动态注入会话模型选择器
 - 支持会话中途切换模型，最多 16 个会话并发生成；生成期间支持下一条消息排队或插队打断，并支持对已发送用户消息就地编辑、重新生成或派生分支会话
 - 上下文自动压缩后保留原文检索能力，智能体可按关键词搜索并分页调阅历史原始消息
-- 全站采用黑曜石熏黑毛玻璃 / 冷白磨砂材质与「环境光」无模糊省电档，搭配顶部悬浮通知胶囊与常驻稳态交互控件；内置 2 MiB 分片滚动诊断导出与单会话轨迹追踪
+- 全站采用黑曜石熏黑毛玻璃 / 冷白磨砂材质、4 级黑曜石浮层与「环境光」无模糊省电档，提供 **柔和 / 标准 / 明亮** 三档原色相配色风格、5 阶段全同步生成动效、对话/资料统一 `34dp` 圆形 `+` 主按钮与顶部悬浮通知胶囊；内置 2 MiB 分片滚动诊断导出与单会话轨迹追踪
 - 支持结构化提问卡、后台前台服务保活、防误触触摸锁
 - 支持 Skills 技能包与 MCP 服务器接入，内置技能商店可从官方或自定义源安装经校验的技能
 - 支持导入 `.idpet` 会话宠物包（[官网下载](https://infinityware.work/download/#pets)），根据任务状态与四段作息切换动画与台词
@@ -172,18 +172,19 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 
 **本地运行环境与代码工具**
 
-- 应用内一键安装 Alpine Linux（`arm64-v8a`），免 Root、免 Termux
-- 未安装 Linux 时提供内置 Shell 命令、Python 与 QuickJS 隔离沙箱
+- 应用内一键安装 Alpine Linux（`arm64-v8a`），免 Root、免 Termux，支持跨轮后台保活与 `$INFINITY_PROXY_*` 按需代理环境变量
+- 未安装 Linux 时提供内置 Shell 命令、Python 3.14、QuickJS 与精简 `arm64-v8a` FFmpeg 9.1 / ffprobe（`libx264`）沙箱，采用统一真实 Android 路径体系、L1/L2 按命令风险分级审批（含零副作用只读命令白名单与不可审批的毁灭性根目录破坏硬拦截）及加密密钥库硬隔离
 - 内置 Git 客户端与可视化 Git 检视面板（分支、工作树、文件 Diff、提交记录）；文件浏览页直接展示当前分支与改动计数
 - Git 凭据按单次命令注入环境变量，不写入仓库配置文件
 - 支持分段读取最大 100 MiB 的大文本文件
 
-**远程服务器与私有网络**
+**远程服务器、内置代理与私有网络**
 
 - SSH 远程命令执行与 SFTP 文件读写（单文件最大 4 GiB）
 - 内置终端模拟器与本地端口转发，支持随时手动接管会话
 - 钥匙串支持生成 Ed25519 / RSA 4096 密钥或导入 OpenSSH / PEM / PKCS8 私钥（含带口令私钥），支持公钥批量部署与切换前登录验证
 - 内置 Tailscale 节点（支持自建 Headscale），SSH、模型端点、MCP 与内置浏览器直连 `tailnet`
+- 内置独立用户态多协议代理（`libnxproxy.so`，免系统 VPN、关闭零内存）：仅监听本机回环并按次随机签发 HTTP/SOCKS5 认证，支持 YAML/Base64 订阅与分享链接导入、单节点与可拖拽排序的顺序降级模式、高级 YAML 编辑器与内核校验、AI 提供商按需勾选开关（默认直连、未开启严格失败）、内置浏览器与 Agent 公网自动路由，与 Tailscale P2P 共存直连
 
 **离线录音与语音整理**
 
@@ -195,15 +196,15 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 
 **知识库与文档**
 
-- 支持导入 PDF、Word、Markdown、HTML 等文档或通过 SAF / 真实路径挂载外部文件夹
+- 资料库「文件」采用 **内置位置 / 应用内工作区 / 外部路径 / 已固定** 四分类架构，支持双入口黑曜石管理菜单、一步确认安全清理工作区、完整规范路径复制，以及 PDF / Word / Markdown / HTML 导入与 SAF / 真实路径文件夹挂载
 - 混合检索（文档向量 + 跨会话长期记忆 + 实体知识图谱），回答附带引用溯源；图谱按作品隔离并支持按章节顺序查询关系演化
 - 注册系统 Markdown 打开方式与分享入口，支持 16 MiB 以内大 Markdown 分块渲染、另存为或引用至会话
 
 **浏览器、画布与多媒体产出**
 
-- 内置多标签浏览器，支持移动/桌面 UA 切换、直连本地端口（如 `localhost:8888`）与 `tailnet` 内部站点；支持智能体操作旁观与人工接管
+- 内置多标签浏览器，支持移动/桌面 UA 切换、直连本地端口（如 `localhost:8888`）与 `tailnet` 内部站点，公网站点在内置代理开启后自动生效；支持智能体操作旁观与人工接管
 - 支持生成可交互多屏原型、画布页面与多版本产物
-- 支持云端与 ComfyUI 图像生成，内置画板提供标注与局部重绘蒙版涂抹，配合全站多图滑切查看器（1×–5× 双指/双击缩放、90° 旋转）统一浏览参考图与生成结果
+- 支持云端生图及零硬编码 **ComfyUI** 全能提交器框架（14 个 `comfy_*` 工具、Linux / 内置 Python 双环境自动切换与 `STATEFUL_CHAIN` 分叉隔离），内置画板提供标注与局部重绘蒙版涂抹，配合全站多图滑切查看器（1×–5× 双指/双击缩放、90° 旋转）统一浏览参考图与生成结果
 - 内置影视制作面板：管理剧本、双模视觉参考资产（多视角整卡 / 分张单视图）、分镜、视频候选与配乐，支持单入口审批、已锁定项 AI 改写逐次审批、按尾帧串联续接镜头、调用 ComfyUI 超分/补帧工作流、离线 `three.js` 3D 白模分镜预演（机位/自由观察、180° 轴线安全区与 Beauty/Depth 抽帧及硬件 MP4 导出），以及本机合成导出 MP4 粗剪与 SRT 字幕（兼容火山方舟 Seedance、MiniMax 与自建 ComfyUI）
 - 会话内容支持导出为独立 HTML、A4 PDF 或长图
 

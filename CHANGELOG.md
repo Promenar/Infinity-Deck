@@ -16,6 +16,13 @@ All notable changes to this project will be documented in this file.
 
 ## [0.74.1-beta] - 2026-11-24
 
+自上一公开版 `v0.70.4-beta` 以来的主要更新：
+
+- **内置用户态多协议代理与顺序降级拖拽排序（`v0.74.0-beta`–`v0.74.1-beta`）**：新增独立裁剪 Go 用户态代理子进程 `libnxproxy.so`（Sideload / Play 双渠道，免系统 VPN、关闭零进程零内存、本机回环随机端口 + 按次随机 HTTP/SOCKS5 认证），与内置 Tailscale P2P 原生直连共存（Tailnet / 局域网 / 回环始终直连）；支持 YAML / Base64 订阅与主流单节点分享链接导入、单节点直选与顺序降级（右侧拖拽把手即按即拖 + 长按节点行拖拽 + 边缘自动滚动 + 点按置顶/单步菜单）、一键测速及带内核预校验的高级 YAML 编辑器；各 AI 提供商公网分支支持独立勾选「经内置代理连接」（默认直连、代理未开严格失败不静默回退），内置浏览器与 Agent 公网工具自动生效，Alpine Linux 通过 `$INFINITY_PROXY_*` 按需调用且不全局劫持。
+- **ComfyUI 零硬编码全能提交器框架与内置精简 FFmpeg 9.1 / ffprobe（`v0.71.0-beta`–`v0.71.6-beta`）**：上线独立 ComfyUI 兼容层与 14 个一等 `comfy_*` 工具，支持 10 类通用可配置提交器能力、Linux / 内置 Python 3.14 双执行环境自动切换与 `STATEFUL_CHAIN` 分叉隔离验真；随包分发 16KB 页对齐 `arm64-v8a` 精简 FFmpeg 9.1 / ffprobe + 8-bit `libx264`，并在内置模式统一通过 `PATH` 对 `shell_exec` / `python_exec` 与提交器暴露。
+- **内置模式唯一真实 Android 路径体系、L1/L2 分级审批与 Linux 后台保活加固（`v0.72.0-beta`–`v0.72.1-beta`、`v0.73.4-beta`）**：废除内置伪虚拟路径前缀，统一文件工具与命令执行至真实规范路径及双向 `/data/data` ⇄ `/data/user/0` 保护；开放关键运行时数据只读自诊断并硬隔离加密密钥库；升级 L1 / L2 按命令风险分级审批（含零副作用只读命令白名单）与不可审批的毁灭性根目录破坏硬拦截防线；加固 Linux 跨轮后台任务保活、PTY 空输入归一、分段续期 `PARTIAL_WAKE_LOCK` 与本地回环回调防误杀契约。
+- **三形态统一检视器、全站黑曜石浮层、资料库四分类与外观动效升级（`v0.72.2-beta`–`v0.74.0-beta`）**：统一内屏 `360dp` 零模糊熏黑固定分栏、`560dp` 实时毛玻璃抽屉与竖屏 `93%` 同窗口上滑抽屉并支持大页签左右滑切及吸顶页签对齐；全站弹窗、弹层、菜单与审批卡升级 4 级黑曜石体系并隔离 `LocalRowHeightGroup` 根治打开选择面板时的行高跳变；重构资料库「文件」为四分类体系并支持一步确认安全清理工作区；外观「配色风格」收口为原色相保真的 **柔和 / 标准 / 明亮** 三档，统一「对话 / 资料」页头 `34dp` 圆形 `+` 主按钮，并实现全部 5 个生成动效阶段的上下色彩完全同步。
+
 - **内置代理顺序降级模式新增手动拖拽排序、边缘自动滚动与点按快捷排位菜单（[ProxyNodeReorderState.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProxyNodeReorderState.kt)、[ProxySettingsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProxySettingsScreen.kt)、[ProxyNodeReorderStateTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/settings/ProxyNodeReorderStateTest.kt)、[ProxyFallbackDragReorderPrototype.kt](native-ui/app/src/debug/java/com/promenar/infinity/ui/settings/ProxyFallbackDragReorderPrototype.kt)）**：
   - **双入口拖拽排序与实时换位**：在顺序降级（`fallback`）节点列表中以右侧外缘专用拖拽把手（`Icons.Rounded.DragHandle`）替代原先的 `↑ / ↓` 双圆钮，支持「按住把手零延迟上下拖」与「长按节点行任意区域震动拾起上下拖」两种手势；拖拽期间卡片微幅浮起并带主色圆角描边、实时重算 `#1 / #2 / #3` 优先级序号、邻近行平滑让位且首末边界钳制防圆角裁切，拖近视口顶底边缘自动平滑滚动外层列表以适配长订阅列表。
   - **单次原子落盘与精准辅助入口**：拖拽全程在内存完成预览，松手后仅按净偏移量调用一次 `moveNode(id, delta)` 原子落盘并仅触发一次内核重载（搭配短暂乐观顺序快照消除 1 帧回弹闪烁）；点按节点行展开的黑曜石菜单补充「移至首位 / 上移一位 / 下移一位」，并为 TalkBack 挂载上移/下移无障碍动作；同步补齐 `ProxyNodeReorderStateTest` 单元测试与 2 张顺序降级截图基线。
