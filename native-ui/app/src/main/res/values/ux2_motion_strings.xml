@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="motion_phase_thinking">Thinking</string>
+    <string name="motion_glass_infiltration">Global glass light bleed</string>
+    <string name="motion_glass_infiltration_desc">Bleeds glow across nearby frosted edges</string>
+    <string name="motion_glass_infiltration_frosted_only">Requires frosted glass material</string>
     <string name="motion_run_dock_scope">Run dock screen</string>
     <string name="motion_run_dock_scope_desc">Shows the output-rate waveform; blinks while awaiting approval</string>
     <string name="motion_scope_digits">Show numbers</string>

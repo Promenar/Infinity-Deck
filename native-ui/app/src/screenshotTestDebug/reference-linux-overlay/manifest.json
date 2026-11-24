@@ -749,12 +749,12 @@
       "linux_sha256": "c476b3f5ac31654c2365b25d96f85533b37aa8a69a4189a2e481b90e5cdcb0ef"
     },
     "com/promenar/infinity/ui/settings/ComposerSurfaceScreenshotTestKt/composerSurfaceAmbientLightPreview_浮岛材质 环境光 浅中360_ad95d509_0.png": {
-      "base_sha256": "a1eda189750eafa968e96b71cf5e21178ccc4815ecac74b5ba9645516ed79941",
-      "linux_sha256": "a1eda189750eafa968e96b71cf5e21178ccc4815ecac74b5ba9645516ed79941"
+      "base_sha256": "d58a39cf7267dba6852f730673045ee74845a64109d153d044718fabb8844109",
+      "linux_sha256": "d58a39cf7267dba6852f730673045ee74845a64109d153d044718fabb8844109"
     },
     "com/promenar/infinity/ui/settings/ComposerSurfaceScreenshotTestKt/composerSurfaceFrostedLightPreview_浮岛材质 毛玻璃 浅英360 大字号_b363b373_0.png": {
-      "base_sha256": "f86099dafab469eec604b46370c141b6d1d2c8b0469aa447cd5cac8ad879fd29",
-      "linux_sha256": "f86099dafab469eec604b46370c141b6d1d2c8b0469aa447cd5cac8ad879fd29"
+      "base_sha256": "0a4bf5ba227a44ba41deb86e61fa11b8e6a1f349ccb13f1587acc5c2954123d9",
+      "linux_sha256": "0a4bf5ba227a44ba41deb86e61fa11b8e6a1f349ccb13f1587acc5c2954123d9"
     },
     "com/promenar/infinity/ui/settings/ComposerSurfaceScreenshotTestKt/ledMorphStaticDarkPreview_灯珠变形 静态字标 深中411_a4d0b61e_0.png": {
       "base_sha256": "2c5fc0c41b1914504d61ef83ad128d5495a5dc6ff255ddff957a5e672ab5656d",

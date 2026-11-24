@@ -15,8 +15,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import com.promenar.infinity.ui.common.AmbientLightField
 import com.promenar.infinity.ui.common.InfinityNoticeController
 import com.promenar.infinity.ui.common.InfinityNoticeHost
+import com.promenar.infinity.ui.common.LocalAmbientLightField
 import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.backdropSource
 import com.promenar.infinity.ui.common.rememberBackdropSource
@@ -196,11 +198,15 @@ open class MainActivity : ComponentActivity() {
                         provideChatRouteDependencies(app)
                     }
                     val noticeController = remember { InfinityNoticeController() }
+                    val ambientLightField = remember { AmbientLightField() }
                     var noticeOverlayActive by remember { mutableStateOf(false) }
                     val rootBackdrop = rememberBackdropSource(
                         enabled = LocalInfinityMotionStyles.current.surface == ComposerSurfaceStyle.FROSTED && noticeOverlayActive,
                     )
-                    CompositionLocalProvider(LocalInfinityNoticeController provides noticeController) {
+                    CompositionLocalProvider(
+                        LocalInfinityNoticeController provides noticeController,
+                        LocalAmbientLightField provides ambientLightField,
+                    ) {
                     Box(
                         Modifier
                             .fillMaxSize()

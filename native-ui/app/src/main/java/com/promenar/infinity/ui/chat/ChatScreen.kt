@@ -15,6 +15,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.ui.semantics.selected
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.SideEffect
+import com.promenar.infinity.ui.common.publishAmbientLightBounds
 import androidx.compose.runtime.Immutable
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.animation.slideOutHorizontally
@@ -3433,6 +3434,40 @@ fun ChatInputBar(
         generating = isGenerating || awaitingUser,
         error = status == GenerationStatus.ERROR,
     )
+    val ambientField = com.promenar.infinity.ui.common.LocalAmbientLightField.current
+    val ambientMotion = com.promenar.infinity.ui.common.motion.LocalGenerationMotion.current
+    val ambientPalette = com.promenar.infinity.ui.common.motion.rememberMotionPalette()
+    val ambientErrorColor = MaterialTheme.infinityDomainColors.signalDown
+    val ambientEmitter = remember(glow) {
+        object : com.promenar.infinity.ui.common.AmbientLightEmitter {
+            var motion = ambientMotion
+            var palette = ambientPalette
+            var errorColor = ambientErrorColor
+
+            override fun isActive(): Boolean =
+                glow.generating.value > com.promenar.infinity.ui.common.AmbientMinVisibleEnergy ||
+                    glow.error.value > com.promenar.infinity.ui.common.AmbientMinVisibleEnergy
+
+            override fun sampleInto(out: com.promenar.infinity.ui.common.AmbientLightSample) {
+                com.promenar.infinity.ui.common.resolveAmbientPhaseEmission(
+                    generating = glow.generating.value,
+                    error = glow.error.value,
+                    timeSeconds = glow.timeSeconds,
+                    act = glow.act,
+                    weightOf = motion::weight,
+                    palette = palette,
+                    errorColor = errorColor,
+                    out = out,
+                )
+            }
+        }
+    }
+    SideEffect {
+        ambientEmitter.motion = ambientMotion
+        ambientEmitter.palette = ambientPalette
+        ambientEmitter.errorColor = ambientErrorColor
+    }
+    com.promenar.infinity.ui.common.RegisterAmbientLightEmitter(emitter = ambientEmitter)
     // 生成中写好了下一条：主按钮变为排队发送，外圈转动表示本轮仍在进行；长按展开插队、停止并发送与只停止。
     val hasDraft = text.isNotBlank() || hasImages || hasDocuments || hasAnnotatedQuotes
     val queueing = isGenerating && hasDraft && status in QueueableStatuses
@@ -3440,6 +3475,7 @@ fun ChatInputBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .publishAmbientLightBounds(ambientField, ambientEmitter)
             .composerIslandGlow(glow, material.topHighlight)
             .testTag(UiTags.CHAT_INPUT_BAR_SURFACE),
         shape = RoundedCornerShape(islandStyle.corner),

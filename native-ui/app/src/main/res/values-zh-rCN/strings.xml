@@ -1754,8 +1754,8 @@
     <string name="chat_menu_attach_image_hint">从相册选择</string>
     <string name="chat_menu_attach_document_hint">PDF、Word、文本等</string>
 
-    <!-- 外观：生成动效与自定义取色 -->
-    <string name="motion_section_title">生成动效</string>
+    <!-- 外观：界面特效与自定义取色 -->
+    <string name="motion_section_title">界面特效</string>
     <string name="motion_composer_title">输入框流光</string>
     <string name="motion_indicator_title">生成状态指示</string>
     <string name="motion_empty_chat_title">空会话动画</string>

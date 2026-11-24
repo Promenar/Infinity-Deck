@@ -88,6 +88,10 @@ class ThemeViewModel(
         store.setComposerSurfaceStyle(style)
     }
 
+    fun setGlassLightInfiltration(enabled: Boolean) {
+        store.setGlassLightInfiltration(enabled)
+    }
+
     fun setPureBlack(enabled: Boolean) {
         store.setPureBlack(enabled)
     }

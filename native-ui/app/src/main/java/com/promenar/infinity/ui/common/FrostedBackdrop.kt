@@ -409,6 +409,12 @@ fun FrostedChromeBackdropLayer(
         } else {
             Spacer(Modifier.matchParentSize().background(material.container))
         }
+        // 独立绘制层：仅在毛玻璃材质开启全局光效浸润且处于 235dp 物理受光范围内时按需绘制，不影响模糊层与静态描边缓存。
+        Spacer(
+            Modifier
+                .matchParentSize()
+                .ambientGlassInfiltration(cornerRadius = cornerRadius),
+        )
         Spacer(
             Modifier
                 .matchParentSize()

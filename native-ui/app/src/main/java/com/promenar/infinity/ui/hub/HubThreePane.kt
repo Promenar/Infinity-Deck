@@ -100,6 +100,7 @@ import com.promenar.infinity.ui.chat.LocalChatNavigationIcon
 import com.promenar.infinity.ui.common.FrostedChromeBackdropLayer
 import com.promenar.infinity.ui.common.FrostedChromeRole
 import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
+import com.promenar.infinity.ui.common.ambientGlassInfiltration
 import com.promenar.infinity.ui.common.backdropSource
 import com.promenar.infinity.ui.common.motion.MotionPalette
 import com.promenar.infinity.ui.common.motion.rememberMotionClock
@@ -514,6 +515,7 @@ internal fun HubSessionStrip(
         Modifier
             .fillMaxSize()
             .background(container)
+            .ambientGlassInfiltration(cornerRadius = 0.dp)
             .statusBarsPadding()
             .navigationBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,

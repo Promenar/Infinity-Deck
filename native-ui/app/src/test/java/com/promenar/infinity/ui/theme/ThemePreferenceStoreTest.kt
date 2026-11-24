@@ -254,6 +254,7 @@ class ThemePreferenceStoreTest {
         assertThat(motion.indicator).isEqualTo(GenerationIndicatorStyle.MATRIX)
         assertThat(motion.emptyChat).isEqualTo(EmptyChatStyle.LED_MORPH)
         assertThat(motion.surface).isEqualTo(ComposerSurfaceStyle.FROSTED)
+        assertThat(motion.glassLightInfiltration).isTrue()
         assertThat(motion).isEqualTo(InfinityMotionStyles())
     }
 
@@ -323,6 +324,22 @@ class ThemePreferenceStoreTest {
         store.setComposerSurfaceStyle(ComposerSurfaceStyle.AMBIENT)
         assertThat(store.state.value.motion.surface).isEqualTo(ComposerSurfaceStyle.AMBIENT)
         verify { editor.putString("motion_composer_surface", "ambient") }
+    }
+
+    @Test
+    fun `全局光效浸润开关默认开启，写入关闭后读回`() {
+        val editor = mockk<SharedPreferences.Editor>(relaxed = true)
+        every { editor.putBoolean(any(), any()) } returns editor
+        val prefs = mockk<SharedPreferences>(relaxed = true) {
+            every { edit() } returns editor
+            every { contains("motion_glass_light_infiltration") } returns true
+            every { getBoolean("motion_glass_light_infiltration", any()) } returns false
+        }
+        val store = ThemePreferenceStore(contextFor(prefs))
+        assertThat(store.state.value.motion.glassLightInfiltration).isFalse()
+        store.setGlassLightInfiltration(true)
+        assertThat(store.state.value.motion.glassLightInfiltration).isTrue()
+        verify { editor.putBoolean("motion_glass_light_infiltration", true) }
     }
 
     @Test

@@ -111,8 +111,8 @@ private val DefaultMotion = InfinityMotionStyles()
 internal fun <T> List<T>.defaultFirst(default: T): List<T> = listOf(default) + filter { it != default }
 
 /**
- * 外观页“生成动效”分组：三行分别打开带实时预览的样式选择面板；浮岛光效下方是浮岛材质（毛玻璃 / 环境光）与它的预览，
- * 再下面是运行坞点阵屏开关，打开时另有“显示数字”。
+ * 外观页“界面特效”分组：三行分别打开带实时预览的样式选择面板；浮岛光效下方是浮岛材质（毛玻璃 / 环境光）、
+ * 它的预览与全局光效浸润开关，再下面是运行坞点阵屏开关，打开时另有“显示数字”。
  */
 @Composable
 internal fun MotionStyleRows(
@@ -123,6 +123,7 @@ internal fun MotionStyleRows(
     onRunDockScopeChange: (Boolean) -> Unit = {},
     onScopeDigitsChange: (Boolean) -> Unit = {},
     onSurfaceSelect: (ComposerSurfaceStyle) -> Unit = {},
+    onGlassInfiltrationChange: (Boolean) -> Unit = {},
 ) {
     MotionStylePicker(
         title = stringResource(R.string.motion_composer_title),
@@ -134,6 +135,7 @@ internal fun MotionStyleRows(
         phaseDemo = true,
     ) { ComposerPreview(it) }
     ComposerSurfaceOptions(motion, onSurfaceSelect)
+    GlassInfiltrationOption(motion, onGlassInfiltrationChange)
     RunDockScopeOptions(motion, onRunDockScopeChange, onScopeDigitsChange)
     MotionStylePicker(
         title = stringResource(R.string.motion_indicator_title),
@@ -254,6 +256,26 @@ private fun ComposerSurfaceOptions(motion: InfinityMotionStyles, onSelect: (Comp
             ComposerPreview(motion.composer)
         }
     }
+}
+
+/** 全局厚玻璃光效浸润独立开关：仅在毛玻璃材质下启用；环境光省电档自动置灰。 */
+@Composable
+private fun GlassInfiltrationOption(
+    motion: InfinityMotionStyles,
+    onChange: (Boolean) -> Unit,
+) {
+    val frosted = motion.surface == ComposerSurfaceStyle.FROSTED
+    SettingsToggle(
+        title = stringResource(R.string.motion_glass_infiltration),
+        description = stringResource(
+            if (frosted) R.string.motion_glass_infiltration_desc else R.string.motion_glass_infiltration_frosted_only,
+        ),
+        checked = frosted && motion.glassLightInfiltration,
+        enabled = frosted,
+        onCheckedChange = onChange,
+        descriptionMaxLines = 2,
+        modifier = Modifier.testTag("theme_motion_glass_infiltration"),
+    )
 }
 
 /** 运行坞点阵屏开关；打开时另有“显示数字”。 */

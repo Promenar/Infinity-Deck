@@ -113,6 +113,8 @@ data class InfinityMotionStyles(
     val emptyChat: EmptyChatStyle = EmptyChatStyle.LED_MORPH,
     /** 输入框浮岛的材质；默认熏黑透视玻璃。 */
     val surface: ComposerSurfaceStyle = ComposerSurfaceStyle.FROSTED,
+    /** 毛玻璃材质下是否让生成光效按物理距离浸润相邻毛玻璃边缘；环境光纯色省电档下自动停用。 */
+    val glassLightInfiltration: Boolean = true,
     /** 运行坞右侧是否显示点阵波形屏；与 [composer] 的浮岛流光互相独立。 */
     val runDockScope: Boolean = true,
     /** 运行坞点阵屏是否显示数字读数；关闭时波形铺满整块屏。 */

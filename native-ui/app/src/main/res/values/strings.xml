@@ -1762,8 +1762,8 @@
     <string name="chat_menu_attach_image_hint">Choose from photos</string>
     <string name="chat_menu_attach_document_hint">PDF, Word, text, and more</string>
 
-    <!-- 外观：生成动效与自定义取色 -->
-    <string name="motion_section_title">Generation motion</string>
+    <!-- 外观：界面特效与自定义取色 -->
+    <string name="motion_section_title">Interface effects</string>
     <string name="motion_composer_title">Composer glow</string>
     <string name="motion_indicator_title">Generating indicator</string>
     <string name="motion_empty_chat_title">Empty chat animation</string>

@@ -109,6 +109,7 @@ fun ThemeScreen(onNavigateBack: () -> Unit) {
         onRunDockScopeChange = viewModel::setRunDockScope,
         onScopeDigitsChange = viewModel::setScopeDigits,
         onComposerSurfaceSelect = viewModel::setComposerSurfaceStyle,
+        onGlassLightInfiltrationChange = viewModel::setGlassLightInfiltration,
     )
 }
 
@@ -134,6 +135,7 @@ fun ThemeScreenContent(
     onRunDockScopeChange: (Boolean) -> Unit = {},
     onScopeDigitsChange: (Boolean) -> Unit = {},
     onComposerSurfaceSelect: (com.promenar.infinity.ui.theme.ComposerSurfaceStyle) -> Unit = {},
+    onGlassLightInfiltrationChange: (Boolean) -> Unit = {},
 ) {
     val preferences = state.preferences
     val dynamicColorChecked = state.dynamicColorAvailable &&
@@ -199,6 +201,7 @@ fun ThemeScreenContent(
                         onRunDockScopeChange = onRunDockScopeChange,
                         onScopeDigitsChange = onScopeDigitsChange,
                         onSurfaceSelect = onComposerSurfaceSelect,
+                        onGlassInfiltrationChange = onGlassLightInfiltrationChange,
                     )
                 }
             }

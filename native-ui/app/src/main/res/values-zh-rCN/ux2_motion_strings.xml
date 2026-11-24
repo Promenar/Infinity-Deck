@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="motion_phase_thinking">思考</string>
+    <string name="motion_glass_infiltration">全局光效浸润</string>
+    <string name="motion_glass_infiltration_desc">让光效自然浸润相邻毛玻璃边缘</string>
+    <string name="motion_glass_infiltration_frosted_only">仅在毛玻璃材质下生效</string>
     <string name="motion_run_dock_scope">运行坞点阵屏</string>
     <string name="motion_run_dock_scope_desc">显示输出速率波形，待审批时闪烁</string>
     <string name="motion_scope_digits">显示数字</string>

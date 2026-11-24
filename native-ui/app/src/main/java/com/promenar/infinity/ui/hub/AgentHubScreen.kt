@@ -697,9 +697,24 @@ internal fun AgentHubScreenContent(
     LaunchedEffect(sessionGroupsShown) {
         if (listState.firstVisibleItemIndex <= 1) listState.animateScrollToItem(0)
     }
+    val externalChrome = LocalFrostedChromeMaterial.current != null
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (externalChrome) {
+                    Modifier
+                } else {
+                    // 三栏展开态左侧会话栏在底层承接来自相邻输入浮岛的厚玻璃光效浸润；单栏无光源时零绘制。
+                    Modifier
+                        .background(MaterialTheme.colorScheme.background)
+                        .ambientGlassInfiltration(cornerRadius = 0.dp)
+                },
+            ),
+    ) {
     Scaffold(
         modifier = Modifier.testTag(UiTags.HUB_ROOT),
-        containerColor = if (LocalFrostedChromeMaterial.current != null) Color.Transparent else MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -839,6 +854,7 @@ internal fun AgentHubScreenContent(
                 }
             }
         }
+    }
     }
 }
 

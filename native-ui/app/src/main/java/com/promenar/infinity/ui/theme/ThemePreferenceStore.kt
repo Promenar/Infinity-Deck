@@ -25,6 +25,7 @@ class ThemePreferenceStore(context: Context) {
         const val RUN_DOCK_SCOPE_KEY = "motion_run_dock_scope"
         const val SCOPE_DIGITS_KEY = "motion_scope_digits"
         const val COMPOSER_SURFACE_KEY = "motion_composer_surface"
+        const val GLASS_LIGHT_INFILTRATION_KEY = "motion_glass_light_infiltration"
         const val RECENT_CUSTOM_COLORS_KEY = "theme_recent_custom_colors"
         /** 主色键里表示“内置淡紫配色”的值：显式写入，和从未选择过（缺键，走冰蓝默认）区分开。 */
         const val BUILT_IN_PRIMARY_COLOR = 0L
@@ -49,6 +50,7 @@ class ThemePreferenceStore(context: Context) {
             RUN_DOCK_SCOPE_KEY,
             SCOPE_DIGITS_KEY,
             COMPOSER_SURFACE_KEY,
+            GLASS_LIGHT_INFILTRATION_KEY,
             RECENT_CUSTOM_COLORS_KEY,
         )
     }
@@ -156,6 +158,11 @@ class ThemePreferenceStore(context: Context) {
         preferences.edit().putString(COMPOSER_SURFACE_KEY, style.name.lowercase()).apply()
     }
 
+    fun setGlassLightInfiltration(enabled: Boolean) {
+        _state.value = _state.value.copy(motion = _state.value.motion.copy(glassLightInfiltration = enabled))
+        preferences.edit().putBoolean(GLASS_LIGHT_INFILTRATION_KEY, enabled).apply()
+    }
+
     /** 把自定义色放到最近使用的最前面，去重后截断到 [RECENT_CUSTOM_COLOR_LIMIT] 个。 */
     fun rememberCustomColor(argb: Int) {
         val recent = pushRecentColor(_state.value.recentCustomColors, argb, RECENT_CUSTOM_COLOR_LIMIT)
@@ -198,6 +205,8 @@ class ThemePreferenceStore(context: Context) {
             indicator = GenerationIndicatorStyle.fromPreferenceValue(preferences.getString(INDICATOR_STYLE_KEY, null)),
             emptyChat = EmptyChatStyle.fromPreferenceValue(preferences.getString(EMPTY_CHAT_STYLE_KEY, null)),
             surface = ComposerSurfaceStyle.fromPreferenceValue(preferences.getString(COMPOSER_SURFACE_KEY, null)),
+            glassLightInfiltration = !preferences.contains(GLASS_LIGHT_INFILTRATION_KEY) ||
+                preferences.getBoolean(GLASS_LIGHT_INFILTRATION_KEY, true),
             // 缺省显示；选过旧“点阵波形屏”流光的用户迁成仅材质光，点阵屏照样在运行坞里。
             runDockScope = !preferences.contains(RUN_DOCK_SCOPE_KEY) || preferences.getBoolean(RUN_DOCK_SCOPE_KEY, true),
             // 缺省显示数字。
