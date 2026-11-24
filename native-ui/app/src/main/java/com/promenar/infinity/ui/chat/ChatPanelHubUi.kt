@@ -15,7 +15,6 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.SpaceDashboard
 import androidx.compose.material.icons.rounded.TableChart
@@ -63,7 +62,6 @@ internal val ChatPage.hubIcon: ImageVector
         ChatPage.Explorer -> Icons.Outlined.Folder
         ChatPage.Git -> Icons.Rounded.AccountTree
         ChatPage.Browser -> Icons.Rounded.Public
-        ChatPage.Remote -> Icons.Rounded.Lan
         ChatPage.Canvas -> Icons.Rounded.Dashboard
         ChatPage.State -> Icons.Rounded.TableChart
         ChatPage.Production -> com.promenar.infinity.ui.production.ProductionPanelEntry.icon
@@ -77,7 +75,6 @@ internal fun ChatPage.hubLabel(): String = stringResource(
         ChatPage.Explorer -> R.string.chat_inspector_tab_files
         ChatPage.Git -> R.string.chat_inspector_tab_git
         ChatPage.Browser -> R.string.chat_inspector_tab_browser
-        ChatPage.Remote -> R.string.remote_panel_title
         ChatPage.Canvas -> R.string.chat_inspector_tab_canvas
         ChatPage.State -> R.string.panel_hub_tab_state
         ChatPage.Production -> com.promenar.infinity.ui.production.ProductionPanelEntry.titleRes
@@ -90,7 +87,6 @@ internal fun ChatPage.inspectorTabLabelRes(): Int = when (this) {
     ChatPage.Explorer -> R.string.chat_inspector_tab_files
     ChatPage.Git -> R.string.chat_inspector_tab_git
     ChatPage.Browser -> R.string.chat_inspector_tab_browser
-    ChatPage.Remote -> R.string.remote_panel_title
     ChatPage.Canvas -> R.string.chat_inspector_tab_canvas
     ChatPage.State -> R.string.chat_inspector_tab_state
     ChatPage.Production -> R.string.chat_inspector_tab_production

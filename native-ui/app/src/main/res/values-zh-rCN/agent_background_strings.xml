@@ -101,8 +101,13 @@
     <string name="agent_jobs_log_truncated">只显示最近的输出。</string>
     <string name="agent_jobs_log_failed">无法读取日志</string>
     <string name="agent_jobs_log_empty">暂无输出</string>
+    <string name="agent_jobs_log_reclaimed">该任务的详细日志已按空间配额清理，执行记录已保留。</string>
     <string name="agent_jobs_group_running">运行中 · %1$d</string>
     <string name="agent_jobs_group_finished">已结束 · %1$d</string>
+    <string name="agent_jobs_clear_finished">清空记录</string>
+    <string name="agent_jobs_clear_confirm_title">清空已结束记录</string>
+    <string name="agent_jobs_clear_confirm_message">将清除本会话中 %1$d 条已结束的执行记录与关联日志，不影响聊天记录。此操作不可撤销。</string>
+    <string name="agent_jobs_clear_confirm_message_with_running">将清除本会话中 %1$d 条已结束的执行记录与关联日志；%2$d 个运行中任务与聊天记录不受影响。此操作不可撤销。</string>
     <string name="agent_jobs_exit_badge">退出 %1$d</string>
     <string name="system_trigger_subagent_done">子代理交回结论 · %1$s</string>
 </resources>

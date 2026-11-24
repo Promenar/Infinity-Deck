@@ -13,6 +13,7 @@ import com.promenar.infinity.data.model.ToolResult
 import com.promenar.infinity.data.trigger.SubagentCompletionSteering
 import com.promenar.infinity.data.trigger.SystemTurnAdmissionTicket
 import com.promenar.infinity.domain.tool.ToolLiveOutputSink
+import com.promenar.infinity.domain.tool.ToolOutputStream
 import com.promenar.infinity.ui.chat.ChatStore
 import com.promenar.infinity.ui.chat.manager.MessageManager
 import io.mockk.coEvery
@@ -21,6 +22,7 @@ import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import org.junit.Test
 
 class BackgroundJobManagerTest {
@@ -399,6 +401,256 @@ class BackgroundJobManagerTest {
             assertThat(bridge.deliver("s", store, messages)).isNull()
         }
 
+    @Test fun `清空当前会话终态后刷新观察流并保留运行中和其他会话目录`() = withJobHistory { root, scope, store ->
+        val finished = historyRecord(root, "job-finished", endedAt = 2)
+        val other = historyRecord(root, "job-other", sessionId = "other", endedAt = 3)
+        store.put(finished)
+        store.put(other)
+        val jobs = manager(root, scope, store)
+        val running = checkNotNull(jobs.runInApp("s", "root", "运行中任务", 1, true, 1, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) {
+            awaitCancellation()
+        }.job)
+        val runningDirectory = File(running.runDirectory).apply { mkdirs() }
+        val observing = CompletableDeferred<Unit>()
+        val changed = async {
+            jobs.observe("s").map { list -> list.map { it.id } }.first { ids ->
+                if (finished.id in ids && running.id in ids) observing.complete(Unit)
+                observing.isCompleted && ids == listOf(running.id)
+            }
+        }
+        observing.await()
+
+        assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(1))
+        assertThat(changed.await()).containsExactly(running.id)
+        assertThat(BackgroundJobStore(File(root, "store")).all().map { it.id }).containsExactly(running.id, other.id)
+        assertThat(File(finished.runDirectory).exists()).isFalse()
+        assertThat(File(other.runDirectory).isDirectory).isTrue()
+        assertThat(runningDirectory.isDirectory).isTrue()
+    }
+
+    @Test fun `清空与配额保护收尾中的worker和退场后仍未确认的唤醒`() = withJobHistory { root, scope, store ->
+        val dispatched = CompletableDeferred<SystemTurnRequest>()
+        val returnFromDispatch = CompletableDeferred<Unit>()
+        val dispatcher = object : SystemTurnDispatcher {
+            override suspend fun request(request: SystemTurnRequest): SystemTurnOutcome {
+                dispatched.complete(request)
+                returnFromDispatch.await()
+                return SystemTurnOutcome.Completed
+            }
+        }
+        val finished = historyRecord(root, "job-finished", endedAt = 2)
+        store.put(finished)
+        val jobs = manager(root, scope, store, completion = BackgroundJobCompletion({ dispatcher }), terminalLogLimit = 0)
+        val exit = CompletableDeferred<Unit>()
+        val job = startWakeJob(jobs, exit)
+        val worker = scope.coroutineContext[Job]!!.children.filter { it.isActive }.single()
+        exit.complete(Unit)
+        try {
+            val delivery = checkNotNull(dispatched.await().delivery)
+            assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(1, 1))
+            assertThat(File(job.runDirectory).isDirectory).isTrue()
+            returnFromDispatch.complete(Unit)
+            worker.join()
+            assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(0, 1))
+            assertThat(jobs.status("s", job.id).record.toolResult?.content).isEqualTo("任务结果")
+            assertThat(File(job.runDirectory).isDirectory).isTrue()
+            checkNotNull(delivery.claim()).let { claim ->
+                try { claim.confirm() } finally { claim.release() }
+            }
+            assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(1))
+            assertThat(File(job.runDirectory).exists()).isFalse()
+        } finally { returnFromDispatch.complete(Unit) }
+    }
+
+    @Test fun `启动时按终态日志字节预算回收最旧目录并保留历史和读取权限`() = withJobHistory { root, scope, store ->
+        val oldest = historyRecord(root, "job-oldest", endedAt = null, startedAt = 1, log = "12")
+            .copy(toolResult = ToolResult("result", "历史结果"))
+        File(oldest.runDirectory, "output.log.1").writeText("345")
+        val middle = historyRecord(root, "job-middle", sessionId = "other", endedAt = 3, startedAt = 0, log = "abc")
+        val newest = historyRecord(root, "job-newest", endedAt = 4, startedAt = 1, log = "def")
+        for (record in listOf(oldest, middle, newest)) store.put(record)
+        val jobs = manager(root, scope, store, terminalLogBytes = 8)
+
+        assertThat(jobs.observe(null).first().map { it.id }).containsExactly(oldest.id, middle.id, newest.id)
+        assertThat(File(oldest.runDirectory).exists()).isFalse()
+        assertThat(File(middle.runDirectory).isDirectory).isTrue()
+        assertThat(File(newest.runDirectory).isDirectory).isTrue()
+        val reference = BackgroundJobLogs.reference(oldest.id)
+        val reloaded = BackgroundJobStore(File(root, "store"))
+        assertThat(reloaded.all().single { it.id == oldest.id }.logReclaimed).isTrue()
+        assertThat(jobs.readLog("s", reference)).isEqualTo(BackgroundJobLog("", false, true))
+        assertThat(jobs.status("s", oldest.id).record.toolResult?.content).isEqualTo("历史结果")
+        assertThat(jobs.waitFor("s", oldest.id, 1).record.toolResult?.content).isEqualTo("历史结果")
+        assertThat(jobs.readLog("other", BackgroundJobLogs.reference(middle.id))).isEqualTo(BackgroundJobLog("abc", false))
+        val denied = runCatching { jobs.readLog("other", reference) }.exceptionOrNull()
+        assertThat((denied as? JobAccessException)?.code).isEqualTo("JOB_NOT_FOUND")
+    }
+
+    @Test fun `worker退场后自动执行终态日志数量预算且保留工具结果`() = withJobHistory { root, scope, store ->
+        val old = historyRecord(root, "job-previous", endedAt = 1)
+        store.put(old)
+        val jobs = manager(root, scope, store, terminalLogLimit = 1)
+        val exit = CompletableDeferred<Unit>()
+        val job = checkNotNull(jobs.runInApp("s", "root", "写日志", 1, true, 1, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) { output ->
+            output.emit(ToolOutputStream.STDOUT, "新日志")
+            exit.await()
+            ToolResult("result", "保留工具结果")
+        }.job)
+        val worker = scope.coroutineContext[Job]!!.children.filter { it.isActive }.single()
+        exit.complete(Unit)
+        worker.join()
+
+        assertThat(jobs.list("s").map { it.id }).containsExactly(job.id, old.id)
+        assertThat(jobs.status("s", job.id).record.toolResult?.content).isEqualTo("保留工具结果")
+        assertThat(jobs.readLog("s", BackgroundJobLogs.reference(job.id)).text).contains("新日志")
+        assertThat(jobs.readLog("s", BackgroundJobLogs.reference(old.id)).logReclaimed).isTrue()
+        assertThat(File(old.runDirectory).exists()).isFalse()
+    }
+
+    @Test fun `删除会话进行中及删除完成后清空均返回零`() = withJobHistory { root, scope, store ->
+        val finished = historyRecord(root, "job-finished", endedAt = 2)
+        val other = historyRecord(root, "job-other", sessionId = "other", endedAt = 3)
+        store.put(finished)
+        store.put(other)
+        val stopping = CompletableDeferred<Unit>()
+        val started = CompletableDeferred<Unit>()
+        val releaseStop = CompletableDeferred<Unit>()
+        val jobs = manager(root, scope, store)
+        val running = checkNotNull(jobs.runInApp("s", "root", "待停止任务", 1, true, 1, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) {
+            try { started.complete(Unit); awaitCancellation() } finally {
+                withContext(NonCancellable) { stopping.complete(Unit); releaseStop.await() }
+            }
+        }.job)
+        // 等待执行体开始，确保删除停在可控的收尾区间。
+        started.await()
+        val deleting = async { jobs.deleteSession("s") }
+        try {
+            stopping.await()
+            assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(0))
+            assertThat(File(finished.runDirectory).exists()).isTrue()
+        } finally { releaseStop.complete(Unit) }
+        deleting.await()
+        assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(0))
+        assertThat(jobs.observe(null).first().map { it.id }).containsExactly(other.id)
+        assertThat(File(finished.runDirectory).exists()).isFalse()
+        assertThat(File(running.runDirectory).exists()).isFalse()
+    }
+
+    @Test fun `清空后目录清理失败可重试且不会跟随越界链接`() = withJobHistory { root, scope, store ->
+        val finished = historyRecord(root, "job-finished", endedAt = 2)
+        store.put(finished)
+        val jobs = manager(root, scope, store)
+        jobs.initialize()
+        val directory = File(finished.runDirectory)
+        val outside = File(root, "outside").apply { mkdir() }
+        val sentinel = File(outside, "keep").apply { writeText("保留") }
+        deleteJobTree(directory)
+        Files.createSymbolicLink(directory.toPath(), outside.toPath())
+
+        assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(1))
+        assertThat(jobs.observe("s").first()).isEmpty()
+        assertThat(Files.isSymbolicLink(directory.toPath())).isTrue()
+        assertThat(sentinel.readText()).isEqualTo("保留")
+        Files.delete(directory.toPath())
+        directory.mkdir()
+        File(directory, "output.log").writeText("待清除")
+
+        assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(0))
+        assertThat(directory.exists()).isFalse()
+        assertThat(sentinel.isFile).isTrue()
+    }
+
+    @Test fun `清空提交后进程退出会在启动时补删目录`() = withJobHistory { root, scope, store ->
+        val finished = historyRecord(root, "job-cleared", endedAt = 2)
+        val other = historyRecord(root, "job-survives", endedAt = 3, sessionId = "other")
+        store.put(finished)
+        store.put(other)
+        assertThat(store.clearFinished("s")).containsExactly(finished)
+        assertThat(File(finished.runDirectory).exists()).isTrue()
+
+        val reopened = BackgroundJobStore(File(root, "store"))
+        val jobs = manager(root, scope, reopened)
+        assertThat(jobs.observe(null).first().map { it.id }).containsExactly(other.id)
+        assertThat(File(finished.runDirectory).exists()).isFalse()
+        assertThat(File(other.runDirectory).exists()).isTrue()
+        assertThat(BackgroundJobStore(File(root, "store")).restorePendingCleanup()).isEmpty()
+    }
+
+    @Test fun `启动会补删已标记回收但仍在磁盘的日志目录`() = withJobHistory { root, scope, store ->
+        val finished = historyRecord(root, "job-reclaimed", endedAt = 2)
+        store.put(finished)
+        store.markLogsReclaimed(setOf(finished.id))
+        val jobs = manager(root, scope, BackgroundJobStore(File(root, "store")))
+
+        assertThat(jobs.observe("s").first().map { it.id }).containsExactly(finished.id)
+        assertThat(File(finished.runDirectory).exists()).isFalse()
+        assertThat(jobs.readLog("s", BackgroundJobLogs.reference(finished.id))).isEqualTo(BackgroundJobLog("", false, true))
+    }
+
+    @Test fun `停止会话解除屏障后重新检查终态日志配额`() = withJobHistory { root, scope, store ->
+        val old = historyRecord(root, "job-previous", endedAt = 1)
+        store.put(old)
+        val jobs = manager(root, scope, store, terminalLogLimit = 1)
+        val started = CompletableDeferred<Unit>()
+        val running = checkNotNull(jobs.runInApp("s", "root", "待停止任务", 1, true, 1, BackgroundJobExitAction.NONE, ToolLiveOutputSink.None) { output ->
+            output.emit(ToolOutputStream.STDOUT, "待停止")
+            started.complete(Unit)
+            awaitCancellation()
+        }.job)
+        started.await()
+
+        jobs.stopSession("s")
+        assertThat(jobs.status("s", running.id).record.state).isEqualTo("STOPPED")
+        assertThat(File(running.runDirectory).isDirectory).isTrue()
+        assertThat(jobs.readLog("s", BackgroundJobLogs.reference(old.id)).logReclaimed).isTrue()
+    }
+
+    @Test fun `在途Termux终态刷新不会重建已清空的记录`() = withJobHistory { root, scope, store ->
+        val finished = historyRecord(root, "job-termux", endedAt = 2).copy(
+            runner = "TERMUX", termuxPid = 12345, termuxDirectory = "/termux/jobs/job-termux",
+            workspaceDirectory = root.path,
+        )
+        store.put(finished)
+        val inspecting = CompletableDeferred<Unit>()
+        val resumeInspection = CompletableDeferred<Unit>()
+        val migrations = java.util.concurrent.atomic.AtomicInteger()
+        val backend = com.promenar.infinity.data.termux.TermuxBackgroundJobs { request ->
+            if ("code=-" !in request.command) migrations.incrementAndGet()
+            else inspecting.complete(Unit)
+            resumeInspection.await()
+            com.promenar.infinity.data.termux.TermuxCommandResult(stdout = "INFINITY_JOB_V1\n0\n0\n0\n0\n4\ndGFpbA==\n", exitCode = 0)
+        }
+        val jobs = manager(root, scope, store, termux = backend)
+        val status = async { runCatching { jobs.status("s", finished.id) }.exceptionOrNull() }
+        try {
+            inspecting.await()
+            assertThat(jobs.clearFinished("s")).isEqualTo(ClearFinishedJobsResult(1))
+        } finally { resumeInspection.complete(Unit) }
+        assertThat((status.await() as? JobAccessException)?.code).isEqualTo("JOB_NOT_FOUND")
+        assertThat(migrations.get()).isEqualTo(0)
+        assertThat(BackgroundJobStore(File(root, "store")).all()).isEmpty()
+        assertThat(File(finished.runDirectory).exists()).isFalse()
+    }
+
+    private fun withJobHistory(block: suspend CoroutineScope.(File, CoroutineScope, BackgroundJobStore) -> Unit) =
+        runBlocking<Unit> {
+            val root = Files.createTempDirectory("job-history").toFile()
+            val worker = SupervisorJob()
+            try {
+                withTimeout(10_000) { block(root, CoroutineScope(worker + Dispatchers.IO), BackgroundJobStore(File(root, "store"))) }
+            } finally {
+                worker.cancelAndJoin()
+                deleteJobTree(root)
+            }
+        }
+
+    private fun historyRecord(root: File, id: String, endedAt: Long?, sessionId: String = "s", startedAt: Long = 1, log: String = "日志"): BackgroundJobRecord {
+        val directory = File(root, "runs/$id").apply { mkdirs() }
+        File(directory, "output.log").writeText(log)
+        return sample().copy(id = id, sessionId = sessionId, state = "EXITED", startedAtMillis = startedAt,
+            endedAtMillis = endedAt, runDirectory = directory.path, logWorkspacePath = BackgroundJobLogs.reference(id))
+    }
+
     private suspend fun startWakeJob(manager: BackgroundJobManager, exit: CompletableDeferred<Unit>) =
         checkNotNull(manager.runInApp("s", "root", "测试任务", 1, true, 1, BackgroundJobExitAction.WAKE, ToolLiveOutputSink.None) {
             exit.await()
@@ -708,12 +960,15 @@ class BackgroundJobManagerTest {
         vault:SessionSecretVault?=null, live:ToolLiveOutputStore=ToolLiveOutputStore(),
         isolated: Boolean = false, requestReconcile: (BackgroundJobRecord) -> Unit = {},
         sessionLimit:Int=MAX_SESSION_RUNNING, globalLimit:Int=MAX_GLOBAL_RUNNING,
-        withdrawPendingWake: (String) -> Unit = {})=BackgroundJobManager(
+        withdrawPendingWake: (String) -> Unit = {},
+        terminalLogLimit: Int = MAX_RETAINED_TERMINAL_LOGS, terminalLogBytes: Long = MAX_TOTAL_TERMINAL_LOG_BYTES,
+        )=BackgroundJobManager(
         scope,store,File(root,"runs"),
         BuiltinCommandRunner(listOf("/usr/bin/perl","-e","setpgrp(0, 0); exec @ARGV or exit 127"),"/bin/sh",ProcessGroupSignaller {pid,signal->ProcessBuilder("/bin/kill","-$signal","-$pid").start().waitFor()}, {File(root,"scratch")},killGraceMillis=100),
         prepareWorkspace={ BackgroundJobLocation(root,root,isolated,false) },
         reconcile=reconcile,requestReconcile=requestReconcile,completion=completion,keepAlive=keepAlive,termux=termux,vault=vault,redactor=vault?.let(::SecretOutputRedactor),liveOutput=live,
         prepareCommand={_,source,stdin,location,minutes -> PreparedBackgroundCommand(BuiltinCommandRequest(listOf("/bin/sh","-c",source),location.commandDirectory,mapOf("PATH" to "/usr/bin:/bin"),stdin,minutes*60)) },
         sessionRunningLimit=sessionLimit,globalRunningLimit=globalLimit,withdrawPendingWake=withdrawPendingWake,
+        terminalLogLimit=terminalLogLimit, terminalLogBytes=terminalLogBytes,
     )
 }

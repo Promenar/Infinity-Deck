@@ -344,9 +344,7 @@ data class ChatScreenState(
     val inspectorPages: List<ChatPage> = emptyList(),
     /** 本会话 Agent 浏览器的页面与操作权状态；还没有打开网页时为 null，入口仍常驻并进入空状态。 */
     val browser: com.promenar.infinity.data.browser.BrowserUiState? = null,
-    /** 远程页签与菜单项的圆点：智能体正在使用 SSH 或 Tailscale 需要处理；都没有时为 null。 */
-    val remote: RemoteDot? = null,
-    /** 远程面板等处请求打开后台任务列表的次数；每次加一，打开运行详情的“后台”页。 */
+    /** 外部入口请求打开后台任务列表的次数；每次加一，打开运行详情的“后台”页。 */
     val backgroundJobsRequest: Int = 0,
     /** 竖屏上滑抽屉在阻断式生成确认弹窗期间暂时让出，弹窗结束后自动恢复。 */
     val portraitDrawerSuspended: Boolean = false,
@@ -363,8 +361,6 @@ data class ChatScreenActions(
     val onOpenWorkspaceStatus: () -> Unit = {},
     /** 窄窗口打开 Agent 浏览器整页；宽窗口由检视器页签承载。 */
     val onOpenBrowser: () -> Unit = {},
-    /** 窄窗口打开“远程”整页；宽窗口由检视器页签承载。 */
-    val onOpenRemote: () -> Unit = {},
     /** 窄窗口以整页打开制作面板。 */
     val onOpenProduction: () -> Unit = {},
     /** 宽窗口检视器：替换整个层级（打开页签、收起）。 */
@@ -961,19 +957,22 @@ fun ChatScreenContent(
         val sideArtifacts = canvasSession?.artifacts.orEmpty()
         val sideCandidates = canvasSession?.candidates.orEmpty()
         val sideBoard = state.stateBoard?.takeIf { it.board != null }
-        val hasRunContent = sidePlan != null || sideBoard != null || activitySummary?.visible == true || uiState.isGenerating
+        // 任务面板完整展示本会话持久保留的任务与定时记录，不受 RunDock 10 分钟静默窗口隐藏。
+        val hasRunContent = sidePlan != null || sideBoard != null || agentActivity?.isEmpty == false || uiState.isGenerating
         // 功能面板统一入口：窄窗口顶栏按钮与宽窗口检视器页签、边缘条共用这一份条目，排序与可用性一致。
         // 画布与状态面板在本会话被 Agent 调用过后保持可用，内容清空也不再回到“未使用”。
         var hubUsedToken by rememberSaveable(uiState.session?.id) { mutableStateOf("") }
         val hubUsed = panelHubUsage(restorePanelHubUsage(hubUsedToken), panelHubActive(sideArtifacts.size, sideCandidates.size, sideBoard != null, state.production.enabled))
         SideEffect { savePanelHubUsage(hubUsed).let { if (it != hubUsedToken) hubUsedToken = it } }
+        val finishedJobCount = agentActivity?.jobs?.count { it.state.isTerminal } ?: 0
         val hubSummaries = mapOf(
             ChatPage.Run to (dock?.takeUnless { it.label is com.promenar.infinity.ui.chat.components.RunDockLabel.Board }
-                ?.let { com.promenar.infinity.ui.chat.components.runDockLabelText(it) } ?: stringResource(R.string.panel_hub_idle)),
+                ?.let { com.promenar.infinity.ui.chat.components.runDockLabelText(it) }
+                ?: finishedJobCount.takeIf { it > 0 }?.let { stringResource(R.string.run_detail_jobs_finished, it) }
+                ?: stringResource(R.string.panel_hub_idle)),
             ChatPage.Explorer to state.workspace?.let { workspaceStatusName(it) },
             ChatPage.Git to panelHubGitSummary(state.gitEntry ?: state.gitSummary),
             ChatPage.Browser to panelHubBrowserSummary(state.browser),
-            ChatPage.Remote to remoteDotDescription(state.remote),
             ChatPage.Canvas to panelHubJoin(
                 listOf(
                     sideArtifacts.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.chat_inspector_count, it, it) },
@@ -994,7 +993,6 @@ fun ChatScreenContent(
                 pendingApprovals = pendingApprovals,
                 runningJobs = activitySummary?.runningJobs ?: 0,
                 browser = state.browser?.mode,
-                remote = state.remote,
                 canvases = sideArtifacts.size,
                 canvasCandidates = sideCandidates.size,
                 hasStateBoard = sideBoard != null,
@@ -1123,7 +1121,7 @@ fun ChatScreenContent(
                                     )
                                 }
                             }
-                            ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote -> {
+                            ChatPage.Explorer, ChatPage.Git, ChatPage.Browser -> {
                                 if (inspectorPageSlot != null) inspectorPageSlot(page, null)
                                 else inspectorPageContent()
                             }

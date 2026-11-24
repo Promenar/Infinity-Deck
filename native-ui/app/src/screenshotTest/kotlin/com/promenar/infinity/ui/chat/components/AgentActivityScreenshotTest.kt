@@ -139,14 +139,14 @@ fun runDockBackgroundTriggerLightChinesePreview() = ActivityPreviewFrame(dark = 
 @Preview(name = "后台任务面板 Play 深中360", widthDp = 360, heightDp = 420, locale = "zh-rCN")
 @Composable
 fun backgroundJobsPlayDarkChinesePreview() = ActivityPreviewFrame(dark = true) {
-    BackgroundJobsContent(jobs = previewJobs, nowMillis = NOW, keepAliveAvailable = false, onStop = {}, onOpenLog = {})
+    BackgroundJobsContent(jobs = previewJobs, nowMillis = NOW, keepAliveAvailable = false, onStop = {}, onOpenLog = {}, onClearFinished = {})
 }
 
 @PreviewTest
 @Preview(name = "后台任务面板 侧载 浅英360 大字体", widthDp = 360, heightDp = 480, locale = "en", fontScale = 1.3f)
 @Composable
 fun backgroundJobsSideloadLightEnglishPreview() = ActivityPreviewFrame(dark = false) {
-    BackgroundJobsContent(jobs = previewJobs, nowMillis = NOW, keepAliveAvailable = true, onStop = {}, onOpenLog = {})
+    BackgroundJobsContent(jobs = previewJobs, nowMillis = NOW, keepAliveAvailable = true, onStop = {}, onOpenLog = {}, onClearFinished = {})
 }
 
 // SSH 后台命令与本地任务同一列表，运行环境标签后接主机 ID；有短标题与无标题的行混排。
@@ -161,7 +161,7 @@ private val mixedJobs = listOf(
 @Preview(name = "后台任务面板 本地与 SSH 混排 浅英360 大字体", widthDp = 360, heightDp = 560, locale = "en", fontScale = 1.3f)
 @Composable
 fun backgroundJobsMixedSshPreview() = ActivityPreviewFrame(dark = true) {
-    BackgroundJobsContent(jobs = mixedJobs, nowMillis = NOW, keepAliveAvailable = true, onStop = {}, onOpenLog = {})
+    BackgroundJobsContent(jobs = mixedJobs, nowMillis = NOW, keepAliveAvailable = true, onStop = {}, onOpenLog = {}, onClearFinished = {})
 }
 
 @PreviewTest

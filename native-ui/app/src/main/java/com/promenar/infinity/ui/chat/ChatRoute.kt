@@ -120,8 +120,6 @@ internal fun advanceChatOverlay(
 
 private const val TRUNCATE_OVERLAY_PREFIX = "truncate:"
 private const val TURN_MEMORY_OVERLAY_PREFIX = "turn_memory:"
-/** 运行中的 ssh_exec 只会出现在最近几条消息里；只扫描这一段，避免长会话每次重组都遍历全部步骤。 */
-private const val REMOTE_USAGE_MESSAGE_WINDOW = 8
 
 internal fun saveChatOverlay(overlay: ChatOverlay?): String? = when (overlay) {
     null -> null
@@ -822,23 +820,6 @@ fun ChatRoute(
     val browserState by produceState<com.promenar.infinity.data.browser.BrowserUiState?>(null, browserFlow) {
         if (browserFlow == null) value = null else browserFlow.collect { value = it }
     }
-    // 远程面板：智能体正在使用的 SSH（运行中的 ssh_exec、交互会话与 SSH 后台命令）与 Tailscale 状态决定页签圆点。
-    val liveOutputKeys by application.toolLiveOutputStore.activeKeys.collectAsStateWithLifecycle()
-    val recentMessages = uiState.messages.takeLast(REMOTE_USAGE_MESSAGE_WINDOW)
-    val remoteExecs = remember(recentMessages, liveOutputKeys, uiState.isGenerating) {
-        com.promenar.infinity.ui.remote.runningSshExecs(recentMessages.map { it.executionSteps.orEmpty() }, liveOutputKeys, uiState.isGenerating)
-    }
-    val sshActivity by application.sshRuntime.activity.collectAsStateWithLifecycle()
-    val sessionJobs by remember(application, sessionId) { application.backgroundJobController.observe(sessionId) }
-        .collectAsStateWithLifecycle(initialValue = emptyList())
-    val remoteUsage = com.promenar.infinity.ui.remote.RemoteAgentUsage(
-        execs = remoteExecs,
-        sessions = sshActivity.agentSessions.filter { it.sessionId == sessionId },
-        jobs = com.promenar.infinity.ui.remote.runningSshJobs(sessionJobs, sessionId),
-    )
-    val tailnetState by application.tailnetManager.state.collectAsStateWithLifecycle()
-    val remoteDotState = remoteDot(remoteUsage.active, com.promenar.infinity.ui.remote.tailscaleNeedsAttention(tailnetState.phase))
-    val settingsNavigation = LocalSessionSettingsNavigation.current
     // 供三形态统一检视器（内屏固定/扩大抽屉与竖屏 93% 熏黑上滑抽屉）按页签按需渲染的页面槽位。
     val inspectorPageSlot: @Composable (ChatPage, (() -> Unit)?) -> Unit = { page, back ->
         when (page) {
@@ -858,14 +839,6 @@ fun ChatRoute(
             ChatPage.Browser -> com.promenar.infinity.ui.browser.BrowserPage(
                 sessionId = sessionId,
                 onBack = back,
-            )
-            ChatPage.Remote -> com.promenar.infinity.ui.remote.RemotePage(
-                sessionId = sessionId,
-                usage = remoteUsage,
-                linuxMode = runModeStatus?.mode == com.promenar.infinity.domain.model.SessionRunMode.LINUX,
-                onBack = back,
-                onOpenSettings = settingsNavigation?.openRemoteSettings,
-                onOpenBackgroundJobs = { backgroundJobsRequest++ },
             )
             ChatPage.Canvas, ChatPage.Production, ChatPage.Run, ChatPage.State -> Unit
         }
@@ -992,7 +965,6 @@ fun ChatRoute(
                 timedGrants = timedGrants,
                 inspectorPages = chatPages,
                 browser = browserState,
-                remote = remoteDotState,
                 backgroundJobsRequest = backgroundJobsRequest,
                 portraitDrawerSuspended = hasGenerationInteraction,
             ),
@@ -1017,7 +989,6 @@ fun ChatRoute(
                 },
                 onOpenGit = { openChatPage(ChatPage.Git) },
                 onOpenBrowser = { openChatPage(ChatPage.Browser) },
-                onOpenRemote = { openChatPage(ChatPage.Remote) },
                 onOpenProduction = { openChatPage(ChatPage.Production) },
                 onSetInspectorPages = setChatPages,
                 onInspectorBack = closeTopChatPage,

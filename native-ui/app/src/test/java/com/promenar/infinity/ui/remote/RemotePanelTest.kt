@@ -10,35 +10,14 @@ import com.promenar.infinity.domain.jobs.BackgroundJob
 import com.promenar.infinity.domain.jobs.BackgroundJobExitAction
 import com.promenar.infinity.domain.jobs.BackgroundJobRunner
 import com.promenar.infinity.domain.jobs.BackgroundJobState
-import com.promenar.infinity.ui.chat.ChatPanelHubSignals
-import com.promenar.infinity.ui.chat.chatPanelHubEntries
-import com.promenar.infinity.ui.chat.ChatPage
-import com.promenar.infinity.ui.chat.InspectorContentGroup
-import com.promenar.infinity.ui.chat.RemoteDot
-import com.promenar.infinity.ui.chat.chatPageStack
-import com.promenar.infinity.ui.chat.inspectorGroup
-import com.promenar.infinity.ui.chat.remoteDot
 import com.promenar.infinity.ui.chat.restoreChatPages
-import com.promenar.infinity.ui.chat.saveChatPages
 import com.promenar.infinity.ui.settings.sortedActiveConnections
 import com.promenar.infinity.ui.ssh.SshReadOnlyTab
 import org.junit.Test
 
 class RemotePanelTest {
-    @Test fun `远程页签常驻检视器，窄窗口整页承载并可保存恢复`() {
-        val entries = chatPanelHubEntries(ChatPanelHubSignals(), summary = { null }, onOpen = {})
-        assertThat(entries.first { it.page == ChatPage.Remote }.available).isTrue()
-        assertThat(chatPageStack(listOf(ChatPage.Remote), wideWindow = false)).containsExactly(ChatPage.Remote)
-        assertThat(chatPageStack(listOf(ChatPage.Remote), wideWindow = true)).containsExactly(ChatPage.Remote)
-        assertThat(restoreChatPages(saveChatPages(listOf(ChatPage.Remote)))).containsExactly(ChatPage.Remote)
-        assertThat(ChatPage.Remote.inspectorGroup).isEqualTo(InspectorContentGroup.Pages)
-    }
-
-    @Test fun `圆点：Tailscale 需要处理时橙点优先，其次智能体正在使用`() {
-        assertThat(remoteDot(agentUsingSsh = false, tailscaleNeedsAttention = false)).isNull()
-        assertThat(remoteDot(agentUsingSsh = true, tailscaleNeedsAttention = false)).isEqualTo(RemoteDot.AGENT)
-        assertThat(remoteDot(agentUsingSsh = false, tailscaleNeedsAttention = true)).isEqualTo(RemoteDot.ATTENTION)
-        assertThat(remoteDot(agentUsingSsh = true, tailscaleNeedsAttention = true)).isEqualTo(RemoteDot.ATTENTION)
+    @Test fun `旧版保存的 remote 页签标识在恢复时被安全忽略`() {
+        assertThat(restoreChatPages("remote")).isEmpty()
     }
 
     @Test fun `只有需要登录或失败的 Tailscale 需要处理`() {

@@ -87,7 +87,6 @@ private fun sampleEntries(generating: Boolean = true): List<PanelHubEntry> = cha
             ChatPage.Explorer,
             ChatPage.Git,
             ChatPage.Browser,
-            ChatPage.Remote,
             ChatPage.Canvas,
             ChatPage.Production,
         ),

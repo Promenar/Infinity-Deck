@@ -124,22 +124,6 @@ import com.promenar.infinity.ui.theme.rememberLastNonNull
 import com.promenar.infinity.ui.theme.rememberLastPositive
 import kotlin.math.roundToInt
 
-/** 远程条目的状态：智能体正在使用 SSH，或 Tailscale 需要登录、连接失败；两种情况同时出现时需要用户处理的优先。 */
-enum class RemoteDot { AGENT, ATTENTION }
-
-internal fun remoteDot(agentUsingSsh: Boolean, tailscaleNeedsAttention: Boolean): RemoteDot? = when {
-    tailscaleNeedsAttention -> RemoteDot.ATTENTION
-    agentUsingSsh -> RemoteDot.AGENT
-    else -> null
-}
-
-@Composable
-internal fun remoteDotDescription(dot: RemoteDot?): String? = when (dot) {
-    RemoteDot.AGENT -> stringResource(R.string.remote_panel_dot_agent)
-    RemoteDot.ATTENTION -> stringResource(R.string.remote_panel_dot_attention)
-    null -> null
-}
-
 private val InspectorCornerRadius = 20.dp
 private val InspectorShape = RoundedCornerShape(InspectorCornerRadius)
 private val InspectorStripCornerRadius = 24.dp
@@ -615,7 +599,7 @@ private fun InspectorEmpty(icon: ImageVector, title: String, detail: String? = n
 
 /**
  * 竖屏同窗口 93% 全高熏黑毛玻璃上滑抽屉：
- * - 与宽屏检视器共享同一份面板正文、两档坐标契约与底栏 8 页签；
+ * - 与宽屏检视器共享同一份面板正文、两档坐标契约与底栏页签；
  * - 顶部居中拖拽把手区独占下滑关闭手势（内部列表、WebView、终端滚动不抢拖关闭）；
  * - 弹起软键盘或推入栈式子页时自动平滑折叠底部页签条，把完整垂直空间让给终端/输入区。
  */

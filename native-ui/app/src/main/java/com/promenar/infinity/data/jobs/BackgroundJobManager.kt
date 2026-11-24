@@ -13,6 +13,8 @@ import com.promenar.infinity.domain.tool.ToolOutputStream
 import com.promenar.infinity.domain.trigger.*
 import com.promenar.infinity.utils.InfinityLogger
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.*
@@ -40,13 +42,22 @@ class BackgroundJobCompletion(
     private val notify: suspend (BackgroundJobRecord) -> Unit = {},
 ) {
     suspend fun dispatch(record: BackgroundJobRecord, tail: JobLogTail, delivery: SystemTurnDelivery? = null) {
+        dispatchWithAcknowledgement(record, tail, delivery)
+    }
+
+    /** 返回调度器是否接手、需要由投递租约确认。 */
+    internal suspend fun dispatchWithAcknowledgement(
+        record: BackgroundJobRecord,
+        tail: JobLogTail,
+        delivery: SystemTurnDelivery?,
+    ): Boolean {
         when (BackgroundJobExitAction.fromWire(record.onExit)) {
             BackgroundJobExitAction.NOTIFY -> notify(record)
             BackgroundJobExitAction.WAKE -> {
                 val target = dispatcher()
                 if (target == null) notify(record) else {
                     try {
-                        target.request(SystemTurnRequest(record.sessionId, SystemTurnKind.JOB_EXIT, record.id, record.summary, buildString {
+                        val outcome = target.request(SystemTurnRequest(record.sessionId, SystemTurnKind.JOB_EXIT, record.id, record.summary, buildString {
                             appendLine("后台任务 ${record.id} 已结束")
                             appendLine("命令：${record.summary}")
                             appendLine("状态：${record.state}；退出码：${record.exitCode ?: "无"}；耗时：${elapsedSeconds(record)} 秒")
@@ -55,12 +66,14 @@ class BackgroundJobCompletion(
                             record.toolResult?.let { appendLine("结果：\n${it.content}") }
                             appendLine("日志末尾：\n${tail.text.takeLast(2_000)}")
                         }, delivery = delivery))
+                        return outcome is SystemTurnOutcome.Completed || outcome is SystemTurnOutcome.NeedsUser
                     } catch (cancelled: CancellationException) { throw cancelled
                     } catch (_: Exception) { notify(record) }
                 }
             }
             else -> Unit
         }
+        return false
     }
     companion object {
         fun elapsedSeconds(record: BackgroundJobRecord, now: Long = System.currentTimeMillis()): Long =
@@ -71,6 +84,8 @@ class BackgroundJobCompletion(
 /** 运行中任务的数量上限只防止失控累积，取值远高于正常使用；任务负载不按数量判断。 */
 internal const val MAX_SESSION_RUNNING = 32
 internal const val MAX_GLOBAL_RUNNING = 64
+internal const val MAX_RETAINED_TERMINAL_LOGS = 50
+internal const val MAX_TOTAL_TERMINAL_LOG_BYTES = 32L * 1024 * 1024
 
 /** 应用级任务所有者；发起/等待工具的取消不会传递到已经接管的运行任务。 */
 class BackgroundJobManager(
@@ -99,6 +114,8 @@ class BackgroundJobManager(
     private val sessionRunningLimit: Int = MAX_SESSION_RUNNING,
     private val globalRunningLimit: Int = MAX_GLOBAL_RUNNING,
     private val withdrawPendingWake: (String) -> Unit = {},
+    private val terminalLogLimit: Int = MAX_RETAINED_TERMINAL_LOGS,
+    private val terminalLogBytes: Long = MAX_TOTAL_TERMINAL_LOG_BYTES,
 ) : BackgroundJobController {
     private val redactor = redactor ?: vault?.let(::SecretOutputRedactor)
     private class Active(val control: BuiltinCommandControl = BuiltinCommandControl()) {
@@ -116,7 +133,10 @@ class BackgroundJobManager(
         @Volatile var suppressCompletion: Boolean = false
         var sshControl: SshExecControl? = null
     }
-    private class WakeDelivery(private val sessionAllowed: () -> Boolean) : SystemTurnDelivery {
+    private class WakeDelivery(
+        private val sessionAllowed: () -> Boolean,
+        private val onConfirmed: () -> Unit,
+    ) : SystemTurnDelivery {
         private val lane = Mutex()
         @Volatile var delivered = false
             private set
@@ -130,7 +150,10 @@ class BackgroundJobManager(
                 return null
             }
             return object : SystemTurnDelivery.Claim {
-                override suspend fun confirm() { delivered = true }
+                override suspend fun confirm() {
+                    delivered = true
+                    onConfirmed()
+                }
                 override fun release() { lane.unlock() }
             }
         }
@@ -140,13 +163,32 @@ class BackgroundJobManager(
     private val refreshGate = Mutex()
     private val publishGate = Mutex()
     private val pendingCleanup = mutableSetOf<String>()
+    private val pendingLogCleanup = mutableSetOf<String>()
+    private class SessionRetirement {
+        val mutex = Mutex()
+        var users = 0
+    }
+    private val sessionRetirements = mutableMapOf<String, SessionRetirement>()
     private val active = ConcurrentHashMap<String, Active>()
     private val deletedSessions = ConcurrentHashMap.newKeySet<String>()
     private val wakeDeliveries = mutableMapOf<String, WakeDelivery>()
 
     private fun wakeDelivery(jobId: String, sessionId: String): WakeDelivery? = synchronized(wakeDeliveries) {
-        if (sessionId in deletedSessions) null
-        else wakeDeliveries.getOrPut(jobId) { WakeDelivery { sessionId !in deletedSessions } }
+        if (sessionId in deletedSessions) return@synchronized null
+        wakeDeliveries[jobId]?.let { return@synchronized it }
+        if (!active.containsKey(jobId)) return@synchronized null
+        wakeDeliveries.getOrPut(jobId) {
+            WakeDelivery(sessionAllowed = { sessionId !in deletedSessions }) {
+                if (!active.containsKey(jobId)) {
+                    forgetConfirmedWakeDelivery(jobId)
+                    scope.launch { maintainTerminalLogs() }
+                }
+            }
+        }
+    }
+
+    private fun forgetConfirmedWakeDelivery(jobId: String): Unit = synchronized(wakeDeliveries) {
+        if (wakeDeliveries[jobId]?.delivered == true) wakeDeliveries.remove(jobId)
     }
 
     private fun discardWakeDelivery(jobId: String) = synchronized(wakeDeliveries) {
@@ -159,7 +201,9 @@ class BackgroundJobManager(
             return
         }
         val delivery = wakeDelivery(record.id, record.sessionId) ?: return
-        if (!delivery.delivered) completion.dispatch(record, tail, delivery)
+        if (!delivery.delivered && !completion.dispatchWithAcknowledgement(record, tail, delivery)) {
+            discardWakeDelivery(record.id)
+        }
     }
 
     private val state = MutableStateFlow<List<BackgroundJob>>(emptyList())
@@ -177,24 +221,133 @@ class BackgroundJobManager(
         emitAll(state.map { jobs -> jobs.filter { sessionId == null || it.sessionId == sessionId } })
     }
     private suspend fun publish() = publishGate.withLock {
-        val records=store.all()
-        state.value = records.map { it.job() }.sortedByDescending { it.startedAtMillis }
-        // 只清理持久层明确淘汰的任务，不能用并发快照扫描“孤儿”。
-        pendingCleanup += store.drainPruned().map{it.id}
-        val eligible=pendingCleanup.filter{!active.containsKey(it)}
-        eligible.forEach { id ->
-            discardWakeDelivery(id)
-            if (runCatching { removeRunDirectory(id) }.isSuccess) pendingCleanup.remove(id)
+        state.value = store.all().map { it.job() }.sortedByDescending { it.startedAtMillis }
+    }
+
+    private fun protectedJobIds(): Set<String> {
+        // 先读取 worker，再读取投递。worker 退场前已完成投递登记。
+        val ids = active.keys.toMutableSet()
+        synchronized(wakeDeliveries) {
+            wakeDeliveries.filterValues { !it.delivered && !it.discarded }.keys.forEach(ids::add)
+        }
+        return ids
+    }
+
+    override suspend fun clearFinished(sessionId: String): ClearFinishedJobsResult = withContext(NonCancellable + Dispatchers.IO) {
+        initialize()
+        gate.withLock {
+            if (sessionId in deletedSessions) return@withLock ClearFinishedJobsResult(0)
+            com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(
+                sessionId = sessionId, subsystem = com.promenar.infinity.startup.StartupSubsystem.BACKGROUND_JOBS,
+            )
+            val protected = protectedJobIds()
+            val (removed, skipped) = store.clearFinishedWithSkipped(sessionId, protected)
+            try {
+                publish()
+            } finally {
+                removed.forEach {
+                    discardWakeDelivery(it.id)
+                    pendingCleanup += it.id
+                    pendingLogCleanup -= it.id
+                }
+                retryPendingCleanup(protected)
+            }
+            ClearFinishedJobsResult(removed.size, skipped)
         }
     }
-    private fun removeRunDirectory(id:String) {
-        val directory=File(runRoot,id)
-        if(id.matches(Regex("job-[A-Za-z0-9-]+")) && directory.canonicalFile.parentFile==runRoot.canonicalFile) {
-            deleteJobTree(directory)
+
+    private suspend fun retryPendingCleanup(protected: Set<String>) {
+        val cleaned = pendingCleanup.filterTo(mutableSetOf()) { it !in protected && tryRemoveRunDirectory(it) }
+        if (cleaned.isEmpty()) return
+        try {
+            store.acknowledgeCleanup(cleaned)
+            pendingCleanup.removeAll(cleaned)
+        } catch (failure: Exception) {
+            InfinityLogger.diagnostic("job.log_cleanup_failed", mapOf("error" to failure.javaClass.simpleName))
         }
     }
+
+    private fun managedRunDirectory(id: String): File? {
+        if (BackgroundJobLogs.jobId(BackgroundJobLogs.reference(id)) == null || Files.isSymbolicLink(runRoot.toPath())) return null
+        return File(runRoot, id).takeIf { it.canonicalFile.parentFile == runRoot.canonicalFile }
+    }
+
+    private fun removeRunDirectory(id: String): Boolean {
+        val directory = managedRunDirectory(id) ?: return false
+        deleteJobTree(directory)
+        return true
+    }
+
+    private fun tryRemoveRunDirectory(id: String): Boolean = runCatching { removeRunDirectory(id) }.getOrDefault(false)
+
+    private fun runDirectoryBytes(id: String): Long? {
+        val path = managedRunDirectory(id)?.toPath() ?: return null
+        if (Files.notExists(path, NOFOLLOW_LINKS)) return null
+        return Files.walk(path).use { paths ->
+            // 分片、时间戳和运行产物均计入目录大小，符号链接目标不计入。
+            paths.filter { Files.isRegularFile(it, NOFOLLOW_LINKS) }.mapToLong { Files.size(it) }.sum()
+        }
+    }
+
+    private suspend fun maintainTerminalLogs() = withContext(NonCancellable + Dispatchers.IO) {
+        gate.withLock {
+            try {
+                val terminal = store.all().filter { !it.running && it.sessionId !in deletedSessions }
+                val protected = protectedJobIds()
+                retryPendingCleanup(protected)
+
+                // 先重试已持久标记的目录，再计算仍占用磁盘的终态目录。
+                val retained = terminal.asSequence()
+                    .filter { !it.logReclaimed || it.id in pendingLogCleanup }
+                    .sortedBy { it.endedAtMillis ?: it.startedAtMillis }
+                    .mapNotNull { record ->
+                        // 旧进程身份未能核验时，仍可能持有日志目录。
+                        val canReclaim = record.id !in protected && !record.logMigrationDeferred
+                        if (record.logReclaimed && canReclaim && tryRemoveRunDirectory(record.id)) {
+                            pendingLogCleanup -= record.id
+                            return@mapNotNull null
+                        }
+                        val bytes = runCatching { runDirectoryBytes(record.id) }.getOrNull() ?: return@mapNotNull null
+                        Triple(record.id, bytes, canReclaim && !record.logReclaimed)
+                    }.toList()
+                var count = retained.size
+                var bytes = retained.sumOf { it.second }
+                val eligible = retained.asSequence().filter { it.third }.iterator()
+                while ((count > terminalLogLimit || bytes > terminalLogBytes) && eligible.hasNext()) {
+                    val batch = linkedMapOf<String, Long>()
+                    var projectedBytes = bytes
+                    while ((count - batch.size > terminalLogLimit || projectedBytes > terminalLogBytes) && eligible.hasNext()) {
+                        val (id, size) = eligible.next()
+                        batch[id] = size
+                        projectedBytes -= size
+                    }
+                    // 先提交标记，进程在删除中途退出时，下次初始化仍可重试。
+                    store.markLogsReclaimed(batch.keys)
+                    for ((id, size) in batch) {
+                        if (tryRemoveRunDirectory(id)) {
+                            count--
+                            bytes -= size
+                        } else {
+                            pendingLogCleanup += id
+                            // 部分删除可能已释放空间，后续批次按剩余字节判断是否还需回收。
+                            val remaining = runCatching { runDirectoryBytes(id) }.getOrNull()
+                            if (remaining != null) bytes += remaining - size
+                        }
+                    }
+                }
+            } catch (failure: Exception) {
+                InfinityLogger.diagnostic("job.log_cleanup_failed", mapOf("error" to failure.javaClass.simpleName))
+            }
+        }
+    }
+
+    private suspend fun retireWorker(id: String, handle: Active) {
+        active.remove(id, handle)
+        forgetConfirmedWakeDelivery(id)
+        maintainTerminalLogs()
+    }
+
     private suspend fun recover() {
-        store.prune()
         for (record in store.all()) {
             if (!record.running || record.runnerKind == BackgroundJobRunner.TERMUX) continue
             if (record.runnerKind == BackgroundJobRunner.IN_APP) {
@@ -216,16 +369,22 @@ class BackgroundJobManager(
         }
         for (record in store.all()) {
             try {
-                if (record.logMigrationDeferred) continue
+                if (record.logMigrationDeferred || record.logReclaimed) continue
                 if (record.runnerKind != BackgroundJobRunner.TERMUX) BackgroundJobLogs.migrate(record, runRoot)
-                store.put(record.copy(logWorkspacePath = BackgroundJobLogs.reference(record.id)))
+                val reference = BackgroundJobLogs.reference(record.id)
+                if (record.logWorkspacePath != reference) store.put(record.copy(logWorkspacePath = reference))
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) {
                 store.put(record.copy(guidance = listOfNotNull(record.guidance,
                     "日志迁移未完成（${failure::class.java.simpleName}），旧日志已保留。").distinct().joinToString(" ")))
             }
         }
+        gate.withLock {
+            pendingCleanup += store.restorePendingCleanup()
+            pendingLogCleanup += store.all().filter { it.logReclaimed && !it.running }.map { it.id }
+        }
         publish()
+        maintainTerminalLogs()
         for(record in store.all().filter { it.running && it.runnerKind == BackgroundJobRunner.TERMUX }) monitorTermux(record)
     }
     private suspend fun <T> admitted(sessionId:String, block:suspend()->T):T {
@@ -343,8 +502,8 @@ class BackgroundJobManager(
             } finally {
                 handle.terminal.complete(Unit)
                 redactor?.clearJob(record.sessionId, record.id)
-                active.remove(record.id,handle)
                 liveOutput.close("job:${record.id}",sink)
+                retireWorker(record.id, handle)
             }
         }
         started.await()
@@ -434,8 +593,9 @@ class BackgroundJobManager(
                             requestReconcile(record)
                         }
                     } finally {
-                        handle.terminal.complete(Unit); redactor?.clearJob(record.sessionId, record.id); active.remove(record.id, handle)
+                        handle.terminal.complete(Unit); redactor?.clearJob(record.sessionId, record.id)
                         release(); liveOutput.close("job:${record.id}", sink)
+                        retireWorker(record.id, handle)
                     }
                 }
             }
@@ -487,7 +647,7 @@ class BackgroundJobManager(
                     if (handle.worker != null) handle.worker?.cancelAndJoin() else {
                         ownedRecord?.let { record ->
                             store.put(record.copy(state = "FAILED", endedAtMillis = now(), guidance = "任务启动未完成。"))
-                            active.remove(record.id, handle); publish()
+                            publish(); retireWorker(record.id, handle)
                         }
                         handle.terminal.complete(Unit)
                     }
@@ -579,8 +739,9 @@ class BackgroundJobManager(
                         }
                     } finally {
                         withContext(NonCancellable) {
-                            activeHandle.terminal.complete(Unit); active.remove(reserved.id, activeHandle)
+                            activeHandle.terminal.complete(Unit)
                             release(); liveOutput.close("job:${reserved.id}", sink)
+                            retireWorker(reserved.id, activeHandle)
                         }
                     }
                 }
@@ -601,7 +762,8 @@ class BackgroundJobManager(
                 handle?.control?.requestStop()
                 if (handle?.worker != null) handle?.worker?.cancelAndJoin() else record?.let { reserved ->
                     store.updateIfPresent(reserved.id) { it.copy(state = "FAILED", endedAtMillis = now(), guidance = "任务启动未完成。") }
-                    active.remove(reserved.id); publish(); handle?.terminal?.complete(Unit)
+                    publish()
+                    handle?.let { retireWorker(reserved.id, it); it.terminal.complete(Unit) }
                 }
             }
             throw failure
@@ -765,9 +927,10 @@ class BackgroundJobManager(
                     } finally {
                         withContext(NonCancellable) {
                             try { runtime.finishJob(record.id) } finally {
-                                handle.terminal.complete(Unit); active.remove(record.id, handle)
+                                handle.terminal.complete(Unit)
                                 control.cancelPending = null
                                 release(); liveOutput.close("job:${record.id}", sink)
+                                retireWorker(record.id, handle)
                             }
                         }
                     }
@@ -820,6 +983,7 @@ class BackgroundJobManager(
                         runtime.finishJob(record.id)
                         active.remove(record.id)
                         publish()
+                        maintainTerminalLogs()
                     }
                 }
             }
@@ -954,8 +1118,8 @@ class BackgroundJobManager(
                 handle.terminal.complete(Unit)
                 handle.termuxOutput?.let { redactor?.finish(it) }
                 redactor?.clearJob(record.sessionId, record.id)
-                active.remove(record.id,handle)
                 liveOutput.close("job:${record.id}",sink)
+                retireTermuxWorker(record.id, handle)
             }
         }
         if (waitForStart) started.await() else record
@@ -969,8 +1133,20 @@ class BackgroundJobManager(
             sink.onStop {scope.launch{stop(record.id)}}
             try {
                 keepAlive.hold(runInfo(record),{scope.launch{stop(record.id)}}) { monitorTermuxLoop(record,handle) }
-            } finally {handle.termuxOutput?.let { redactor?.finish(it) };handle.terminal.complete(Unit);active.remove(record.id,handle);liveOutput.close("job:${record.id}",sink)}
+            } finally {
+                handle.termuxOutput?.let { redactor?.finish(it) }
+                handle.terminal.complete(Unit)
+                liveOutput.close("job:${record.id}", sink)
+                retireTermuxWorker(record.id, handle)
+            }
         }
+    }
+
+    private suspend fun retireTermuxWorker(id: String, handle: Active) = withContext(NonCancellable) {
+        // 查询也可能追加 Termux 日志，必须等在途刷新结束再释放目录所有权。
+        refreshGate.withLock { active.remove(id, handle) }
+        forgetConfirmedWakeDelivery(id)
+        maintainTerminalLogs()
     }
     private fun termuxLogSink(record: BackgroundJobRecord, handle: Active, live: ToolLiveOutputSink) = object : ToolLiveOutputSink by live {
         private fun append(text: String) {
@@ -1009,37 +1185,45 @@ class BackgroundJobManager(
     /** 刷新游标与新监听登记共用临界区，监控查询不能从两者之间穿过。 */
     private suspend fun refreshTermuxLocked(record: BackgroundJobRecord): JobLogTail {
         var current=store.all().find{it.id==record.id} ?: return JobLogTail("",false)
-        if(current.termuxPid==null) {
-            val restored=checkNotNull(termux).recover(current.id,current.workspaceDirectory?.let(::File))
-                ?: return JobLogTail("启动结果尚未确认；可用 job_stop 撤销，避免重复执行。",false)
-            current=current.copy(termuxDirectory=restored.directory,termuxPid=restored.pid,guidance=null)
-            store.put(current)
-        }
+        if (current.logReclaimed) return JobLogTail("", false)
+        val running = current.running
         val backend = checkNotNull(termux)
+        suspend fun updateRemote(transform: (BackgroundJobRecord) -> BackgroundJobRecord): BackgroundJobRecord? =
+            store.updateIfPresent(record.id) { if (it.logReclaimed) it else transform(it) }?.takeUnless { it.logReclaimed }
+        if(current.termuxPid==null) {
+            val restored=backend.recover(current.id,current.workspaceDirectory?.let(::File))
+                ?: return JobLogTail("启动结果尚未确认；可用 job_stop 撤销，避免重复执行。",false)
+            current = updateRemote { it.copy(termuxDirectory = restored.directory, termuxPid = restored.pid, guidance = null) }
+                ?: return JobLogTail("", false)
+        }
         val result = try { backend.inspect(termuxHandle(current)) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
             val recovered = backend.recover(current.id, current.workspaceDirectory?.let(::File)) ?: throw failure
-            current = current.copy(termuxDirectory = recovered.directory, termuxPid = recovered.pid)
-            store.put(current)
+            current = updateRemote { it.copy(termuxDirectory = recovered.directory, termuxPid = recovered.pid) }
+                ?: return JobLogTail("", false)
             backend.inspect(recovered)
         }
-        if (!result.alive && redactor == null) {
-            try {
-                val migrated = backend.migrateCompleted(current.id, current.workspaceDirectory?.let(::File), termuxHandle(current))
-                current = current.copy(termuxDirectory = migrated.directory, termuxPid = migrated.pid,
-                    logWorkspacePath = BackgroundJobLogs.reference(current.id))
-                store.put(current)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) {
-                current = current.copy(guidance = "Termux 日志迁移未完成（${failure::class.java.simpleName}），旧任务文件已保留。")
-                store.put(current)
+        if (!result.alive && redactor == null && current.workspaceDirectory != null) {
+            gate.withLock {
+                // 远端检查可以挂起。迁移有副作用，开始前在清理门禁内重新确认归属。
+                current = store.all().find { it.id == record.id && !it.logReclaimed && sessionAllowed(it) }
+                    ?: return JobLogTail("", false)
+                try {
+                    val migrated = backend.migrateCompleted(current.id, current.workspaceDirectory?.let(::File), termuxHandle(current))
+                    current = updateRemote { it.copy(termuxDirectory = migrated.directory, termuxPid = migrated.pid,
+                        logWorkspacePath = BackgroundJobLogs.reference(it.id)) } ?: return JobLogTail("", false)
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) {
+                    current = updateRemote { it.copy(guidance = "Termux 日志迁移未完成（${failure::class.java.simpleName}），旧任务文件已保留。") }
+                        ?: return JobLogTail("", false)
+                }
             }
         }
         // Termux 自己持有原始日志；存在保密库时不让外部脚本原样复制或迁移该日志。
         // 原位置保持可恢复，应用只发布经过遮蔽的状态与实时文本。
         val safeTail = redactor?.redact(current.sessionId, result.logTail) ?: result.logTail
-        active[record.id]?.let { running ->
+        active[record.id]?.takeIf { running && current.running }?.let { running ->
             val delta = newJobOutput(running.lastTail, running.lastLogBytes, result.logTail, result.logBytes)
             if (redactor != null) {
                 if (!running.termuxOutputFinished) {
@@ -1056,13 +1240,24 @@ class BackgroundJobManager(
         }
         val tail=JobLogTail(safeTail.takeLast(8_000),result.truncated || safeTail.length>8_000)
         if(current.running && !result.alive) {
-            val next=current.copy(state=when {result.timedOut->"TIMED_OUT";result.stopped->"STOPPED";result.exitCode!=null->"EXITED";else->"FAILED"},exitCode=result.exitCode,endedAtMillis=now())
             // 终态落盘与所有权交接不可被一次查询的取消拆开。
             withContext(NonCancellable) {
-                store.put(next)
-                active[record.id]?.terminal?.complete(Unit)
-                active[record.id]?.completion?.complete(next to tail)
-                publish()
+                val next = store.updateIfPresent(current.id) { latest ->
+                    if (!latest.running) latest else latest.copy(
+                        state = when {
+                            result.timedOut -> "TIMED_OUT"
+                            result.stopped -> "STOPPED"
+                            result.exitCode != null -> "EXITED"
+                            else -> "FAILED"
+                        },
+                        exitCode = result.exitCode, endedAtMillis = now(),
+                    )
+                }
+                if (next != null) {
+                    active[record.id]?.terminal?.complete(Unit)
+                    active[record.id]?.completion?.complete(next to tail)
+                    publish()
+                }
             }
         }
         return tail
@@ -1097,15 +1292,20 @@ class BackgroundJobManager(
         return store.all().find{it.id==id && it.sessionId==sessionId && sessionId !in deletedSessions}
             ?: throw JobAccessException("JOB_NOT_FOUND","本会话找不到该任务，请用 job_list 获取当前会话的任务号。")
     }
-    override suspend fun readLog(sessionId: String, reference: String): com.promenar.infinity.domain.jobs.BackgroundJobLog {
+    override suspend fun readLog(sessionId: String, reference: String): BackgroundJobLog = withContext(Dispatchers.IO) {
         val id = BackgroundJobLogs.jobId(reference)
             ?: throw JobAccessException("JOB_NOT_FOUND", "任务日志引用无效。")
         val status = status(sessionId, id)
-        val record = owned(sessionId, id, initializeStore = false)
-        val tail = withContext(Dispatchers.IO) {
-            if (logFile(record).isFile) readJobLogTail(logFile(record), stripTimestamps = false) else status.tail
+        gate.withLock {
+            val record = owned(sessionId, id, initializeStore = false)
+            val file = logFile(record)
+            val tail = when {
+                file.isFile -> readJobLogTail(file, stripTimestamps = false)
+                record.logReclaimed -> return@withLock BackgroundJobLog("", false, logReclaimed = true)
+                else -> status.tail
+            }
+            BackgroundJobLog(redactor?.redact(sessionId, tail.text) ?: tail.text, tail.truncated)
         }
-        return com.promenar.infinity.domain.jobs.BackgroundJobLog(redactor?.redact(sessionId, tail.text) ?: tail.text, tail.truncated)
     }
     suspend fun list(sessionId:String):List<BackgroundJobRecord> { initialize(); return store.all().filter{it.sessionId==sessionId && sessionId !in deletedSessions}.map(::redactedRecord).sortedByDescending{it.startedAtMillis} }
     private fun redactedRecord(record: BackgroundJobRecord): BackgroundJobRecord {
@@ -1120,11 +1320,17 @@ class BackgroundJobManager(
         initialize()
         var record=owned(sessionId,id, initializeStore = false)
         val warning = reconcileWarning(record)
-        val tail=if(record.runnerKind==BackgroundJobRunner.TERMUX && refreshRemote) refreshTermux(record) else {
-            val snapshot = active[id]?.control?.outputSnapshot
-            snapshot?.let { JobLogTail(it.stdout.takeLast(8_000), it.stdoutTruncated || it.stdout.length > 8_000) } ?: readJobLogTail(logFile(record))
+        val currentTail = when {
+            record.logReclaimed -> null
+            record.runnerKind == BackgroundJobRunner.TERMUX && refreshRemote -> refreshTermux(record)
+            else -> {
+                val snapshot = active[id]?.control?.outputSnapshot
+                snapshot?.let { JobLogTail(it.stdout.takeLast(8_000), it.stdoutTruncated || it.stdout.length > 8_000) }
+                    ?: gate.withLock { readJobLogTail(logFile(record)) }
+            }
         }
         record=owned(sessionId,id, initializeStore = false)
+        val tail = if (record.logReclaimed) gate.withLock { readJobLogTail(logFile(record)) } else checkNotNull(currentTail)
         val lastOutputAt = active[id]?.lastOutputAtMillis ?: record.lastOutputAtMillis
             ?: logFile(record).takeIf { it.isFile && it.length() > 0 }?.lastModified()
         BackgroundJobStatus(redactedRecord(record.copy(guidance=listOfNotNull(record.guidance,warning).distinct().joinToString(" ").ifEmpty { null })),
@@ -1188,7 +1394,10 @@ class BackgroundJobManager(
             // 唤醒后直接回传已落盘快照，避免新的 Termux 广播查询延迟插队或手动释放。
             val snapshot = status(sessionId, id, refreshRemote = false)
             if (outcome.reason == JobWaitReason.TERMINAL) {
-                wakeDelivery(id, sessionId)?.claim()?.let { claim ->
+                val delivery = gate.withLock {
+                    if (snapshot.record.onExit == BackgroundJobExitAction.WAKE.wireName) wakeDelivery(id, sessionId) else null
+                }
+                delivery?.claim()?.let { claim ->
                     try { claim.confirm() } finally { claim.release() }
                 }
                 withdrawPendingWake(id)
@@ -1237,9 +1446,18 @@ class BackgroundJobManager(
         true
     }
     suspend fun stop(sessionId:String,id:String):BackgroundJobStatus { owned(sessionId,id);stop(id);return status(sessionId,id) }
-    /** 删除事务准备阶段只停止任务，事务失败后会话仍可使用。 */
-    suspend fun stopSession(sessionId:String) = withContext(NonCancellable + Dispatchers.IO) {
+    private suspend fun withSessionRetirement(sessionId: String, block: suspend () -> Unit) = withContext(NonCancellable + Dispatchers.IO) {
         initialize()
+        val lane = gate.withLock { sessionRetirements.getOrPut(sessionId, ::SessionRetirement).also { it.users++ } }
+        try {
+            lane.mutex.withLock { if (sessionId !in deletedSessions) block() }
+        } finally {
+            gate.withLock { if (--lane.users == 0) sessionRetirements.remove(sessionId) }
+        }
+    }
+
+    /** 删除事务准备阶段只停止任务，事务失败后会话仍可使用。 */
+    suspend fun stopSession(sessionId:String) = withSessionRetirement(sessionId) {
         gate.withLock {deletedSessions+=sessionId}
         try {
             val records=store.all().filter{it.sessionId==sessionId}
@@ -1251,10 +1469,10 @@ class BackgroundJobManager(
         } finally {
             store.all().filter{it.sessionId==sessionId}.forEach{active[it.id]?.suppressCompletion=false}
             gate.withLock {deletedSessions-=sessionId}
+            maintainTerminalLogs()
         }
     }
-    suspend fun deleteSession(sessionId:String) = withContext(NonCancellable + Dispatchers.IO) {
-        initialize()
+    suspend fun deleteSession(sessionId:String) = withSessionRetirement(sessionId) {
         gate.withLock {deletedSessions+=sessionId}
         var deleted=false
         try {
@@ -1267,12 +1485,14 @@ class BackgroundJobManager(
             records.forEach {removeRunDirectory(it.id)}
             store.deleteSession(sessionId)
             records.forEach { discardWakeDelivery(it.id) }
+            gate.withLock { pendingLogCleanup.removeAll(records.map { it.id }.toSet()) }
             deleted=true
             publish()
         } finally {
             if(!deleted) {
                 store.all().filter{it.sessionId==sessionId}.forEach{active[it.id]?.suppressCompletion=false}
                 gate.withLock{deletedSessions-=sessionId}
+                maintainTerminalLogs()
             }
         }
     }

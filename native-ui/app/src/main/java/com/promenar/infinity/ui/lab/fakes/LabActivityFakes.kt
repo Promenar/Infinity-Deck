@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import com.promenar.infinity.domain.jobs.BackgroundJob
 import com.promenar.infinity.domain.jobs.BackgroundJobController
 import com.promenar.infinity.domain.jobs.BackgroundJobLog
+import com.promenar.infinity.domain.jobs.ClearFinishedJobsResult
 import com.promenar.infinity.domain.schedule.ScheduledTask
 import com.promenar.infinity.domain.schedule.ScheduledTaskController
 import com.promenar.infinity.ui.chat.components.AgentActivityAccess
@@ -40,6 +41,17 @@ internal class LabBackgroundJobController(
     override suspend fun stop(jobId: String): Boolean {
         record("stop", jobId)
         return onStop?.invoke(jobId) ?: jobs.value.any { it.id == jobId && !it.state.isTerminal }
+    }
+
+    override suspend fun clearFinished(sessionId: String): ClearFinishedJobsResult {
+        record("clearFinished", sessionId)
+        var cleared = 0
+        jobs.update { current ->
+            val (removed, kept) = current.partition { it.sessionId == sessionId && it.state.isTerminal }
+            cleared = removed.size
+            kept
+        }
+        return ClearFinishedJobsResult(clearedCount = cleared)
     }
 }
 

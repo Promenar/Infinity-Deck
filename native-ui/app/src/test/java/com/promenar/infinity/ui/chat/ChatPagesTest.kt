@@ -26,6 +26,7 @@ class ChatPagesTest {
         val pages = listOf(ChatPage.Explorer, ChatPage.Git)
         assertThat(restoreChatPages(saveChatPages(pages))).isEqualTo(pages)
         assertThat(restoreChatPages("")).isEmpty()
+        assertThat(restoreChatPages("remote")).isEmpty()
         assertThat(restoreChatPages("explorer,unknown,git,git")).isEqualTo(pages)
     }
 

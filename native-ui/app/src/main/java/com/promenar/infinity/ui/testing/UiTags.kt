@@ -420,6 +420,7 @@ object UiTags {
     const val AGENT_JOBS_PILL = "agent_jobs_pill"
     const val AGENT_SCHEDULES_PILL = "agent_schedules_pill"
     const val BACKGROUND_JOBS_SHEET = "background_jobs_sheet"
+    const val BACKGROUND_JOBS_CLEAR_FINISHED = "background_jobs_clear_finished"
     const val SCHEDULED_TASKS_SHEET = "scheduled_tasks_sheet"
     const val CHAT_APPROVAL_SCHEDULE = "chat_approval_schedule"
     const val CHAT_APPROVAL_BACKGROUND = "chat_approval_background"

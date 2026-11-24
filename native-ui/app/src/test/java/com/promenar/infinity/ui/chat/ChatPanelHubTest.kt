@@ -14,10 +14,10 @@ class ChatPanelHubTest {
     @Test fun `Agent 未调用过时画布、状态面板与制作面板不可用并排到队尾，常驻条目保持固定顺序`() {
         val list = entries(ChatPanelHubSignals())
         assertThat(list.pages()).containsExactly(
-            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote, ChatPage.Canvas, ChatPage.State, ChatPage.Production,
+            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Canvas, ChatPage.State, ChatPage.Production,
         ).inOrder()
         assertThat(list.filter { it.available }.pages())
-            .containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote).inOrder()
+            .containsExactly(ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser).inOrder()
         assertThat(list.filterNot { it.available }.pages()).containsExactly(ChatPage.Canvas, ChatPage.State, ChatPage.Production).inOrder()
     }
 
@@ -41,7 +41,6 @@ class ChatPanelHubTest {
                 generating = true,
                 pendingApprovals = 3,
                 browser = BrowserMode.HANDOFF,
-                remote = RemoteDot.ATTENTION,
             ),
         ).pages()
         assertThat(busy).isEqualTo(quiet)
@@ -51,7 +50,7 @@ class ChatPanelHubTest {
         val before = entries(ChatPanelHubSignals()).pages()
         val after = entries(ChatPanelHubSignals(canvases = 1)).pages()
         assertThat(after).containsExactly(
-            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote, ChatPage.Canvas, ChatPage.State, ChatPage.Production,
+            ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Canvas, ChatPage.State, ChatPage.Production,
         ).inOrder()
         // 画布本就在状态面板之前，变为可用后相对位置不变；状态面板与制作面板仍在队尾。
         assertThat(after).isEqualTo(before)
@@ -59,28 +58,25 @@ class ChatPanelHubTest {
             .isLessThan(entries(ChatPanelHubSignals(hasStateBoard = true)).pages().indexOf(ChatPage.Canvas))
     }
 
-    @Test fun `待处理：待批准、浏览器需要接手、远程需要处理、待认领产物`() {
+    @Test fun `待处理：待批准、浏览器需要接手、待认领产物`() {
         val list = entries(
             ChatPanelHubSignals(
                 pendingApprovals = 2,
                 browser = BrowserMode.HANDOFF,
-                remote = RemoteDot.ATTENTION,
                 canvases = 1,
                 canvasCandidates = 3,
             ),
         ).associateBy { it.page }
         assertThat(list.getValue(ChatPage.Run).pending).isEqualTo(2)
         assertThat(list.getValue(ChatPage.Browser).pending).isEqualTo(1)
-        assertThat(list.getValue(ChatPage.Remote).pending).isEqualTo(1)
         assertThat(list.getValue(ChatPage.Canvas).pending).isEqualTo(3)
-        assertThat(panelHubBadge(list.values.toList())).isEqualTo(PanelHubBadge.Pending(7))
+        assertThat(panelHubBadge(list.values.toList())).isEqualTo(PanelHubBadge.Pending(6))
     }
 
-    @Test fun `运行中：生成或后台任务、Agent 操作浏览器、Agent 使用 SSH`() {
+    @Test fun `运行中：生成或后台任务、Agent 操作浏览器`() {
         assertThat(entries(ChatPanelHubSignals(generating = true)).first { it.page == ChatPage.Run }.running).isTrue()
         assertThat(entries(ChatPanelHubSignals(runningJobs = 1)).first { it.page == ChatPage.Run }.running).isTrue()
         assertThat(entries(ChatPanelHubSignals(browser = BrowserMode.AGENT)).first { it.page == ChatPage.Browser }.running).isTrue()
-        assertThat(entries(ChatPanelHubSignals(remote = RemoteDot.AGENT)).first { it.page == ChatPage.Remote }.running).isTrue()
         assertThat(entries(ChatPanelHubSignals(browser = BrowserMode.IDLE)).none { it.running }).isTrue()
     }
 

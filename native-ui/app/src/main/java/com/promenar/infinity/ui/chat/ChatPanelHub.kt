@@ -38,7 +38,7 @@ internal sealed interface PanelHubBadge {
 /** 由 Agent 创建内容的条目：本会话中 Agent 从未调用过时不可用。 */
 internal fun panelHubAgentCreated(page: ChatPage): Boolean = when (page) {
     ChatPage.Canvas, ChatPage.State, ChatPage.Production -> true
-    ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Remote -> false
+    ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser -> false
 }
 
 /**
@@ -73,7 +73,6 @@ internal data class ChatPanelHubSignals(
     val pendingApprovals: Int = 0,
     val runningJobs: Int = 0,
     val browser: BrowserMode? = null,
-    val remote: RemoteDot? = null,
     val canvases: Int = 0,
     /** Agent 写出、等待用户认领或忽略的产物。 */
     val canvasCandidates: Int = 0,
@@ -92,8 +91,8 @@ internal fun panelHubActive(canvases: Int, canvasCandidates: Int, hasStateBoard:
 }
 
 /**
- * 按会话状态生成全部条目并排序。待处理：运行为待批准数，浏览器为需要用户接手，远程为需要登录或连接失败，
- * 产物为待认领数；运行中：生成或后台任务、Agent 正在操作浏览器或使用 SSH。
+ * 按会话状态生成全部条目并排序。待处理：运行为待批准数，浏览器为需要用户接手，
+ * 产物为待认领数；运行中：生成或后台任务、Agent 正在操作浏览器。
  */
 internal fun chatPanelHubEntries(
     signals: ChatPanelHubSignals,
@@ -106,7 +105,6 @@ internal fun chatPanelHubEntries(
             val (pending, running) = when (page) {
                 ChatPage.Run -> signals.pendingApprovals to (signals.generating || signals.runningJobs > 0)
                 ChatPage.Browser -> (if (signals.browser == BrowserMode.HANDOFF) 1 else 0) to (signals.browser == BrowserMode.AGENT)
-                ChatPage.Remote -> (if (signals.remote == RemoteDot.ATTENTION) 1 else 0) to (signals.remote == RemoteDot.AGENT)
                 ChatPage.Canvas -> signals.canvasCandidates to false
                 ChatPage.Production -> signals.production.attentionCount to signals.production.running
                 ChatPage.Explorer, ChatPage.Git, ChatPage.State -> 0 to false

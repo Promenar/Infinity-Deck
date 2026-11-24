@@ -49,6 +49,7 @@ data class BackgroundJobRecord(
     /** 最近一次安全输出事件的时间；旧记录从日志时间恢复。 */
     val lastOutputAtMillis: Long? = null,
     val toolResult: com.promenar.infinity.data.model.ToolResult? = null,
+    val logReclaimed: Boolean = false,
 ) {
     /** 未知执行器按 SHELL 展示，持久化原值保留，不据此启动新命令。 */
     val runnerKind: BackgroundJobRunner get() = BackgroundJobRunner.entries.firstOrNull { it.name == runner } ?: BackgroundJobRunner.SHELL
@@ -57,26 +58,41 @@ data class BackgroundJobRecord(
 }
 
 /** 文件提交完成才更新内存；损坏文件保留并拒绝启动，避免遗失进程归属。 */
-class BackgroundJobStore(private val root: File, private val now: () -> Long = System::currentTimeMillis) {
+class BackgroundJobStore(private val root: File) {
     private val mutex = Mutex()
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
-    private val pruned = mutableListOf<BackgroundJobRecord>()
     private var records: List<BackgroundJobRecord>? = null
+    private var pendingCleanup: Set<String>? = null
+
     private fun load(): List<BackgroundJobRecord> = records ?: File(root,"records.json").let { file ->
         (if(file.exists()) json.decodeFromString<List<BackgroundJobRecord>>(file.readText()) else emptyList()).also { records=it }
     }
-    private fun save(values: List<BackgroundJobRecord>) {
-        val terminal = values.filterNot { it.running }.filter { (it.endedAtMillis ?: it.startedAtMillis) >= now()-7*86400000L }
-            .sortedByDescending { it.endedAtMillis }.take(50)
-        val next = values.filter { it.running } + terminal
+    private fun save(next: List<BackgroundJobRecord>) {
+        writeAtomically("records.json", json.encodeToString(next))
+        records = next
+    }
+
+    private fun loadPendingCleanup(): Set<String> = pendingCleanup ?: File(root, "pending-cleanup.json").let { file ->
+        (if (file.exists()) json.decodeFromString<Set<String>>(file.readText()) else emptySet()).also { pendingCleanup = it }
+    }
+
+    private fun savePendingCleanup(ids: Set<String>) {
+        writeAtomically("pending-cleanup.json", json.encodeToString(ids))
+        pendingCleanup = ids
+    }
+
+    private fun writeAtomically(name: String, content: String) {
         check(root.isDirectory || root.mkdirs()) { "无法创建后台任务记录目录" }
-        val temp=File(root,"records.json.tmp")
+        val temp = File(root, "$name.tmp")
         try {
-            FileOutputStream(temp).use { it.write(json.encodeToString(next).toByteArray(Charsets.UTF_8)); it.fd.sync() }
-            Files.move(temp.toPath(),File(root,"records.json").toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING)
-            pruned += values.filter { old -> next.none { it.id == old.id } }
-            records=next
-        } finally { temp.delete() }
+            FileOutputStream(temp).use { output ->
+                output.write(content.toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            Files.move(temp.toPath(), File(root, name).toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            temp.delete()
+        }
     }
     private suspend fun <T> locked(block: ()->T):T=withContext(NonCancellable + Dispatchers.IO) { mutex.withLock { block() } }
     suspend fun updateIfPresent(id:String, transform:(BackgroundJobRecord)->BackgroundJobRecord):BackgroundJobRecord? = locked {
@@ -84,11 +100,49 @@ class BackgroundJobStore(private val root: File, private val now: () -> Long = S
         val old=values.find{it.id==id} ?: return@locked null
         val updated=transform(old)
         require(updated.id==old.id && updated.sessionId==old.sessionId)
-        save(values.map{if(it.id==id)updated else it})
+        if (updated != old) save(values.map { if (it.id == id) updated else it })
         updated
     }
-    suspend fun drainPruned():List<BackgroundJobRecord> = locked {pruned.toList().also{pruned.clear()}}
-    suspend fun prune() = locked { save(load()) }
+
+    suspend fun clearFinished(sessionId: String, excludedIds: Set<String> = emptySet()): List<BackgroundJobRecord> =
+        clearFinishedWithSkipped(sessionId, excludedIds).first
+
+    internal suspend fun clearFinishedWithSkipped(
+        sessionId: String,
+        excludedIds: Set<String>,
+    ): Pair<List<BackgroundJobRecord>, Int> = locked {
+        val (removed, retained) = load().partition { it.sessionId == sessionId && !it.running && it.id !in excludedIds }
+        val skipped = retained.count { it.sessionId == sessionId && !it.running && it.id in excludedIds }
+        if (removed.isNotEmpty()) {
+            // 先记录清理意图。恢复时只执行在 records.json 中已经提交移除的任务。
+            savePendingCleanup(loadPendingCleanup() + removed.map { it.id })
+            save(retained)
+        }
+        removed to skipped
+    }
+
+    internal suspend fun restorePendingCleanup(): Set<String> = locked {
+        val pending = loadPendingCleanup()
+        if (pending.isEmpty()) return@locked pending
+        val committed = pending - load().map { it.id }.toSet()
+        if (committed != pending) savePendingCleanup(committed)
+        committed
+    }
+
+    internal suspend fun acknowledgeCleanup(ids: Set<String>) = locked {
+        val pending = loadPendingCleanup()
+        val remaining = pending - ids
+        if (remaining != pending) savePendingCleanup(remaining)
+    }
+
+    suspend fun markLogsReclaimed(ids: Set<String>) = locked {
+        val values = load()
+        val next = values.map { record ->
+            if (!record.running && !record.logReclaimed && record.id in ids) record.copy(logReclaimed = true) else record
+        }
+        if (next != values) save(next)
+    }
+
     suspend fun all():List<BackgroundJobRecord> = locked { load().toList() }
     suspend fun put(record:BackgroundJobRecord) = locked { save(load().filterNot { it.id==record.id }+record) }
     suspend fun deleteSession(sessionId:String) = locked { save(load().filterNot{it.sessionId==sessionId}) }

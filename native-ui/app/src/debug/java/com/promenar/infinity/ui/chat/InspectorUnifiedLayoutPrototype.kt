@@ -259,7 +259,6 @@ private fun ProtoInspectorBottomBar(
         Triple(ChatPage.Explorer, "文件", Icons.Rounded.FolderOpen),
         Triple(ChatPage.Git, "Git", Icons.Rounded.AccountTree),
         Triple(ChatPage.Browser, "浏览器", Icons.Rounded.Public),
-        Triple(ChatPage.Remote, "远程", Icons.Rounded.Terminal),
         Triple(ChatPage.Canvas, "产物", Icons.Rounded.ViewQuilt),
         Triple(ChatPage.State, "状态", Icons.Rounded.TableChart),
         Triple(ChatPage.Production, "制作", Icons.Rounded.MovieCreation),
@@ -313,14 +312,14 @@ private fun ProtoInspectorBottomBar(
                     } else {
                         Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
                             Icon(icon, contentDescription = label, tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                            if (page == ChatPage.Git || page == ChatPage.Remote) {
+                            if (page == ChatPage.Git) {
                                 Box(
                                     Modifier
                                         .align(Alignment.TopEnd)
                                         .padding(top = 8.dp, end = 8.dp)
                                         .size(6.dp)
                                         .background(
-                                            if (page == ChatPage.Remote) MaterialTheme.infinityDomainColors.signalOn else scheme.primary,
+                                            scheme.primary,
                                             CircleShape,
                                         ),
                                 )
@@ -1141,7 +1140,6 @@ fun UnifiedAll8PagesAlignmentMatrixDarkPreview() {
 
             // 第一行：A 档（远程、产物）+ B 档带 TAB（任务、Git）
             Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                PageCard("A档 · 远程（纯吸顶 TAB y=4..52）", ChatPage.Remote, tierA = true, Modifier.weight(1f)) { ProtoRemoteContent(true) }
                 PageCard("A档 · 产物（改吸顶 TAB y=4..52）", ChatPage.Canvas, tierA = true, Modifier.weight(1f)) { ProtoCanvasContent(true) }
                 PageCard("B档 · 任务（56dp 轻页头 + TAB y=60..108）", ChatPage.Run, tierA = false, Modifier.weight(1f)) { ProtoRunContent(true) }
                 PageCard("B档 · Git（分支并入页头 + TAB y=60..108）", ChatPage.Git, tierA = false, Modifier.weight(1f)) { ProtoGitContent(true) }

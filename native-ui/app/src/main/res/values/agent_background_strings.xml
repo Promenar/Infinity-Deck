@@ -110,8 +110,13 @@
     <string name="agent_jobs_log_truncated">Showing the most recent output only.</string>
     <string name="agent_jobs_log_failed">Couldn\'t read the log</string>
     <string name="agent_jobs_log_empty">No output yet</string>
+    <string name="agent_jobs_log_reclaimed">Detailed log was reclaimed by storage budget; the execution record is still kept.</string>
     <string name="agent_jobs_group_running">Running · %1$d</string>
     <string name="agent_jobs_group_finished">Finished · %1$d</string>
+    <string name="agent_jobs_clear_finished">Clear records</string>
+    <string name="agent_jobs_clear_confirm_title">Clear finished records</string>
+    <string name="agent_jobs_clear_confirm_message">This clears %1$d finished execution records and their logs for this session. Chat messages are unaffected. This cannot be undone.</string>
+    <string name="agent_jobs_clear_confirm_message_with_running">This clears %1$d finished execution records and their logs for this session. %2$d running tasks and chat messages are unaffected. This cannot be undone.</string>
     <string name="agent_jobs_exit_badge">Exit %1$d</string>
     <string name="system_trigger_subagent_done">Subagent reported back · %1$s</string>
 </resources>

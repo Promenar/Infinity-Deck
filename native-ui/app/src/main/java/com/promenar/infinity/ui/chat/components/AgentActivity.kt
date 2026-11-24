@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.rounded.AlarmOff
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.HourglassBottom
@@ -61,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.domain.jobs.BackgroundJob
 import com.promenar.infinity.domain.jobs.BackgroundJobRunner
 import com.promenar.infinity.domain.jobs.BackgroundJobState
@@ -109,10 +111,12 @@ internal fun BackgroundJobsContent(
     onStop: (String) -> Unit,
     onOpenLog: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onClearFinished: (() -> Unit)? = null,
     liveOutput: @Composable (BackgroundJob) -> Unit = {},
 ) {
     val groups = remember(jobs) { backgroundJobGroups(jobs) }
     var expandedId by rememberSaveable { mutableStateOf(groups.running.firstOrNull()?.id) }
+    var showClearConfirm by rememberSaveable { mutableStateOf(false) }
     val toggle = { id: String -> expandedId = if (expandedId == id) null else id }
     LazyColumn(
         modifier = modifier.fillMaxWidth().testTag(UiTags.BACKGROUND_JOBS_SHEET),
@@ -149,7 +153,12 @@ internal fun BackgroundJobsContent(
             }
         }
         if (groups.finished.isNotEmpty()) {
-            item(key = "finished_label") { JobGroupLabel(stringResource(R.string.agent_jobs_group_finished, groups.finished.size)) }
+            item(key = "finished_label") {
+                FinishedJobsGroupHeader(
+                    finishedCount = groups.finished.size,
+                    onClearFinished = onClearFinished?.let { { showClearConfirm = true } },
+                )
+            }
             item(key = "finished") {
                 Surface(shape = JobGroupShape, color = MaterialTheme.colorScheme.surfaceContainerLow) {
                     Column {
@@ -165,6 +174,69 @@ internal fun BackgroundJobsContent(
                         }
                     }
                 }
+            }
+        }
+    }
+    if (showClearConfirm && groups.finished.isNotEmpty() && onClearFinished != null) {
+        val message = if (groups.running.isNotEmpty()) {
+            stringResource(R.string.agent_jobs_clear_confirm_message_with_running, groups.finished.size, groups.running.size)
+        } else {
+            stringResource(R.string.agent_jobs_clear_confirm_message, groups.finished.size)
+        }
+        InfinityConfirmDialog(
+            title = stringResource(R.string.agent_jobs_clear_confirm_title),
+            message = message,
+            confirmText = stringResource(R.string.agent_jobs_clear_finished),
+            onConfirm = {
+                showClearConfirm = false
+                onClearFinished()
+            },
+            onCancel = { showClearConfirm = false },
+            isDestructive = true,
+        )
+    }
+}
+
+@Composable
+private fun FinishedJobsGroupHeader(
+    finishedCount: Int,
+    onClearFinished: (() -> Unit)?,
+) {
+    val showClear = onClearFinished != null && finishedCount > 0
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = InfinitySpacing.XSmall,
+                top = if (showClear) InfinitySpacing.Small else InfinitySpacing.Medium,
+                bottom = if (showClear) InfinitySpacing.XSmall else InfinitySpacing.Small,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+    ) {
+        Text(
+            text = stringResource(R.string.agent_jobs_group_finished, finishedCount),
+            style = InfinityTypography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        val heldClear = rememberLastNonNull(onClearFinished, key = "finished-jobs-clear")
+        AnimatedVisibility(
+            visible = showClear && heldClear != null,
+            enter = expandHorizontally(tween(InfinityMotion.DurationShort)) + fadeIn(tween(InfinityMotion.DurationShort)),
+            exit = shrinkHorizontally(tween(InfinityMotion.DurationShort)) + fadeOut(tween(InfinityMotion.DurationShort)),
+        ) {
+            heldClear?.let { clear ->
+                InfinityPillButton(
+                    text = stringResource(R.string.agent_jobs_clear_finished),
+                    onClick = clear,
+                    tone = InfinityPillTone.NEUTRAL,
+                    icon = Icons.Rounded.DeleteOutline,
+                    compact = true,
+                    modifier = Modifier.testTag(UiTags.BACKGROUND_JOBS_CLEAR_FINISHED),
+                )
             }
         }
     }

@@ -97,7 +97,9 @@ data class SftpTransfer(
     val failure: SftpTransferFailure? = null,
 )
 
-data class BackgroundJobLog(val text: String, val truncated: Boolean)
+data class BackgroundJobLog(val text: String, val truncated: Boolean, val logReclaimed: Boolean = false)
+
+data class ClearFinishedJobsResult(val clearedCount: Int, val skippedCount: Int = 0)
 
 /** 界面使用的后台任务入口。 */
 interface BackgroundJobController {
@@ -107,6 +109,9 @@ interface BackgroundJobController {
     /** 会话归属校验后读取应用私有日志，兼容实时任务的日志末尾。 */
     suspend fun readLog(sessionId: String, reference: String): BackgroundJobLog =
         throw UnsupportedOperationException("任务日志读取不可用")
+
+    /** 清空会话内可清理的终态记录，返回清除数与等待收尾或投递的记录数。 */
+    suspend fun clearFinished(sessionId: String): ClearFinishedJobsResult = ClearFinishedJobsResult(0)
 
     /** 返回 false 表示任务不存在或已经结束。 */
     suspend fun stop(jobId: String): Boolean

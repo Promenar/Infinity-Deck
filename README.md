@@ -82,7 +82,7 @@
     <td width="50%" valign="top">
       <img src="assets/screenshots/en/fold-inspector.webp" alt="Foldable inner screen three-column layout with pinned inspector">
       <h3>Foldable Workbench &amp; Pinned Inspector</h3>
-      Unfolded screens switch to an adaptive multi-column workspace (`Navigation · 40dp circuit branch rail or chat list · Conversation`) paired with an obsidian frosted-glass inspector housing tasks, files, Git, browser, remote tools, and the production panel on a scrollable short-label strip.
+      Unfolded screens switch to an adaptive multi-column workspace (`Navigation · 40dp circuit branch rail or chat list · Conversation`) paired with an obsidian frosted-glass inspector housing tasks, files, Git, browser, and on-demand artifact/state/production panels on a scrollable short-label strip.
     </td>
     <td width="50%" valign="top">
       <p align="center"><img src="assets/screenshots/en/outer-chat.webp" alt="Cover screen showing the 502 fix report for one-handed reading" width="190"></p>

@@ -168,6 +168,7 @@ fun BackgroundJobLogDialog(
                 JobLogBody(
                     phase = phase,
                     text = logText,
+                    logReclaimed = readState.log?.logReclaimed == true,
                     refreshFailed = phase == JobLogPhase.Content && readState.failed,
                     onRetry = { readState = readState.retried() },
                     onCancel = { readState = readState.cancelledRead() },
@@ -223,18 +224,20 @@ private fun JobLogStatusPill(status: JobLogStatus) {
 @Composable
 private fun JobLogMetaLine(state: JobLogReadState, nowMillis: Long) {
     val log = state.log ?: return
-    val scope = if (log.truncated) {
-        stringResource(R.string.job_log_tail_limit, JOB_LOG_TAIL_CHARS)
-    } else {
-        stringResource(R.string.job_log_full_output)
+    val scope = when {
+        log.logReclaimed && log.text.isEmpty() -> null
+        log.truncated -> stringResource(R.string.job_log_tail_limit, JOB_LOG_TAIL_CHARS)
+        else -> stringResource(R.string.job_log_full_output)
     }
     val updated = when (val seconds = jobLogSecondsSinceUpdate(state, nowMillis)) {
         null -> null
         0L -> stringResource(R.string.job_log_updated_just_now)
         else -> pluralStringResource(R.plurals.job_log_updated_seconds_ago, seconds.toIntClamped(), seconds)
     }
+    val segments = listOfNotNull(scope, updated)
+    if (segments.isEmpty()) return
     InfinityMetaLine(
-        segments = listOfNotNull(scope, updated),
+        segments = segments,
         style = InfinityTypography.bodySmall.copy(fontFeatureSettings = "tnum"),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -246,6 +249,7 @@ private fun Long.toIntClamped(): Int = coerceAtMost(Int.MAX_VALUE.toLong()).toIn
 private fun JobLogBody(
     phase: JobLogPhase,
     text: String,
+    logReclaimed: Boolean,
     refreshFailed: Boolean,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
@@ -256,7 +260,8 @@ private fun JobLogBody(
         .background(MaterialTheme.colorScheme.surfaceContainerLowest, shape)
     when (phase) {
         JobLogPhase.Content -> Column(verticalArrangement = Arrangement.spacedBy(InfinitySpacing.XSmall)) {
-            JobLogText(text = text.ifEmpty { stringResource(R.string.agent_jobs_log_empty) }, modifier = areaModifier)
+            val placeholder = stringResource(if (logReclaimed) R.string.agent_jobs_log_reclaimed else R.string.agent_jobs_log_empty)
+            JobLogText(text = text.ifEmpty { placeholder }, modifier = areaModifier)
             if (refreshFailed) {
                 JobLogStatusRow(
                     message = stringResource(R.string.job_log_refresh_failed),

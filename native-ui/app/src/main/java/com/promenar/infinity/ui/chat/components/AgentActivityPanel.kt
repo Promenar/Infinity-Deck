@@ -44,6 +44,7 @@ internal class AgentActivityState(
     val onStop: (String) -> Unit,
     val onToggleSchedule: (String, Boolean) -> Unit,
     val onDeleteSchedule: (String) -> Unit,
+    val onClearFinished: () -> Unit = {},
 ) {
     val summary: AgentActivitySummary get() = summarizeAgentActivity(jobs, schedules, nowMillis)
     val isEmpty: Boolean get() = jobs.isEmpty() && schedules.isEmpty()
@@ -78,6 +79,7 @@ internal fun rememberAgentActivityState(fastTick: Boolean): AgentActivityState? 
         onStop = { id -> scope.launch { access.jobs?.stop(id) } },
         onToggleSchedule = { id, enabled -> scope.launch { if (enabled) access.schedules?.resume(id) else access.schedules?.pause(id) } },
         onDeleteSchedule = { id -> scope.launch { access.schedules?.delete(id) } },
+        onClearFinished = { scope.launch { access.jobs?.clearFinished(access.sessionId) } },
     )
 }
 
@@ -95,6 +97,7 @@ internal fun AgentActivityTabContent(state: AgentActivityState, onOpenLog: (Stri
                 onStop = state.onStop,
                 onOpenLog = onOpenLog,
                 modifier = Modifier.weight(1f),
+                onClearFinished = state.onClearFinished.takeIf { state.access.jobs != null },
                 liveOutput = state.access.liveOutput,
             )
         }

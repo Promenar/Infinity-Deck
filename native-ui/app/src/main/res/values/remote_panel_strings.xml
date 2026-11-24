@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="remote_panel_title">Remote</string>
-    <string name="remote_panel_dot_agent">Agent is using SSH</string>
-    <string name="remote_panel_dot_attention">Tailscale needs attention</string>
     <string name="remote_segment_ssh">SSH</string>
     <string name="remote_segment_git">Git credentials</string>
     <string name="remote_segment_tailscale">Tailscale</string>
