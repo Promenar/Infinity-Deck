@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="local_models_inference">Local inference</string>
+    <string name="local_models_auto_load_on_startup">Auto-load on startup</string>
+    <string name="local_models_auto_load_on_startup_on">Restore saved slots on launch</string>
+    <string name="local_models_auto_load_on_startup_off">Load manually or on demand</string>
+    <string name="local_models_auto_load_footer_on">Auto-load is on. Resident models occupy hundreds of MB to several GB of RAM and may squeeze heavy Linux or Git tasks. Turn off if used infrequently.</string>
+    <string name="local_models_auto_load_footer_off">Recommended off unless used daily. Resident models occupy hundreds of MB to several GB of RAM and may squeeze heavy Linux or Git tasks.</string>
     <string name="local_models_library">Model library</string>
     <string name="local_models_assignment">Model assignment</string>
     <string name="local_models_import">Import model</string>
@@ -25,6 +30,7 @@
     <string name="local_models_saved_idle">%1$s · Saved</string>
     <string name="local_models_saved_status">Saved</string>
     <string name="local_models_assignment_footer">Assigned model slots are saved locally and restored automatically on app launch or when re-enabling local inference.</string>
+    <string name="local_models_assignment_footer_manual">Assigned model slots are saved locally without auto-loading on startup. Tap a slot above to load on demand.</string>
     <string name="local_models_engine_disabled">Enable local inference to load models.</string>
     <string name="local_models_no_compatible">No compatible models in the library.</string>
     <string name="local_models_show_library">View model library</string>

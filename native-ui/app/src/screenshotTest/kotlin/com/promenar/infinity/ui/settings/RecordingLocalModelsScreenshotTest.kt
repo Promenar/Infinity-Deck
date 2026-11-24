@@ -10,18 +10,18 @@ import com.promenar.infinity.data.local.inference.StoredModel
 import com.promenar.infinity.ui.theme.*
 
 @PreviewTest
-@Preview(name = "录音模型下载 浅英360 大字", widthDp = 360, heightDp = 800, locale = "en", fontScale = 1.3f)
-@Preview(name = "录音模型下载 浅中840 内屏", widthDp = 840, heightDp = 720, locale = "zh-rCN")
+@Preview(name = "录音模型下载 浅英360 大字", widthDp = 360, heightDp = 1040, locale = "en", fontScale = 1.3f)
+@Preview(name = "录音模型下载 浅中840 内屏", widthDp = 840, heightDp = 820, locale = "zh-rCN")
 @Composable
 fun recordingModelDownloadPreview() {
     InfinityTheme(preferences = InfinityThemePreferences(mode = InfinityThemeMode.LIGHT, colorSource = InfinityColorSource.INFINITY)) {
-        LocalModelsScreenContent(engineEnabled = true, onInstall = {}, formatFileSize = { "639 MB" }, downloadProgress = 42)
+        LocalModelsScreenContent(engineEnabled = true, autoLoadOnStartup = false, onInstall = {}, formatFileSize = { "639 MB" }, downloadProgress = 42)
     }
 }
 
 @PreviewTest
-@Preview(name = "录音模型固定 深中360 大字", widthDp = 360, heightDp = 1000, locale = "zh-rCN", fontScale = 1.3f)
-@Preview(name = "录音模型固定 深英840 内屏", widthDp = 840, heightDp = 900, locale = "en")
+@Preview(name = "录音模型固定 深中360 大字", widthDp = 360, heightDp = 1120, locale = "zh-rCN", fontScale = 1.3f)
+@Preview(name = "录音模型固定 深英840 内屏", widthDp = 840, heightDp = 960, locale = "en")
 @Composable
 fun recordingModelPinnedPreview() {
     val model = StoredModel(
@@ -35,7 +35,7 @@ fun recordingModelPinnedPreview() {
     )
     InfinityTheme(preferences = InfinityThemePreferences(mode = InfinityThemeMode.DARK, colorSource = InfinityColorSource.INFINITY)) {
         LocalModelsScreenContent(
-            availableModels = listOf(model), engineEnabled = true, onTogglePin = {},
+            availableModels = listOf(model), engineEnabled = true, autoLoadOnStartup = true, onTogglePin = {},
             mainSlot = SlotState(modelPath = model.filePath, modelName = model.fileName, isLoaded = true),
             formatFileSize = { "639 MB" },
             pinned = LocalModelRevision(model.filePath, RecordingModelPackage.sha256),

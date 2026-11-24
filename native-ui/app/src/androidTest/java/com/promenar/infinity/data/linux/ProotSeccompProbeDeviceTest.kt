@@ -71,6 +71,43 @@ class ProotSeccompProbeDeviceTest {
         }
     }
 
+    @Test fun probeHardwareProfileAndOwnProcessSampling() = runBlocking<Unit>(Dispatchers.IO) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        LinuxResourceGovernor.initialize(context)
+        val profile = DeviceHardwareProfile.read()
+        val budget = LinuxResourceGovernor.system.budget()
+        report(
+            "硬件画像 envelopeMiB=${profile.appMemoryEnvelopeBytes / MIB}，" +
+                "reservedUiCpu=${profile.reservedUiCpuId}，" +
+                "linuxCpuIds=${profile.linuxCpuIds}，" +
+                "parallelLimit=${profile.linuxParallelLimit}，" +
+                "jobBudgetMiB=${budget.jobMemoryBudgetBytes / MIB}，" +
+                "effectiveThreads=${budget.effectiveThreads}",
+        )
+        assertThat(profile.appMemoryEnvelopeBytes).isAtLeast(512 * MIB)
+        assertThat(profile.linuxCpuIds).isNotEmpty()
+        assertThat(budget.jobMemoryBudgetBytes).isAtLeast(256 * MIB)
+
+        val watch = LinuxResourceGovernor.watch(budget.jobMemoryBudgetBytes)
+        val runner = BuiltinCommandRunner(
+            listOf("/system/bin/setsid"), "/system/bin/sh", AndroidProcessGroupSignaller,
+            { context.cacheDir }, clockNanos = SystemClock::elapsedRealtimeNanos,
+        )
+        val output = runner.run(
+            BuiltinCommandRequest(
+                argv = listOf("/system/bin/sh", "-c", "sleep 1; echo sampled"),
+                workingDirectory = context.cacheDir,
+                environment = emptyMap(),
+                timeoutSeconds = 10,
+                memoryWatch = { watch },
+            ),
+        )
+        report("实机进程树采样 exitCode=${output.exitCode}，peakBytes=${output.peakMemoryBytes}")
+        assertThat(output.exitCode).isEqualTo(0)
+        assertWithMessage("Android 17 untrusted_app 应能采样自身子进程组 RSS").that(output.peakMemoryBytes).isNotNull()
+        assertThat(output.peakMemoryBytes!!).isGreaterThan(0L)
+    }
+
     private fun report(message: String) {
         Log.i("ProotSeccompProbe", message)
         println("ProotSeccompProbe $message")

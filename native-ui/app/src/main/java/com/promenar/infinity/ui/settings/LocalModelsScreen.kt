@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.Subject
 import androidx.compose.material.icons.rounded.VerticalAlignTop
@@ -113,6 +114,7 @@ fun LocalModelsScreen(
     val availableModels by viewModel.availableModels.collectAsState()
     val modelsLoaded by viewModel.modelsLoaded.collectAsState()
     val engineEnabled by viewModel.isEngineEnabled.collectAsState()
+    val autoLoadOnStartup by viewModel.autoLoadOnStartup.collectAsState()
     val mainSlot by viewModel.mainSlot.collectAsState()
     val embeddingSlot by viewModel.embeddingSlot.collectAsState()
     val rerankSlot by viewModel.rerankSlot.collectAsState()
@@ -131,6 +133,7 @@ fun LocalModelsScreen(
     LocalModelsScreenContent(
         availableModels = availableModels,
         engineEnabled = engineEnabled,
+        autoLoadOnStartup = autoLoadOnStartup,
         mainSlot = mainSlot,
         embeddingSlot = embeddingSlot,
         rerankSlot = rerankSlot,
@@ -146,6 +149,7 @@ fun LocalModelsScreen(
         downloadProgress = download?.takeIf { it.isDownloading && it.totalBytes > 0 }
             ?.let { (it.downloadedBytes * 100 / it.totalBytes).toInt() },
         onEngineEnabledChange = viewModel::setEngineEnabled,
+        onAutoLoadOnStartupChange = viewModel::setAutoLoadOnStartup,
         onLoadModel = viewModel::loadModel,
         onUnloadModel = viewModel::unloadModel,
         onDeleteModel = viewModel::deleteModel,
@@ -159,6 +163,7 @@ fun LocalModelsScreen(
 internal fun LocalModelsScreenContent(
     availableModels: List<StoredModel> = emptyList(),
     engineEnabled: Boolean = false,
+    autoLoadOnStartup: Boolean = false,
     mainSlot: SlotState = SlotState(),
     embeddingSlot: SlotState = SlotState(),
     rerankSlot: SlotState = SlotState(),
@@ -167,6 +172,7 @@ internal fun LocalModelsScreenContent(
     onNavigateBack: () -> Unit = {},
     onImport: () -> Unit = {},
     onEngineEnabledChange: (Boolean) -> Unit = {},
+    onAutoLoadOnStartupChange: (Boolean) -> Unit = {},
     onLoadModel: (SlotType, String) -> Unit = { _, _ -> },
     onUnloadModel: (SlotType) -> Unit = {},
     onDeleteModel: (String) -> Unit = {},
@@ -204,13 +210,34 @@ internal fun LocalModelsScreenContent(
     ) { padding ->
         LazyColumn(state = listState, modifier = Modifier.fillMaxWidth(), contentPadding = padding) {
             item {
-                InfinitySettingsGroup {
+                val topFooter = if (engineEnabled) {
+                    stringResource(
+                        if (autoLoadOnStartup) R.string.local_models_auto_load_footer_on
+                        else R.string.local_models_auto_load_footer_off,
+                    )
+                } else {
+                    null
+                }
+                InfinitySettingsGroup(footer = topFooter) {
                     SettingsToggle(
                         title = stringResource(R.string.local_models_inference),
                         description = if (gpuAvailable) "llama.cpp · Vulkan" else "llama.cpp · CPU",
                         icon = Icons.Rounded.Memory,
                         checked = engineEnabled,
                         onCheckedChange = onEngineEnabledChange,
+                    )
+                    HorizontalDivider()
+                    SettingsToggle(
+                        title = stringResource(R.string.local_models_auto_load_on_startup),
+                        description = stringResource(
+                            if (autoLoadOnStartup) R.string.local_models_auto_load_on_startup_on
+                            else R.string.local_models_auto_load_on_startup_off,
+                        ),
+                        icon = Icons.Rounded.RestartAlt,
+                        checked = autoLoadOnStartup,
+                        enabled = engineEnabled,
+                        descriptionMaxLines = 2,
+                        onCheckedChange = onAutoLoadOnStartupChange,
                     )
                 }
             }
@@ -343,7 +370,11 @@ internal fun LocalModelsScreenContent(
                 )
                 InfinitySettingsGroup(
                     footer = stringResource(
-                        if (engineEnabled) R.string.local_models_assignment_footer else R.string.local_models_engine_disabled,
+                        when {
+                            !engineEnabled -> R.string.local_models_engine_disabled
+                            autoLoadOnStartup -> R.string.local_models_assignment_footer
+                            else -> R.string.local_models_assignment_footer_manual
+                        },
                     ),
                 ) {
                     slots.entries.forEachIndexed { index, (role, state) ->

@@ -45,4 +45,40 @@ class LocalModelsSettingGateTest {
         rule.onNodeWithText(importTitle).performScrollTo().assertIsNotEnabled().performTouchInput { click() }
         assertEquals(0, imports)
     }
+
+    @Test fun autoLoadToggleIsDisabledWhenEngineIsOffAndTogglesWhenEngineIsOn() {
+        var toggled = mutableListOf<Boolean>()
+        var toggleTitle = ""
+        rule.setContent {
+            InfinityTheme {
+                toggleTitle = stringResource(R.string.local_models_auto_load_on_startup)
+                LocalModelsScreenContent(
+                    engineEnabled = false,
+                    autoLoadOnStartup = false,
+                    onAutoLoadOnStartupChange = { toggled += it },
+                )
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText(toggleTitle).performScrollTo().assertIsNotEnabled().performClick()
+        assertEquals(emptyList<Boolean>(), toggled)
+    }
+
+    @Test fun autoLoadToggleInvokesCallbackWhenEngineIsOn() {
+        val toggled = mutableListOf<Boolean>()
+        var toggleTitle = ""
+        rule.setContent {
+            InfinityTheme {
+                toggleTitle = stringResource(R.string.local_models_auto_load_on_startup)
+                LocalModelsScreenContent(
+                    engineEnabled = true,
+                    autoLoadOnStartup = false,
+                    onAutoLoadOnStartupChange = { toggled += it },
+                )
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText(toggleTitle).performScrollTo().assertIsEnabled().performClick()
+        assertEquals(listOf(true), toggled)
+    }
 }
