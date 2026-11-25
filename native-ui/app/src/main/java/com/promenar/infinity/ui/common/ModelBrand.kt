@@ -46,6 +46,7 @@ object ModelBrandResolver {
         "chatglm" to "zhipu",
         "zhipu" to "zhipu",
         "bigmodel" to "zhipu",
+        "z.ai" to "zhipu",
         "智谱" to "zhipu",
         "doubao" to "volcengine",
         "seed" to "volcengine",

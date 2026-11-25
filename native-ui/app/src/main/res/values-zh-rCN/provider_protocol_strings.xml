@@ -35,6 +35,7 @@
     <string name="provider_preset_zhipu_coding">智谱 Coding Plan</string>
     <string name="provider_preset_kimi_coding">Kimi Coding Plan</string>
     <string name="provider_preset_ark_coding">方舟 Coding Plan</string>
+    <string name="provider_preset_minimax_token_plan">MiniMax Token Plan</string>
 
     <!-- 预设分类与端点变体 -->
     <string name="provider_preset_cat_subscription">订阅计划与聚合网关</string>
@@ -45,8 +46,16 @@
     <string name="provider_variant_anthropic">Anthropic 协议</string>
     <string name="provider_variant_coding">Coding 专属</string>
     <string name="provider_variant_standard">标准 API</string>
-    <string name="provider_variant_cn">国内站 (.cn)</string>
-    <string name="provider_variant_global">国际站</string>
-    <string name="provider_variant_beijing">国内（北京）</string>
-    <string name="provider_variant_singapore">海外（新加坡）</string>
+    <string name="provider_variant_cn">中国 (.cn)</string>
+    <string name="provider_variant_global">国际</string>
+    <string name="provider_variant_beijing">中国（北京）</string>
+    <string name="provider_variant_singapore">国际（新加坡）</string>
+    <string name="provider_variant_cn_openai">中国 OpenAI</string>
+    <string name="provider_variant_cn_anthropic">中国 Anthropic</string>
+    <string name="provider_variant_intl_openai">国际 OpenAI</string>
+    <string name="provider_variant_intl_anthropic">国际 Anthropic</string>
+    <string name="provider_variant_cn_standard">中国标准</string>
+    <string name="provider_variant_cn_coding">中国 Coding</string>
+    <string name="provider_variant_intl_standard">国际标准 (Z.AI)</string>
+    <string name="provider_variant_intl_coding">国际 Coding (Z.AI)</string>
 </resources>

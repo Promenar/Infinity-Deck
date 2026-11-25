@@ -7,10 +7,12 @@ import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Cached
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.DataObject
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Laptop
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.ScatterPlot
 import androidx.compose.material.icons.automirrored.rounded.Sort
@@ -57,6 +59,8 @@ internal val ModelTypeSpecs = listOf(
     ModelCapabilitySpec("chat", R.string.provider_models_type_chat, Icons.Rounded.ChatBubbleOutline),
     ModelCapabilitySpec("reasoning", R.string.provider_models_type_reasoning, Icons.Rounded.Psychology),
     ModelCapabilitySpec("image", R.string.provider_models_type_image, Icons.Rounded.Image),
+    ModelCapabilitySpec("video", R.string.provider_models_type_video, Icons.Rounded.Movie),
+    ModelCapabilitySpec("audio", R.string.provider_models_type_audio, Icons.Rounded.GraphicEq),
     ModelCapabilitySpec("embedding", R.string.provider_models_type_embedding, Icons.Rounded.ScatterPlot),
     ModelCapabilitySpec("rerank", R.string.provider_models_type_rerank, Icons.AutoMirrored.Rounded.Sort),
 )

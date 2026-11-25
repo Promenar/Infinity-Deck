@@ -150,6 +150,7 @@ internal data class ProviderModelsScreenActions(
     val onRefreshCatalog: () -> Unit = {},
     val onEditProvider: () -> Unit = {},
     val onOpenMediaModel: ((String) -> Unit)? = null,
+    val onSetMediaSettings: ((String, com.promenar.infinity.data.model.MediaModelSettings?) -> Unit)? = null,
 )
 
 @Composable
@@ -214,6 +215,7 @@ fun ProviderModelsScreen(
         onRefreshCatalog = { viewModel.refreshModelCatalog() },
         onEditProvider = { onNavigateToSecondary(NavDestinations.providerForm(providerId)) },
         onOpenMediaModel = { onNavigateToSecondary(MediaSettingsRoutes.model(it)) },
+        onSetMediaSettings = { modelId, settings -> viewModel.setMediaModelSettings(modelId, settings) },
     )
 
     ProviderModelsScreenContent(
@@ -298,6 +300,7 @@ internal fun ProviderModelsScreenContent(
                     testState = state.modelTestStates[editing.id] ?: ModelTestState.Idle,
                     onClose = { selectedModelId = null },
                     onOpenMediaSettings = actions.onOpenMediaModel?.let { open -> { open(editing.id) } },
+                    onSetMediaSettings = actions.onSetMediaSettings?.let { set -> { settings -> set(editing.id, settings) } },
                     onUpdate = actions.onUpdate,
                     onTest = { actions.onTest(editing.id) },
                     onCancel = { actions.onCancelTest(editing.id) },

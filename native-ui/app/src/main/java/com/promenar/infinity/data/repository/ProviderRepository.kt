@@ -130,6 +130,8 @@ class ProviderRepository(
         com.promenar.infinity.data.model.catalog.ModelWorkload.EMBEDDING -> ModelType.EMBEDDING
         com.promenar.infinity.data.model.catalog.ModelWorkload.RERANK -> ModelType.RERANK
         com.promenar.infinity.data.model.catalog.ModelWorkload.IMAGE_GENERATION -> ModelType.IMAGE
+        com.promenar.infinity.data.model.catalog.ModelWorkload.VIDEO -> ModelType.VIDEO
+        com.promenar.infinity.data.model.catalog.ModelWorkload.AUDIO -> ModelType.AUDIO
         else -> ModelType.CHAT
     }
 

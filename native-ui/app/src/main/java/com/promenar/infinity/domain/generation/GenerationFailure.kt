@@ -60,6 +60,15 @@ data class GenerationFailure(
     val providerMessage: String?
         get() = formatArgs[KEY_PROVIDER_MESSAGE]
 
+    val httpStatus: Int?
+        get() = formatArgs[KEY_HTTP_STATUS]?.toIntOrNull()?.takeIf { it in 100..599 }
+
+    val errorCode: String?
+        get() = formatArgs[KEY_ERROR_CODE]
+
+    val rawDiagnostic: String?
+        get() = formatArgs[KEY_RAW_DIAGNOSTIC]
+
     override fun toString(): String = buildString {
         append("GenerationFailure(code=")
         append(code)
@@ -74,6 +83,9 @@ data class GenerationFailure(
         const val KEY_RETRY_AFTER_SECONDS = "retryAfterSeconds"
         /** 服务商原因，见 [ProviderErrorMessage]；任何失败码都可携带，作为本地化提示下方的补充说明。 */
         const val KEY_PROVIDER_MESSAGE = "providerMessage"
+        const val KEY_HTTP_STATUS = "httpStatus"
+        const val KEY_ERROR_CODE = "errorCode"
+        const val KEY_RAW_DIAGNOSTIC = "rawDiagnostic"
         const val KEY_REQUIRED_TOKENS = "requiredTokens"
         const val KEY_AVAILABLE_TOKENS = "availableTokens"
         /** 上下文超限原因，供附件预警与失败提示选择入口。 */

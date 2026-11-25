@@ -24,6 +24,8 @@ class ModelBrandResolverTest {
         assertEquals("openai", ModelBrandResolver.brandKey("codex-mini"))
         assertEquals("openai", ModelBrandResolver.brandKey("openai/o4-mini"))
         assertEquals("zhipu", ModelBrandResolver.brandKey("GLM-5.3"))
+        assertEquals("zhipu", ModelBrandResolver.brandKey("https://api.z.ai/api/coding/paas/v4"))
+        assertEquals("minimax", ModelBrandResolver.brandKey("MiniMax Token Plan", "https://api.minimax.cn/anthropic"))
         assertEquals("kimi", ModelBrandResolver.brandKey("kimi-k3"))
         assertEquals("volcengine", ModelBrandResolver.brandKey("doubao-seed-2-1-pro"))
         assertEquals("minimax", ModelBrandResolver.brandKey("MiniMax-M3"))

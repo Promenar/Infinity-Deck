@@ -98,11 +98,54 @@ object GenerationFailureNotice {
             },
             technical = failure.technical,
             detail = failure.providerMessage,
+            httpStatus = failure.httpStatus,
+            errorCode = failure.errorCode,
+            rawDiagnostic = failure.rawDiagnostic,
         )
     }
 
     /** 工具轮次后连续两次空回复：气泡内给出重试与换模型。 */
     fun isEmptyReply(notice: UiStatusNotice): Boolean = notice.code == CODE_EMPTY_REPLY
+
+    /** 失败卡片语义图标类别，按稳定 notice code 映射。 */
+    fun visualKind(notice: UiStatusNotice): FailureVisualKind = when (notice.code) {
+        CODE_QUOTA -> FailureVisualKind.QUOTA
+        CODE_AUTH -> FailureVisualKind.AUTH
+        CODE_NETWORK -> FailureVisualKind.NETWORK
+        CODE_TIMEOUT -> FailureVisualKind.TIMEOUT
+        CODE_RATE_LIMIT, CODE_RATE_LIMIT_RETRY -> FailureVisualKind.RATE_LIMIT
+        CODE_CONTEXT_LIMIT,
+        CODE_CONTEXT_LIMIT_CONVERSATION,
+        CODE_CONTEXT_LIMIT_TURN,
+        CODE_CONTEXT_LIMIT_TURN_DOCUMENTS,
+        CODE_CONTEXT_LIMIT_UNKNOWN_WINDOW,
+        CODE_CONTEXT_LIMIT_UPSTREAM,
+        CODE_OUTPUT_LIMIT,
+        -> FailureVisualKind.LIMIT
+        CODE_CONTENT_FILTERED -> FailureVisualKind.POLICY
+        CODE_TAILNET_DISABLED,
+        CODE_TAILNET_NEEDS_LOGIN,
+        CODE_TAILNET_FAILED,
+        CODE_TAILNET_TIMEOUT,
+        -> FailureVisualKind.TAILNET
+        else -> FailureVisualKind.GENERAL
+    }
+
+    /** 余额不足、鉴权、请求参数、上下文超限或内容策略拦截优先推荐「换模型」，其余优先「重试」。 */
+    fun prefersSwitchModel(notice: UiStatusNotice): Boolean = when (notice.code) {
+        CODE_QUOTA,
+        CODE_AUTH,
+        CODE_INVALID_REQUEST,
+        CODE_CONTEXT_LIMIT,
+        CODE_CONTEXT_LIMIT_CONVERSATION,
+        CODE_CONTEXT_LIMIT_TURN,
+        CODE_CONTEXT_LIMIT_TURN_DOCUMENTS,
+        CODE_CONTEXT_LIMIT_UNKNOWN_WINDOW,
+        CODE_CONTEXT_LIMIT_UPSTREAM,
+        CODE_CONTENT_FILTERED,
+        -> true
+        else -> false
+    }
 
     /** tailnet 失败在消息下方给出的入口；其它失败为 null。 */
     fun tailnetKind(notice: UiStatusNotice): TailnetFailureKind? = when (notice.code) {
@@ -179,3 +222,6 @@ object GenerationFailureNotice {
  * 无法连接或超时时“重试 / 换用公网模型 / Tailscale 设置”。
  */
 enum class TailnetFailureKind { DISABLED, NEEDS_LOGIN, UNREACHABLE }
+
+/** 错误提示卡片左侧语义图标分类。 */
+enum class FailureVisualKind { QUOTA, AUTH, NETWORK, TIMEOUT, RATE_LIMIT, LIMIT, POLICY, TAILNET, GENERAL }

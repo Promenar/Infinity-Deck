@@ -76,7 +76,11 @@ class PublishedModelCatalog private constructor(records: List<ModelMetadataRecor
             if (source == MetadataSource.LITELLM || source == MetadataSource.OPENROUTER) {
                 require(providerScope != null) { "records[$index] 的 ${source.name} 记录必须声明 providerScope" }
             }
+            val workload = record.optionalEnum<ModelWorkload>("workload") ?: ModelWorkload.UNKNOWN
             val capabilities = linkedMapOf<ModelCapability, SupportState>()
+            if (workload == ModelWorkload.RERANK) {
+                capabilities[ModelCapability.CHAT_ENDPOINT] = SupportState.UNSUPPORTED
+            }
             record.optionalBoolean("reasoning")?.let {
                 capabilities[ModelCapability.REASONING] = it.toSupportState()
             }
@@ -100,7 +104,7 @@ class PublishedModelCatalog private constructor(records: List<ModelMetadataRecor
                 exactAliases = aliases.toSet(),
                 displayName = record.requiredNonBlankString("displayName"),
                 familyName = record.optionalString("family"),
-                workload = record.optionalEnum<ModelWorkload>("workload") ?: ModelWorkload.UNKNOWN,
+                workload = workload,
                 capabilities = capabilities,
                 contextTokens = record.optionalPositiveInt("contextTokens"),
                 inputTokens = record.optionalPositiveInt("inputTokens"),

@@ -1,7 +1,6 @@
 package com.promenar.infinity.data.remote.protocol
 
 import com.promenar.infinity.domain.generation.GenerationFailedException
-import com.promenar.infinity.domain.generation.GenerationFailure
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -17,12 +16,7 @@ internal object ProtocolContextLimit {
     /** 同步接口沿用原错误合同，仅把已经确认的上下文超限转为既有结构化异常。 */
     fun throwIfPresent(error: StreamChunk.Error?) {
         if (error?.code == GenerationFailureCode.CONTEXT_LIMIT) {
-            throw GenerationFailedException(GenerationFailure(
-                code = error.code,
-                formatArgs = mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"),
-                technical = error.technical,
-                retryable = false,
-            ))
+            throw GenerationFailedException(error.toGenerationFailure())
         }
     }
 
@@ -35,9 +29,9 @@ internal object ProtocolContextLimit {
         } ?: return null
         val error = root["error"]
         return when (error) {
-            is JsonObject -> fromError(protocolType, error, statusCode)
-            is JsonPrimitive -> classify(protocolType, statusCode, null, null, error.contentOrNull)
-            else -> fromError(protocolType, root, statusCode)
+            is JsonObject -> fromError(protocolType, error, statusCode, body)
+            is JsonPrimitive -> classify(protocolType, statusCode, null, null, error.contentOrNull, body)
+            else -> fromError(protocolType, root, statusCode, body)
         }
     }
 
@@ -45,6 +39,7 @@ internal object ProtocolContextLimit {
         protocolType: ProtocolType,
         error: JsonObject,
         statusCode: Int? = null,
+        responseBody: String = error.toString(),
     ): StreamChunk.Error? = classify(
         protocolType = protocolType,
         statusCode = statusCode ?: error.field("code")?.toIntOrNull()
@@ -52,6 +47,7 @@ internal object ProtocolContextLimit {
         type = error.field("type") ?: error.field("status"),
         code = error.field("code"),
         message = error.field("message"),
+        responseBody = responseBody,
     )
 
     private fun classify(
@@ -60,8 +56,15 @@ internal object ProtocolContextLimit {
         type: String?,
         code: String?,
         message: String?,
+        responseBody: String,
     ): StreamChunk.Error? {
-        val classified = ProtocolErrorClassifier.classify(statusCode = statusCode, type = type, code = code, technical = message)
+        val classified = ProtocolErrorClassifier.classify(
+            statusCode = statusCode,
+            type = type,
+            code = code,
+            technical = message,
+            responseBody = responseBody,
+        )
         if (classified.code == GenerationFailureCode.CONTEXT_LIMIT) return classified
         if (classified.code !in setOf(GenerationFailureCode.INVALID_REQUEST, GenerationFailureCode.UNKNOWN)) return null
         val requestError = statusCode in setOf(400, 413, 422) ||
@@ -79,7 +82,7 @@ internal object ProtocolContextLimit {
             else -> VLLM_INPUT_LENGTH.containsMatchIn(text) || VLLM_PROMPT_TOKENS.containsMatchIn(text) ||
                 text in OLLAMA_CONTEXT_MESSAGES
         }
-        return if (matches) StreamChunk.Error(
+        return if (matches) classified.copy(
             code = GenerationFailureCode.CONTEXT_LIMIT,
             retryable = false,
             technical = text,

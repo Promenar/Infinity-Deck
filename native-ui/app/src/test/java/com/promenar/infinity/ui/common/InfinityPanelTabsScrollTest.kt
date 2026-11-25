@@ -53,4 +53,50 @@ class InfinityPanelTabsScrollTest {
         assertThat(panelTabIndicatorBounds(bounds, position = 0.4f, padPx = 10)).isEqualTo(20f to 60f)
         assertThat(panelTabIndicatorBounds(bounds, position = 1.6f, padPx = 10)).isEqualTo(210f to 80f)
     }
+
+    @Test
+    fun `容器宽度动画期间切页直接对齐零偏移避免与横滑动画竞态`() {
+        assertThat(
+            panelTabPagerSyncAction(
+                tabsChanged = false,
+                animateSelection = false,
+                currentPage = 2,
+                targetPage = 2,
+                currentPageOffsetFraction = 0f,
+                desiredPage = 3,
+            ),
+        ).isEqualTo(PanelTabPagerSyncAction.SNAP)
+    }
+
+    @Test
+    fun `停留在目标页但残留非零偏移时立即归零修复错位`() {
+        assertThat(
+            panelTabPagerSyncAction(
+                tabsChanged = false,
+                animateSelection = true,
+                currentPage = 3,
+                targetPage = 3,
+                currentPageOffsetFraction = -0.45f,
+                desiredPage = 3,
+            ),
+        ).isEqualTo(PanelTabPagerSyncAction.SNAP)
+        assertThat(
+            panelTabPagerSyncAction(
+                tabsChanged = false,
+                animateSelection = true,
+                currentPage = 3,
+                targetPage = 3,
+                currentPageOffsetFraction = 0f,
+                desiredPage = 3,
+            ),
+        ).isEqualTo(PanelTabPagerSyncAction.NONE)
+    }
+
+    @Test
+    fun `静止态存在非零页偏移且视口有效时触发自动归零`() {
+        assertThat(shouldSnapIdlePagerOffset(isScrollInProgress = false, pageSize = 800, currentPageOffsetFraction = -0.35f)).isTrue()
+        assertThat(shouldSnapIdlePagerOffset(isScrollInProgress = true, pageSize = 800, currentPageOffsetFraction = -0.35f)).isFalse()
+        assertThat(shouldSnapIdlePagerOffset(isScrollInProgress = false, pageSize = 0, currentPageOffsetFraction = -0.35f)).isFalse()
+        assertThat(shouldSnapIdlePagerOffset(isScrollInProgress = false, pageSize = 800, currentPageOffsetFraction = 0f)).isFalse()
+    }
 }

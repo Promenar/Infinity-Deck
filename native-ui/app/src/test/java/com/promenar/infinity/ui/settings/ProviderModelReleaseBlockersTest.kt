@@ -515,6 +515,68 @@ class ProviderModelReleaseBlockersTest {
         assertThat(verifiedProviders).containsExactly("provider-a")
     }
 
+    @Test
+    fun `媒体模型验证只检查提供商连通而不触发对话流式请求`() = runTest {
+        var streamInvoked = false
+        var probeInvoked = 0
+        val protocol = RecordingProtocol {
+            streamInvoked = true
+            error("media verify must never send chat completions")
+        }
+        val mediaModelId = "provider-a::ep-seedance-25"
+        val resolved = ResolvedProviderModel(
+            modelId = mediaModelId,
+            remoteModelId = "ep-seedance-25",
+            providerId = "provider-a",
+            providerName = "Volcano Ark",
+            config = UnifiedProviderConfig(
+                protocolType = ProtocolType.Doubao_ByteDance,
+                baseUrl = "https://ark.cn-beijing.volces.com/api",
+                apiKey = "test-key",
+                defaultModel = "ep-seedance-25",
+            ),
+        )
+        val router = object : ProviderRequestRouter {
+            override fun resolve(modelId: String): ProviderResolution = ProviderResolution.Success(resolved)
+            override fun createClient(resolved: ResolvedProviderModel): UnifiedLlmClient = UnifiedLlmClient(
+                providerConfigResolver = { resolved.config },
+                protocolFactory = { protocol },
+            )
+        }
+        val coordinator = ProviderModelTestCoordinator(
+            router = router,
+            scope = this,
+            resolveModel = { id ->
+                if (id == mediaModelId) {
+                    ModelInfo(
+                        name = "Seedance 2.5",
+                        id = mediaModelId,
+                        remoteModelId = "ep-seedance-25",
+                        description = "",
+                        enabled = true,
+                        providerId = "provider-a",
+                        type = "video",
+                    )
+                } else null
+            },
+            probeProviderConnection = {
+                probeInvoked++
+                com.promenar.infinity.data.remote.provider.ProviderConnectionProbeResult.Failure(
+                    reason = com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure.AUTHENTICATION_REJECTED,
+                    statusCode = 404,
+                )
+            },
+        )
+
+        coordinator.test(mediaModelId)
+        advanceUntilIdle()
+
+        assertThat(streamInvoked).isFalse()
+        assertThat(probeInvoked).isEqualTo(1)
+        val result = coordinator.states.value[mediaModelId] as ModelTestState.Success
+        assertThat(result.isMediaVerify).isTrue()
+    }
+
     private fun coordinator(
         scope: CoroutineScope,
         protocol: LlmProtocol,

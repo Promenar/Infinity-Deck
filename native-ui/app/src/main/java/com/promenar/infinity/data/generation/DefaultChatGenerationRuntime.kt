@@ -41,6 +41,7 @@ import com.promenar.infinity.data.remote.protocol.ProtocolTool
 import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 import com.promenar.infinity.data.remote.protocol.ProtocolToolChoice
 import com.promenar.infinity.data.remote.protocol.StreamChunk
+import com.promenar.infinity.data.remote.protocol.toGenerationFailure
 import com.promenar.infinity.data.remote.provider.LlmProvider
 import com.promenar.infinity.data.repository.ToolApprovalCreation
 import com.promenar.infinity.data.repository.RolledBackSummaryUsageRecord
@@ -2223,21 +2224,7 @@ internal class DefaultChatGenerationRuntime(
         is StreamChunk.Citations -> GenerationChunk.Citations(
             chunk.citations.map { com.promenar.infinity.domain.generation.GenerationCitation(it.title, it.url, it.source) },
         )
-        is StreamChunk.Error -> GenerationChunk.Failure(
-            GenerationFailure(
-                code = chunk.code,
-                formatArgs = chunk.retryAfterSeconds
-                    ?.takeIf { it > 0 }
-                    ?.let { mapOf(GenerationFailure.KEY_RETRY_AFTER_SECONDS to it.toString()) }
-                    .orEmpty() +
-                    chunk.providerMessage?.let { mapOf(GenerationFailure.KEY_PROVIDER_MESSAGE to it) }.orEmpty() +
-                    (if (chunk.code == GenerationFailureCode.CONTEXT_LIMIT)
-                        mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM") else emptyMap()),
-                technical = chunk.technical,
-                cause = chunk.cause,
-                retryable = chunk.retryable,
-            ),
-        )
+        is StreamChunk.Error -> GenerationChunk.Failure(chunk.toGenerationFailure())
         is StreamChunk.Completed -> GenerationChunk.Completed(chunk.reason, chunk.completedToolCallIds)
         is StreamChunk.ToolCallLifecycle -> null
         is StreamChunk.ReasoningState -> preparedRoute?.modelId?.takeIf(String::isNotBlank)?.let { source ->

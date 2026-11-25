@@ -1,19 +1,10 @@
 package com.promenar.infinity.data.remote.protocol
 
 import com.promenar.infinity.domain.generation.GenerationFailureCode
+import com.promenar.infinity.domain.generation.ProviderErrorMessage
 
-/**
- * 依据协议提供的稳定 type/code 与 HTTP 状态分类错误。
- *
- * 自然语言 message 只保留在 [StreamChunk.Error.technical] 供内部诊断，绝不参与分类或展示。
- */
+/** 依据稳定错误标识、余额说明与 HTTP 状态分类，并提取脱敏诊断。 */
 internal object ProtocolErrorClassifier {
-    private val quotaIdentifiers = setOf(
-        "billing_error",
-        "billing_hard_limit_reached",
-        "insufficient_quota",
-        "quota_exceeded",
-    )
     private val authIdentifiers = setOf(
         "authentication_error",
         "invalid_api_key",
@@ -52,10 +43,12 @@ internal object ProtocolErrorClassifier {
         code: String? = null,
         retryAfterHeader: String? = null,
         technical: String? = null,
+        responseBody: String? = null,
     ): StreamChunk.Error {
-        val identifiers = listOfNotNull(code.normalizedIdentifier(), type.normalizedIdentifier()).toSet()
+        val diagnostic = ProviderErrorMessage.extractDiagnostic(statusCode, responseBody, type, code)
+        val identifiers = listOfNotNull(code.normalizedIdentifier(), type.normalizedIdentifier(), diagnostic.errorCode.normalizedIdentifier()).toSet()
         val failureCode = when {
-            identifiers.any(quotaIdentifiers::contains) -> GenerationFailureCode.QUOTA
+            ProviderErrorMessage.isQuotaExhaustion(diagnostic, responseBody, code, type) -> GenerationFailureCode.QUOTA
             identifiers.any(authIdentifiers::contains) -> GenerationFailureCode.AUTH
             identifiers.any(rateLimitIdentifiers::contains) -> GenerationFailureCode.RATE_LIMIT
             identifiers.any(contextLimitIdentifiers::contains) -> GenerationFailureCode.CONTEXT_LIMIT
@@ -76,6 +69,10 @@ internal object ProtocolErrorClassifier {
                 null
             },
             technical = technical,
+            providerMessage = diagnostic.providerMessage,
+            httpStatus = diagnostic.httpStatus,
+            errorCode = diagnostic.errorCode,
+            rawDiagnostic = diagnostic.rawDiagnostic,
         )
     }
 

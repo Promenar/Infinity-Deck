@@ -28,7 +28,7 @@ class ProtocolTypeLabelTest {
             "OpenAI", "DeepSeek", "Anthropic", "Gemini", "Vertex AI", "Kimi",
             "通义千问", "智谱", "豆包", "MiniMax", "xAI", "百川", "Mistral",
             "OpenCode Go", "OpenCode Zen", "百炼 Coding Plan", "智谱 Coding Plan",
-            "Kimi Coding Plan", "方舟 Coding Plan", "OpenRouter", "SiliconFlow",
+            "MiniMax Token Plan", "Kimi Coding Plan", "方舟 Coding Plan", "OpenRouter", "SiliconFlow",
             "Local", "Custom",
         ).inOrder()
         assertThat(PROVIDER_PRESETS.first { it.name == "豆包" }.label(resources)).isEqualTo("Volcano Ark")

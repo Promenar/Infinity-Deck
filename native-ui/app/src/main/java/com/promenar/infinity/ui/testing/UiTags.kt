@@ -17,7 +17,14 @@ object UiTags {
     const val CHAT_STATE_READY = "chat_state_ready"
     const val CHAT_ASSISTANT_MODEL_METADATA = "chat_assistant_model_metadata"
     const val CHAT_TAILNET_FAILURE_ACTIONS = "chat_tailnet_failure_actions"
+    const val CHAT_FAILURE_CARD = "chat_failure_card"
     const val CHAT_FAILURE_PROVIDER_DETAIL = "chat_failure_provider_detail"
+    const val CHAT_FAILURE_RAW_TOGGLE = "chat_failure_raw_toggle"
+    const val CHAT_FAILURE_RAW_PANEL = "chat_failure_raw_panel"
+    const val CHAT_FAILURE_RAW_COPY = "chat_failure_raw_copy"
+    const val CHAT_FAILURE_ACTIONS = "chat_failure_actions"
+    const val CHAT_FAILURE_RETRY = "chat_failure_retry"
+    const val CHAT_FAILURE_SWITCH_MODEL = "chat_failure_switch_model"
     const val CHAT_TAILNET_FAILURE_RETRY = "chat_tailnet_failure_retry"
     const val CHAT_TAILNET_FAILURE_SWITCH = "chat_tailnet_failure_switch"
     const val CHAT_TAILNET_FAILURE_SETTINGS = "chat_tailnet_failure_settings"
@@ -257,6 +264,8 @@ object UiTags {
     fun providerModelsCapabilityAction(modelId: String, capability: String): String =
         "$PROVIDER_MODELS_CAPABILITY_PREFIX$modelId:$capability"
     fun providerModelsCapabilityPicker(modelId: String): String = "provider_models_capability_picker:$modelId"
+    fun providerModelsMediaPresetPicker(modelId: String): String = "provider_models_media_preset_picker:$modelId"
+    fun providerModelsMediaPresetOption(key: String): String = "provider_models_media_preset_option:$key"
     fun providerModelsCapabilityVisual(modelId: String, capability: String): String =
         "$PROVIDER_MODELS_CAPABILITY_VISUAL_PREFIX$modelId:$capability"
     fun providerModelsContextField(modelId: String): String = "$PROVIDER_MODELS_CONTEXT_PREFIX$modelId"

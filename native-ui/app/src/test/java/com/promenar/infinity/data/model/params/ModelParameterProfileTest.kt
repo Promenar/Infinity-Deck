@@ -17,6 +17,13 @@ class ModelParameterProfileTest {
     private fun reasoning(protocol: ProtocolType, model: String) = requireNotNull(profile(protocol, model).reasoning) { model }
 
     @Test
+    fun `MiniMax 国内站应用官方参数约束`() {
+        val protocol = ProtocolType.Generic_OpenAI_Compat
+        assertThat(resolveModelParameterProfile(protocol, "MiniMax-M3", "https://api.minimax.cn/v1").officialEndpoint).isTrue()
+        assertThat(resolveModelParameterProfile(protocol, "MiniMax-M3", "https://api.minimax.cn.example.test").officialEndpoint).isFalse()
+    }
+
+    @Test
     fun `各厂商代表模型只给出文档列出的档位与关闭能力`() {
         reasoning(ProtocolType.OpenAI_Responses, "gpt-6-astra").run {
             assertThat(levels).containsExactly(LOW, MEDIUM, HIGH, XHIGH, MAX).inOrder()

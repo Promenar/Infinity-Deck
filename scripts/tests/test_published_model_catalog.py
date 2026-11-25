@@ -346,14 +346,37 @@ class PublishedModelCatalogTest(unittest.TestCase):
             )
             self.assertEqual(
                 source["license"],
-                "Google documentation: CC BY 4.0; SenseNova official API documentation: no repository license declared",
+                "Google documentation: CC BY 4.0; SenseNova official API documentation: no repository license declared"
+                "; Reranker sources: public vendor model cards and API documentation, model metadata only",
             )
             records = {
                 item["canonicalModelId"]: item
                 for item in catalog["records"]
                 if item["source"] == "INFINITY_OVERRIDE"
             }
-            self.assertEqual(set(records), {"google/gemini-3.8-flash", "sensenova/sensenova-6.8-flash-lite"})
+            rerankers = {
+                "BAAI/bge-reranker-v2-m3": (8_192, ["Pro/BAAI/bge-reranker-v2-m3", "bge-reranker-v2-m3"]),
+                "BAAI/bge-reranker-large": (512, ["bge-reranker-large"]),
+                "BAAI/bge-reranker-base": (512, ["bge-reranker-base"]),
+                "Qwen/Qwen3-Reranker-8B": (32_768, ["Pro/Qwen/Qwen3-Reranker-8B", "qwen3-reranker-8b"]),
+                "Qwen/Qwen3-Reranker-4B": (32_768, ["qwen3-reranker-4b"]),
+                "Qwen/Qwen3-Reranker-0.6B": (32_768, ["qwen3-reranker-0.6b"]),
+                "netease-youdao/bce-reranker-base_v1": (512, ["bce-reranker-base_v1"]),
+                "jinaai/jina-reranker-v2-base-multilingual": (1_024, ["jina-reranker-v2-base-multilingual"]),
+                "jinaai/jina-reranker-v3": (131_072, ["jina-reranker-v3"]),
+                "cohere/rerank-v3.5": (4_096, ["rerank-v3.5"]),
+                "cohere/rerank-multilingual-v3.0": (4_096, ["rerank-multilingual-v3.0"]),
+                "alibaba/gte-rerank-v2": (8_192, ["gte-rerank-v2"]),
+                "alibaba/qwen3-rerank": (32_768, ["qwen3-rerank"]),
+            }
+            self.assertEqual(set(records), set(rerankers) | {"google/gemini-3.8-flash", "sensenova/sensenova-6.8-flash-lite"})
+            for model_id, (context_tokens, aliases) in rerankers.items():
+                record = records[model_id]
+                self.assertEqual(record["workload"], "RERANK")
+                self.assertEqual(record["contextTokens"], context_tokens)
+                self.assertEqual(record["exactAliases"], aliases)
+                self.assertTrue(record["evidenceUrl"].startswith("https://"))
+                self.assertEqual(record["reviewedAt"], "2026-11-25")
 
             gemini = records["google/gemini-3.8-flash"]
             self.assertEqual(gemini["exactAliases"], ["gemini-3.8-flash"])
@@ -422,6 +445,11 @@ class PublishedModelCatalogTest(unittest.TestCase):
                 "modalities": {"input": ["text", "image"], "output": ["text"]},
                 "limit": {"input": 1048576, "output": 65536},
             }
+            canonical["BAAI/bge-reranker-v2-m3"] = {
+                "id": "BAAI/bge-reranker-v2-m3",
+                "name": "Upstream BGE Reranker",
+                "modalities": {"input": ["text"], "output": ["text"]},
+            }
             canonical_path = root / "models.json"
             canonical_path.write_text(json.dumps(canonical), encoding="utf-8")
             sources = {
@@ -450,7 +478,15 @@ class PublishedModelCatalogTest(unittest.TestCase):
                 for record in catalog["records"]
                 if record["source"] == "INFINITY_OVERRIDE"
             }
-            self.assertEqual(curated_ids, {"sensenova/sensenova-6.8-flash-lite"})
+            self.assertNotIn("google/gemini-3.8-flash", curated_ids)
+            self.assertIn("sensenova/sensenova-6.8-flash-lite", curated_ids)
+            bge_records = {
+                record["source"]: record for record in catalog["records"]
+                if record["canonicalModelId"] == "BAAI/bge-reranker-v2-m3"
+            }
+            self.assertEqual(set(bge_records), {"MODELS_DEV", "INFINITY_OVERRIDE"})
+            self.assertEqual(bge_records["INFINITY_OVERRIDE"]["workload"], "RERANK")
+            self.assertIn("Pro/BAAI/bge-reranker-v2-m3", bge_records["INFINITY_OVERRIDE"]["exactAliases"])
 
 
 if __name__ == "__main__":

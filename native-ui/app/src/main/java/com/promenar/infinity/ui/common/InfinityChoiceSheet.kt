@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
@@ -72,6 +73,64 @@ fun <T> InfinityMultiChoiceSheet(
                 ) {
                     choice.icon?.let {
                         Icon(it, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(
+                        choice.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (isSelected) {
+                        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                    } else {
+                        Spacer(Modifier.width(20.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 单选面板：每项一行，点按即选中并关闭面板；与 [InfinityMultiChoiceSheet] 保持一致的密度与行尾勾视觉。
+ */
+@Composable
+fun <T> InfinitySingleChoiceSheet(
+    show: Boolean,
+    title: String,
+    choices: List<InfinityChoice<T>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    InfinityBottomSheet(show = show, onDismiss = onDismiss, title = title, scrollContent = true) {
+        val haptics = LocalInfinityHaptics.current
+        Column(Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Large)) {
+            choices.forEach { choice ->
+                val isSelected = choice.value == selected
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = InfinitySpacing.MinimumTouchTarget + InfinitySpacing.XSmall)
+                        .selectable(selected = isSelected, role = Role.RadioButton) {
+                            haptics.select(isSelected)
+                            onSelect(choice.value)
+                            onDismiss()
+                        }
+                        .then(choice.tag?.let { Modifier.testTag(it) } ?: Modifier)
+                        .padding(horizontal = InfinitySpacing.RowHorizontal),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+                ) {
+                    choice.icon?.let {
+                        Icon(
+                            it,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Text(
                         choice.label,

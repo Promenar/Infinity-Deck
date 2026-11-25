@@ -207,10 +207,37 @@ fun <T> InfinityPanelTabs(
     }
 }
 
+internal enum class PanelTabPagerSyncAction { NONE, SNAP, ANIMATE_AND_SETTLE }
+
+internal const val PANEL_TAB_PAGER_OFFSET_EPSILON = 0.001f
+
+internal fun panelTabPagerSyncAction(
+    tabsChanged: Boolean,
+    animateSelection: Boolean,
+    currentPage: Int,
+    targetPage: Int,
+    currentPageOffsetFraction: Float,
+    desiredPage: Int,
+): PanelTabPagerSyncAction {
+    val offCenter = kotlin.math.abs(currentPageOffsetFraction) > PANEL_TAB_PAGER_OFFSET_EPSILON
+    if (currentPage == desiredPage && !offCenter) return PanelTabPagerSyncAction.NONE
+    if (tabsChanged || !animateSelection) return PanelTabPagerSyncAction.SNAP
+    if (currentPage == desiredPage) return PanelTabPagerSyncAction.SNAP
+    return if (targetPage == desiredPage) PanelTabPagerSyncAction.NONE else PanelTabPagerSyncAction.ANIMATE_AND_SETTLE
+}
+
+internal fun shouldSnapIdlePagerOffset(
+    isScrollInProgress: Boolean,
+    pageSize: Int,
+    currentPageOffsetFraction: Float,
+): Boolean = !isScrollInProgress && pageSize > 0 &&
+    kotlin.math.abs(currentPageOffsetFraction) > PANEL_TAB_PAGER_OFFSET_EPSILON
+
 /**
  * 为 [InfinityPanelTabs] + [HorizontalPager] 提供双向同步的状态器：
- * - 点击页签或外部代码改动 [selected] 时平滑滚动到目标页（[tabs] 列表结构变化时直接定位，无跳闪）；
- * - 用户左右滑动切换并在滚动静止后回调 [onSelect] 同步宿主状态（中途抓回取消时同样以落定页为准）。
+ * - 点击页签或外部代码改动 [selected] 时平滑滚动到目标页（[tabs] 列表结构变化或 [animateSelection] 为 false 时直接定位，避免与容器宽度动画竞态）；
+ * - 用户左右滑动切换并在滚动静止后回调 [onSelect] 同步宿主状态（中途抓回取消时同样以落定页为准）；
+ * - 视口宽度变化或动画中断导致静止态残留非零偏移时，自动对齐回目标页零偏移。
  */
 @Composable
 fun <T> rememberPanelTabPagerState(
@@ -218,11 +245,13 @@ fun <T> rememberPanelTabPagerState(
     selected: T,
     onSelect: (T) -> Unit,
     key: Any? = Unit,
+    animateSelection: Boolean = true,
 ): PagerState {
     val selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
     val latestTabs by rememberUpdatedState(tabs)
     val latestSelected by rememberUpdatedState(selected)
     val latestOnSelect by rememberUpdatedState(onSelect)
+    val latestAnimateSelection by rememberUpdatedState(animateSelection)
     val pagerState = key(key) {
         rememberPagerState(
             initialPage = selectedIndex.coerceIn(0, (tabs.size - 1).coerceAtLeast(0)),
@@ -243,6 +272,24 @@ fun <T> rememberPanelTabPagerState(
             }
         }
     }
+    // 视口宽度变化（例如检视器放大态切换浏览器/非浏览器宽度）或手势/动画中断后，禁止静止态停留在半页偏移。
+    LaunchedEffect(pagerState) {
+        snapshotFlow {
+            Triple(
+                pagerState.isScrollInProgress,
+                pagerState.layoutInfo.pageSize,
+                pagerState.currentPageOffsetFraction,
+            )
+        }.collect { (scrolling, pageSize, offsetFraction) ->
+            if (shouldSnapIdlePagerOffset(scrolling, pageSize, offsetFraction)) {
+                val count = latestTabs.size
+                if (count > 0) {
+                    val target = latestTabs.indexOf(latestSelected).coerceIn(0, count - 1)
+                    pagerState.scrollToPage(target, 0f)
+                }
+            }
+        }
+    }
     var lastTabs by remember(key) { mutableStateOf(tabs) }
     LaunchedEffect(pagerState, selectedIndex, tabs) {
         if (tabs.isEmpty()) {
@@ -252,15 +299,29 @@ fun <T> rememberPanelTabPagerState(
         val clamped = selectedIndex.coerceIn(0, tabs.lastIndex)
         val tabsChanged = lastTabs != tabs
         lastTabs = tabs
-        if (tabsChanged) {
-            if (pagerState.currentPage != clamped || pagerState.currentPageOffsetFraction != 0f) {
-                pagerState.scrollToPage(clamped)
-            }
-        } else if (pagerState.currentPage != clamped && pagerState.targetPage != clamped) {
-            pagerState.animateScrollToPage(
-                page = clamped,
-                animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.PageSlideEasing),
+        when (
+            panelTabPagerSyncAction(
+                tabsChanged = tabsChanged,
+                animateSelection = latestAnimateSelection,
+                currentPage = pagerState.currentPage,
+                targetPage = pagerState.targetPage,
+                currentPageOffsetFraction = pagerState.currentPageOffsetFraction,
+                desiredPage = clamped,
             )
+        ) {
+            PanelTabPagerSyncAction.NONE -> Unit
+            PanelTabPagerSyncAction.SNAP -> pagerState.scrollToPage(clamped, 0f)
+            PanelTabPagerSyncAction.ANIMATE_AND_SETTLE -> {
+                pagerState.animateScrollToPage(
+                    page = clamped,
+                    animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.PageSlideEasing),
+                )
+                if (pagerState.currentPage != clamped ||
+                    kotlin.math.abs(pagerState.currentPageOffsetFraction) > PANEL_TAB_PAGER_OFFSET_EPSILON
+                ) {
+                    pagerState.scrollToPage(clamped, 0f)
+                }
+            }
         }
     }
     return pagerState

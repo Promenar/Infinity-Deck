@@ -6,7 +6,9 @@ import androidx.annotation.StringRes
 import kotlinx.coroutines.flow.Flow
 import com.promenar.infinity.R
 import com.promenar.infinity.data.remote.parser.NormalizedError
+import com.promenar.infinity.domain.generation.GenerationFailure
 import com.promenar.infinity.domain.generation.GenerationFailureCode
+import com.promenar.infinity.domain.generation.ProviderErrorDiagnostic
 import com.promenar.infinity.domain.generation.CompletionReason
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -215,6 +217,9 @@ sealed class StreamChunk {
         val category: String? = null,
         /** 已清洗的服务商原因，见 ProviderErrorMessage。 */
         val providerMessage: String? = null,
+        val httpStatus: Int? = null,
+        val errorCode: String? = null,
+        val rawDiagnostic: String? = null,
     ) : StreamChunk() {
         override fun toString(): String =
             "Error(code=$code, retryable=$retryable, retryAfterSeconds=$retryAfterSeconds)"
@@ -461,8 +466,7 @@ sealed interface ToolCallLifecycleEvent {
 
 /**
  * 把协议层分类结果转为结构化 [StreamChunk.Error]：
- * 只携带稳定 [GenerationFailureCode] + 类型化重试参数 + 诊断 technical，
- * 不再产出任何自然语言展示文案。
+ * 携带稳定失败码、类型化重试参数与脱敏上游诊断。
  */
 fun NormalizedError.toStreamChunkError(cause: Throwable? = null): StreamChunk.Error {
     val failure = toFailure(cause)
@@ -473,8 +477,25 @@ fun NormalizedError.toStreamChunkError(cause: Throwable? = null): StreamChunk.Er
         technical = failure.technical,
         cause = failure.cause,
         providerMessage = failure.providerMessage,
+        httpStatus = failure.httpStatus,
+        errorCode = failure.errorCode,
+        rawDiagnostic = failure.rawDiagnostic,
     )
 }
+
+internal fun StreamChunk.Error.toGenerationFailure(): GenerationFailure = GenerationFailure(
+    code = code,
+    formatArgs = buildMap {
+        putAll(GenerationFailure.buildRetryAfterArgs(retryAfterSeconds))
+        putAll(ProviderErrorDiagnostic(providerMessage, httpStatus, errorCode, rawDiagnostic).toFormatArgs())
+        if (code == GenerationFailureCode.CONTEXT_LIMIT) {
+            put(GenerationFailure.KEY_CONTEXT_LIMIT_REASON, "UPSTREAM")
+        }
+    },
+    technical = technical,
+    cause = cause,
+    retryable = retryable,
+)
 
 internal fun BuiltInProxyUnavailableException.toProxyStreamError(): StreamChunk.Error = StreamChunk.Error(
     code = GenerationFailureCode.NETWORK,
@@ -531,7 +552,7 @@ internal fun streamErrorEvent(
     protocolType: ProtocolType = ProtocolType.OpenAI_ChatCompletions,
 ): StreamChunk.Error {
     val error = chunk["error"]
-    (error as? JsonObject)?.let { ProtocolContextLimit.fromError(protocolType, it) }?.let { return it }
+    (error as? JsonObject)?.let { ProtocolContextLimit.fromError(protocolType, it, responseBody = chunk.toString()) }?.let { return it }
     val status = (error as? kotlinx.serialization.json.JsonObject)?.let { obj ->
         listOf("status", "code", "status_code").firstNotNullOfOrNull { key ->
             (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()?.takeIf { it in 400..599 }

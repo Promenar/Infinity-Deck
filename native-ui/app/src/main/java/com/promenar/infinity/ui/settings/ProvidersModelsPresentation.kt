@@ -117,6 +117,8 @@ internal val ModelTypeBaseCapabilities: Map<String, Set<String>> = linkedMapOf(
     "chat" to setOf("chat"),
     "reasoning" to setOf("chat", "reasoning"),
     "image" to setOf("image"),
+    "video" to setOf("video"),
+    "audio" to setOf("audio"),
     "embedding" to setOf("embedding"),
     "rerank" to setOf("rerank"),
 )

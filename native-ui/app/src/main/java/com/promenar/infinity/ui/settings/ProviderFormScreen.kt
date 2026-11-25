@@ -253,8 +253,8 @@ val PROVIDER_PRESETS = listOf(
         defaultBaseUrl = "https://api.moonshot.cn",
         iconRes = R.drawable.ic_provider_kimi,
         variants = listOf(
-            ProviderPresetVariant("China (.cn)", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.string.provider_variant_cn),
-            ProviderPresetVariant("Global (.ai)", ProtocolType.Generic_OpenAI_Compat, "https://api.moonshot.ai/v1", R.string.provider_variant_global),
+            ProviderPresetVariant("CN (.cn)", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.string.provider_variant_cn),
+            ProviderPresetVariant("International (.ai)", ProtocolType.Generic_OpenAI_Compat, "https://api.moonshot.ai/v1", R.string.provider_variant_global),
         ),
     ),
     ProviderPreset(
@@ -275,20 +275,23 @@ val PROVIDER_PRESETS = listOf(
         iconRes = R.drawable.ic_provider_zhipu,
         labelRes = R.string.provider_preset_zhipu,
         variants = listOf(
-            ProviderPresetVariant("Standard API", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.string.provider_variant_standard),
-            ProviderPresetVariant("Coding Plan", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_coding),
+            ProviderPresetVariant("CN Standard", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.string.provider_variant_cn_standard),
+            ProviderPresetVariant("CN Coding", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_cn_coding),
+            ProviderPresetVariant("International (Z.AI)", ProtocolType.Generic_OpenAI_Compat, "https://api.z.ai/api/paas/v4", R.string.provider_variant_intl_standard),
+            ProviderPresetVariant("International Coding (Z.AI)", ProtocolType.Generic_OpenAI_Compat, "https://api.z.ai/api/coding/paas/v4", R.string.provider_variant_intl_coding),
         ),
     ),
     ProviderPreset("豆包", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_ark_media),
     ProviderPreset(
         name = "MiniMax",
         protocolType = ProtocolType.Generic_OpenAI_Compat,
-        defaultBaseUrl = "https://api.minimax.io/v1",
+        defaultBaseUrl = "https://api.minimax.cn/v1",
         iconRes = R.drawable.ic_provider_minimax,
         variants = listOf(
-            ProviderPresetVariant("Global (.io)", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1", R.string.provider_variant_global),
-            ProviderPresetVariant("China (.cn)", ProtocolType.Generic_OpenAI_Compat, "https://api.minimaxi.com/v1", R.string.provider_variant_cn),
-            ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimaxi.com/anthropic", R.string.provider_variant_anthropic),
+            ProviderPresetVariant("CN OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.cn/v1", R.string.provider_variant_cn_openai),
+            ProviderPresetVariant("CN Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimax.cn/anthropic", R.string.provider_variant_cn_anthropic),
+            ProviderPresetVariant("International OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1", R.string.provider_variant_intl_openai),
+            ProviderPresetVariant("International Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimax.io/anthropic", R.string.provider_variant_intl_anthropic),
         ),
     ),
     ProviderPreset("xAI", ProtocolType.Generic_OpenAI_Compat, "https://api.x.ai/v1", R.drawable.ic_provider_xai),
@@ -337,8 +340,24 @@ val PROVIDER_PRESETS = listOf(
         labelRes = R.string.provider_preset_zhipu_coding,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
         variants = listOf(
-            ProviderPresetVariant("Coding Plan", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_coding),
-            ProviderPresetVariant("Standard API", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.string.provider_variant_standard),
+            ProviderPresetVariant("CN OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_cn_openai),
+            ProviderPresetVariant("CN Anthropic", ProtocolType.Anthropic_Messages, "https://open.bigmodel.cn/api/anthropic", R.string.provider_variant_cn_anthropic),
+            ProviderPresetVariant("International OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://api.z.ai/api/coding/paas/v4", R.string.provider_variant_intl_openai),
+            ProviderPresetVariant("International Anthropic", ProtocolType.Anthropic_Messages, "https://api.z.ai/api/anthropic", R.string.provider_variant_intl_anthropic),
+        ),
+    ),
+    ProviderPreset(
+        name = "MiniMax Token Plan",
+        protocolType = ProtocolType.Anthropic_Messages,
+        defaultBaseUrl = "https://api.minimax.cn/anthropic",
+        iconRes = R.drawable.ic_provider_minimax,
+        labelRes = R.string.provider_preset_minimax_token_plan,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        variants = listOf(
+            ProviderPresetVariant("CN Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimax.cn/anthropic", R.string.provider_variant_cn_anthropic),
+            ProviderPresetVariant("CN OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.cn/v1", R.string.provider_variant_cn_openai),
+            ProviderPresetVariant("International Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimax.io/anthropic", R.string.provider_variant_intl_anthropic),
+            ProviderPresetVariant("International OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.io/v1", R.string.provider_variant_intl_openai),
         ),
     ),
     ProviderPreset(
@@ -379,8 +398,8 @@ val PROVIDER_PRESETS = listOf(
         iconRes = R.drawable.ic_provider_siliconflow,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
         variants = listOf(
-            ProviderPresetVariant("China (.cn)", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.cn/v1", R.string.provider_variant_cn),
-            ProviderPresetVariant("Global", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.com/v1", R.string.provider_variant_global),
+            ProviderPresetVariant("CN (.cn)", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.cn/v1", R.string.provider_variant_cn),
+            ProviderPresetVariant("International", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.com/v1", R.string.provider_variant_global),
         ),
     ),
     // 本地与自定义
@@ -419,11 +438,21 @@ internal fun matchProviderPreset(presets: List<ProviderPreset>, protocol: Protoc
         presets.firstOrNull { preset ->
             preset.name != "Custom" && preset.name != "Local" && matchesEndpoint(preset.defaultBaseUrl)
         }?.let { return it }
-        // 第三优先级：命中所属预设下的任意变体端点
+        // 第三优先级：优先匹配主协议一致的预设变体（避免国际 Coding / Token Plan 被同品牌标准预设抢先截胡）
+        presets.firstOrNull { preset ->
+            preset.name != "Custom" && preset.name != "Local" &&
+                preset.protocolType == protocol &&
+                preset.variants.any { it.protocolType == protocol && matchesEndpoint(it.baseUrl) }
+        }?.let { return it }
+        // 第四优先级：命中所属预设下的任意变体端点
         presets.firstOrNull { preset ->
             preset.name != "Custom" && preset.name != "Local" &&
                 preset.variants.any { matchesEndpoint(it.baseUrl) }
         }?.let { return it }
+        // 兼容历史域名（如 MiniMax 旧国内域名 api.minimaxi.com）
+        if (inputHost == "api.minimaxi.com") {
+            presets.firstOrNull { it.name == "MiniMax" }?.let { return it }
+        }
     }
 
     if (protocol != ProtocolType.Generic_OpenAI_Compat) {
@@ -1216,11 +1245,16 @@ private fun ProviderInterfaceSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 InfinitySegmentedControl(
-                    segments = variants.map { variant ->
+                    segments = variants.mapIndexed { index, variant ->
+                        val isDuplicateProtocol = variants.count { it.protocolType == variant.protocolType } > 1
                         InfinitySegment(
                             value = variant,
                             label = variant.displayLabel(),
-                            tag = "provider_variant:${variant.protocolType.persistedId}",
+                            tag = if (isDuplicateProtocol) {
+                                "provider_variant:${variant.protocolType.persistedId}:$index"
+                            } else {
+                                "provider_variant:${variant.protocolType.persistedId}"
+                            },
                         )
                     },
                     selected = activeVariant,

@@ -31,6 +31,12 @@ class SettingsViewModelModelClassificationTest {
             .isEqualTo("embedding")
         assertThat(classifyFetchedModelType("vendor/bge-reranker-v2", null))
             .isEqualTo("rerank")
+        assertThat(classifyFetchedModelType("doubao-seedance-2-0-260128", null))
+            .isEqualTo("video")
+        assertThat(classifyFetchedModelType("MiniMax-H3", null))
+            .isEqualTo("video")
+        assertThat(classifyFetchedModelType("speech-2.8-hd", null))
+            .isEqualTo("audio")
         val embedding = ModelInfo(
             name = "foo-embedding",
             id = "provider::foo-embedding",

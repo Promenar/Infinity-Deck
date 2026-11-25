@@ -534,4 +534,29 @@ class ModelMetadataResolverTest {
         val familyName: String,
         val reasoning: SupportState,
     )
+
+    @Test
+    fun `重排模型仅通过已知精确别名及商业网关前缀识别`() {
+        val aliases = mapOf(
+            "Pro/BAAI/bge-reranker-v2-m3" to ("BAAI/bge-reranker-v2-m3" to 8_192),
+            "fReE/Qwen/Qwen3-Reranker-8B" to ("Qwen/Qwen3-Reranker-8B" to 32_768),
+            "BGE-RERANKER-LARGE" to ("BAAI/bge-reranker-large" to 512),
+            "FREE/jinaai/jina-reranker-v3" to ("jinaai/jina-reranker-v3" to 131_072),
+            "rerank-v3.5" to ("cohere/rerank-v3.5" to 4_096),
+            "qwen3-rerank" to ("alibaba/qwen3-rerank" to 32_768),
+        )
+        aliases.forEach { (alias, expected) ->
+            val resolved = resolver.resolve(alias)
+            assertThat(resolved.remoteModelId).isEqualTo(alias)
+            assertThat(resolved.canonicalModelId).isEqualTo(expected.first)
+            assertThat(resolved.contextTokens).isEqualTo(expected.second)
+            assertThat(resolved.workload).isEqualTo(ModelWorkload.RERANK)
+            assertThat(resolved.capabilities[ModelCapability.CHAT_ENDPOINT]).isEqualTo(SupportState.UNSUPPORTED)
+        }
+        listOf("Free/rerank-v3.5", "Pro/BAAI/bge-reranker-v2-m3-new", "Free/foreign/rerank-v3.5")
+            .forEach { unknown ->
+                assertThat(resolver.resolve(unknown).workload).isEqualTo(ModelWorkload.UNKNOWN)
+                assertThat(resolver.resolve(unknown).canonicalModelId).isNull()
+            }
+    }
 }

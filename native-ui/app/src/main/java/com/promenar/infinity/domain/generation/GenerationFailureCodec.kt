@@ -7,21 +7,22 @@ import java.net.URLEncoder
  * 结构化失败与持久化 String 列之间的稳定编解码。
  *
  * 背景：当前 Room schema 中消息错误仍为单一 `errorMessage: String?` 列，本批次不迁移 schema。
- * 为满足“禁止把 Throwable.message 或协议原文写入历史 errorMessage”，同时保证上层可回映射，
- * 这里定义一个稳定、机器可读、**不含自然语言**的信封格式：
- *
- *   `@infinity/failure:CODE?k1=v1&k2=v2`
- *
- * - 仅写入 [GenerationFailure.code] 与白名单内的 [GenerationFailure.formatArgs]（限流秒数、tailnet 原因、上下文原因与计数、
- *   经 [ProviderErrorMessage.sanitize] 清洗并百分号编码的服务商原因）；
- * - 严禁写入 [GenerationFailure.technical] / [GenerationFailure.cause]（仅诊断，不入库展示列）；
- * - 下一批次的 UI mapper 识别该前缀后映射资源，未识别或未知串一律回落到通用安全文案。
+ * 信封格式为 `@infinity/failure:CODE?k1=v1&k2=v2`。仅允许稳定失败码及白名单参数，
+ * 服务商说明、错误码和脱敏诊断经百分号编码后写入。
+ * [GenerationFailure.technical] 与 [GenerationFailure.cause] 不进入持久化信封。
  */
 object GenerationFailureCodec {
 
     const val ENVELOPE_PREFIX = "@infinity/failure:"
 
-    private const val MAX_ENVELOPE_LENGTH = 2048
+    private const val MAX_ENVELOPE_LENGTH = 4096
+    private const val LEGACY_ENVELOPE_LENGTH = 2048
+    private val httpStatusPattern = Regex("[1-5][0-9]{2}")
+    private val textSanitizers: Map<String, (String) -> String?> = mapOf(
+        GenerationFailure.KEY_PROVIDER_MESSAGE to ProviderErrorMessage::sanitize,
+        GenerationFailure.KEY_ERROR_CODE to ProviderErrorMessage::sanitizeErrorCode,
+        GenerationFailure.KEY_RAW_DIAGNOSTIC to ProviderErrorMessage::sanitizeRawDiagnostic,
+    )
     private val codeByName = GenerationFailureCode.entries.associateBy { it.name }
 
     /**
@@ -34,20 +35,15 @@ object GenerationFailureCodec {
     /**
      * 编码为持久化字符串。technical / cause 永不入此串。
      */
-    fun encode(failure: GenerationFailure): String {
-        val builder = StringBuilder(ENVELOPE_PREFIX.length + 16)
-        builder.append(ENVELOPE_PREFIX)
-        builder.append(failure.code.name)
-        val allowedArgs = allowedArgs(failure)
-        if (allowedArgs.isNotEmpty()) {
-            builder.append('?')
-            builder.append(
-                allowedArgs.toSortedMap().entries.joinToString(separator = "&") { (key, value) ->
-                    "$key=$value"
-                },
-            )
+    fun encode(failure: GenerationFailure): String = encode(failure.code, allowedArgs(failure))
+
+    private fun encode(code: GenerationFailureCode, args: Map<String, String>): String = buildString {
+        append(ENVELOPE_PREFIX)
+        append(code.name)
+        if (args.isNotEmpty()) {
+            append('?')
+            append(args.toQuery())
         }
-        return builder.toString()
     }
 
     /**
@@ -61,6 +57,7 @@ object GenerationFailureCodec {
         val questionIdx = withoutPrefix.indexOf('?')
         val codeName = if (questionIdx < 0) withoutPrefix else withoutPrefix.substring(0, questionIdx)
         val code = codeByName[codeName] ?: return null
+        var legacyProviderMessage: String? = null
         val decoded = if (questionIdx < 0) {
             GenerationFailure(code = code)
         } else {
@@ -82,10 +79,16 @@ object GenerationFailureCodec {
                         if (seconds.toString() != value) return null
                         args[key] = value
                     }
-                    key == GenerationFailure.KEY_PROVIDER_MESSAGE -> {
+                    key == GenerationFailure.KEY_HTTP_STATUS && httpStatusPattern.matches(value) -> args[key] = value
+                    key in textSanitizers -> {
                         val text = runCatching { URLDecoder.decode(value, Charsets.UTF_8.name()) }.getOrNull() ?: return null
-                        val clean = ProviderErrorMessage.sanitize(text) ?: return null
-                        if (clean != text) return null
+                        val clean = textSanitizers.getValue(key)(text) ?: return null
+                        if (clean != text) {
+                            if (key != GenerationFailure.KEY_PROVIDER_MESSAGE ||
+                                !ProviderErrorMessage.isLegacyProviderMessage(text)
+                            ) return null
+                            legacyProviderMessage = text
+                        }
                         args[key] = clean
                     }
                     code == GenerationFailureCode.CONTEXT_LIMIT && validContextArg(key, value) -> args[key] = value
@@ -94,7 +97,13 @@ object GenerationFailureCodec {
             }
             GenerationFailure(code = code, formatArgs = args)
         }
-        return decoded.takeIf { encode(it) == raw }
+        val legacyMessage = legacyProviderMessage ?: return decoded.takeIf { encode(it) == raw }
+        if (raw.length > LEGACY_ENVELOPE_LENGTH ||
+            decoded.httpStatus != null || decoded.errorCode != null || decoded.rawDiagnostic != null
+        ) return null
+
+        val legacyArgs = allowedArgs(decoded) + (GenerationFailure.KEY_PROVIDER_MESSAGE to encodeText(legacyMessage))
+        return decoded.takeIf { encode(it.code, legacyArgs) == raw }
     }
 
     private fun allowedArgs(failure: GenerationFailure): Map<String, String> {
@@ -110,10 +119,49 @@ object GenerationFailureCodec {
                 .orEmpty()
             else -> emptyMap()
         }
-        // 服务商原因让历史失败也能说明“为什么”；只存清洗后的文本，编码后入串。
-        val provider = failure.providerMessage?.let(ProviderErrorMessage::sanitize)
-            ?.let { URLEncoder.encode(it, Charsets.UTF_8.name()) }
-        return if (provider == null) args else args + (GenerationFailure.KEY_PROVIDER_MESSAGE to provider)
+        return args.toMutableMap().apply {
+            failure.formatArgs[GenerationFailure.KEY_HTTP_STATUS]?.takeIf(httpStatusPattern::matches)?.let {
+                put(GenerationFailure.KEY_HTTP_STATUS, it)
+            }
+            textSanitizers.forEach { (key, sanitize) ->
+                val text = failure.formatArgs[key]?.let(sanitize) ?: return@forEach
+                if (key == GenerationFailure.KEY_RAW_DIAGNOSTIC) {
+                    val fixedLength = ENVELOPE_PREFIX.length + failure.code.name.length + toQuery().length
+                    val overhead = 1 + (if (isEmpty()) 0 else 1) + key.length + 1
+                    encodeDiagnostic(text, MAX_ENVELOPE_LENGTH - fixedLength - overhead)?.let { put(key, it) }
+                } else {
+                    put(key, encodeText(text))
+                }
+            }
+        }
+    }
+
+    private fun Map<String, String>.toQuery(): String =
+        toSortedMap().entries.joinToString("&") { (key, value) -> "$key=$value" }
+
+    private fun encodeText(text: String): String = URLEncoder.encode(text, Charsets.UTF_8.name())
+
+    private fun encodeDiagnostic(text: String, maxLength: Int): String? {
+        val encoded = encodeText(text)
+        if (encoded.length <= maxLength) return encoded
+
+        var low = 1
+        var high = text.length - 1
+        while (low <= high) {
+            val middle = (low + high) / 2
+            if (encodeText(ProviderErrorMessage.truncate(text, middle)).length <= maxLength) {
+                low = middle + 1
+            } else {
+                high = middle - 1
+            }
+        }
+        while (high > 0) {
+            val excerpt = ProviderErrorMessage.diagnosticExcerpt(text, high)
+            val clean = encodeText(excerpt)
+            if (clean.length <= maxLength) return clean
+            high -= 1
+        }
+        return null
     }
 
     private fun validContextArg(key: String, value: String): Boolean = when (key) {

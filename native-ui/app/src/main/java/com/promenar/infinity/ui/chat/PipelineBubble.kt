@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.IconButton
@@ -88,6 +89,10 @@ import com.promenar.infinity.ui.common.MarkdownText
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.status.UiStatusNotice
 import com.promenar.infinity.ui.renderer.ImageLightbox
+import com.promenar.infinity.ui.common.obsidianTopGlint
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogChip
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -536,20 +541,23 @@ fun PipelineBubble(
     // ── 错误信息 ──
     group.messages.lastOrNull()?.let { lastMsg ->
         if (lastMsg.isError || lastMsg.errorMessage != null) {
-            val resolved = remember(lastMsg.errorMessage) {
-                GenerationFailureNotice.template(
-                    historicalGenerationFailureNotice(lastMsg.errorMessage),
-                )
+            val notice = remember(lastMsg.errorMessage) {
+                historicalGenerationFailureNotice(lastMsg.errorMessage)
             }
-            val tailnetKind = remember(lastMsg.errorMessage) {
-                GenerationFailureNotice.tailnetKind(historicalGenerationFailureNotice(lastMsg.errorMessage))
-            }
-            val detail = remember(lastMsg.errorMessage) { historicalGenerationFailureNotice(lastMsg.errorMessage).detail }
-            val emptyReply = remember(lastMsg.errorMessage) { GenerationFailureNotice.isEmptyReply(historicalGenerationFailureNotice(lastMsg.errorMessage)) }
+            val resolved = remember(notice) { GenerationFailureNotice.template(notice) }
+            val tailnetKind = remember(notice) { GenerationFailureNotice.tailnetKind(notice) }
+            val emptyReply = remember(notice) { GenerationFailureNotice.isEmptyReply(notice) }
+            val visualKind = remember(notice) { GenerationFailureNotice.visualKind(notice) }
+            val prefersSwitchModel = remember(notice) { GenerationFailureNotice.prefersSwitchModel(notice) }
             ErrorMessageSegment(
                 messageId = lastMsg.id,
                 text = stringResource(resolved.resourceId, *resolved.args.toTypedArray()),
-                detail = detail?.let { stringResource(R.string.generation_failure_provider_detail, it) },
+                detail = notice.detail?.let { stringResource(R.string.generation_failure_provider_detail, it) },
+                httpStatus = notice.httpStatus,
+                errorCode = notice.errorCode,
+                rawDiagnostic = notice.rawDiagnostic,
+                visualKind = visualKind,
+                prefersSwitchModel = prefersSwitchModel,
                 fontSize = fontSize,
                 onDelete = onDelete,
                 tailnetKind = tailnetKind,
@@ -568,54 +576,317 @@ private fun ErrorMessageSegment(
     fontSize: Int,
     onDelete: ((String) -> Unit)?,
     detail: String? = null,
+    httpStatus: Int? = null,
+    errorCode: String? = null,
+    rawDiagnostic: String? = null,
+    visualKind: FailureVisualKind = FailureVisualKind.GENERAL,
+    prefersSwitchModel: Boolean = false,
     tailnetKind: TailnetFailureKind? = null,
     emptyReply: Boolean = false,
     actions: GenerationFailureActions? = null,
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
+    var rawExpanded by rememberSaveable(messageId) { mutableStateOf(false) }
+    var copiedRaw by remember(messageId) { mutableStateOf(false) }
     val menuTouch = rememberInfinityMenuTouch()
+    val scheme = MaterialTheme.colorScheme
+    val dark = MaterialTheme.infinityDomainColors.isDark
+    val cardBg = if (dark) InfinityObsidianDialogContainer else scheme.surfaceContainerLowest
+    val borderColor = if (dark) scheme.error.copy(alpha = 0.30f) else scheme.error.copy(alpha = 0.24f)
+    val iconTileBg = if (dark) scheme.error.copy(alpha = 0.14f) else scheme.errorContainer.copy(alpha = 0.72f)
+    val iconTint = if (dark) scheme.error else scheme.onErrorContainer
+    val statusIcon = when (visualKind) {
+        FailureVisualKind.QUOTA -> Icons.Rounded.AccountBalanceWallet
+        FailureVisualKind.AUTH -> Icons.Rounded.VpnKey
+        FailureVisualKind.NETWORK -> Icons.Rounded.CloudOff
+        FailureVisualKind.TIMEOUT -> Icons.Rounded.Schedule
+        FailureVisualKind.RATE_LIMIT -> Icons.Rounded.Speed
+        FailureVisualKind.LIMIT -> Icons.Rounded.DataUsage
+        FailureVisualKind.POLICY -> Icons.Rounded.Shield
+        FailureVisualKind.TAILNET -> Icons.Rounded.WifiOff
+        FailureVisualKind.GENERAL -> Icons.Rounded.ErrorOutline
+    }
+    val diagnosticBody = remember(rawDiagnostic, httpStatus, errorCode, detail) {
+        rawDiagnostic?.takeIf { it.isNotBlank() }
+            ?: if (httpStatus != null || !errorCode.isNullOrBlank()) {
+                listOfNotNull(
+                    httpStatus?.let { "HTTP $it" },
+                    errorCode?.takeIf { it.isNotBlank() }?.let { "code $it" },
+                    detail,
+                ).joinToString("\n").ifBlank { null }
+            } else {
+                null
+            }
+    }
+    val hasRawSection = diagnosticBody != null
+    val httpLabel = httpStatus?.let { stringResource(R.string.chat_failure_http_meta, it) }
+    val errorCodeLabel = errorCode?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.chat_failure_code_meta, it) }
+    val rawDetailsLabel = stringResource(R.string.chat_failure_raw_details)
+    val diagnosticCopyHeader = listOfNotNull(httpLabel, errorCodeLabel).joinToString(" / ").ifBlank { rawDetailsLabel }
+    LaunchedEffect(copiedRaw) {
+        if (copiedRaw) {
+            delay(1_800)
+            copiedRaw = false
+        }
+    }
+
     Box(modifier = Modifier.padding(top = InfinitySpacing.Small)) {
         Surface(
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            shape = RoundedCornerShape(16.dp),
+            color = cardBg,
+            contentColor = scheme.onSurface,
+            border = BorderStroke(1.dp, borderColor),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                .testTag(UiTags.CHAT_FAILURE_CARD)
                 // 长按只弹菜单，不铺按压涟漪；长按震动由 combinedClickable 自带。菜单从按住的位置长出。
                 .infinityMenuTouch(menuTouch)
                 .combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = { showMenu = true }),
         ) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                    .padding(horizontal = InfinitySpacing.Large, vertical = 6.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Column {
-                    Text(
-                        text = text,
-                        style = InfinityTypography.bodyMedium.copy(
-                            fontSize = (fontSize - 2).coerceAtLeast(10).sp,
-                        ),
+                    .obsidianTopGlint(
+                        color = if (dark) scheme.error.copy(alpha = 0.22f) else Color.Transparent,
+                        cornerRadius = 16.dp,
                     )
-                    // 服务商原因原样附在下方，便于判断限流、额度或参数问题。
-                    if (detail != null) {
-                        Text(
-                            text = detail,
-                            style = InfinityTypography.bodySmall.copy(
-                                fontSize = (fontSize - 4).coerceAtLeast(10).sp,
-                            ),
-                            color = LocalContentColor.current.copy(alpha = 0.8f),
-                            modifier = Modifier.padding(top = 2.dp).testTag(UiTags.CHAT_FAILURE_PROVIDER_DETAIL),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = if (detail == null) Alignment.CenterVertically else Alignment.Top,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = if (detail == null) 0.dp else 1.dp)
+                            .size(28.dp)
+                            .background(iconTileBg, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = statusIcon,
+                            contentDescription = null,
+                            tint = iconTint,
+                            modifier = Modifier.size(16.dp),
                         )
                     }
-                    if (tailnetKind != null && actions != null) {
-                        TailnetFailureActionRow(tailnetKind, actions)
-                    } else if (emptyReply && actions != null) {
-                        EmptyReplyActionRow(actions)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Text(
+                            text = text,
+                            style = InfinityTypography.bodyMedium.copy(
+                                fontSize = (fontSize - 2).coerceAtLeast(10).sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = scheme.onSurface,
+                        )
+                        // 服务商原因经脱敏清洗后附在下方，便于判断余额、限流或参数问题。
+                        if (detail != null) {
+                            Text(
+                                text = detail,
+                                style = InfinityTypography.bodySmall.copy(
+                                    fontSize = (fontSize - 4).coerceAtLeast(10).sp,
+                                ),
+                                color = scheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag(UiTags.CHAT_FAILURE_PROVIDER_DETAIL),
+                            )
+                        }
+                    }
+                }
+
+                if (hasRawSection) {
+                    val toggleCd = stringResource(
+                        if (rawExpanded) R.string.chat_failure_toggle_collapse_cd else R.string.chat_failure_toggle_expand_cd,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            onClick = { rawExpanded = !rawExpanded },
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (dark) InfinityObsidianDialogChip else scheme.surfaceContainerHigh,
+                            contentColor = scheme.onSurfaceVariant,
+                            border = BorderStroke(
+                                0.75.dp,
+                                if (rawExpanded) scheme.error.copy(alpha = 0.36f)
+                                else scheme.outlineVariant.copy(alpha = if (dark) 0.5f else 0.7f),
+                            ),
+                            modifier = Modifier
+                                .testTag(UiTags.CHAT_FAILURE_RAW_TOGGLE)
+                                .semantics { contentDescription = toggleCd },
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 28.dp)
+                                    .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                val chipContentColor = if (rawExpanded) scheme.onSurface else scheme.onSurfaceVariant
+                                if (httpLabel != null) {
+                                    Text(
+                                        text = httpLabel,
+                                        style = InfinityTypography.labelSmall.copy(fontFamily = InfinityMonospace),
+                                        color = chipContentColor,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                    Text(
+                                        text = InfinityMetaSeparator,
+                                        style = InfinityTypography.labelSmall,
+                                        color = scheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
+                                }
+                                Text(
+                                    text = rawDetailsLabel,
+                                    style = InfinityTypography.labelSmall,
+                                    color = chipContentColor,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                                Icon(
+                                    imageVector = if (rawExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = scheme.onSurfaceVariant,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    AnimatedVisibility(
+                        visible = rawExpanded,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        val payload = diagnosticBody.orEmpty()
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (dark) InfinityObsidianSolidContainer else scheme.surfaceContainerHigh,
+                            contentColor = scheme.onSurfaceVariant,
+                            border = BorderStroke(0.75.dp, scheme.outlineVariant.copy(alpha = if (dark) 0.4f else 0.65f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag(UiTags.CHAT_FAILURE_RAW_PANEL),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    val metaTint = scheme.error.copy(alpha = if (dark) 0.9f else 0.85f)
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    ) {
+                                        if (httpLabel != null) {
+                                            Text(
+                                                text = httpLabel,
+                                                style = InfinityTypography.labelSmall.copy(fontFamily = InfinityMonospace),
+                                                color = metaTint,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                            )
+                                            if (errorCodeLabel != null) {
+                                                Text(
+                                                    text = InfinityMetaSeparator,
+                                                    style = InfinityTypography.labelSmall,
+                                                    color = metaTint.copy(alpha = 0.7f),
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                )
+                                            }
+                                        }
+                                        if (errorCodeLabel != null) {
+                                            Text(
+                                                text = errorCodeLabel,
+                                                style = InfinityTypography.labelSmall.copy(fontFamily = InfinityMonospace),
+                                                color = metaTint,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                            )
+                                        } else if (httpLabel == null) {
+                                            Text(
+                                                text = rawDetailsLabel,
+                                                style = InfinityTypography.labelSmall.copy(fontFamily = InfinityMonospace),
+                                                color = metaTint,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                    val copyText = stringResource(
+                                        if (copiedRaw) R.string.chat_failure_copied else R.string.chat_failure_copy_raw,
+                                    )
+                                    Surface(
+                                        onClick = {
+                                            copyToClipboard(context, "$diagnosticCopyHeader\n$payload")
+                                            copiedRaw = true
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (dark) InfinityObsidianDialogChip else scheme.surfaceContainerLowest,
+                                        contentColor = scheme.onSurface,
+                                        border = BorderStroke(0.75.dp, scheme.outlineVariant.copy(alpha = 0.55f)),
+                                        modifier = Modifier.testTag(UiTags.CHAT_FAILURE_RAW_COPY),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = if (copiedRaw) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(13.dp),
+                                            )
+                                            Text(
+                                                text = copyText,
+                                                style = InfinityTypography.labelSmall,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                            )
+                                        }
+                                    }
+                                }
+                                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.35f))
+                                Text(
+                                    text = payload,
+                                    style = InfinityTypography.bodySmall.copy(
+                                        fontFamily = InfinityMonospace,
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp,
+                                    ),
+                                    color = scheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (actions != null) {
+                    when {
+                        tailnetKind != null -> TailnetFailureActionRow(tailnetKind, actions)
+                        emptyReply -> EmptyReplyActionRow(actions)
+                        else -> StandardFailureActionRow(prefersSwitchModel, actions)
                     }
                 }
             }
@@ -624,7 +895,7 @@ private fun ErrorMessageSegment(
             expanded = showMenu,
             onDismiss = { showMenu = false },
             touch = menuTouch,
-            onCopy = { copyToClipboard(context, listOfNotNull(text, detail).joinToString("\n")) },
+            onCopy = { copyToClipboard(context, listOfNotNull(text, detail, diagnosticBody).joinToString("\n")) },
             onDelete = {
                 onDelete?.invoke(messageId)
                 showMenu = false
@@ -680,7 +951,6 @@ private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: Generatio
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp)
             .testTag(UiTags.CHAT_TAILNET_FAILURE_ACTIONS),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -691,6 +961,7 @@ private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: Generatio
                     text = stringResource(action.labelRes()),
                     onClick = onClickOf(action),
                     tone = if (index == layout.row.lastIndex) InfinityPillTone.PRIMARY else InfinityPillTone.NEUTRAL,
+                    compact = true,
                     modifier = Modifier.testTag(action.testTag()),
                 )
             }
@@ -713,19 +984,62 @@ private fun TailnetFailureActionRow(kind: TailnetFailureKind, actions: Generatio
 /** 空回复失败没有正文，也就没有底部操作行；在气泡内给出重试与换模型，主操作在右。 */
 @Composable
 private fun EmptyReplyActionRow(actions: GenerationFailureActions) {
-    InfinityPillRow(modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag(UiTags.CHAT_EMPTY_REPLY_ACTIONS), spacing = 8.dp) {
+    InfinityPillRow(modifier = Modifier.fillMaxWidth().testTag(UiTags.CHAT_EMPTY_REPLY_ACTIONS), spacing = 8.dp) {
         InfinityPillButton(
             text = stringResource(R.string.exec_steer_empty_reply_switch_model),
             onClick = actions.onSwitchModel,
             tone = InfinityPillTone.NEUTRAL,
+            compact = true,
             modifier = Modifier.testTag(UiTags.CHAT_EMPTY_REPLY_SWITCH_MODEL),
         )
         InfinityPillButton(
             text = stringResource(R.string.exec_steer_empty_reply_retry),
             onClick = actions.onRetry,
             tone = InfinityPillTone.PRIMARY,
+            compact = true,
             modifier = Modifier.testTag(UiTags.CHAT_EMPTY_REPLY_RETRY),
         )
+    }
+}
+
+/** 标准失败卡片底部动作行：余额/鉴权/参数类主推「换模型」，网络/超时/限流类主推「重试」，主操作始终在右。 */
+@Composable
+private fun StandardFailureActionRow(
+    prefersSwitchModel: Boolean,
+    actions: GenerationFailureActions,
+) {
+    InfinityPillRow(modifier = Modifier.fillMaxWidth().testTag(UiTags.CHAT_FAILURE_ACTIONS), spacing = 8.dp) {
+        if (prefersSwitchModel) {
+            InfinityPillButton(
+                text = stringResource(R.string.chat_failure_retry),
+                onClick = actions.onRetry,
+                tone = InfinityPillTone.NEUTRAL,
+                compact = true,
+                modifier = Modifier.testTag(UiTags.CHAT_FAILURE_RETRY),
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.chat_failure_switch_model),
+                onClick = actions.onSwitchModel,
+                tone = InfinityPillTone.PRIMARY,
+                compact = true,
+                modifier = Modifier.testTag(UiTags.CHAT_FAILURE_SWITCH_MODEL),
+            )
+        } else {
+            InfinityPillButton(
+                text = stringResource(R.string.chat_failure_switch_model),
+                onClick = actions.onSwitchModel,
+                tone = InfinityPillTone.NEUTRAL,
+                compact = true,
+                modifier = Modifier.testTag(UiTags.CHAT_FAILURE_SWITCH_MODEL),
+            )
+            InfinityPillButton(
+                text = stringResource(R.string.chat_failure_retry),
+                onClick = actions.onRetry,
+                tone = InfinityPillTone.PRIMARY,
+                compact = true,
+                modifier = Modifier.testTag(UiTags.CHAT_FAILURE_RETRY),
+            )
+        }
     }
 }
 

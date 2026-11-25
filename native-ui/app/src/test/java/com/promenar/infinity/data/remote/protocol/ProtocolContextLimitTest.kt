@@ -135,6 +135,28 @@ class ProtocolContextLimitTest {
     }
 
     @Test
+    fun `各对话协议的 HTTP 402 携带相同脱敏诊断`() = runBlocking {
+        val payload = """{"error":{"code":"insufficient_balance","message":"Balance exhausted","api_key":"mock-value"}}"""
+        val protocols = listOf(
+            OpenAIProtocol("https://example.test/v1", "", "fixture", client(402, payload)),
+            GenericOpenAICompatProtocol("https://example.test/v1", "", "fixture", httpClient = client(402, payload)),
+            OpenAIResponsesProtocol("https://example.test/v1", "", "fixture", client(402, payload)),
+            AnthropicProtocol("https://example.test", "", "fixture", httpClient = client(402, payload)),
+            GeminiProtocol("https://example.test", "", "fixture", client(402, payload)),
+        )
+        for (protocol in protocols) {
+            val error = protocol.sendPrompt(request()).filterIsInstance<StreamChunk.Error>().first()
+            assertThat(error.code).isEqualTo(GenerationFailureCode.QUOTA)
+            assertThat(error.retryable).isFalse()
+            assertThat(error.httpStatus).isEqualTo(402)
+            assertThat(error.errorCode).isEqualTo("insufficient_balance")
+            assertThat(error.providerMessage).isEqualTo("Balance exhausted")
+            assertThat(error.rawDiagnostic).contains("Balance exhausted")
+            assertThat(error.rawDiagnostic).doesNotContain("mock-value")
+        }
+    }
+
+    @Test
     fun `OpenAI Chat 流内错误使用稳定上下文 code`() = runBlocking {
         val event = body("diagnostic", "invalid_request_error", "context_length_exceeded")
         val protocol = OpenAIProtocol("https://example.test/v1", "", "fixture", client(200, sse(event)))
@@ -200,6 +222,10 @@ class ProtocolContextLimitTest {
             assertThat(com.promenar.infinity.domain.generation.GenerationFailureCodec.decode(
                 com.promenar.infinity.domain.generation.GenerationFailureCodec.encode(structured))?.formatArgs).isEqualTo(structured.formatArgs)
             assertThat(structured.retryable).isFalse()
+            assertThat(structured.httpStatus).isEqualTo(400)
+            assertThat(structured.errorCode).isNotNull()
+            assertThat(structured.providerMessage).isNotNull()
+            assertThat(structured.rawDiagnostic).isNotNull()
         }
     }
 

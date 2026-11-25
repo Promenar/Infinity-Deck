@@ -21,7 +21,12 @@ import com.promenar.infinity.domain.usecase.IdGenerator
 import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.remote.ProviderRequestRouter
 import com.promenar.infinity.data.remote.ProviderResolution
+import com.promenar.infinity.data.remote.ResolvedProviderModel
 import com.promenar.infinity.data.remote.StreamConfig
+import com.promenar.infinity.data.remote.UnifiedProviderConfig
+import com.promenar.infinity.data.remote.provider.ProviderConnectionProbe
+import com.promenar.infinity.data.remote.provider.ProviderConnectionProbeFailure
+import com.promenar.infinity.data.remote.provider.ProviderConnectionProbeResult
 import com.promenar.infinity.data.remote.middleware.StreamTextParams
 import com.promenar.infinity.data.remote.parser.ErrorNormalizer
 import com.promenar.infinity.data.remote.protocol.ProtocolMessage
@@ -80,6 +85,7 @@ internal fun classifyFetchedModelType(
         Regex("(?:^|[-_/.])(embed(?:ding)?|bge-m3)(?:$|[-_/.])").containsMatchIn(normalized) -> "embedding"
         Regex("(?:^|[-_/.])(rerank(?:er)?|bge-reranker)(?:$|[-_/.])").containsMatchIn(normalized) -> "rerank"
         Regex("(?:^|[-_/.])(image|dall-e|flux|stable-diffusion)(?:$|[-_/.])").containsMatchIn(normalized) -> "image"
+        Regex("(?:^|[-_/.])(video|seedance|hailuo|minimax-h3|s2v-01|veo|sora|kling)(?:$|[-_/.])").containsMatchIn(normalized) -> "video"
         Regex("(?:^|[-_/.])(audio|speech|tts|whisper)(?:$|[-_/.])").containsMatchIn(normalized) -> "audio"
         else -> "unknown"
     }
@@ -120,10 +126,19 @@ internal fun UiStatusNotice.withFallbackWarning(usedFallback: Boolean): UiStatus
         this
     }
 
+internal fun isMediaVerificationModel(model: ModelInfo?): Boolean {
+    if (model == null) return false
+    return model.type.lowercase() in setOf("video", "audio", "image") ||
+        model.effectiveMediaSettings() != null
+}
+
 sealed interface ModelTestState {
     data object Idle : ModelTestState
     data object Testing : ModelTestState
-    data class Success(val latencyMs: Long) : ModelTestState {
+    data class Success(
+        val latencyMs: Long,
+        val isMediaVerify: Boolean = false,
+    ) : ModelTestState {
         init {
             require(latencyMs >= 0)
         }
@@ -155,6 +170,10 @@ internal class ProviderModelTestCoordinator(
     private val nowNanos: () -> Long = System::nanoTime,
     private val beforeJobStartForTest: (String) -> Unit = {},
     private val onProviderVerified: (String) -> Unit = {},
+    private val resolveModel: (String) -> ModelInfo? = { null },
+    private val probeProviderConnection: suspend (UnifiedProviderConfig) -> ProviderConnectionProbeResult = { config ->
+        ProviderConnectionProbe.processScoped.probe(config)
+    },
 ) {
     private val _states = MutableStateFlow<Map<String, ModelTestState>>(emptyMap())
     val states: StateFlow<Map<String, ModelTestState>> = _states.asStateFlow()
@@ -177,6 +196,7 @@ internal class ProviderModelTestCoordinator(
                     val terminal = when (outcome) {
                         is ProbeOutcome.Success -> ModelTestState.Success(
                             latencyMs = ((outcome.receivedAtNanos - startedAt) / 1_000_000L).coerceAtLeast(0),
+                            isMediaVerify = outcome.isMediaVerify,
                         )
                         is ProbeOutcome.Failed -> outcome.error
                     }
@@ -236,6 +256,10 @@ internal class ProviderModelTestCoordinator(
                 ),
             )
         }
+        // 视频/音频/图像等媒体模型仅验证提供商连接与配置，绝不发对话推理或触发按次计费生成。
+        if (isMediaVerificationModel(resolveModel(modelId))) {
+            return probeMediaModel(resolved)
+        }
         // 不传输出上限：首包即取消，上限反而会让隐藏推理的模型在可见输出前被截断，或被只认 max_completion_tokens 的接口拒绝。
         return router.createClient(resolved).sendStream(
             params = StreamTextParams(
@@ -255,8 +279,38 @@ internal class ProviderModelTestCoordinator(
         }.firstOrNull() ?: ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.UNKNOWN))
     }
 
+    private suspend fun probeMediaModel(resolved: ResolvedProviderModel): ProbeOutcome =
+        when (val result = probeProviderConnection(resolved.config)) {
+            ProviderConnectionProbeResult.Success,
+            ProviderConnectionProbeResult.Unsupported,
+            -> ProbeOutcome.Success(nowNanos(), resolved.providerId, isMediaVerify = true)
+            is ProviderConnectionProbeResult.Failure -> when (result.reason) {
+                ProviderConnectionProbeFailure.CREDENTIALS_MISSING,
+                ProviderConnectionProbeFailure.CREDENTIALS_INVALID,
+                -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.AUTH))
+                ProviderConnectionProbeFailure.AUTHENTICATION_REJECTED -> when (result.statusCode) {
+                    401, 403 -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.AUTH))
+                    402 -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.QUOTA))
+                    429 -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.RATE_LIMIT))
+                    // 部分媒体平台（如方舟/MiniMax 媒体子端点）不提供 /models，收到 404/405 且未鉴权拒签说明连通可达。
+                    404, 405 -> ProbeOutcome.Success(nowNanos(), resolved.providerId, isMediaVerify = true)
+                    in 500..599 -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.SERVER))
+                    else -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.INVALID_REQUEST))
+                }
+                ProviderConnectionProbeFailure.NETWORK_UNAVAILABLE ->
+                    ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.NETWORK))
+                ProviderConnectionProbeFailure.ENDPOINT_INVALID,
+                ProviderConnectionProbeFailure.RESPONSE_INVALID,
+                -> ProbeOutcome.Failed(ModelTestState.Error(GenerationFailureCode.INVALID_REQUEST))
+            }
+        }
+
     private sealed interface ProbeOutcome {
-        data class Success(val receivedAtNanos: Long, val providerId: String) : ProbeOutcome
+        data class Success(
+            val receivedAtNanos: Long,
+            val providerId: String,
+            val isMediaVerify: Boolean = false,
+        ) : ProbeOutcome
         data class Failed(val error: ModelTestState.Error) : ProbeOutcome
     }
 }
@@ -378,6 +432,7 @@ class SettingsViewModel(
         ProviderModelTestCoordinator(
             router = app.providerRequestRouter,
             scope = viewModelScope,
+            resolveModel = { modelId -> pm.providerModels.value.firstOrNull { it.id == modelId } },
             onProviderVerified = { providerId ->
                 pm.recordProviderConnectionTest(
                     providerId,

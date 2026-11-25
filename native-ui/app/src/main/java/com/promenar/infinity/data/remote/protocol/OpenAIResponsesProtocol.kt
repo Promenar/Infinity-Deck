@@ -405,15 +405,17 @@ class OpenAIResponsesProtocol(
                         ?: chunk["error"] as? JsonObject
                     else -> chunk["error"] as? JsonObject
                 }
-                return errorObject?.let { ProtocolContextLimit.fromError(protocolType, it) }
-                    ?: ProtocolContextLimit.fromError(protocolType, chunk)
+                val eventBody = chunk.toString()
+                return errorObject?.let { ProtocolContextLimit.fromError(protocolType, it, responseBody = eventBody) }
+                    ?: ProtocolContextLimit.fromError(protocolType, chunk, responseBody = eventBody)
                     ?: ProtocolErrorClassifier.classify(
                         type = errorObject?.stringField("type"),
-                        code = errorObject?.stringField("code"),
+                        code = errorObject?.stringField("code") ?: chunk.stringField("code"),
                         technical = errorObject?.stringField("message")
                             ?.ifBlank { chunk.stringField("message") }
                             ?.ifBlank { null }
                             ?: "OpenAI Responses request failed.",
+                        responseBody = eventBody,
                     )
             }
             else -> {
@@ -529,6 +531,7 @@ class OpenAIResponsesProtocol(
             code = errorObject?.stringField("code"),
             retryAfterHeader = retryAfterHeader,
             technical = errorObject?.stringField("message")?.ifBlank { responseBody } ?: responseBody,
+            responseBody = responseBody,
         )
     }
 

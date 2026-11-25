@@ -516,10 +516,12 @@ class AnthropicProtocol(
             "ping" -> { }
             "error" -> {
                 val errorObject = eventData["error"] as? JsonObject
-                send(errorObject?.let { ProtocolContextLimit.fromError(protocolType, it) } ?: ProtocolErrorClassifier.classify(
+                val contextLimit = errorObject?.let { ProtocolContextLimit.fromError(protocolType, it, responseBody = data) }
+                send(contextLimit ?: ProtocolErrorClassifier.classify(
                     type = errorObject?.stringField("type"),
                     code = errorObject?.stringField("code"),
                     technical = errorObject?.stringField("message")?.ifBlank { data } ?: data,
+                    responseBody = data,
                 ))
                 return true
             }
@@ -743,6 +745,7 @@ class AnthropicProtocol(
             code = errorObject?.stringField("code"),
             retryAfterHeader = retryAfterHeader,
             technical = errorObject?.stringField("message")?.ifBlank { responseBody } ?: responseBody,
+            responseBody = responseBody,
         )
     }
 

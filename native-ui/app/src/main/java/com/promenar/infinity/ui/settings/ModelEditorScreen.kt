@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.settings
 
+import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +17,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.NotInterested
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -42,14 +49,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
+import com.promenar.infinity.data.model.CloudMediaPreset
+import com.promenar.infinity.data.model.MediaModelSettings
+import com.promenar.infinity.data.model.cloudMediaPresetsFor
 import com.promenar.infinity.data.model.effectiveMediaSettings
+import com.promenar.infinity.data.model.matchCloudMediaPreset
+import com.promenar.infinity.data.model.mediaPresetSettings
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.withRecordedUserEdits
 import com.promenar.infinity.domain.generation.GenerationFailureCode
+import com.promenar.infinity.domain.mediagen.MediaGroup
+import com.promenar.infinity.ui.common.InfinityChoice
 import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityMultiChoiceSheet
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.InfinitySingleChoiceSheet
 import com.promenar.infinity.ui.common.selectedChoiceSummary
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityFieldRow
@@ -59,6 +74,7 @@ import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.infinityDomainColors
 
@@ -78,6 +94,7 @@ internal fun ModelEditorScreen(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenMediaSettings: (() -> Unit)? = null,
+    onSetMediaSettings: ((MediaModelSettings?) -> Unit)? = null,
 ) {
     var showDeleteConfirmation by remember(model.id) { mutableStateOf(false) }
     var selectedType by remember(model.id) { mutableStateOf(model.type) }
@@ -89,6 +106,7 @@ internal fun ModelEditorScreen(
     var activeCaps by remember(model.id) { mutableStateOf(model.capabilities.toSet()) }
     var editingLimit by remember(model.id) { mutableStateOf<ModelSpecField?>(null) }
     var showCapabilities by remember(model.id) { mutableStateOf(false) }
+    var showMediaPresetPicker by remember(model.id) { mutableStateOf(false) }
 
     // 同步或其它入口改动了模型时，以最新快照为准重置本地编辑态。
     LaunchedEffect(
@@ -127,6 +145,14 @@ internal fun ModelEditorScreen(
 
     val identityFooter = modelIdentityFooter(model)
     val contextTokens = editContext.toIntOrNull() ?: model.contextLength
+    val effectiveMedia = model.effectiveMediaSettings()
+    val mediaPresetGroup = when (selectedType.lowercase()) {
+        "video" -> MediaGroup.VIDEO
+        "audio" -> MediaGroup.AUDIO
+        else -> null
+    }
+    val matchedCloudPreset = remember(effectiveMedia) { matchCloudMediaPreset(effectiveMedia) }
+    val isMediaModel = selectedType.lowercase() in setOf("video", "audio", "image") || effectiveMedia != null
 
     InfinitySettingsPageLayout(
         title = stringResource(R.string.provider_models_editor_title),
@@ -163,11 +189,6 @@ internal fun ModelEditorScreen(
             contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            if (onOpenMediaSettings != null && model.effectiveMediaSettings() != null) item("media-settings") {
-                InfinitySettingsSection(title = stringResource(R.string.media_settings_title)) {
-                    InfinitySettingsItem(title = stringResource(R.string.media_settings_title), onClick = onOpenMediaSettings, showChevron = true)
-                }
-            }
             item("identity") {
                 InfinitySettingsSection(
                     title = stringResource(R.string.model_editor_group_identity),
@@ -234,6 +255,16 @@ internal fun ModelEditorScreen(
                             if (type != selectedType) {
                                 activeCaps = capabilitiesForTypeChange(activeCaps, type)
                                 selectedType = type
+                                val existingMediaGroup = model.mediaSettings?.group
+                                val nextMediaGroup = when (type.lowercase()) {
+                                    "video" -> MediaGroup.VIDEO
+                                    "audio" -> MediaGroup.AUDIO
+                                    "image" -> MediaGroup.IMAGE
+                                    else -> null
+                                }
+                                if (existingMediaGroup != null && existingMediaGroup != nextMediaGroup) {
+                                    onSetMediaSettings?.invoke(null)
+                                }
                             }
                         },
                         compact = true,
@@ -242,6 +273,59 @@ internal fun ModelEditorScreen(
                             .padding(vertical = InfinitySpacing.Small)
                             .testTag("model_editor_type_picker"),
                     )
+                }
+            }
+            item("cloud-media") {
+                val showCloudMediaSection = mediaPresetGroup != null || (onOpenMediaSettings != null && effectiveMedia != null)
+                AnimatedVisibility(
+                    visible = showCloudMediaSection,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    if (mediaPresetGroup != null) {
+                        val presetIcon = if (mediaPresetGroup == MediaGroup.VIDEO) Icons.Rounded.Movie else Icons.Rounded.GraphicEq
+                        val currentPresetLabel = matchedCloudPreset?.let { stringResource(cloudMediaPresetLabelRes(it)) }
+                            ?: stringResource(R.string.model_editor_media_preset_none)
+                        InfinitySettingsSection(
+                            title = stringResource(R.string.model_editor_group_cloud_media),
+                            footer = stringResource(R.string.model_editor_media_preset_footer),
+                        ) {
+                            InfinitySettingsItem(
+                                title = stringResource(R.string.model_editor_media_preset),
+                                subtitle = currentPresetLabel,
+                                icon = presetIcon,
+                                showChevron = onSetMediaSettings != null,
+                                onClick = { if (onSetMediaSettings != null) showMediaPresetPicker = true },
+                                modifier = Modifier.testTag(UiTags.providerModelsMediaPresetPicker(model.id)),
+                            )
+                            if (onOpenMediaSettings != null && effectiveMedia != null) {
+                                InfinityGroupDivider()
+                                InfinitySettingsItem(
+                                    title = stringResource(R.string.model_editor_media_settings_item),
+                                    subtitle = stringResource(
+                                        if (mediaPresetGroup == MediaGroup.VIDEO) {
+                                            R.string.model_editor_media_settings_video_subtitle
+                                        } else {
+                                            R.string.model_editor_media_settings_audio_subtitle
+                                        },
+                                    ),
+                                    icon = Icons.Rounded.Tune,
+                                    showChevron = true,
+                                    onClick = onOpenMediaSettings,
+                                )
+                            }
+                        }
+                    } else if (onOpenMediaSettings != null && effectiveMedia != null) {
+                        InfinitySettingsSection(title = stringResource(R.string.media_settings_title)) {
+                            InfinitySettingsItem(
+                                title = stringResource(R.string.model_editor_media_settings_item),
+                                subtitle = stringResource(R.string.model_editor_media_settings_image_subtitle),
+                                icon = Icons.Rounded.Image,
+                                showChevron = true,
+                                onClick = onOpenMediaSettings,
+                            )
+                        }
+                    }
                 }
             }
             item("capabilities") {
@@ -292,7 +376,7 @@ internal fun ModelEditorScreen(
                 ModelSessionHeaderSetting(mode = sessionHeaderMode, onMode = { sessionHeaderMode = it })
             }
             item("test") {
-                ModelEditorTestRow(model.id, testState, onTest, onCancel)
+                ModelEditorTestRow(model.id, testState, isMediaModel, onTest, onCancel)
             }
             item("delete") {
                 InfinitySettingsGroup(modifier = Modifier.padding(bottom = 0.dp)) {
@@ -334,6 +418,35 @@ internal fun ModelEditorScreen(
         fieldTag = UiTags.providerModelsOutputField(model.id),
     )
 
+    if (mediaPresetGroup != null && onSetMediaSettings != null) {
+        val groupIcon = if (mediaPresetGroup == MediaGroup.VIDEO) Icons.Rounded.Movie else Icons.Rounded.GraphicEq
+        val presetChoices = listOf(
+            InfinityChoice<CloudMediaPreset?>(
+                value = null,
+                label = stringResource(R.string.model_editor_media_preset_none),
+                icon = Icons.Rounded.NotInterested,
+                tag = UiTags.providerModelsMediaPresetOption("none"),
+            ),
+        ) + cloudMediaPresetsFor(mediaPresetGroup).map { preset ->
+            InfinityChoice<CloudMediaPreset?>(
+                value = preset,
+                label = stringResource(cloudMediaPresetLabelRes(preset)),
+                icon = groupIcon,
+                tag = UiTags.providerModelsMediaPresetOption(preset.name),
+            )
+        }
+        InfinitySingleChoiceSheet(
+            show = showMediaPresetPicker,
+            title = stringResource(R.string.model_editor_media_preset_sheet_title),
+            choices = presetChoices,
+            selected = matchedCloudPreset,
+            onSelect = { preset ->
+                onSetMediaSettings(preset?.let(::mediaPresetSettings))
+            },
+            onDismiss = { showMediaPresetPicker = false },
+        )
+    }
+
     if (showDeleteConfirmation) {
         InfinityConfirmDialog(
             onDismissRequest = { showDeleteConfirmation = false },
@@ -374,15 +487,35 @@ private fun modelIdentityFooter(model: ModelInfo): String? {
     ).takeIf { it.isNotEmpty() }?.joinToString(" · ")  // wrap-check: allow 分区脚注，两项均为可能很长的完整说明
 }
 
+@StringRes
+internal fun cloudMediaPresetLabelRes(preset: CloudMediaPreset): Int = when (preset) {
+    CloudMediaPreset.SEEDANCE_2_5 -> R.string.media_preset_seedance_2_5
+    CloudMediaPreset.SEEDANCE_2_0 -> R.string.media_preset_seedance_2_0
+    CloudMediaPreset.SEEDANCE_2_0_FAST -> R.string.media_preset_seedance_2_0_fast
+    CloudMediaPreset.SEEDANCE_1_0_PRO -> R.string.media_preset_seedance_1_0_pro
+    CloudMediaPreset.SEEDANCE_1_0_PRO_FAST -> R.string.media_preset_seedance_1_0_pro_fast
+    CloudMediaPreset.MINIMAX_H3 -> R.string.media_preset_minimax_h3
+    CloudMediaPreset.MINIMAX_H3_HIGHSPEED -> R.string.media_preset_minimax_h3_highspeed
+    CloudMediaPreset.MINIMAX_H3_LITE -> R.string.media_preset_minimax_h3_lite
+    CloudMediaPreset.MINIMAX_H3_MAX -> R.string.media_preset_minimax_h3_max
+    CloudMediaPreset.MINIMAX_HAILUO_02 -> R.string.media_preset_minimax_hailuo_02
+    CloudMediaPreset.MINIMAX_S2V_01 -> R.string.media_preset_minimax_s2v_01
+    CloudMediaPreset.MINIMAX_SPEECH_2_8_HD -> R.string.media_preset_minimax_speech_2_8_hd
+    CloudMediaPreset.MINIMAX_SPEECH_2_8_TURBO -> R.string.media_preset_minimax_speech_2_8_turbo
+}
+
 @Composable
 private fun ModelEditorTestRow(
     modelId: String,
     testState: ModelTestState,
+    isMediaModel: Boolean,
     onTest: () -> Unit,
     onCancel: () -> Unit,
 ) {
     val isTesting = testState == ModelTestState.Testing
-    val status = modelTestStatus(testState) ?: stringResource(R.string.model_editor_test_idle)
+    val status = modelTestStatus(testState, isMediaModel) ?: stringResource(
+        if (isMediaModel) R.string.model_editor_media_test_idle else R.string.model_editor_test_idle,
+    )
     val statusColor = when (testState) {
         is ModelTestState.Success -> MaterialTheme.infinityDomainColors.success
         is ModelTestState.Error -> MaterialTheme.colorScheme.error
@@ -420,18 +553,32 @@ private fun ModelEditorTestRow(
                     Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(stringResource(if (isTesting) R.string.settings_btn_cancel else R.string.model_editor_test_action))
+                Text(
+                    stringResource(
+                        when {
+                            isTesting -> R.string.settings_btn_cancel
+                            isMediaModel -> R.string.model_editor_media_test_action
+                            else -> R.string.model_editor_test_action
+                        },
+                    ),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun modelTestStatus(testState: ModelTestState): String? = when (testState) {
+private fun modelTestStatus(testState: ModelTestState, isMediaModel: Boolean): String? = when (testState) {
     ModelTestState.Idle -> null
-    ModelTestState.Testing -> stringResource(R.string.model_editor_test_running)
+    ModelTestState.Testing -> stringResource(
+        if (isMediaModel) R.string.model_editor_media_test_running else R.string.model_editor_test_running,
+    )
     is ModelTestState.Success -> stringResource(
-        R.string.provider_models_test_success,
+        if (testState.isMediaVerify || isMediaModel) {
+            R.string.model_editor_media_test_success
+        } else {
+            R.string.provider_models_test_success
+        },
         "${testState.latencyMs}ms",
     )
     is ModelTestState.Error -> when (testState.code) {

@@ -3,6 +3,7 @@ package com.promenar.infinity.data.remote.parser
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.generation.isRetryableStreamFailure
 import com.promenar.infinity.data.remote.protocol.streamErrorEvent
+import com.promenar.infinity.data.remote.protocol.toStreamChunkError
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -66,5 +67,32 @@ class ErrorNormalizerProviderMessageTest {
         assertThat(unknown.code).isEqualTo(GenerationFailureCode.SERVER)
         assertThat(unknown.retryable).isTrue()
         assertThat(unknown.providerMessage).isEqualTo("synthetic failure")
+    }
+
+    @Test
+    fun `余额耗尽超越网关限流封装并透传三类诊断`() {
+        val examples = listOf(
+            Triple(402, """{"error":{"message":"Payment required"}}""", null),
+            Triple(429, """{"base_resp":{"status_code":1008,"status_msg":"rate limit"}}""", "1008"),
+            Triple(429, """{"base_resp":{"status_code":1008},"error":{"code":"gateway_error","message":"rate limit"}}""", "gateway_error"),
+            Triple(429, """{"error":{"code":"gateway_error","type":"insufficient_funds","message":"rate limit"}}""", "gateway_error"),
+            Triple(429, """{"error":{"code":"balance_not_enough","message":"rate limit"}}""", "balance_not_enough"),
+            Triple(429, """{"code":"insufficient_balance","message":"rate limit"}""", "insufficient_balance"),
+            Triple(429, """  {"code":"insufficient_funds","error":{"code":"gateway_error"}}""", "gateway_error"),
+            Triple(403, """{"status_msg":"insufficient balance"}""", null),
+            Triple(502, """{"status_msg":"credit balance is too low"}""", null),
+        )
+        for ((status, body, errorCode) in examples) {
+            val normalized = ErrorNormalizer.normalize(HttpStatusException(status, body))
+            val chunk = normalized.toStreamChunkError()
+            val failure = normalized.toFailure()
+            assertThat(normalized).isInstanceOf(NormalizedError.QuotaExceeded::class.java)
+            assertThat(chunk.retryable).isFalse()
+            assertThat(chunk.httpStatus).isEqualTo(status)
+            assertThat(chunk.errorCode).isEqualTo(errorCode)
+            assertThat(chunk.rawDiagnostic).isEqualTo(failure.rawDiagnostic)
+            assertThat(failure.httpStatus).isEqualTo(status)
+            assertThat(failure.errorCode).isEqualTo(errorCode)
+        }
     }
 }

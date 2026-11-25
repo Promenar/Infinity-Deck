@@ -218,16 +218,30 @@ class GenerationFailureNoticeTest {
     @Test
     fun `服务商原因只作为补充说明并能从历史信封还原`() {
         val failure = com.promenar.infinity.domain.generation.GenerationFailure.rateLimited(30).let {
-            it.copy(formatArgs = it.formatArgs + (com.promenar.infinity.domain.generation.GenerationFailure.KEY_PROVIDER_MESSAGE to "当前分组上游负载已饱和"))
+            it.copy(
+                formatArgs = it.formatArgs + mapOf(
+                    GenerationFailure.KEY_PROVIDER_MESSAGE to "当前分组上游负载已饱和",
+                    GenerationFailure.KEY_HTTP_STATUS to "429",
+                    GenerationFailure.KEY_ERROR_CODE to "rate_limit_exceeded",
+                    GenerationFailure.KEY_RAW_DIAGNOSTIC to """{"error":{"code":"rate_limit_exceeded"}}""",
+                ),
+            )
         }
         val live = GenerationFailureNotice.from(failure)
         assertThat(live.detail).isEqualTo("当前分组上游负载已饱和")
+        assertThat(live.httpStatus).isEqualTo(429)
+        assertThat(live.errorCode).isEqualTo("rate_limit_exceeded")
+        assertThat(live.rawDiagnostic).contains("rate_limit_exceeded")
         assertThat(GenerationFailureNotice.template(live).args).containsExactly(30)
 
-        val persisted = GenerationFailureNotice.fromPersisted(com.promenar.infinity.domain.generation.GenerationFailureCodec.encode(failure))
+        val persisted = GenerationFailureNotice.fromPersisted(GenerationFailureCodec.encode(failure))
         assertThat(persisted.detail).isEqualTo("当前分组上游负载已饱和")
+        assertThat(persisted.httpStatus).isEqualTo(429)
+        assertThat(persisted.errorCode).isEqualTo("rate_limit_exceeded")
+        assertThat(persisted.rawDiagnostic).contains("rate_limit_exceeded")
         assertThat(persisted.code).isEqualTo(live.code)
         assertThat(GenerationFailureNotice.fromPersisted("@infinity/failure:SERVER").detail).isNull()
+        assertThat(GenerationFailureNotice.fromPersisted("@infinity/failure:SERVER").rawDiagnostic).isNull()
     }
 
     @Test
@@ -271,6 +285,35 @@ class GenerationFailureNoticeTest {
         assertThat(kind("@infinity/failure:TAILNET_UNAVAILABLE")).isEqualTo(TailnetFailureKind.UNREACHABLE)
         assertThat(kind("@infinity/failure:NETWORK")).isNull()
         assertThat(kind("raw provider text")).isNull()
+    }
+
+    @Test
+    fun `错误卡片视觉图标与主动作按错误类别区分余额鉴权与网络故障`() {
+        val quota = GenerationFailureNotice.from(GenerationFailure(GenerationFailureCode.QUOTA))
+        val auth = GenerationFailureNotice.from(GenerationFailure(GenerationFailureCode.AUTH))
+        val network = GenerationFailureNotice.from(GenerationFailure(GenerationFailureCode.NETWORK))
+        val rateLimit = GenerationFailureNotice.from(GenerationFailure.rateLimited(10))
+
+        assertThat(GenerationFailureNotice.visualKind(quota)).isEqualTo(FailureVisualKind.QUOTA)
+        assertThat(GenerationFailureNotice.prefersSwitchModel(quota)).isTrue()
+        assertThat(GenerationFailureNotice.visualKind(auth)).isEqualTo(FailureVisualKind.AUTH)
+        assertThat(GenerationFailureNotice.prefersSwitchModel(auth)).isTrue()
+        assertThat(GenerationFailureNotice.visualKind(network)).isEqualTo(FailureVisualKind.NETWORK)
+        assertThat(GenerationFailureNotice.prefersSwitchModel(network)).isFalse()
+        assertThat(GenerationFailureNotice.visualKind(rateLimit)).isEqualTo(FailureVisualKind.RATE_LIMIT)
+        assertThat(GenerationFailureNotice.prefersSwitchModel(rateLimit)).isFalse()
+    }
+
+    @Test
+    fun `中英文错误卡片折叠与操作文案 key 完全一致`() {
+        val english = resourceFile("values/strings.xml").readText()
+        val chinese = resourceFile("values-zh-rCN/strings.xml").readText()
+        val cardKey = Regex("<string name=\"(chat_failure_[^\"]+)\"")
+        val englishKeys = cardKey.findAll(english).map { it.groupValues[1] }.toSet()
+        val chineseKeys = cardKey.findAll(chinese).map { it.groupValues[1] }.toSet()
+
+        assertThat(englishKeys).isNotEmpty()
+        assertThat(chineseKeys).containsExactlyElementsIn(englishKeys)
     }
 
     private fun resourceFile(relativePath: String): File {

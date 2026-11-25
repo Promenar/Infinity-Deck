@@ -2,6 +2,7 @@ package com.promenar.infinity.data.remote.parser
 
 import com.promenar.infinity.domain.generation.GenerationFailure
 import com.promenar.infinity.domain.generation.GenerationFailureCode
+import com.promenar.infinity.domain.generation.ProviderErrorDiagnostic
 import com.promenar.infinity.domain.generation.ProviderErrorMessage
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.plugins.HttpRequestTimeoutException
@@ -31,17 +32,18 @@ enum class ErrorCategory {
 /**
  * 协议/网络层错误的分类结果。
  *
- * 自结构化失败契约起，本类**不再产出任何自然语言展示文案**：
- * - [technicalMessage] 仅供诊断（日志/调试），禁止作为 UI 展示 message 传播；
- * - 调用方应使用 [toFailure] 得到稳定的 [GenerationFailure]（code + 类型化参数）。
+ * [toFailure] 提供稳定失败码、类型化参数及脱敏诊断。[technicalMessage] 仅供内部诊断。
  */
-sealed class NormalizedError {
+sealed class NormalizedError(private val diagnostic: ProviderErrorDiagnostic) {
     abstract val category: ErrorCategory
     abstract val technicalMessage: String
     abstract val retryable: Boolean
     abstract val retryAfter: Int?
     /** 服务商响应中的错误说明（已清洗），只来自 HTTP 错误响应体。 */
     abstract val providerMessage: String?
+    open val httpStatus: Int? get() = diagnostic.httpStatus
+    open val errorCode: String? get() = diagnostic.errorCode
+    open val rawDiagnostic: String? get() = diagnostic.rawDiagnostic
 
     final override fun toString(): String =
         "NormalizedError(category=$category, retryable=$retryable, retryAfter=$retryAfter)"
@@ -49,7 +51,8 @@ sealed class NormalizedError {
     data class Network(
         override val technicalMessage: String,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.NETWORK
         override val retryable = true
         override val retryAfter: Int? = null
@@ -58,7 +61,8 @@ sealed class NormalizedError {
     data class Auth(
         override val technicalMessage: String,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.AUTH
         override val retryable = false
         override val retryAfter: Int? = null
@@ -68,7 +72,8 @@ sealed class NormalizedError {
         override val technicalMessage: String,
         override val retryAfter: Int?,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.RATE_LIMIT
         override val retryable = true
     }
@@ -76,7 +81,8 @@ sealed class NormalizedError {
     data class InvalidRequest(
         override val technicalMessage: String,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.INVALID_REQUEST
         override val retryable = false
         override val retryAfter: Int? = null
@@ -85,7 +91,8 @@ sealed class NormalizedError {
     data class ServerError(
         override val technicalMessage: String,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.SERVER_ERROR
         override val retryable = true
         override val retryAfter: Int? = null
@@ -94,7 +101,8 @@ sealed class NormalizedError {
     data class QuotaExceeded(
         override val technicalMessage: String,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.QUOTA_EXCEEDED
         override val retryable = false
         override val retryAfter: Int? = null
@@ -103,7 +111,8 @@ sealed class NormalizedError {
     data class Timeout(
         override val technicalMessage: String,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.TIMEOUT
         override val retryable = true
         override val retryAfter: Int? = null
@@ -112,7 +121,8 @@ sealed class NormalizedError {
     data class Unknown(
         override val technicalMessage: String,
         override val providerMessage: String? = null,
-    ) : NormalizedError() {
+        private val providerDiagnostic: ProviderErrorDiagnostic = ProviderErrorDiagnostic(),
+    ) : NormalizedError(providerDiagnostic) {
         override val category = ErrorCategory.UNKNOWN
         override val retryable = true
         override val retryAfter: Int? = null
@@ -136,8 +146,9 @@ sealed class NormalizedError {
             is Timeout -> GenerationFailure(GenerationFailureCode.TIMEOUT, emptyMap(), technicalMessage, cause)
             is Unknown -> GenerationFailure.unknown(technical = technicalMessage, cause = cause)
         }
-        val provider = providerMessage ?: return failure
-        return failure.copy(formatArgs = failure.formatArgs + (GenerationFailure.KEY_PROVIDER_MESSAGE to provider))
+        return failure.copy(
+            formatArgs = failure.formatArgs + ProviderErrorDiagnostic(providerMessage, httpStatus, errorCode, rawDiagnostic).toFormatArgs(),
+        )
     }
 }
 
@@ -156,7 +167,9 @@ object ErrorNormalizer {
         val errorMsg = classifiedError.message ?: classifiedError.toString()
         val errorMsgLower = errorMsg.lowercase()
         val statusCode = extractStatusCode(classifiedError)
-        val provider = (classifiedError as? HttpStatusException)?.let { ProviderErrorMessage.extract(it.message) }
+        val responseBody = (classifiedError as? HttpStatusException)?.message
+        val diagnostic = ProviderErrorMessage.extractDiagnostic(statusCode, responseBody)
+        val provider = diagnostic.providerMessage
 
         if (statusCode == 0 && classifiedError !is HttpStatusException) {
             // 先检查整条链的超时，再识别可能包裹超时的连接关闭或重置。
@@ -164,8 +177,12 @@ object ErrorNormalizer {
             if (causes.any(::isTransportFailure)) return NormalizedError.Network(technicalMessage = errorMsg)
         }
 
+        if (ProviderErrorMessage.isQuotaExhaustion(diagnostic, responseBody)) {
+            return NormalizedError.QuotaExceeded(errorMsg, provider, diagnostic)
+        }
+
         if (isAuthError(classifiedError, statusCode, errorMsgLower)) {
-            return NormalizedError.Auth(technicalMessage = "$statusCode: $errorMsg", providerMessage = provider)
+            return NormalizedError.Auth(technicalMessage = "$statusCode: $errorMsg", providerMessage = provider, providerDiagnostic = diagnostic)
         }
 
         if (isRateLimitError(classifiedError, statusCode, errorMsgLower)) {
@@ -174,30 +191,31 @@ object ErrorNormalizer {
                 technicalMessage = errorMsg,
                 retryAfter = retryAfter,
                 providerMessage = provider,
+                providerDiagnostic = diagnostic,
             )
         }
 
         if (isQuotaError(errorMsgLower)) {
-            return NormalizedError.QuotaExceeded(technicalMessage = errorMsg, providerMessage = provider)
+            return NormalizedError.QuotaExceeded(technicalMessage = errorMsg, providerMessage = provider, providerDiagnostic = diagnostic)
         }
 
         if (statusCode == 408 || isTimeoutError(classifiedError, errorMsgLower)) {
-            return NormalizedError.Timeout(technicalMessage = errorMsg, providerMessage = provider)
+            return NormalizedError.Timeout(technicalMessage = errorMsg, providerMessage = provider, providerDiagnostic = diagnostic)
         }
 
         if (statusCode in 400..499) {
-            return NormalizedError.InvalidRequest(technicalMessage = errorMsg, providerMessage = provider)
+            return NormalizedError.InvalidRequest(technicalMessage = errorMsg, providerMessage = provider, providerDiagnostic = diagnostic)
         }
 
         if (statusCode >= 500) {
-            return NormalizedError.ServerError(technicalMessage = errorMsg, providerMessage = provider)
+            return NormalizedError.ServerError(technicalMessage = errorMsg, providerMessage = provider, providerDiagnostic = diagnostic)
         }
 
         if (classifiedError is HttpStatusException && isNetworkError(classifiedError, errorMsgLower)) {
-            return NormalizedError.Network(technicalMessage = errorMsg)
+            return NormalizedError.Network(errorMsg, provider, diagnostic)
         }
 
-        return NormalizedError.Unknown(technicalMessage = errorMsg, providerMessage = provider)
+        return NormalizedError.Unknown(technicalMessage = errorMsg, providerMessage = provider, providerDiagnostic = diagnostic)
     }
 
     private fun causeChain(error: Throwable): List<Throwable> {
@@ -287,6 +305,9 @@ object ErrorNormalizer {
             msg.contains("余额不足") ||
             msg.contains("额度") ||
             msg.contains("insufficient balance") ||
+            msg.contains("insufficient_balance") ||
+            msg.contains("balance_not_enough") ||
+            msg.contains("credit balance is too low") ||
             msg.contains("limit exceeded") ||
             msg.contains("insufficient_quota") ||
             msg.contains("billing")

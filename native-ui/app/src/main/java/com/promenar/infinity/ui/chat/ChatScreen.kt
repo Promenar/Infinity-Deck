@@ -91,6 +91,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
@@ -1039,7 +1040,7 @@ fun ChatScreenContent(
             hubEntries.filter { it.available }.map { it.page }.ifEmpty { listOf(ChatPage.Run) }
         }
         val stackedInspectorPage = state.inspectorPages.lastOrNull()?.takeIf { state.inspectorPages.size > 1 }
-        val renderInspectorBody: @Composable (ChatPage, Boolean) -> Unit = { shownRoot, collapseOnAction ->
+        val renderInspectorBody: @Composable (ChatPage, Boolean, Boolean) -> Unit = { shownRoot, collapseOnAction, animateTabSwitch ->
             val activeRoot = shownRoot.takeIf { it in availableInspectorPages } ?: availableInspectorPages.first()
             val outerPagerState = com.promenar.infinity.ui.common.rememberPanelTabPagerState(
                 tabs = availableInspectorPages,
@@ -1050,8 +1051,9 @@ fun ChatScreenContent(
                     }
                 },
                 key = uiState.session?.id,
+                animateSelection = animateTabSwitch,
             )
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().clipToBounds()) {
                 androidx.compose.foundation.pager.HorizontalPager(
                     state = outerPagerState,
                     beyondViewportPageCount = 0,
@@ -1060,7 +1062,7 @@ fun ChatScreenContent(
                     modifier = Modifier.fillMaxSize(),
                 ) { pageIndex ->
                     val page = availableInspectorPages[pageIndex]
-                    Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxSize().clipToBounds()) {
                         when (page) {
                             ChatPage.Run -> ChatInspectorRunTab(
                                 pendingApprovals = pendingApprovals,
@@ -1968,6 +1970,10 @@ fun ChatScreenContent(
                     animationSpec = tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate),
                     label = "chat_inspector_width",
                 )
+                val latestInspectorWidth by rememberUpdatedState(inspectorWidth)
+                val inspectorWidthSettled by remember {
+                    derivedStateOf { animatedInspectorWidth == latestInspectorWidth }
+                }
                 com.promenar.infinity.ui.common.ReportInfinityNoticeHorizontalClearance(
                     endOffset = animatedInspectorWidth + inspectorEnd + 12.dp,
                     enabled = inspectorRoot != null,
@@ -2024,7 +2030,7 @@ fun ChatScreenContent(
                             backdrop = chatBackdrop,
                             onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
                         ) {
-                            renderInspectorBody(shownRoot, false)
+                            renderInspectorBody(shownRoot, false, inspectorWidthSettled)
                         }
                     }
                     // 收起后右缘常驻边缘条，是检视器唯一的开合入口；正文列表末端已让出它的宽度。长按可上下拖动。
@@ -2115,7 +2121,7 @@ fun ChatScreenContent(
                         backdrop = chatBackdrop,
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        renderInspectorBody(shownRoot, true)
+                        renderInspectorBody(shownRoot, true, true)
                     }
                 }
             }

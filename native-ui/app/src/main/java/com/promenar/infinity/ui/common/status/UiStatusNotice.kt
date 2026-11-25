@@ -27,10 +27,18 @@ data class UiStatusNotice(
     val technical: String? = null,
     /** 已清洗的外部原因（如服务商错误说明），作为本地化文案下方的补充说明原样展示；不含技术诊断。 */
     val detail: String? = null,
+    /** 上游 HTTP 状态码（如 402 / 429），仅作为结构化元信息供错误卡片折叠芯片展示。 */
+    val httpStatus: Int? = null,
+    /** 上游结构化错误码（如 1008 / insufficient_quota），已做白名单字符清洗。 */
+    val errorCode: String? = null,
+    /** 已脱敏的上游原始错误负载片段，供用户手动展开诊断与复制；永不进入日志字符串。 */
+    val rawDiagnostic: String? = null,
 ) {
     override fun toString(): String =
         "UiStatusNotice(severity=$severity, code=$code, formatArgCount=${formatArgs.size}, " +
-            "hasTechnical=${technical != null}, hasDetail=${detail != null})"
+            "hasTechnical=${technical != null}, hasDetail=${detail != null}, " +
+            "httpStatus=$httpStatus, hasErrorCode=${errorCode != null}, " +
+            "hasRawDiagnostic=${rawDiagnostic != null})"
 }
 
 /**
