@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.chat.manager
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.production.PRODUCTION_COST_ALERT_COUNT
 import org.junit.Test
 
 class SystemPromptSectionsMediaTest {
@@ -9,8 +10,8 @@ class SystemPromptSectionsMediaTest {
             val prompt = SystemPromptSections.toolGuidance(setOf(name), false)
             assertThat(prompt).contains("### Media")
             assertThat(prompt).contains("media/<yyyy-MM-dd>/")
-            assertThat(prompt).contains("![brief description](workspace path)")
-            assertThat(prompt).contains("[name](workspace path)")
+            assertThat(prompt).contains("![说明](路径)")
+            assertThat(prompt).contains("[名称](路径)")
             assertThat(prompt).contains("base64")
             assertThat(prompt).contains("遵循运行环境段的成果文件落点")
         }
@@ -25,13 +26,13 @@ class SystemPromptSectionsMediaTest {
     @Test fun `媒体分节说明默认单列与gallery、carousel块的用法`() {
         val prompt = SystemPromptSections.toolGuidance(setOf("read_file"), false)
         val media = prompt.substringAfter("### Media")
-        assertThat(media).contains("shown on its own at its position in the text")
-        assertThat(media).contains("```gallery")
-        assertThat(media).contains("grid")
-        assertThat(media).contains("```carousel")
-        assertThat(media).contains("swipeable viewer")
-        assertThat(media).contains("one `![brief description](workspace path)` per line")
-        assertThat(media).contains("Do not use these blocks when each image needs its own paragraph of text")
+        assertThat(media).contains("默认逐条显示")
+        assertThat(media).contains("图片网格用 ```gallery")
+        assertThat(media).contains("按顺序滑动查看用 ```carousel")
+        assertThat(media).contains("每行一条 `![说明](路径)`")
+        assertThat(media).contains("逐图讲解时单独展示")
+        assertThat(media).contains("https://workspace-media.infinity.invalid/workspace/")
+        assertThat(media).contains("逐段 URL 编码")
     }
     @Test fun `无媒体相关工具与generic不增加分节`() {
         listOf(emptySet(), setOf("calculator"), setOf("web_fetch"), setOf("get_plan")).forEach {
@@ -44,14 +45,13 @@ class SystemPromptSectionsMediaTest {
         assertThat(basic).doesNotContain("`view_media`")
         assertThat(basic).doesNotContain("`media_fetch`")
         val full = SystemPromptSections.toolGuidance(setOf("view_media", "media_fetch"), false)
-        listOf("`view_media`", "`frames`", "`interval_seconds`", "time range", "`media_fetch`", "tool steps").forEach { assertThat(full).contains(it) }
+        listOf("`view_media`", "`frames`", "`interval_seconds`", "重看指定时段", "`media_fetch`", "工具步骤中已展示的媒体也可引用").forEach { assertThat(full).contains(it) }
     }
-    @Test fun `其它分节内容与已锁定基线一致`() {
+    @Test fun `工作区文件与计划说明与已锁定基线一致`() {
         val actual = SystemPromptSections.toolGuidance(setOf("read_file", "initialize_plan"), false)
-        val progressGuidance = "- Before starting a group of tool calls or changing direction, tell the user what you are doing in one sentence. One sentence covers a batch of parallel calls; avoid filler and repeating tool results."
         val expected = javaClass.getResource("/media-d-tool-guidance-before.txt")!!.readText()
-            .replace("- Every tool result", "$progressGuidance\n- Every tool result")
-        assertThat(actual.substringBefore("\n### Media").trimEnd()).isEqualTo(expected.trimEnd())
+        assertThat(actual.substringAfter("### Workspace Files").substringBefore("\n### Media").trimEnd())
+            .isEqualTo(expected.substringAfter("### Workspace Files").trimEnd())
     }
 
     @Test fun `默认落点提示区分技能挂载与用户挂载且支持运行模式呈现`() {
@@ -95,9 +95,16 @@ class SystemPromptSectionsMediaTest {
 
     @Test fun `媒体引用明确禁止转成相对路径或放进Markdown表格并指引ComfyUI提交器契约`() {
         val prompt = SystemPromptSections.toolGuidance(setOf("read_file", "comfy_run_workflow"), false)
-        assertThat(prompt).contains("never rewrite them into `../` relative paths")
-        assertThat(prompt).contains("never put `![...](path)` inside a Markdown table cell")
+        assertThat(prompt).contains("禁用 `../`、base64 与表格里的媒体引用")
         assertThat(prompt).contains("references/comfyui-submitters.md")
+    }
+
+    @Test fun `长片制作保留继续生成前的提醒且独立预演沿用专用工具指引`() {
+        val production = SystemPromptSections.toolGuidance(setOf("production_generate"), false)
+        assertThat(production).contains("生成达 $PRODUCTION_COST_ALERT_COUNT 次时先告知用户再继续")
+        assertThat(production).contains("references/production.md")
+        val previs = SystemPromptSections.toolGuidance(setOf("production_previs"), false)
+        assertThat(previs).doesNotContain("references/production.md")
     }
 
 }

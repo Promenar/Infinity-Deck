@@ -7,6 +7,7 @@
 | 工具 | 运行位置 | 何时使用 |
 |---|---|---|
 | `shell_exec` | 本会话固定运行模式：内置模式为系统 `/system/bin/sh`，Linux 模式为应用内 Alpine | 本机命令的默认入口 |
+| `git_exec` | Sideload arm64 的原生 Git 进程，绕过 `proot` | 常规 Git 仓库读写、远端拉取与推送的首选入口 |
 | `python_exec` | 内置模式为打包 Python（仅 arm64），Linux 模式为 Linux 的 python3 | 直接执行一段 Python 源码；代码较长时写入文件再用 `shell_exec` 运行 |
 | `termux_exec` | 同机的 Termux 应用，仅内置模式且用户已启用集成时提供 | 需要 apt 包、编译工具链、原生 Python 扩展 |
 | `ssh_exec` | 用户在设置中保存的远端主机 | 远程运维；每条命令相互独立 |
@@ -30,8 +31,8 @@
 
 其它要点：
 
-- Sideload arm64-v8a 将 APK 提供的 `git`、`ffmpeg`、`ffprobe`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync` 置于内置及 Linux 命令的 `PATH` 前端。用 `command -v` 查看当前入口。Linux 处理 `/etc`、`/usr` 等系统路径时显式调用 Alpine 的工具。
 - 常规 Git 操作用 `git_exec`，例如 `{"args":["status","--short"],"cwd":"."}`。Linux 的 cwd 使用会话挂载路径，内置模式使用授权真实路径。HTTPS 凭据与 SSH 主机都来自应用设置。Git 的外部命令、仓库自定义钩子、过滤器和配置包含受限。宿主模式会拒绝不支持的仓库配置或参数。
+- Linux 的 `gh` 经应用代理使用已保存的 GitHub 凭据。未配置时调用 `request_secret`（`git_credential`，主机 `github.com`），卡片也提供浏览器登录。凭据由用户在卡片或浏览器提交。
 - `git_exec` 在按风险审批档区分只读与写入，私有工作区执行后对账并刷新 Git 状态。传入 `background: true` 可在任务面板或用 `job_status`、`job_stop` 管理。
 - 内置 `python3` 和 `pip` 由当前 shell 函数提供。子脚本可通过 `sys.executable` 或 `$INFINITY_PYTHON` 运行 Python。Play 的 Git 仍通过 `python3 -m infinity_git` 执行。
 - 内置模式下，命令与文件工具完全共用真实 Android 规范路径，`pwd`、`echo "$INFINITY_WORKSPACE"` 与文件工具返回路径一致，命令输出直接保留真实路径（不再脱敏为字面量 `$INFINITY_WORKSPACE`）。
@@ -42,6 +43,12 @@
 - 写入工作区的大日志或大文本用 `read_file` 分段读取：单文件最多 100 MiB，每次最多 2000 行；按结果“后续”行给出的 `startLine`（超长行另带 `lineByteOffset`）继续读，直到显示“已到文件末尾”。
 - 命令直接读写工作区，删除或覆盖的文件无法恢复。应用工作区在命令结束后对账，结果的 `workspace_changes` 列出变化；自选目录工作区不对账。
 - **按风险审批档**下，经严格词法解析确认零副作用的只读 `shell_exec` 命令（如 `ls`/`pwd`/`cat`/`head`/`tail`/`stat`/`rg`/`grep`/只读 `find`/只读 `git`/`ffprobe`/`python3 --version`）自动免批，其余命令与脚本逐条审批；**免批准档**下常规命令免批。针对根目录、共享存储根、应用数据根或未展开根目录变量的毁灭性命令在两档下均直接硬拦截（`EXEC_BLOCKED_CATASTROPHIC_COMMAND`）且不可审批。审批被拒后不重试，也不改换工具或环境绕过。
+
+## 原生宿主工具加速桥与显式调用边界
+
+- **Sideload arm64** 随 APK 提供 `git`、`ffmpeg`、`ffprobe`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync`。宿主桥就绪时，Linux 将 `/run/infinity/bin` 放在 `PATH` 最前，经 Unix socket 将调用转给宿主原生进程，绕过 `proot` 的系统调用拦截。高 I/O 任务通常远快于 Alpine 版。搜索、遍历与归档优先用 `rg`、`fd`、`bsdtar` 替代 `grep`、`find`、`tar`，压缩用 `zstd`，同步用 `rsync`。内置模式也通过前置 `PATH` 提供原生工具。
+- 工具表现慢时，在脚本运行环境中用 `command -v <工具>` 检查入口。Linux 命中宿主桥时应返回 `/run/infinity/bin/<工具>`。硬编码 `/usr/bin/git`、`/usr/bin/rsync`、`/usr/bin/ffmpeg` 或用 `env -i PATH=/usr/bin:/bin` 会在有对应 Alpine 包时退回经 `proot` 执行。可改为按命令名调用并将 `/run/infinity/bin` 保持在 `PATH` 最前。清空环境还会丢失桥接会话所需变量，脚本须继承桥接环境。
+- 宿主桥将显式路径限定在会话授权的 `/workspace`、`/home/session`、`/mnt/<别名>`、`/mnt/skills`、`/root`、`/tmp` 等实际绑定目录，并按参数白名单校验。操作 `/etc`、`/usr` 等 Alpine 系统路径，或授权任务确需 `rg --pre`、`rsync -e`、可信仓库的自定义 Git 钩子或过滤器时，可显式运行对应 Alpine 工具，如 `/usr/bin/rg` 或 `/usr/bin/git`。缺包时按需 `apk add`。仍须遵守会话权限与审批，审批被拒后不可换入口重试。
 
 ## 结果字段
 

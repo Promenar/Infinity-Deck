@@ -345,6 +345,11 @@ class ContextBuilder(
         else -> params.retrievalMode
     }
 
+    /** 会话模式可展示已给定的目录快照，检索仍按 AUTO 执行。 */
+    private fun includesKnowledgeCatalog(params: ContextBuilderParams): Boolean =
+        if (params.session.options.toolsEnabled) contextRetrievalMode(params) != AgentRetrievalMode.AUTO
+        else params.retrievalMode != AgentRetrievalMode.AUTO
+
     private fun computeEffectiveRagOptions(params: ContextBuilderParams) =
         com.promenar.infinity.data.rag.resolveEffectiveRagOptions(
             params.session.ragOptions, params.ragOptions, params.agentMemoryPolicy,
@@ -463,6 +468,9 @@ class ContextBuilder(
     private suspend fun buildSystemPrompt(params: ContextBuilderParams): List<com.promenar.infinity.data.generation.ContextPromptSection> {
         val sb = StringBuilder()
         val session = params.session
+        val agentToolsEnabled = session.options.toolsEnabled
+        val toolNames = params.availableToolNames
+        val runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN
         val sections = mutableListOf<com.promenar.infinity.data.generation.ContextPromptSection>()
         var start = 0
         fun finish(id: String) {
@@ -483,40 +491,45 @@ class ContextBuilder(
         }
         finish("session_instructions")
 
-        SystemPromptSections.projectRules(projectRulesReader.read(params.workspace)).takeIf(String::isNotEmpty)?.let {
-            if (sb.isNotEmpty()) sb.appendLine()
-            sb.append(it)
-        }
-        finish("project_rules")
+        if (agentToolsEnabled) {
+            SystemPromptSections.projectRules(projectRulesReader.read(params.workspace)).takeIf(String::isNotEmpty)?.let {
+                if (sb.isNotEmpty()) sb.appendLine()
+                sb.append(it)
+            }
+            finish("project_rules")
 
-        if (sb.isNotEmpty()) sb.appendLine()
-        sb.append(SystemPromptSections.runtimeEnvironment(
-            params.runtimeModelId,
-            mode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode),
-            runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
-            workspace = params.workspace,
-            builtinWorkspacePath = params.builtinWorkspacePath,
-            builtinUserSkillsPath = params.builtinUserSkillsPath,
-        ))
-        finish("runtime")
-        sb.appendLine()
-        sb.append(SystemPromptSections.permissions(
-            com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode),
-            runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
-        ))
-        finish("permissions")
+            val mode = com.promenar.infinity.domain.model.ExecutionModeCodec.parseOrWorkspace(session.executionMode)
+            if (sb.isNotEmpty()) sb.appendLine()
+            sb.append(SystemPromptSections.runtimeEnvironment(
+                params.runtimeModelId,
+                mode = mode,
+                runMode = runMode,
+                workspace = params.workspace,
+                builtinWorkspacePath = params.builtinWorkspacePath,
+                builtinUserSkillsPath = params.builtinUserSkillsPath,
+            ))
+            finish("runtime")
+            sb.appendLine()
+            sb.append(SystemPromptSections.permissions(mode, runMode = runMode))
+            finish("permissions")
+        } else {
+            if (sb.isNotEmpty()) sb.appendLine()
+            sb.append(SystemPromptSections.chatRuntimeEnvironment(params.runtimeModelId))
+            finish("runtime")
+        }
 
         // 3. 工具与工作区运行时契约
-        val toolGuidance = when (val names = params.availableToolNames) {
-            null -> if (session.options.toolsEnabled) SystemPromptSections.toolGuidance(emptySet(), generic = true) else ""
-            else -> if (names.isEmpty()) "" else SystemPromptSections.toolGuidance(
-                names,
+        val toolGuidance = when {
+            toolNames?.isEmpty() == true || (!agentToolsEnabled && toolNames == null) -> ""
+            !agentToolsEnabled || toolNames == null -> SystemPromptSections.toolGuidance(emptySet(), generic = true)
+            else -> SystemPromptSections.toolGuidance(
+                toolNames,
                 generic = false,
                 workspace = params.workspace,
                 workspaceChanged = true,
                 workspaceSkillsShadowed = false,
                 mounts = params.mounts,
-                runMode = session.runMode ?: com.promenar.infinity.domain.model.SessionRunMode.BUILTIN,
+                runMode = runMode,
                 builtinWorkspacePath = params.builtinWorkspacePath,
                 builtinPrivateWorkspacePath = params.builtinPrivateWorkspacePath,
             )
@@ -528,7 +541,7 @@ class ContextBuilder(
         finish("tool_guidance")
 
         // 3.1 内置与文件技能目录：只在模型有读取入口时披露元数据，正文按需加载。
-        if (SystemPromptSections.canReadSkills(params.availableToolNames)) {
+        if (agentToolsEnabled && SystemPromptSections.canReadSkills(toolNames)) {
             SystemPromptSections.skillCatalog(params.availableSkills, modelContextTokens = params.modelContextTokens)
                 .takeIf(String::isNotEmpty)?.let {
                     sb.appendLine()
@@ -538,14 +551,15 @@ class ContextBuilder(
         finish("skill_catalog")
 
         // 范围来自配置；目录中的数量、标题与索引状态属于本轮资料快照。
-        if (contextRetrievalMode(params) != AgentRetrievalMode.AUTO) {
+        if (includesKnowledgeCatalog(params)) {
             val options = computeEffectiveRagOptions(params)
             sb.appendLine()
             sb.appendLine("## Knowledge Catalog")
             sb.appendLine("- Document scope: ${options.effectiveDocumentScope}; history scope: ${options.effectiveMemoryScope}.")
             sb.appendLine("- Selected documents: ${options.activeDocIds.sorted().joinToString(", ")}")
             sb.appendLine("- Selected folders: ${options.activeFolderIds.sorted().joinToString(", ")}")
-            sb.appendLine("- Material titles and index status, when available, are in the user turn context. Use knowledge tools to inspect current material.")
+            val toolHint = if (agentToolsEnabled) " Use knowledge tools to inspect current material." else ""
+            sb.appendLine("- Material titles and index status, when available, are in the user turn context.$toolHint")
         }
         finish("knowledge_catalog")
 
@@ -557,7 +571,7 @@ class ContextBuilder(
             sb.appendLine("<history_summary>")
             sb.appendLine(summary.trim())
             sb.appendLine("</history_summary>")
-            if (params.availableToolNames == null || params.availableToolNames.containsAll(setOf("session_read", "session_search"))) {
+            if (agentToolsEnabled && (toolNames == null || toolNames.containsAll(setOf("session_read", "session_search")))) {
                 sb.appendLine(com.promenar.infinity.data.generation.HISTORY_RECALL_HINT)
             }
         }
@@ -585,7 +599,7 @@ class ContextBuilder(
                 appendLine("[System Time: $now (${java.util.TimeZone.getDefault().id})]")
             }
             val references = buildString {
-                if (contextRetrievalMode(params) != AgentRetrievalMode.AUTO && params.knowledgeCatalog.isNotBlank()) {
+                if (includesKnowledgeCatalog(params) && params.knowledgeCatalog.isNotBlank()) {
                     appendLine("### Available Material Snapshot")
                     appendLine(params.knowledgeCatalog)
                 }

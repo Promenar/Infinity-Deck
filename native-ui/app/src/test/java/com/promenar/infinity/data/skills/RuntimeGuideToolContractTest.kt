@@ -5,6 +5,7 @@ import com.google.common.truth.Truth.assertWithMessage
 import com.promenar.infinity.domain.model.ExecutionMode
 import com.promenar.infinity.domain.tool.ToolExecutionPolicy
 import com.promenar.infinity.startup.startupDiagnosticTools
+import com.promenar.infinity.ui.chat.manager.SystemPromptSections
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
 import com.promenar.infinity.ui.chat.manager.skills.*
 import io.mockk.mockk
@@ -24,12 +25,11 @@ class RuntimeGuideToolContractTest {
     private val guide = runtimeGuideMainDirectory().resolve("assets/builtin_skills/infinity-deck/SKILL.md")
 
     @Test fun `历史用户附件重看说明同时存在于系统媒体段和运行指南`() {
-        val instruction = "已保存到工作区的历史用户图片和文档以工作区路径提供"
-        val system = source.resolve("ui/chat/manager/SystemPromptSections.kt").readText()
-        assertThat(system).contains(instruction)
-        assertThat(guide.readText()).contains(instruction)
-        assertThat(guide.readText()).contains("`view_media` 查看图片")
-        assertThat(guide.readText()).contains("`read_file` 读取文档")
+        val media = SystemPromptSections.toolGuidance(setOf("view_media", "read_file"), generic = false)
+        assertThat(media).contains("历史用户图片与文档以工作区路径提供")
+        assertThat(media).contains("`view_media` 查看图片")
+        assertThat(media).contains("`read_file` 读取文档")
+        assertThat(guide.readText()).contains("历史图片用 `view_media`、文档用 `read_file` 按工作区路径重看")
     }
 
     private fun tools(): List<SkillDefinition> {

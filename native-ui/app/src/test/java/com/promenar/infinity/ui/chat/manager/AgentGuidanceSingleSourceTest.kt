@@ -19,7 +19,7 @@ class AgentGuidanceSingleSourceTest {
     private fun occurrences(text: String, fragment: String) = text.windowed(fragment.length).count { it == fragment }
 
     @Test fun `Linux 会话的环境说明只随 shell_exec 工具说明出现一次`() {
-        val marker = "Sideload arm64 将 APK 提供的"
+        val marker = "绕过 proot 原生执行"
         val shell = SessionRunModeToolDefinitions.forSession(builtin("shell_exec"), SessionRunMode.LINUX).function.description
         val python = SessionRunModeToolDefinitions.forSession(builtin("python_exec"), SessionRunMode.LINUX).function.description
         val prompt = SystemPromptSections.toolGuidance(setOf("shell_exec", "python_exec", "read_file"), false, runMode = SessionRunMode.LINUX)
@@ -60,6 +60,16 @@ class AgentGuidanceSingleSourceTest {
         assertThat(git).contains("HTTPS")
         assertThat(git).contains("SSH")
         assertThat(git).contains("/home/session")
-        assertThat(SystemPromptSections.LINUX_SHELL_GUIDANCE).contains("/usr/bin/rg")
+    }
+
+    @Test fun `Linux shell 描述保留原生加速、排查和 Alpine 显式调用边界`() {
+        val shell = SessionRunModeToolDefinitions.forSession(builtin("shell_exec"), SessionRunMode.LINUX).function.description
+        listOf("git", "ffmpeg", "ffprobe", "rg", "fd", "jq", "sqlite3", "zstd", "bsdtar", "rsync",
+            "宿主桥就绪时", "/run/infinity/bin", "PATH 最前", "绕过 proot 原生执行", "git_exec", "硬编码 /usr/bin/...",
+            "重置 PATH", "已安装的 Alpine 版",
+            "command -v", "/workspace", "/home/session", "/mnt/<别名>", "/mnt/skills", "/root", "/tmp",
+            "/etc", "/usr", "白名单外参数", "/usr/bin/rg", "遵守会话审批")
+            .forEach { assertThat(shell).contains(it) }
+        assertThat(shell.length).isAtMost(1000)
     }
 }

@@ -11,18 +11,16 @@ class SystemPromptSectionsSkillsTest {
     @Test fun `Linux 代理变量只供单条命令主动使用并保护凭据`() {
         val guidance = SystemPromptSections.LINUX_SHELL_GUIDANCE
         assertThat(guidance).contains("单条公网命令")
-        assertThat(guidance).contains("\$INFINITY_PROXY_HTTP")
-        assertThat(guidance).contains("\$INFINITY_PROXY_SOCKS")
-        assertThat(guidance).contains("\$INFINITY_PROXY_NO_PROXY")
         assertThat(guidance).contains("禁止打印、记录或上传代理凭据")
+        assertThat(guidance).contains("references/command-execution.md")
+        assertThat(guidance).doesNotContain("\$INFINITY_PROXY_HTTP")
     }
 
     @Test fun `通用与完整工具引导均要求调用前给出简短进展`() {
         for (generic in listOf(true, false)) {
             val prompt = SystemPromptSections.toolGuidance(setOf("read_file"), generic)
-            assertThat(prompt).contains("Before starting a group of tool calls or changing direction")
-            assertThat(prompt).contains("one sentence")
-            assertThat(prompt).contains("parallel calls")
+            assertThat(prompt).contains("调用前或改变方向时，用一句话告知用户")
+            assertThat(prompt).contains("独立调用可并行")
         }
     }
 
