@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.76.1-beta] - 2026-11-25
+
+- **修复 Git 与 GitHub HTTPS 代理客户端未接入运行中内置代理的问题（[GitRemoteHttpClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/git/remote/GitRemoteHttpClient.kt)、[GitRemoteHttpClientTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/git/remote/GitRemoteHttpClientTest.kt)、[InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt)）**：
+  - 为 `GitCredentialProxy`、`GitHubApiForwarder` 与 `OAuthDeviceLogin` 新增专用出站路由装配 `GitRemoteHttpClient`：Tailnet 主机继续经内置 Tailscale 转发、回环与私网/局域网目标保持直连、其余公网目标（如 `github.com`）在内置代理（`libnxproxy.so`）运行时自动经内置代理出站（关闭时回退系统默认选择器）；代理认证器与网络拦截器按代理地址和 realm 严格隔离（并拦截 HTTPS 隧道内源站伪造 407），保持 `ComfyModule`、`WebFetchSkill`、`WorkspaceMediaDownloader` 与 `LinuxMirrorHttpClient` 既有客户端不受影响。
+
 ## [0.76.0-beta] - 2026-11-25
 
 - **单 APK 原生 10 工具加速链、通用宿主工具转发桥与一等 `git_exec` 工具（仅侧载 `arm64-v8a`，[build-android-host-tools.sh](native-ui/app/host-tools/build-android-host-tools.sh)、[tool-shim.c](native-ui/app/host-tools/tool-shim.c)、[git-ssh-helper.c](native-ui/app/host-tools/git-ssh-helper.c)、[PackagedHostTools.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/PackagedHostTools.kt)、[HostToolBridgeServer.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/HostToolBridgeServer.kt)、[HostToolPathTranslator.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/HostToolPathTranslator.kt)、[GitHostConfig.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/GitHostConfig.kt)、[GitRepositoryGuard.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/GitRepositoryGuard.kt)、[GitHostBroker.kt](native-ui/app/src/main/java/com/promenar/infinity/data/exec/GitHostBroker.kt)、[GitCredentialProxy.kt](native-ui/app/src/main/java/com/promenar/infinity/data/git/remote/GitCredentialProxy.kt)、[LinuxToolBridgeConfig.kt](native-ui/app/src/main/java/com/promenar/infinity/data/linux/LinuxToolBridgeConfig.kt)、[GitExecSkill.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/GitExecSkill.kt)、[SystemPromptSections.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/SystemPromptSections.kt)）**：
