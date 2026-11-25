@@ -263,7 +263,17 @@ fun InfinityPopover(
         },
         properties = PopupProperties(focusable = true, dismissOnBackPress = dismissible, dismissOnClickOutside = dismissible),
     ) {
-        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+        CompositionLocalProvider(
+            LocalRowHeightGroup provides null,
+            LocalInfinityOverlayDismiss provides if (dismissible) {
+                {
+                    anchor.markDismissed()
+                    onDismissRequest()
+                }
+            } else {
+                null
+            },
+        ) {
             AnimatedVisibility(
                 visibleState = visibleState,
                 enter = fadeIn(tween(InfinityMotion.DurationShort)) +

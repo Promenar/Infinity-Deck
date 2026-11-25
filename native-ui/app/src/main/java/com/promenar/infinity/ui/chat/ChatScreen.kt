@@ -203,12 +203,12 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.ui.common.ComposerKeyAction
 import com.promenar.infinity.ui.common.infinityContextClickable
+import com.promenar.infinity.ui.common.infinityImeSafeKeyEvent
 import com.promenar.infinity.ui.common.resolveComposerKeyAction
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
@@ -3718,7 +3718,7 @@ fun ChatInputBar(
                 modifier = Modifier.fillMaxWidth()
                     .animateContentSize(InfinityMotion.contentSizeSpec())
                     .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                    .onPreviewKeyEvent { keyEvent ->
+                    .infinityImeSafeKeyEvent { keyEvent ->
                         when (
                             resolveComposerKeyAction(
                                 key = keyEvent.key,

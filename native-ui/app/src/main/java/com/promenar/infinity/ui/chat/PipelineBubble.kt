@@ -25,10 +25,10 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import com.promenar.infinity.ui.common.InlineEditorKeyAction
 import com.promenar.infinity.ui.common.infinityContextClickable
+import com.promenar.infinity.ui.common.infinityImeSafeKeyEvent
 import com.promenar.infinity.ui.common.resolveInlineEditorKeyAction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -2647,7 +2647,7 @@ private fun UserMessageInlineEditorCard(
                         .fillMaxWidth()
                         .heightIn(min = 68.dp, max = 220.dp)
                         .focusRequester(focusRequester)
-                        .onPreviewKeyEvent { keyEvent ->
+                        .infinityImeSafeKeyEvent { keyEvent ->
                             when (
                                 resolveInlineEditorKeyAction(
                                     key = keyEvent.key,
@@ -2668,6 +2668,7 @@ private fun UserMessageInlineEditorCard(
                                     onSubmit(buildPayload())
                                     true
                                 }
+                                InlineEditorKeyAction.CONSUME_NOOP -> true
                                 InlineEditorKeyAction.PASS_THROUGH -> false
                             }
                         }

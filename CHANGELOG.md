@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.77.3-beta] - 2026-11-26
+
+- **修复中文软键盘（如微信输入法）在非组词态拦截硬件 `Enter` / `Esc` 导致聊天发送与搜索退场失效（[InfinityKeyboard.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityKeyboard.kt)、[InfinitySearchBar.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinitySearchBar.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)、[InfinityPopover.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityPopover.kt)、[InfinityBottomSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityBottomSheet.kt)、[InfinityFullscreenDialog.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityFullscreenDialog.kt)、[InfinityPointerAndKeyboardTest.kt](native-ui/app/src/test/java/com/promenar/infinity/ui/common/InfinityPointerAndKeyboardTest.kt)）**：
+  - 新增纯 Compose `commonMain` 修饰符 `infinityImeSafeKeyEvent`（组合 `onInterceptKeyBeforeSoftKeyboard` 与 `onPreviewKeyEvent`）并同步拦截已消费快捷键的配对 `KeyUp`；在微信输入法等中文 IME 处于拼音选词组词态（`TextFieldValue.composition != null`）时一律放行交由输入法取消候选或上屏，非组词态在 Pre-IME 阶段优先处理裸 `Enter` 发送 / 空白防插空行、`Ctrl/Cmd+Enter` 内联提交与 `Esc` 退出搜索或失焦；全站弹层透传 `LocalInfinityOverlayDismiss`，使弹层内空搜索框在非组词态按 `Esc` 可直接关闭外层 `InfinityPopover`、工作表或全屏弹窗。
+
 ## [0.77.2-beta] - 2026-11-25
 
 - **补齐真机验证检出的无焦点 `Esc` 返回与主标签页搜索退出边界（[MainActivity.kt](native-ui/app/src/main/java/com/promenar/infinity/MainActivity.kt)、[InfinityTabHeader.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityTabHeader.kt)、[InfinitySearchBar.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinitySearchBar.kt)、[AttachmentActionMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/AttachmentActionMenu.kt)、[GenerationStatsCard.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/GenerationStatsCard.kt)）**：

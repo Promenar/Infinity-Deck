@@ -42,7 +42,10 @@ fun InfinityFullscreenDialog(
             }
             onDispose {}
         }
-        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+        CompositionLocalProvider(
+            LocalRowHeightGroup provides null,
+            LocalInfinityOverlayDismiss provides onDismissRequest,
+        ) {
             Box(Modifier.fillMaxSize().infinityDismissOnEscape(onDismiss = onDismissRequest)) {
                 content()
             }

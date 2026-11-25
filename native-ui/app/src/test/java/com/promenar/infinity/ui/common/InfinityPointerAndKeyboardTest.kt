@@ -112,12 +112,24 @@ class InfinityPointerAndKeyboardTest {
             resolveComposerKeyAction(Key.Enter, KeyEventType.KeyDown, false, false, false, false, isComposing = true, canSubmit = true),
         )
         assertEquals(
-            ComposerKeyAction.PASS_THROUGH,
+            ComposerKeyAction.CONSUME_NOOP,
             resolveComposerKeyAction(Key.Enter, KeyEventType.KeyUp, false, false, false, false, isComposing = false, canSubmit = true),
+        )
+        assertEquals(
+            ComposerKeyAction.PASS_THROUGH,
+            resolveComposerKeyAction(Key.Enter, KeyEventType.KeyUp, isShiftPressed = true, false, false, false, isComposing = false, canSubmit = true),
         )
         assertEquals(
             ComposerKeyAction.DISMISS,
             resolveComposerKeyAction(Key.Escape, KeyEventType.KeyDown, false, false, false, false, isComposing = false, canSubmit = true),
+        )
+        assertEquals(
+            ComposerKeyAction.CONSUME_NOOP,
+            resolveComposerKeyAction(Key.Escape, KeyEventType.KeyUp, false, false, false, false, isComposing = false, canSubmit = true),
+        )
+        assertEquals(
+            ComposerKeyAction.PASS_THROUGH,
+            resolveComposerKeyAction(Key.Escape, KeyEventType.KeyDown, false, false, false, false, isComposing = true, canSubmit = true),
         )
     }
 
@@ -146,6 +158,14 @@ class InfinityPointerAndKeyboardTest {
         assertEquals(
             InlineEditorKeyAction.CANCEL,
             resolveInlineEditorKeyAction(Key.Escape, KeyEventType.KeyDown, false, false, false, false, isComposing = false, canSubmit = true),
+        )
+        assertEquals(
+            InlineEditorKeyAction.CONSUME_NOOP,
+            resolveInlineEditorKeyAction(Key.Escape, KeyEventType.KeyUp, false, false, false, false, isComposing = false, canSubmit = true),
+        )
+        assertEquals(
+            InlineEditorKeyAction.CONSUME_NOOP,
+            resolveInlineEditorKeyAction(Key.Enter, KeyEventType.KeyUp, false, isCtrlPressed = true, false, false, isComposing = false, canSubmit = true),
         )
     }
 

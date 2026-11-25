@@ -163,7 +163,10 @@ fun InfinityModalSheet(
         },
     ) {
         // 弹层内容不得继承父级分组卡片的等高登记表，避免打开面板时父页面列表行高度跳变。
-        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+        CompositionLocalProvider(
+            LocalRowHeightGroup provides null,
+            LocalInfinityOverlayDismiss provides if (properties.shouldDismissOnBackPress) onDismissRequest else null,
+        ) {
             InfinityWindowBackScope {
                 val handoff = if (contentDragsSheet) Modifier else Modifier.nestedScroll(NoSheetHandoff)
                 when (height) {
@@ -210,7 +213,10 @@ private fun InfinityCenteredSheet(
             usePlatformDefaultWidth = false,
         ),
     ) {
-        CompositionLocalProvider(LocalRowHeightGroup provides null) {
+        CompositionLocalProvider(
+            LocalRowHeightGroup provides null,
+            LocalInfinityOverlayDismiss provides if (properties.shouldDismissOnBackPress) onDismissRequest else null,
+        ) {
             InfinityWindowBackScope {
                 // 对话框窗口占满宽度；两侧留白点按同样视为点外部。
                 Box(

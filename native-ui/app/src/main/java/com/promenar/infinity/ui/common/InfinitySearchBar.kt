@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,7 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -95,10 +98,23 @@ fun InfinitySearchBar(
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
+                val overlayDismiss = LocalInfinityOverlayDismiss.current
+                var fieldValueState by remember { mutableStateOf(TextFieldValue(text = value)) }
+                val fieldValue = if (fieldValueState.text == value) {
+                    fieldValueState
+                } else {
+                    TextFieldValue(text = value, selection = TextRange(value.length))
+                }
+                SideEffect {
+                    if (fieldValueState.text != value) fieldValueState = fieldValue
+                }
                 // 输入区占满整条搜索框高度，点框内任意位置都能聚焦。
                 BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
+                    value = fieldValue,
+                    onValueChange = { next ->
+                        fieldValueState = next
+                        if (next.text != value) onValueChange(next.text)
+                    },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
                         color = MaterialTheme.colorScheme.onSurface,
@@ -112,9 +128,22 @@ fun InfinitySearchBar(
                     modifier = fieldModifier
                         .fillMaxWidth()
                         .fillMaxHeight()
-                        // 有显式退出回调或非空查询时消费 Esc；空内联搜索框放行冒泡给外层弹层/工作表关闭。
-                        .infinityDismissOnEscape(enabled = onEscape != null || value.isNotEmpty()) {
-                            if (onEscape != null) onEscape() else onValueChange("")
+                        // 中文输入法组词态放行 Esc 取消候选；非组词态在 Pre-IME 阶段优先退出搜索/清空查询/关闭外层弹层。
+                        .infinityImeSafeKeyEvent { event ->
+                            if (fieldValue.composition != null) return@infinityImeSafeKeyEvent false
+                            when {
+                                event.isPlainEscapeDown() -> {
+                                    when {
+                                        onEscape != null -> onEscape()
+                                        value.isNotEmpty() -> onValueChange("")
+                                        overlayDismiss != null -> overlayDismiss()
+                                        else -> focusManager.clearFocus()
+                                    }
+                                    true
+                                }
+                                event.isPlainEscapeUp() -> true
+                                else -> false
+                            }
                         }
                         .onFocusChanged { isFocused = it.isFocused }
                         .semantics { contentDescription = placeholder }
