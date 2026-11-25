@@ -24,6 +24,17 @@ object SystemPromptSections {
         }
     }
 
+    private fun StringBuilder.appendRuntimeIdentity(modelId: String?, role: String) {
+        appendLine("## Runtime Environment")
+        appendLine("- Environment: ${AppBrand.DISPLAY_NAME}")
+        appendLine("- 你是 ${AppBrand.DISPLAY_NAME} 的${role}，运行在 Android 应用内。")
+        modelId?.takeIf(String::isNotBlank)?.let { appendLine("- Model: $it") }
+    }
+
+    fun chatRuntimeEnvironment(modelId: String?): String = buildString {
+        appendRuntimeIdentity(modelId, "助手")
+    }
+
     fun runtimeEnvironment(
         modelId: String?,
         mode: com.promenar.infinity.domain.model.ExecutionMode = com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE,
@@ -51,10 +62,7 @@ object SystemPromptSections {
             else -> "\$INFINITY_WORKSPACE"
         }
         val userSkills = if (linux) "/mnt/skills" else builtinUserSkillsPath?.takeIf(String::isNotBlank) ?: "\$INFINITY_SKILLS"
-        appendLine("## Runtime Environment")
-        appendLine("- Environment: ${AppBrand.DISPLAY_NAME}")
-        appendLine("- 你是 ${AppBrand.DISPLAY_NAME} 的智能体，运行在 Android 应用内。")
-        modelId?.takeIf(String::isNotBlank)?.let { appendLine("- Model: $it") }
+        appendRuntimeIdentity(modelId, "智能体")
         appendLine("- 本会话运行模式：${if (linux) "Linux" else "内置"}；权限档：${if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) "按风险审批" else "免批准"}；Linux：${if (linuxAvailable) "可用" else "不可用"}。")
         appendLine("- 应用工作区：$root；" + if (linux) "私有会话另有 /home/session；命令起始目录以 INFINITY_WORKSPACE 为准。" else "文件工具与命令共用该真实路径；相对路径（不带前导 /）相对此目录，禁用 /skills、/session 等旧虚拟前缀。")
         appendLine("- 成果文件：已设定工作区时，遵循项目规则放入工作区内合适的子目录；未设定工作区时放入会话文件夹，并按用途使用子目录。")
@@ -65,30 +73,14 @@ object SystemPromptSections {
         appendLine("- 管理技能、规则或说明自身能力与权限时，先用 activate_skill(name=\"infinity-deck\") 读取内置指南；具体审批与关键运行数据规则见下方权限段。")
     }
 
-    private const val LINUX_PROXY_GUIDANCE =
-        "内置代理运行时，Linux 可在单条公网命令前设置 http_proxy=\"\$INFINITY_PROXY_HTTP\" " +
-        "https_proxy=\"\$INFINITY_PROXY_HTTP\" no_proxy=\"\$INFINITY_PROXY_NO_PROXY\"。" +
-        "需要 SOCKS5 远端解析时，将单条命令的代理地址改用 \$INFINITY_PROXY_SOCKS。" +
-        "仅在变量存在时使用，禁止打印、记录或上传代理凭据，禁用 set -x 和会回显凭据的详细日志。"
-
-    const val LINUX_SHELL_GUIDANCE = "shell_exec 在本会话固定使用 Alpine Linux（musl）。Sideload arm64 将 APK 提供的 git、ffmpeg、ffprobe、rg、fd、jq、sqlite3、zstd、bsdtar、rsync 置于 PATH 前端，直接使用。python3、pip、nodejs、npm 等其它软件可用 apk add 安装。" +
-        "会话专用空间为 /home/session，基础工作区挂载为 /workspace。INFINITY_WORKSPACE 指向命令的起始工作目录，分支 worktree 使用其绑定目录；普通会话通常使用 /workspace。" +
-        "真实路径挂载为 /mnt/<别名>，用户级技能为 /mnt/skills（INFINITY_SKILLS=/mnt/skills）；SAF 挂载不可见。" +
-        "文件工具与命令使用相同的 Linux 路径，相对路径相对当前会话的起始工作目录；/root、/etc 等绝对路径指向 Linux rootfs。" +
-        "/home/session 保存在 rootfs 之外，重置 Linux 不删除它；/root 不进入备份，重置会清空。文件元数据密集操作较慢。" +
-        "Linux 不可用时返回错误，请用户在会话中处理环境，不能自动改用系统 sh、打包 Python 或其它运行环境。" +
-        LINUX_PROXY_GUIDANCE +
-        "Linux 命令以本应用的 Android 用户运行，按风险审批档下严格解析的零副作用只读命令免批、其余命令逐条审批，免批准档常规命令免批；毁灭性根目录破坏命令在两档下均直接硬拦截且不可审批。" +
-        "宿主工具桥仅处理 /workspace、/home/session、/mnt/<别名>、/mnt/skills、/root 和 /tmp 内的路径。处理 /etc、/usr 等 Alpine 系统路径时，显式调用已安装的 Alpine 命令（如 /usr/bin/rg）。" +
-        "宿主原生 Git 同时支持 HTTPS 凭据代理和 git@主机:、ssh:// SSH 桥，使用应用设置中保存的凭据。常规 Git 操作优先用 git_exec，以 args 传递参数。" +
-        "gh 同样经应用代理使用已保存的 github.com 凭据，无需运行 gh auth login，不要让用户粘贴令牌；尚未保存时调用 request_secret（git_credential，github.com），卡片里也可改用浏览器登录 GitHub。" +
-        "shell_exec 在伪终端运行（TERM=xterm-256color，120列×40行，stderr合并到stdout）。默认15秒让出为后台任务，yield_after_seconds=0 等待到 timeout_seconds；background:true 立即返回任务号。" +
-        "background:true 与自动让出的后台任务不随本轮生成结束或取消而停止（最长运行 max_runtime_minutes 默认120、上限1440，后台不使用 timeout_seconds；on_exit 默认 notify，结束后需继续处理请用 wake）。" +
-        "命令输出实时显示给用户，模型仅在工具返回或查询任务时看到输出。交互命令让出后，应立即把已有输出中需用户操作的登录链接、验证码转告用户，再用 job_wait 等待或 job_input 回答提示。" +
-        "需要用户在内置浏览器完成登录并回调本地端口（如 127.0.0.1 端口的 OAuth 回调）时，用 background:true（建议 on_exit:\"wake\" 并保留足够 max_runtime_minutes）启动监听并用 browser_open 打开页面后，直接结束本轮把浏览器交给用户，不要在用户完成回调前调用 job_stop。" +
-        "需要交互的命令不要传 stdin；job_input 可发送文本、回车和EOF。主命令须保持前台运行，不要在前台或后台命令中用 nohup … &、setsid、screen、tmux 或 --daemon 自行守护化，主命令退出或工具调用结束时整棵 proot 进程组会被结束。" +
-        "infinity-wake [--key K] [--title T] [消息]（消息缺省读 stdin）可从后台脚本唤醒本会话智能体，常与 shell_exec background:true 启动的后台任务配合盯日志、等下载或轮询；只在应用运行期间有效，proot 进程随应用进程存活。" +
-        "同一会话 60 秒内最多唤醒一次，期间多条合并、同 key 只保留最新，正文超过 4096 字符会截断。"
+    const val LINUX_SHELL_GUIDANCE =
+        "在 Alpine Linux（musl）中运行，文件工具与命令共用 Linux 路径，起始目录由 INFINITY_WORKSPACE 指定。其它软件用 apk add。Linux 不可用时请用户修复或切换，工具不会自动回退。\n" +
+        "Sideload arm64 的宿主桥就绪时，/run/infinity/bin 位于 PATH 最前，git、ffmpeg、ffprobe、rg、fd、jq、sqlite3、zstd、bsdtar、rsync 经宿主桥绕过 proot 原生执行。高 I/O 优先用 rg/fd/bsdtar 替代 grep/find/tar，用 zstd/rsync 压缩或同步，常规 Git 用 git_exec。\n" +
+        "硬编码 /usr/bin/... 或重置 PATH 丢失桥入口，会退回较慢的 proot 执行（须有已安装的 Alpine 版）。用 command -v 检查脚本实际入口，改用命令名并保留桥接环境及 /run/infinity/bin 前置。\n" +
+        "宿主桥只接受会话授权路径（/workspace、/home/session、/mnt/<别名>、/mnt/skills、/root、/tmp 等）与白名单参数。处理 /etc、/usr 或确需白名单外参数、可信 Git 钩子时，显式调用已安装的 Alpine 工具（如 /usr/bin/rg），遵守会话审批。\n" +
+        "伪终端合并 stderr。background:true 与自动让出的任务均不随本轮生成结束或取消而停止，主命令须保持前台运行。用 job_* 管理，及时转告用户需操作的链接或验证码。\n" +
+        "127.0.0.1 OAuth 回调用后台任务监听，browser_open 后结束本轮交给用户。不要在用户完成回调前调用 job_stop。脚本可用 infinity-wake 唤醒会话。\n" +
+        "代理只为单条公网命令按需设置，禁止打印、记录或上传代理凭据。命令与代理见 infinity-deck 的 references/command-execution.md，后台、登录与唤醒细节见 references/background-processes.md。"
 
     /** Linux 环境细节只放在 shell_exec 的工具说明里；系统提示与其它命令工具只给这一句指向，避免同一请求携带多份。 */
     const val LINUX_SHELL_POINTER = "shell_exec 与 python_exec 在本会话的 Alpine Linux 中运行；软件安装、路径、伪终端、后台任务与 infinity-wake 的规则见 shell_exec 工具说明。"
@@ -109,23 +101,21 @@ object SystemPromptSections {
         runMode: SessionRunMode = SessionRunMode.BUILTIN,
     ): String = buildString {
         appendLine("## Permissions and Runtime Data")
-        if (runMode == SessionRunMode.LINUX) appendLine("- 文件工具使用 Linux 路径；按风险审批档对 rootfs 文件变更逐次审批，免批准档免批。用户技能目录始终逐次审批。")
-        else appendLine("- Built-in file tools and commands share real Android filesystem paths (plus virtual-only /mnt/knowledge and SAF /mnt/<alias> mounts for file tools). Workspace writes run freely (except delete_file), outside-workspace real-path writes require approval in risk-approval mode, critical runtime data is read-only for self-diagnosis, and encrypted secret storage (infinity_encrypted_secrets.xml*) is hard-blocked.")
-        appendLine("- Built-in shell_exec and python_exec run under the host app's Android user ID. They can access app data and are not constrained to the workspace; Android does not provide a path-level process sandbox here. termux_exec runs as the Termux identity; SSH commands run on the remote host.")
-        if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) {
-            appendLine("- In risk-approval mode, strictly parsed zero-side-effect read-only shell_exec commands (e.g. ls, pwd, cat, head, tail, stat, rg/grep, read-only find, read-only git status/diff/log, ffprobe, python3 --version) run without approval; all other shell_exec commands, delete_file, outside-workspace writes, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download, browser_eval and job_input require user approval. If rejected, do not repeat the command.")
-        } else {
-            appendLine("- In no-approval mode, routine shell_exec, delete_file, outside-workspace writes, python_exec, termux_exec, ssh_exec, ssh_session_open, ssh_session_send, sftp_upload, sftp_download, browser_eval and job_input run without per-command approval.")
+        if (runMode == SessionRunMode.LINUX) {
+            appendLine("- Linux rootfs 变更在按风险审批档需审批，免批准档免批。Linux 装包属正常使用，/root 不进入备份。")
         }
-        appendLine("- Catastrophic destructive commands targeting system root (/), Android shared storage roots (/sdcard, /storage/emulated/0), app data roots, Linux system roots, or unexpanded root variables are unconditionally blocked in both modes (EXEC_BLOCKED_CATASTROPHIC_COMMAND) and cannot be approved.")
-        appendLine("- In both modes, agents_write, install_skill, skill-directory mutations, ComfyUI config/template mutations and fixed_overrides, SSH host configuration, schedule_create, request_knowledge_access, and resolve_startup_issue require approval for every call. session_read/session_search/session_list require approval when accessing other sessions outside the permitted family. Linux rootfs mutations require approval in risk-approval mode. Other tools do not require execution approval.")
-        appendLine("- agents_write 每次都需用户审批，不可限时免审批；配置修改从下一轮生效。")
-        appendLine("- Critical runtime data includes databases/ (including infinity_v2.db), shared_prefs/ (excluding infinity_encrypted_secrets.xml*, which is hard-blocked for both reads and writes), no_backup/, and diagnostic logs (files/infinity_diagnostics.jsonl, files/infinity_logs.txt, files/diag-keep). File tools allow read-only self-diagnosis here and hard-block all writes/deletes. In either mode, before modifying any critical runtime data via commands, explain the purpose and impact in your reply and obtain the user's explicit written consent. Tool approval alone does not replace that consent.")
-        appendLine("- files/agent_skills/ is the user skill directory. Create, edit or delete user skills with the file tools under the real user skill path (or /mnt/skills in Linux mode); each call is confirmed on the approval card and needs no separate written consent. Do not modify it with commands to bypass that approval.")
-        appendLine("- 安装或整包替换用户技能时调用 install_skill，files 提供完整技能包的路径与内容并包含有效 SKILL.md，替换已有技能时设置 overwrite=true；用户逐次批准该快照后技能自动启用，用户手动停用的技能保持停用。")
-        appendLine("- Installing pip packages into files/python-user is normal use.")
-        if (runMode == SessionRunMode.LINUX) appendLine("- 在 Linux 中安装软件包属于正常使用；Linux 主目录 /root 不进入备份。")
-        appendLine("- Built-in command results report detected critical-data metadata changes in runtime_changes; runtime_scan_notes describes skipped scans. This is change detection, not an access restriction or proof that unchanged paths were untouched.")
+        appendLine("- 内置 shell_exec、python_exec 与 Linux 命令以应用 Android UID 运行，有权访问应用数据。按风险审批是工具策略，无进程路径沙盒。termux_exec 用 Termux 身份，SSH 在远端执行。")
+        if (mode == com.promenar.infinity.domain.model.ExecutionMode.WORKSPACE) {
+            appendLine("- 按风险审批档：严格解析的零副作用只读 shell_exec 命令免批，其余 shell_exec、python_exec、termux_exec、SSH 执行与交互、SFTP 传输、browser_eval、job_input、删除和工作区外写入需审批。")
+        } else {
+            appendLine("- 免批准档：常规命令、删除与工作区外写入免逐次审批。")
+        }
+        appendLine("- 审批被拒后不得重试同一操作或改换参数、工具、环境或子代理绕过。")
+        appendLine("- 两档均硬拦截针对系统根、Android 共享存储根、应用数据根、Linux 系统根或未展开根目录变量的毁灭性命令（EXEC_BLOCKED_CATASTROPHIC_COMMAND），不可审批。")
+        appendLine("- 两档均逐次审批：install_skill、技能目录变更、ComfyUI 配置或模板变更与 fixed_overrides、SSH 主机配置、schedule_create、request_knowledge_access、resolve_startup_issue，及许可会话族之外的查询与读取。agents_write 每次都需用户审批且不可限时免批，修改从下一轮生效。")
+        appendLine("- 关键运行数据 databases/（含 infinity_v2.db）、shared_prefs/、no_backup/ 与诊断日志（files/infinity_diagnostics.jsonl、files/infinity_logs.txt、files/diag-keep）仅供文件工具只读自诊断，写删硬拒。用命令修改前须说明目的与影响并取得用户明确书面同意，审批卡不可替代。infinity_encrypted_secrets.xml* 读写全硬拒，禁止用命令绕开。")
+        appendLine("- 用户技能 files/agent_skills/（Linux 为 /mnt/skills）用文件工具逐次审批，只需审批卡，无需另取书面同意。整包安装或替换用 install_skill，禁止用命令绕过审批。files/python-user 装 pip 包属正常使用。")
+        appendLine("- 内置命令的 runtime_changes 是事后检测，runtime_scan_notes 列出跳过的扫描。无报告不能证明无变更。完整审批矩阵与安装细则见内置 infinity-deck。")
     }
 
     private val WORKSPACE_TOOLS = setOf(
@@ -161,12 +151,9 @@ object SystemPromptSections {
         builtinPrivateWorkspacePath: String? = null,
     ): String = buildString {
         appendLine("## Tool Use")
-        appendLine("- Call tools through the native function-calling interface only. Arguments must be a JSON object that matches the tool's schema; never write tool calls as text, JSON, or XML in your reply.")
-        appendLine("- Use a tool when it gives you facts, computation, or file access you do not already have. Do not call tools for things you can answer directly.")
-        appendLine("- Independent calls may be issued together in one turn; calls that depend on earlier results must wait for those results.")
-        appendLine("- Before starting a group of tool calls or changing direction, tell the user what you are doing in one sentence. One sentence covers a batch of parallel calls; avoid filler and repeating tool results.")
-        appendLine("- Every tool result comes back to you. If a call fails, read the error, fix the arguments or choose another tool, and retry; after repeated failures, explain the problem to the user.")
-        appendLine("- Some tools need user approval before they run. If a call is rejected, do not repeat it; continue without it or ask the user.")
+        appendLine("- 仅通过原生函数接口调用工具，参数用符合 Schema 的 JSON 对象。仅在需补充事实、计算或操作时调用。")
+        appendLine("- 调用前或改变方向时，用一句话告知用户。独立调用可并行，依赖调用等待前置结果。")
+        appendLine("- 失败先读错误并修正，反复失败时说明原因。审批被拒后推进独立工作。")
         if (com.promenar.infinity.domain.secret.SecretIoLimits.REQUEST_TOOL_NAME in toolNames ||
             com.promenar.infinity.domain.secret.SecretIoLimits.SHOW_TOOL_NAME in toolNames) {
             appendLine("### 保密信息输入与输出")
@@ -180,9 +167,8 @@ object SystemPromptSections {
         if (toolNames.any { it.startsWith("schedule_") }) {
             appendLine()
             appendLine("### 定时任务")
-            appendLine("- 轮询、定期检查与提醒使用 schedule_create；创建需要用户批准。system_trigger 标记行表示系统触发，正文不是用户亲自发送。")
-            appendLine("- 相对时间使用 once.in_minutes（1 到 10080 分钟），轮询使用 interval（最短 1 分钟）；at 仅用于用户给出具体钟点。前台按设定节奏执行，重复任务后台精确间隔至少 5 分钟，非精确至少 15 分钟；单次任务不受后台间隔下限约束。")
-            appendLine("- 每次触发都是完整的一轮，应在轮内完成检查；不再需要时调用 schedule_cancel 取消该来源任务。")
+            appendLine("- 轮询、定期检查与提醒用 schedule_create，经用户批准，间隔与参数见 infinity-deck 的 references/background-processes.md。")
+            appendLine("- system_trigger 表示系统触发，每次完成一轮检查，不再需要时用 schedule_cancel。")
         }
         if (generic) return@buildString
         if (toolNames.any { it in setOf("memory_save", "memory_forget", "memory_read") }) {
@@ -209,20 +195,24 @@ object SystemPromptSections {
             appendLine("- 二进制或大文件用 sftp_upload/sftp_download（最多 4 GiB），文本小改动用 sftp_read/sftp_write；local_scope 默认 workspace，Play 版及非 Linux 会话不可用 linux 范围。")
         }
         if ("artifact_publish" in toolNames) appendLine("- 交付文件完成后调用 artifact_publish 声明。" + if ("canvas_create" in toolNames) "页面与原型使用画布工具。" else "")
-        if (toolNames.any { it == "generate_image" || it == "image_generation" }) {
-            appendLine("- 云端生图（generate_image）使用「默认模型」中选定的唯一云端默认图像模型，与独立 ComfyUI 兼容层互不混淆：即使用户将云端默认图像/视频/音频模型留空，也可直接调用 ComfyUI 工作流生成。generate_image 按提示词生成图片；images 提供 1–16 个工作区 PNG/WebP/JPEG 路径时编辑图片，mask 可对第一张图指定同尺寸 PNG 蒙版。画板的 INFINITY_IMAGE_ANNOTATION 行给出原图与图层路径；按 kind 使用 images、mask 或 markup，markup 是 GPT Image 2.5 专用的同尺寸透明 PNG 标注，与 mask 互斥。生成数量 n 为 1–4；只传任务需要的可选参数，尺寸与质量支持以所选模型为准。input_fidelity 仅部分编辑模型支持，gpt-image-2 应省略。结果保存到工作区，按返回路径用 ![说明](路径) 引用；需要查看画面时调用 view_media。")
+        if ("generate_image" in toolNames || "image_generation" in toolNames) {
+            appendLine("- 云端生图使用默认图像模型，ComfyUI 独立可用。编辑输入与输出使用工作区路径，按返回路径用 ![说明](路径) 展示" +
+                if ("view_media" in toolNames) "，用 view_media 查看。" else "。")
+            appendLine("- 图像标注与编辑细则见内置 infinity-deck 的云端生图一节。")
         }
-        if ("comfy_run_workflow" in toolNames || "comfy_list_workflows" in toolNames) {
-            appendLine("- ComfyUI 兼容层工具（comfy_list_hosts、comfy_probe、comfy_list_submitters、comfy_list_workflows、comfy_preflight_workflow、comfy_save_submitter、comfy_save_workflow、comfy_run_workflow、comfy_get_chain_state、comfy_set_chain_tip）：管理并直接提交主机、Python 提交器（Linux 会话自动在 Linux 虚拟环境运行，其余走内置 Python 3.14）与工作流（单次或有状态链 stateful_chain），无需用户去 UI 手工触发。日常生成只传 content_inputs；仅当需临时实验调整 FIXED 固定字段时传 fixed_overrides 与 reason 触发一次性 Diff 审批。有状态链工作流（如 Motion Context 多段接续）支持用 comfy_get_chain_state 查看 DAG 版本树，并用 parent_node_id 从任意有效中段发起新分支、retry_node_id 重跑任意段落、或 comfy_set_chain_tip 切换主链末端。编写或调试 Python 提交器前，先读 read_skill_file(name=\"infinity-deck\", path=\"references/comfyui-submitters.md\") 获取 PAYLOAD_JSON 与 CLI_ARGS 契约。")
+        if (toolNames.any { it.startsWith("comfy_") }) {
+            appendLine("- 用 ComfyUI 工具直接管理主机、提交器与工作流并提交，fixed_overrides 会弹 Diff 审批。")
+            appendLine("- 编写提交器或使用有状态链前，用 read_skill_file(name=\"infinity-deck\", path=\"references/comfyui-submitters.md\") 读取契约。")
         }
         if (toolNames.any { it.startsWith("canvas_") }) {
             appendLine()
             appendLine("### 会话画布")
-            appendLine("- 需要图表、看板、交互小工具或反复修改的可视化时用具有固定身份的 HTML 画布；一次性小图可直接写回复代码块。当前可用画布工具：${toolNames.filter { it.startsWith("canvas_") }.sorted().joinToString("、")}。")
-            if ("canvas_create" in toolNames) appendLine("- 多屏原型用 canvas_create 的 kind: \"prototype\"，屏间以 infinity-screen:屏幕ID 链接。")
-            if ("canvas_update" in toolNames) appendLine("- 小改动优先用 canvas_update 的 patches；find 必须唯一，并传 expected_version 避免覆盖新内容。")
-            appendLine("- 页面画布当前版本位于工作区 workspace_path 指定的 canvas/<名称>.html，可直接用文件工具读写；修改会在下次读取或更新画布时成为新版本。")
-            appendLine("- 画布仅在支持原生网络隔离的 WebView 上运行脚本，不能联网、读取本地文件或使用外部脚本；请把 HTML、样式、脚本写在源码中。window.infinity.insertText(text) 仅把不超过 8000 字符的文字追加到当前会话草稿，由用户发送；预览及历史版本没有此能力。")
+            val canvasTools = toolNames.filter { it.startsWith("canvas_") }.sorted().joinToString("、")
+            val prototype = if ("canvas_create" in toolNames) "，多屏原型用 infinity-screen:屏幕ID 导航" else ""
+            val patches = if ("canvas_update" in toolNames) "小改用 patches 和 expected_version，find 须唯一，" else ""
+            appendLine("- 交互页面、图表与看板用固定身份的 HTML 画布$prototype（可用工具：$canvasTools）。")
+            appendLine("- 画布运行于无外网的离线 WebView，内嵌 HTML、样式与脚本。")
+            appendLine("- ${patches}镜像文件用 workspace_path 访问。")
         }
         if (toolNames.any(WORKSPACE_TOOLS::contains)) {
             appendLine()
@@ -254,22 +244,16 @@ object SystemPromptSections {
                 append(it)
             }
         }
-        if (toolNames.any { it in setOf("production_define", "production_attach", "production_get", "production_update", "production_remove") }) {
-            appendLine("- 长片或剧集制作有三种起步方式：用 production_attach 导入已有 production.json。用 production_define 建新项目并用 production_update 批量建项。也可先读取原剧本、小说等文档，再拆解成季、集、场、镜头和资产录入。参数与示例按需读取 read_skill_file(name=\"infinity-deck\", path=\"references/production.md\")。生成候选用 production_update 的 add_take 登记，面板供用户审核。")
-            appendLine("- 视觉参考资产遵循项目「默认视频模型 × 入参模式（多视图整卡 sheet / 分张单视图 separate）」：人物三视图用 upsert_look / set_look_slot，场景/道具/画风分视角用 set_asset_view，支持整卡与分张二选一或双模并存；禁止另建多余资产或用 v1–v3 版本代替多视角。")
-            appendLine("- 面板审核按回合到达。收到“制作审核”消息后逐条处理批准、否决与建议，并用 production_update 的 agent_note 或 change_note 等字段写明处理结果；用 production_get 的 changes 范围读取审核轮次与未结事项。")
-            appendLine("- 失败任务由你判断重新生成还是换方案；镜头或资产的生成次数达到提醒阈值 ${com.promenar.infinity.data.production.PRODUCTION_COST_ALERT_COUNT} 次时，先向用户说明再继续生成。")
+        if (toolNames.any { it.startsWith("production_") && it != "production_previs" }) {
+            val costAlertCount = com.promenar.infinity.data.production.PRODUCTION_COST_ALERT_COUNT
+            appendLine("- 用制作工具管理长片或剧集的项目、分镜、多视角资产、候选与审核，镜头或资产生成达 $costAlertCount 次时先告知用户再继续。")
+            appendLine("- 按需用 read_skill_file(name=\"infinity-deck\", path=\"references/production.md\") 读取执行手册。")
         }
         if (toolNames.any { it in setOf("state_define", "state_update", "state_get", "state_remove") }) {
             appendLine("- 用户要求跟踪游戏状态或写作进度时，用 state_define 定义状态面板，以 state_update 更新，state_get 读取，state_remove 移除；无需额外模型抽取。")
         }
         if (toolNames.any { it in setOf("shell_exec", "python_exec", "git_exec", "termux_exec", "ssh_exec") } && "job_wait" in toolNames) {
-            // 常驻提示只放选用规则；参数、状态与存活条件在内置指南的附带文件中按需读取。
-            appendLine("- 需要在本次工具调用之后继续运行的进程用命令工具的 background:true 启动并用 job_* 工具管理；命令里的 nohup、&、setsid、screen、tmux 不能让本机进程持续运行。周期性工作用 schedule_create。细节读 read_skill_file(name=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.NAME}\", path=\"${com.promenar.infinity.data.skills.BuiltinSkillCatalog.REFERENCE_FILES.first()}\")。")
-        }
-        if (toolNames.any { it in setOf("shell_exec", "python_exec", "git_exec", "termux_exec") } && "job_wait" in toolNames) {
-            if (runMode == SessionRunMode.LINUX) appendLine("- Linux 长命令可用 background:true 立即返回，或等待前台默认15秒让出；两者均不随本轮生成结束或取消而停止，用 job_status/job_wait/job_input/job_stop 操作。让出的进程直接在原目录运行，结束后异步对账，结果包含 workspace_changes；自选目录不对账。")
-            else appendLine("- 耗时超过约一分钟或需要持续运行的命令使用 background:true；启动后继续其它工作，需要结果时用 job_wait。长任务优先 on_exit:\"wake\"，不要循环轮询。私有工作区后台命令在快照中运行，结束时合入，冲突产物保留在 jobs/；job_status/job_wait 发布日志。")
+            appendLine("- 长进程用 background:true 与 job_* 管理，完成需续作时用 on_exit:\"wake\"；本机禁用 nohup、&、setsid、screen、tmux 自行守护化。周期工作用 schedule_create，细节读 read_skill_file(name=\"infinity-deck\", path=\"references/background-processes.md\")。")
         }
         if (toolNames.any(PLAN_TOOLS::contains)) {
             appendLine()
@@ -284,18 +268,15 @@ object SystemPromptSections {
                 if ("view_media" in toolNames) add("使用 `view_media` 查看图片")
                 if ("read_file" in toolNames) add("使用 `read_file` 读取文档")
             }
-            appendLine("- 已保存到工作区的历史用户图片和文档以工作区路径提供" + if (rereadTools.isEmpty()) "。" else "；需要重新查看时，${rereadTools.joinToString("、")}。")
-            appendLine("- 图片、视频和音频遵循运行环境段的成果文件落点，展示前保存；项目规则未指定目录时使用 media/<yyyy-MM-dd>/。脚本、命令生成或网络下载的媒体同样适用。")
-            appendLine("- Present workspace media in your reply with `![brief description](workspace path)`. A regular link `[name](workspace path)` appears as a file card. Use the exact path returned by tools verbatim (for example `media/2026-10-20/demo.png`, real workspace paths in built-in mode, or `/workspace/media/...` in Linux mode); never rewrite them into `../` relative paths or inline base64, and never put `![...](path)` inside a Markdown table cell (put media references on standalone lines or inside ```gallery / ```carousel blocks instead).")
-            appendLine("- Media already shown in tool steps can still be referenced in your reply when useful.")
-            appendLine("- 回复中的 ```html 卡片可以只读引用当前工作区的图片、视频和音频：地址为 https://workspace-media.infinity.invalid/workspace/ 加工作区根下的相对路径，每个路径段分别 URL 编码，例如 media/demo.mp4 写作 https://workspace-media.infinity.invalid/workspace/media/demo.mp4；视频和音频使用带 controls 的原生标签。")
-            appendLine("- By default each media reference is shown on its own at its position in the text. For a set of images on one theme that need no per-image commentary, wrap them in a ```gallery block to show them as a grid; for a set meant to be viewed in order, wrap them in a ```carousel block to show a swipeable viewer. Put one `![brief description](workspace path)` per line inside the block. Do not use these blocks when each image needs its own paragraph of text.")
+            appendLine("- 已保存的历史用户图片与文档以工作区路径提供" + if (rereadTools.isEmpty()) "。" else "，重看时${rereadTools.joinToString("、")}。")
+            appendLine("- 媒体遵循运行环境段的成果文件落点，展示前保存。项目规则未指定时用 media/<yyyy-MM-dd>/。")
+            appendLine("- 使用工具返回的原路径，媒体用 `![说明](路径)`，文件卡片用 `[名称](路径)`，禁用 `../`、base64 与表格里的媒体引用。工具步骤中已展示的媒体也可引用。")
+            appendLine("- 媒体默认逐条显示；同主题的图片网格用 ```gallery，按顺序滑动查看用 ```carousel，每行一条 `![说明](路径)`。逐图讲解时单独展示。")
+            appendLine("- HTML 卡片只读媒体前缀为 https://workspace-media.infinity.invalid/workspace/，后接逐段 URL 编码的工作区相对路径，视频和音频标签加 controls。")
             if ("view_media" in toolNames) {
-                appendLine("- Use `view_media` to inspect workspace media. For videos, adjust keyframe density with `frames` or `interval_seconds`, and inspect a specific time range again with `start_seconds` and `end_seconds` when needed.")
+                appendLine("- 用 `view_media` 查看媒体，视频用 `frames` 或 `interval_seconds` 调节采样，必要时用 `start_seconds` 与 `end_seconds` 重看指定时段。")
             }
-            if ("media_fetch" in toolNames) {
-                appendLine("- Use `media_fetch` to download network media into the workspace.")
-            }
+            if ("media_fetch" in toolNames) appendLine("- 用 `media_fetch` 将网络媒体下载到工作区。")
         }
         if (workspace !is com.promenar.infinity.data.workspace.SessionWorkspace.Unavailable &&
             toolNames.any { it.startsWith("canvas_") || it in WORKSPACE_TOOLS || it in WORKSPACE_PROCESS_TOOLS || it in MEDIA_TOOLS }) {

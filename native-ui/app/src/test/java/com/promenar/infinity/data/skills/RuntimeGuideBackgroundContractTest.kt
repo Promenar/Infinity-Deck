@@ -110,7 +110,7 @@ class RuntimeGuideBackgroundContractTest {
             "EXEC_STOPPED", "EXEC_INTERRUPTED", "EXEC_LINUX_UNAVAILABLE", "EXEC_MODE_CHANGED", "EXEC_WORKSPACE_UNAVAILABLE",
             "EXEC_PYTHON_UNAVAILABLE", "TERMUX_TIMEOUT", "TERMUX_INTEGRATION_DISABLED", "SSH_HOST_KEY_UNTRUSTED",
             "SECRET_CAPTURE_BACKGROUND_UNSUPPORTED", "JOB_NOT_FOUND", "JOB_UNAVAILABLE",
-            "EXEC_BLOCKED_CATASTROPHIC_COMMAND",
+            "EXEC_BLOCKED_CATASTROPHIC_COMMAND", "\$INFINITY_PROXY_HTTP", "\$INFINITY_PROXY_SOCKS", "\$INFINITY_PROXY_NO_PROXY",
             "\$TMPDIR", "\$INFINITY_WORKSPACE", "ffmpeg", "ffprobe", "/mnt/knowledge", "references/runtime-isolation.md")
             .forEach { assertWithMessage(it).that(reference).contains(it) }
         assertThat(reference.length).isAtMost(8_000)
@@ -132,7 +132,10 @@ class RuntimeGuideBackgroundContractTest {
         assertThat(builtinGuidance).contains("真实 Android 路径")
         listOf("ffmpeg", "ffprobe", "rg", "fd", "jq", "sqlite3", "zstd", "bsdtar", "rsync", "PATH", "command -v")
             .forEach { assertWithMessage(it).that(builtinGuidance).contains(it) }
-        assertThat(builtinGuidance).contains("Linux 虚拟环境")
+        assertThat(builtinGuidance).contains("references/comfyui-submitters.md")
+        val comfy = guideDirectory.resolve("references/comfyui-submitters.md").readText()
+        assertThat(comfy).contains("Linux 虚拟环境")
+        assertThat(comfy).contains("内置 Python 3.14")
     }
 
     @Test fun `系统提示在有命令工具与任务工具时给出一行选用规则并指向参考文件`() {
@@ -160,19 +163,29 @@ class RuntimeGuideBackgroundContractTest {
         assertThat(shell).contains("主命令须保持前台运行")
         assertThat(shell).contains("不要自行守护化")
         val linuxGuidance = SystemPromptSections.LINUX_SHELL_GUIDANCE
-        listOf("不随本轮生成结束或取消而停止", "max_runtime_minutes", "主命令须保持前台运行", "browser_open", "不要在用户完成回调前调用 job_stop")
+        listOf("不随本轮生成结束或取消而停止", "主命令须保持前台运行", "127.0.0.1 OAuth",
+            "browser_open", "不要在用户完成回调前调用 job_stop", "infinity-wake", backgroundReference, executionReference)
             .forEach { assertWithMessage(it).that(linuxGuidance).contains(it) }
+        assertThat(linuxGuidance).doesNotContain("max_runtime_minutes")
         val linuxPrompt = SystemPromptSections.toolGuidance(setOf("shell_exec", "job_wait"), generic = false, runMode = SessionRunMode.LINUX)
-        assertThat(linuxPrompt).contains("不随本轮生成结束或取消而停止")
-        assertThat(linuxPrompt).doesNotContain("持锁运行")
+        assertThat(linuxPrompt).contains("on_exit:\"wake\"")
+        assertThat(linuxPrompt).doesNotContain("不随本轮生成结束或取消而停止")
     }
     @Test fun `随包指南明确原生 Git、任务租约和同 UID 边界`() {
         val execution = guideDirectory.resolve(executionReference).readText()
         val isolation = guideDirectory.resolve("references/runtime-isolation.md").readText()
-        assertThat(execution).contains("git_exec")
+        assertThat(execution).contains("| `git_exec` |")
         assertThat(execution).contains("SSH")
         assertThat(execution).contains("background: true")
         assertThat(isolation).contains("同 UID")
         assertThat(isolation).contains("当前命令或终端租约")
+        for (guide in listOf(execution, isolation)) {
+            listOf("git", "ffmpeg", "ffprobe", "rg", "fd", "jq", "sqlite3", "zstd", "bsdtar", "rsync").forEach {
+                assertThat(guide).contains("`$it`")
+            }
+            listOf("/run/infinity/bin", "Unix socket", "绕过 `proot`", "command -v", "/usr/bin/git",
+                "env -i PATH=/usr/bin:/bin", "/etc", "/usr", "rg --pre", "rsync -e", "钩子", "过滤器", "apk add")
+                .forEach { assertWithMessage(it).that(guide).contains(it) }
+        }
     }
 }

@@ -454,7 +454,7 @@ class SubagentRunnerTest {
                 task.join()
                 assertThat(host.executed.map { it.first }).containsExactly(case.tool)
                 assertThat(models.requests.first().messages.first().content).contains(
-                    if (mode == "workspace") "require user approval" else "without per-command approval",
+                    if (mode == "workspace") "删除和工作区外写入需审批" else "常规命令、删除与工作区外写入免逐次审批",
                 )
             }
         }

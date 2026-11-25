@@ -20,11 +20,11 @@ description: 管理或创建技能、编辑技能文件、管理智能体规则�
 | 项目级技能 | 目录工作区 `<工作区真实路径>/.agents/skills/<名称>`（相对 `.agents/skills/<名称>`） | `<工作区>/.agents/skills/<名称>`（普通工作区为 `/workspace/.agents/skills/<名称>`） |
 | 技能读取工具 | `activate_skill`/`read_skill_file` 按名或虚拟路径 `/skills/<名称>`、`/.agents/skills/<名称>` 选技能 | 同左（仅作技能选择标识，非文件工具磁盘路径） |
 
-Linux 可选包（git、`rg`、python3/pip、nodejs/npm、ffmpeg）用前确认，缺少时 `apk add` 补装。已保存到工作区的历史用户图片和文档以工作区路径提供；重看图片用 `view_media` 查看图片、重看文档用 `read_file` 读取文档，引用失效请用户重新确认附件。
+Sideload arm64 已预置 10 项原生工具，Linux 经宿主桥加速，日常用命令名即可。操作 Alpine 系统路径或确需白名单外参数时显式调用 Alpine 版，缺包时按需 `apk add`。历史图片用 `view_media`、文档用 `read_file` 按工作区路径重看，引用失效时请用户重新确认附件。
 
 私有会话不扫描项目技能；切换目录工作区后重扫。`termux_exec` 仅内置模式且已授权启用时可用；SSH 工具在远端执行，与本地模式独立；`exec_js`/`run_script`/`python_sandbox` 为隔离脚本入口，Linux 会话隐藏。
 
-内置与 Linux 进程均以本应用 Android 用户运行；“按风险审批”是审批策略而非进程路径沙盒。完整四层隔离分级、路径矩阵、`$TMPDIR` 与 FFmpeg 边界见 `references/runtime-isolation.md`。Linux 中 `/root` 不入备份且重置清空，`/home/session` 在 rootfs 外。Codex CLI、Claude Code 及 `~/.codex`、`~/.claude`、`/root/AGENTS.md` 属第三方工具，不改变本智能体配置。
+内置与 Linux 进程均以本应用 Android 用户运行，路径隔离见 `references/runtime-isolation.md`。Linux 中 `/root` 不入备份且重置清空，`/home/session` 在 rootfs 外。Codex CLI、Claude Code 及其配置目录和规则属于第三方工具，修改自身配置使用 `agents_write`。
 
 应用的内置代理运行时，Alpine Linux 可用 `$INFINITY_PROXY_HTTP` 或 `$INFINITY_PROXY_SOCKS` 与 `$INFINITY_PROXY_NO_PROXY` 为单条公网命令设置代理。禁止打印或记录凭据。示例见 [命令执行](references/command-execution.md)。
 
@@ -104,17 +104,21 @@ SSH 主机配置存在 `ssh_host_save`、`ssh_host_delete`、`ssh_host_install_k
 
 ## 命令执行与后台任务
 
-需要在一次工具调用之后继续运行的进程，在内置模式、Linux 模式与 Termux 中一律用命令工具的 `background: true` 启动，由应用登记为后台任务，再用 `job_status`、`job_wait`、`job_input`、`job_stop`、`job_list` 查询、等待、输入、停止与列出。命令里的 `nohup`、`&`、`setsid`、`screen`、`tmux` 不能替代它：内置模式与 Linux 模式在命令结束时清理这些进程，Termux 中它们继续运行但没有任务号、日志与停止入口。后台任务的主命令要保持前台运行，不要自行守护化。
+本机长进程用 `background: true` 启动，再用 `job_status`、`job_wait`、`job_input`、`job_stop`、`job_list` 管理。主命令保持前台，禁用 `nohup`、`&`、`setsid`、`screen`、`tmux` 自行守护化。
 
-后台任务最长运行 24 小时，应用进程重启后本机任务中断且不自动恢复；Play 版只在应用位于前台时保证运行。定期检查、到点提醒和需要跨越应用重启的周期工作使用 `schedule_create`，它每次到点为本会话发起完整的一轮，不保持进程存活。SSH 远端上要脱离本应用长期存活的服务，交给远端的 systemd、tmux 或 nohup，再用 `ssh_exec` 查询。保活条件由用户在“设置 → 后台与定时”调整。
+本机任务最长 24 小时，应用进程重启后不自动恢复。用 `schedule_create` 定期发起会话轮次。跨应用存活的远端服务交给远端服务管理器。保活条件由用户在“设置 → 后台与定时”调整。
 
 细节按需用 `read_skill_file` 读取，`name` 传 `infinity-deck`，`path` 传下列相对路径：
 
 - `references/background-processes.md`：后台任务、保活条件、定时任务、`infinity-wake` 与 SSH 远端长期服务。
 - `references/comfyui-submitters.md`：ComfyUI 双运行时提交器（Linux/内置 Python）、`CLI_ARGS`/`PAYLOAD_JSON` 与有状态链契约。
-- `references/command-execution.md`：各命令工具分工与环境差异、结果字段、错误码与下一步。
+- `references/command-execution.md`：命令工具分工、10 项宿主加速工具与 Alpine 显式调用排障、结果与错误码。
 - `references/production-previs.md`：离线 3D 白模分镜预演（`production_previs`）坐标系与 Previs DSL v1 规范。
-- `references/runtime-isolation.md`：全站四层隔离模型、路径/挂载可见性矩阵、资料库读写与 FFmpeg 边界。
+- `references/runtime-isolation.md`：四层隔离、挂载可见性、宿主桥参数与路径边界、离线画布。
+
+## 云端生图
+
+`generate_image` 使用云端默认图像模型，ComfyUI 独立可用。编辑时 `images` 传 1–16 个工作区 PNG/WebP/JPEG，`mask` 为首图同尺寸 PNG 蒙版。画板的 `INFINITY_IMAGE_ANNOTATION` 行给出原图、图层与 `kind`，据此选 `images`、`mask` 或 `markup`。后者是 GPT Image 2.5 的同尺寸透明 PNG 标注，与 `mask` 互斥。生成数量 `n` 为 1–4，尺寸与质量依模型而定，`gpt-image-2` 省略 `input_fidelity`。保存后按返回路径用 `![说明](路径)` 展示，查看用 `view_media`。
 
 ## 创建与编辑技能
 

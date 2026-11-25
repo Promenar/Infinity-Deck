@@ -38,13 +38,20 @@
 3. **内置模式与 Linux 模式的临时目录差异**：
    - 内置模式运行在 Android 原生环境，系统根目录不存在可写的 `/tmp`；一切临时文件必须写入 `$TMPDIR` 或当前工作区子目录并在结束后清理。
    - Linux 模式运行在 Alpine rootfs 内，`/tmp` 正常可写。
-4. **内置 FFmpeg/ffprobe 与 Linux FFmpeg 的能力边界**：
-   - **Sideload arm64-v8a** 提供 `git`、`ffmpeg`、`ffprobe`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync`。内置命令通过前置 `PATH` 调用，Linux 通过 shim 把支持的调用转发给宿主。以当前 APK 实际包含的工具为准。
-   - Linux shim 只翻译当前命令授权的 `/workspace`、`/home/session`、`/mnt/<别名>`、`/mnt/skills`、`/root`、`/tmp` 与本次实际绑定的额外目录。处理 Alpine 系统路径时使用对应的 Alpine 可执行文件。Play 渠道与 Git 检视器继续使用打包 Python 的 `infinity_git`。
+4. **原生宿主工具桥（10 工具）与 Alpine 命令的能力边界**：
+   - **Sideload arm64** 提供 `git`、`ffmpeg`、`ffprobe`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync`。内置模式经前置 `PATH` 调用。Linux 的宿主桥就绪时，经 `PATH` 首位的 `/run/infinity/bin` 入口与 Unix socket 在宿主原生执行，绕过 `proot` 的系统调用拦截，减少高 I/O 开销。常规 Git 优先用 `git_exec`。Play 渠道与 Git 检视器使用打包 Python 的 `infinity_git`。
+   - 用 `command -v` 检查脚本内实际入口。硬编码 `/usr/bin/git` 等路径或重置环境（如 `env -i PATH=/usr/bin:/bin`）时会调用已安装的 Alpine 版并经 `proot` 执行。需要加速时改用命令名，保留桥接环境及 `/run/infinity/bin` 的首位。
+   - 宿主桥只翻译当前命令授权的 `/workspace`、`/home/session`、`/mnt/<别名>`、`/mnt/skills`、`/root`、`/tmp` 与实际绑定的额外目录，并校验参数白名单。操作 `/etc`、`/usr` 等 Alpine 系统路径，或授权任务确需 `rg --pre`、`rsync -e`、可信仓库的自定义 Git 钩子或过滤器时，可显式调用已安装的 Alpine 工具，如 `/usr/bin/rg`。缺包时按需 `apk add`，会话审批仍然生效。排查步骤见 `references/command-execution.md`。
    - 宿主桥在应用私有 Unix socket 验证对端 UID 和当前命令或终端租约，按挂载表解析显式路径，校验参数与环境，并在租约关闭时回收宿主进程组。应用与子进程共享 Android UID。同 UID 进程可直接访问应用有权访问的数据；应用层路径校验无法约束并发的文件替换、工具内部读取或归档内容。仅在会话授权范围内运行脚本与处理仓库。
 5. **资料库与关键运行数据保护**：
    - 资料库文档由 Room 托管，必须通过 `request_knowledge_access` 申请授权后用文件工具读写，或用 `copy_knowledge_to_linux` 导出副本给 Linux 脚本处理。
    - 关键运行数据目录通过文件工具仅开放只读自诊断（`infinity_encrypted_secrets.xml*` 全硬拒）；任何命令修改均须先取得用户明确书面同意。
+
+## 离线会话画布
+
+会话画布有固定身份与版本，适合图表、看板和可迭代的交互页面。画布只在支持原生网络隔离的 WebView 上运行脚本，须内嵌样式和脚本，无法联网或读取本地文件。多屏原型用 `canvas_create` 的 `kind: "prototype"` 与 `infinity-screen:屏幕ID` 链接。
+
+小改动用 `canvas_update` 的 `patches`，`find` 必须唯一并传最新的 `expected_version`。用文件工具读写 `workspace_path` 返回的 HTML 镜像，文件变更会在下次读取或更新画布时纳入新版本。当前画布的 `window.infinity.insertText(text)` 可追加至多 8000 字符到会话草稿，由用户发送。预览与历史版本不可追加。
 
 ## Linux 命令按需使用内置代理
 

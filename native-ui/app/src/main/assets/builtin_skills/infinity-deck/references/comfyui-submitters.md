@@ -61,6 +61,8 @@
 
 ## `STATEFUL_CHAIN` 分支隔离、回验与配套证明
 
+日常用 `comfy_run_workflow` 传 `content_inputs`。临时调整 FIXED 字段时传 `fixed_overrides` 和 `reason`，由用户一次性批准 Diff。用 `comfy_get_chain_state` 查看 DAG 版本树，通过 `parent_node_id` 从有效中段续成新分支，通过 `retry_node_id` 重跑指定段，用 `comfy_set_chain_tip` 切换主链末端。
+
 - **严格真隔离判定**：`CLI_ARGS` 提交器仅在同时声明成对 `readLatentDirFlag` 与 `writeLatentDirFlag` 时才允许执行 `ISOLATED_DIR`；仅配置单 `--latent-dir`（即使含 `branchIdFlag`）在分叉前即诚实降级为 `IN_PLACE_OVERWRITE`。
 - **执行后物理槽位回验与 DAG 守卫**：
   - 每次执行后宿主都会核对「宿主分配目录与段号」vs「脚本实际回报 `reported_latent_dir`、`clip_index` 与 `server_latent_slot_key`」。
