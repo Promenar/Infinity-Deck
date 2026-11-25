@@ -1,5 +1,7 @@
+import com.android.compose.screenshot.tasks.PreviewScreenshotTestEngineInput
 import com.android.compose.screenshot.tasks.PreviewScreenshotUpdateTask
 import com.android.compose.screenshot.tasks.PreviewScreenshotValidationTask
+import com.android.compose.screenshot.tasks.saveToPropertiesFile
 import com.promenar.infinity.buildlogic.BuildPackagedFfmpeg
 import com.promenar.infinity.buildlogic.BuildPackagedHostTools
 import com.promenar.infinity.buildlogic.BuildProxyBinary
@@ -16,10 +18,15 @@ import com.promenar.infinity.buildlogic.PreparePackagedPython
 import com.promenar.infinity.buildlogic.PreparePackagedSite
 import com.promenar.infinity.buildlogic.PrepareLinuxRuntimeAssets
 import com.promenar.infinity.buildlogic.LinuxRuntimeInputs
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -119,6 +126,40 @@ abstract class GenerateCurrentRoomSchemaContracts : DefaultTask() {
     }
 }
 
+abstract class ExportScreenshotRunnerConfig : DefaultTask() {
+    @get:Nested
+    abstract val testEngineInput: PreviewScreenshotTestEngineInput
+
+    @get:InputFiles
+    @get:Classpath
+    abstract val runtimeClasspath: ConfigurableFileCollection
+
+    @get:Input
+    abstract val javaExecutable: Property<String>
+
+    @get:Input
+    abstract val javaMajorVersion: Property<Int>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun export() {
+        val outDir = outputDirectory.get().asFile
+        outDir.mkdirs()
+        val baseConfigFile = File(outDir, "base-config.properties")
+        testEngineInput.saveToPropertiesFile(baseConfigFile)
+        val payload = linkedMapOf(
+            "javaExecutable" to javaExecutable.get(),
+            "javaMajorVersion" to javaMajorVersion.get(),
+            "baseConfigFile" to baseConfigFile.absolutePath,
+            "defaultReferenceDir" to testEngineInput.referenceImageDir.get().asFile.absolutePath,
+            "classpath" to runtimeClasspath.files.map { it.absolutePath },
+        )
+        File(outDir, "runner.json").writeText(JsonOutput.prettyPrint(JsonOutput.toJson(payload)))
+    }
+}
+
 val realLlmEnvironmentNames = listOf(
     "INFINITY_TEST_LLM_BASE_URL",
     "INFINITY_TEST_LLM_API_KEY",
@@ -197,12 +238,15 @@ val currentRoomSchemaContracts = tasks.register<GenerateCurrentRoomSchemaContrac
     })
     outputDirectory.set(layout.buildDirectory.dir("generated/sources/currentRoomSchemaContracts"))
 }
+val gradleUserHomeDir = gradle.gradleUserHomeDir
+val projectDirFile = layout.projectDirectory.asFile
+
 // 官方 CPython Android 包：下载后按 SHA-256 校验，整理为 jniLibs 打包库；产物只在 build 与 Gradle 缓存目录，不入库。
 val packagedPython = PackagedPythonRelease.load(file("python/python-android.properties").toPath())
 val packagedPythonVersion: String = packagedPython.version
 val packagedPythonDistDir = providers.gradleProperty("infinity.pythonDistDir")
     .map { File(it) }
-    .orElse(provider { File(gradle.gradleUserHomeDir, "caches/infinity-python-android") })
+    .orElse(File(gradleUserHomeDir, "caches/infinity-python-android"))
 // 标准库与 site zip 预编译哈希 pyc，需 magic 与打包 CPython 一致的宿主解释器（默认 PATH 中的 python<主次版本>）；
 // -Pinfinity.hostPython 指定解释器，-Pinfinity.pythonBytecode=false 跳过（发行校验会拒绝缺少字节码的 APK）。
 val packagedPythonBytecode = providers.gradleProperty("infinity.pythonBytecode").map { it.toBoolean() }.orElse(true)
@@ -239,11 +283,14 @@ val preparePackagedPython = packagedPythonAbis.mapValues { (abi, arch) ->
 // 内置 git 的纯 Python 依赖：wheel 按 SHA-256 校验后与 python/site 中的 Infinity Deck 模块合成 libpysite.so。
 val packagedPythonWheels = PackagedPythonWheels.load(file("python/python-site.properties").toPath())
 val fetchPackagedPythonWheels = packagedPythonWheels.names.map { name ->
+    val wheelFileName = packagedPythonWheels.fileName(name)
+    val wheelUrl = packagedPythonWheels.url(name)
+    val wheelSha256 = packagedPythonWheels.sha256(name)
     tasks.register<FetchVerifiedFile>("fetchPackagedPythonWheel${name.replaceFirstChar { it.uppercaseChar() }}") {
-        description = "下载并校验 ${packagedPythonWheels.fileName(name)}。"
-        url.set(packagedPythonWheels.url(name))
-        sha256.set(packagedPythonWheels.sha256(name))
-        outputFile.set(layout.file(packagedPythonDistDir.map { File(it, "wheels/${packagedPythonWheels.fileName(name)}") }))
+        description = "下载并校验 $wheelFileName。"
+        url.set(wheelUrl)
+        sha256.set(wheelSha256)
+        outputFile.set(layout.file(packagedPythonDistDir.map { File(it, "wheels/$wheelFileName") }))
     }
 }
 val preparePackagedSite = packagedPythonAbis.keys.associateWith { abi ->
@@ -266,20 +313,24 @@ val preparePackagedSite = packagedPythonAbis.keys.associateWith { abi ->
 // -Pinfinity.ffmpeg=false 可临时跳过（发行校验会拒绝缺少内置 FFmpeg 的 arm64-v8a APK）。
 val ffmpegEnabled = providers.gradleProperty("infinity.ffmpeg").map(String::toBoolean).getOrElse(true)
 val packagedFfmpegInputs = PackagedFfmpegInputs.load(file("ffmpeg/ffmpeg-android.properties").toPath())
+val ffmpegVersion = packagedFfmpegInputs.getProperty("ffmpeg.version")
+val x264Version = packagedFfmpegInputs.getProperty("x264.version")
 val packagedFfmpegCacheDir = providers.gradleProperty("infinity.ffmpegCacheDir")
     .map { File(it) }
-    .orElse(provider { File(gradle.gradleUserHomeDir, "caches/infinity-ffmpeg") })
+    .orElse(File(gradleUserHomeDir, "caches/infinity-ffmpeg"))
 val fetchPackagedFfmpeg = tasks.register<FetchVerifiedFile>("fetchPackagedFfmpeg") {
-    description = "下载并校验 FFmpeg ${packagedFfmpegInputs.getProperty("ffmpeg.version")} 源码归档。"
+    val archiveName = "ffmpeg-$ffmpegVersion.tar.xz"
+    description = "下载并校验 FFmpeg $ffmpegVersion 源码归档。"
     url.set(packagedFfmpegInputs.getProperty("ffmpeg.url"))
     sha256.set(packagedFfmpegInputs.getProperty("ffmpeg.sha256"))
-    outputFile.set(layout.file(packagedFfmpegCacheDir.map { File(it, "ffmpeg-${packagedFfmpegInputs.getProperty("ffmpeg.version")}.tar.xz") }))
+    outputFile.set(layout.file(packagedFfmpegCacheDir.map { File(it, archiveName) }))
 }
 val fetchPackagedX264 = tasks.register<FetchVerifiedFile>("fetchPackagedX264") {
+    val archiveName = "x264-$x264Version.tar.gz"
     description = "下载并校验 x264 固定提交源码归档。"
     url.set(packagedFfmpegInputs.getProperty("x264.url"))
     sha256.set(packagedFfmpegInputs.getProperty("x264.sha256"))
-    outputFile.set(layout.file(packagedFfmpegCacheDir.map { File(it, "x264-${packagedFfmpegInputs.getProperty("x264.version")}.tar.gz") }))
+    outputFile.set(layout.file(packagedFfmpegCacheDir.map { File(it, archiveName) }))
 }
 val buildPackagedFfmpegArm64V8a = tasks.register<BuildPackagedFfmpeg>("buildPackagedFfmpegArm64V8a") {
     ffmpegArchive.set(fetchPackagedFfmpeg.flatMap { it.outputFile })
@@ -296,14 +347,17 @@ val buildPackagedFfmpegArm64V8a = tasks.register<BuildPackagedFfmpeg>("buildPack
 val hostToolsEnabled = providers.gradleProperty("infinity.hostTools").map(String::toBoolean).getOrElse(true)
 val hostToolsCacheDir = providers.gradleProperty("infinity.hostToolsCacheDir")
     .map { File(it) }
-    .orElse(provider { File(gradle.gradleUserHomeDir, "caches/infinity-host-tools") })
+    .orElse(File(gradleUserHomeDir, "caches/infinity-host-tools"))
 val hostToolsSourcesDir = layout.dir(hostToolsCacheDir.map { File(it, "src") })
 val fetchPackagedHostTools = PackagedHostToolsInputs.load(file("host-tools/host-tools-android.properties").toPath()).map { source ->
     val suffix = source.name().replaceFirstChar { it.uppercaseChar() }
+    val sourceUrl = source.url()
+    val sourceSha256 = source.sha256()
+    val archiveName = source.archive()
     tasks.register<FetchVerifiedFile>("fetchPackagedHostTools$suffix") {
-        url.set(source.url())
-        sha256.set(source.sha256())
-        outputFile.set(hostToolsSourcesDir.map { it.file(source.archive()) })
+        url.set(sourceUrl)
+        sha256.set(sourceSha256)
+        outputFile.set(hostToolsSourcesDir.map { it.file(archiveName) })
     }
 }
 val buildPackagedHostToolsArm64V8a = tasks.register<BuildPackagedHostTools>("buildPackagedHostToolsArm64V8a") {
@@ -317,7 +371,7 @@ val buildPackagedHostToolsArm64V8a = tasks.register<BuildPackagedHostTools>("bui
     cacheDirectory.set(layout.dir(hostToolsCacheDir.map { File(it, "built") }))
     outputDirectory.set(layout.buildDirectory.dir("generated/packagedHostTools"))
     rustIdentity.set(providers.exec {
-        workingDir(projectDir)
+        workingDir(projectDirFile)
         commandLine("bash", "-c", "rustc -vV && cargo -V")
     }.standardOutput.asText.map(String::trim))
 }
@@ -401,7 +455,7 @@ val prepareLinuxRuntimeAssets = tasks.register<PrepareLinuxRuntimeAssets>("prepa
     outputDirectory.set(layout.buildDirectory.dir("generated/linuxRuntime/assets"))
 }
 
-val recordingInputs = gradle.gradleUserHomeDir.resolve("caches/infinity-recording")
+val recordingInputs = gradleUserHomeDir.resolve("caches/infinity-recording")
 val sherpaAndroidAar = tasks.register<FetchVerifiedFile>("fetchSherpaAndroidAar") {
     url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-2.0.1.aar")
     sha256.set("a8d09d1d32f3eb8520482c6d3d43fae674681c5b050385967c70a3c2c9bf0ee7")
@@ -452,15 +506,18 @@ androidComponents.onVariants { variant ->
     if (ffmpegEnabled && "arm64-v8a" in pythonAbis) {
         variant.sources.jniLibs?.addGeneratedSourceDirectory(buildPackagedFfmpegArm64V8a, BuildPackagedFfmpeg::getOutputDirectory)
     }
+    val resSourceDirs = android.sourceSets.flatMap { source ->
+        source.res.directories.map { dirPath ->
+            File(dirPath).let { candidate -> if (candidate.isAbsolute) candidate else File(projectDirFile, dirPath) }
+        }
+    }
     val generateIcons = tasks.register<GenerateLauncherIcons>("generate${capitalizedName}InfinityLauncherIcons") {
         masterSvg.set(rootProject.layout.projectDirectory.file("../assets/branding/infinity-dots-master.svg"))
         foregroundRasters.set(rootProject.layout.projectDirectory.dir("../assets/branding/launcher-foreground"))
         monochromeSvg.set(rootProject.layout.projectDirectory.file("../assets/branding/infinity-dots-monochrome.svg"))
         notificationSvg.set(rootProject.layout.projectDirectory.file("../assets/branding/infinity-notification.svg"))
         sourceRoots.from(layout.projectDirectory.dir("src"))
-        sourceRoots.from(provider {
-            android.sourceSets.flatMap { source -> source.res.directories.map { project.file(it) } }
-        })
+        sourceRoots.from(resSourceDirs)
     }
     variant.sources.res?.addGeneratedSourceDirectory(generateIcons, GenerateLauncherIcons::getOutputDirectory)
     variant.sources.java?.addGeneratedSourceDirectory(
@@ -655,16 +712,71 @@ android {
 
 // 插件在变体注册期间设置目录；待所有项目完成配置后绑定共用基线，避免被覆盖。
 gradle.projectsEvaluated {
+    val baseProjectDir = layout.projectDirectory.asFile
+    val defaultReferenceDir = layout.projectDirectory.dir("src/screenshotTestDebug/reference")
     tasks.withType<PreviewScreenshotValidationTask>().configureEach {
         systemProperty("user.timezone", "Asia/Shanghai")
         val referenceOverride = providers.environmentVariable("INFINITY_SCREENSHOT_REFERENCE_DIR")
         testEngineInput.referenceImageDir.set(
-            layout.dir(referenceOverride.map { file(it) }).orElse(layout.projectDirectory.dir("src/screenshotTestDebug/reference")),
+            layout.dir(
+                referenceOverride.map { path ->
+                    File(path).let { candidate -> if (candidate.isAbsolute) candidate else File(baseProjectDir, path) }
+                },
+            ).orElse(defaultReferenceDir),
         )
     }
     tasks.withType<PreviewScreenshotUpdateTask>().configureEach {
         systemProperty("user.timezone", "Asia/Shanghai")
-        testEngineInput.referenceImageDir.set(layout.projectDirectory.dir("src/screenshotTestDebug/reference"))
+        testEngineInput.referenceImageDir.set(defaultReferenceDir)
+    }
+
+    val sideloadValidateTask = tasks.findByName("validateSideloadDebugScreenshotTest") as? PreviewScreenshotValidationTask
+    if (sideloadValidateTask != null) {
+        val placeholderRoot = layout.buildDirectory.dir("tmp/parallel-screenshot-runner/placeholder")
+        tasks.register<ExportScreenshotRunnerConfig>("exportSideloadDebugScreenshotRunnerConfig") {
+            group = "verification"
+            description = "导出侧载 Debug 截图测试的类路径与引擎基础配置，供多进程并行脚本使用。"
+            val source = sideloadValidateTask.testEngineInput
+            testEngineInput.mainProjectClassDirs.set(source.mainProjectClassDirs)
+            testEngineInput.mainProjectJars.set(source.mainProjectJars)
+            testEngineInput.mainRuntimeClassDirs.set(source.mainRuntimeClassDirs)
+            testEngineInput.mainRuntimeJars.set(source.mainRuntimeJars)
+            testEngineInput.testProjectClassDirs.set(source.testProjectClassDirs)
+            testEngineInput.testProjectJars.set(source.testProjectJars)
+            testEngineInput.testRuntimeClassDirs.set(source.testRuntimeClassDirs)
+            testEngineInput.testRuntimeJars.set(source.testRuntimeJars)
+            testEngineInput.testRuntimeDependencies.from(source.testRuntimeDependencies)
+            testEngineInput.testRuntimeResourceDirs.from(source.testRuntimeResourceDirs)
+            testEngineInput.testRuntimeRClassJars.from(source.testRuntimeRClassJars)
+            testEngineInput.referenceImageDir.set(source.referenceImageDir)
+            testEngineInput.sdkFontsDir.set(source.sdkFontsDir)
+            testEngineInput.resourceApkFile.set(source.resourceApkFile)
+            testEngineInput.namespace.set(source.namespace)
+            testEngineInput.layoutlibDataDir.from(source.layoutlibDataDir)
+            testEngineInput.layoutlibClassPath.from(source.layoutlibClassPath)
+            testEngineInput.threshold.set(source.threshold)
+            testEngineInput.projectRoot.set(source.projectRoot)
+            testEngineInput.recordingModeEnabled.set(false)
+            // 使用独立占位输出目录，避免与 validateSideloadDebugScreenshotTest 的输出目录重叠。
+            testEngineInput.previewImageOutputDir.set(placeholderRoot.map { it.dir("rendered") })
+            testEngineInput.diffImageOutputDir.set(placeholderRoot.map { it.dir("diffs") })
+            testEngineInput.junitXmlOutputDirectory.set(placeholderRoot.map { it.dir("xml") })
+            runtimeClasspath.from(
+                sideloadValidateTask.classpath,
+                tasks.named<JavaCompile>("compileScreenshotParallelRunner").flatMap { it.destinationDirectory },
+            )
+            javaExecutable.set(
+                sideloadValidateTask.javaLauncher
+                    .map { it.executablePath.asFile.absolutePath }
+                    .orElse(org.gradle.internal.jvm.Jvm.current().javaExecutable.absolutePath),
+            )
+            javaMajorVersion.set(
+                sideloadValidateTask.javaLauncher
+                    .map { it.metadata.languageVersion.asInt() }
+                    .orElse(JavaVersion.current().majorVersion.toInt()),
+            )
+            outputDirectory.set(layout.buildDirectory.dir("tmp/parallel-screenshot-runner/config"))
+        }
     }
 }
 
@@ -814,6 +926,20 @@ configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configu
     }
 }
 
+// 多进程并行截图测试启动器（仅编译期依赖 JUnit Platform Launcher，运行时复用截图任务自带类路径）。
+val screenshotParallelRunnerCompile by configurations.creating
+dependencies {
+    add(screenshotParallelRunnerCompile.name, "org.junit.platform:junit-platform-launcher:1.12.0")
+}
+val compileScreenshotParallelRunner by tasks.registering(JavaCompile::class) {
+    source(fileTree("src/screenshotParallelRunner/java") { include("**/*.java") })
+    classpath = screenshotParallelRunnerCompile
+    destinationDirectory.set(layout.buildDirectory.dir("classes/screenshotParallelRunner"))
+    options.release.set(17)
+    options.encoding = "UTF-8"
+    options.compilerArgs.add("-Xlint:-classfile")
+}
+
 // 宿主夹具使用独立 Java 类路径，MINA 不进入应用或 instrumentation APK。
 val sshTestServerRuntime by configurations.creating
 dependencies {
@@ -844,9 +970,12 @@ tasks.withType<Test> {
     // 完整 JVM 单测的测试进程需容纳持久化测试夹具与 Android/Robolectric 类加载。
     if (name == "testSideloadDebugUnitTest" || name == "testPlayDebugUnitTest") {
         maxHeapSize = "1g"
-        // 完整单测按测试类分到多个进程并行；每个进程 1g 堆，默认留 2 个核心给 Gradle 与系统、最多 8 个进程，内存紧张时可用 -Pinfinity.unitTestForks 下调。
+        // 完整单测按测试类分到多个进程并行；每个进程 1g 堆，默认留 2 个核心给 Gradle 与系统。
+        // 本机多核开发主机上限提高到 12，CI 环境维持 8，内存紧张时可用 -Pinfinity.unitTestForks 下调。
+        val isCiEnvironment = providers.environmentVariable("CI").orNull?.equals("true", ignoreCase = true) == true
+        val maxDefaultForks = if (isCiEnvironment) 8 else 12
         maxParallelForks = providers.gradleProperty("infinity.unitTestForks").orNull?.toIntOrNull()
-            ?: (Runtime.getRuntime().availableProcessors() - 2).coerceIn(1, 8)
+            ?: (Runtime.getRuntime().availableProcessors() - 2).coerceIn(1, maxDefaultForks)
     }
     // Play 渠道默认只跑 src/testPlay 里的渠道专属测试：共享测试与侧载渠道逐项相同，已由侧载单测覆盖。
     // 准备 Play 上架或排查渠道差异时加 -Pinfinity.playFullUnitTests=true 跑完整集合。

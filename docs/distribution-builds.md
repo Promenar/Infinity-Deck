@@ -39,7 +39,7 @@ python3 scripts/ci/screenshot-baseline.py --check-only \
 
 排查 Linux 托管环境的 JVM 单测时，可手动运行“Android JVM 单测诊断”，指定测试过滤条件并读取保留的 XML 和测试报告；可选采样测试进程的 JVM 参数和堆使用。该入口不使用签名材料，不替代完整单测。
 
-侧载与 Play 的 Debug JVM 单测按测试类分到多个进程并行，每个进程配置 1 GiB 堆；默认进程数为 CPU 核心数减 2、最多 8（4 核的 GitHub 托管 Runner 仍为 2），内存紧张时可用 `-Pinfinity.unitTestForks=<n>` 下调（传 1 即恢复单进程）。Gradle 和 Kotlin 守护进程继续使用各自的内存配置。`:app:testPlayDebugUnitTest` 默认只运行 `src/testPlay` 里的渠道专属测试，共享测试由侧载单测覆盖；准备 Play 上架或排查渠道差异时加 `-Pinfinity.playFullUnitTests=true` 运行完整集合。
+侧载与 Play 的 Debug JVM 单测按测试类分到多个进程并行，每个进程配置 1 GiB 堆；默认进程数为 CPU 核心数减 2（本机开发机上限 12，CI 环境上限 8，4 核的 GitHub 托管 Runner 仍为 2），内存紧张时可用 `-Pinfinity.unitTestForks=<n>` 下调（传 1 即恢复单进程）。Gradle 与 Kotlin 守护进程继续使用各自的内存配置；`native-ui/gradle.properties` 常开配置缓存与并行配置缓存（`org.gradle.configuration-cache=true`、`org.gradle.configuration-cache.parallel=true`）。多核本机全量截图校验使用 `python3 scripts/ci/validate-screenshots-parallel.py`（通过 `:app:exportSideloadDebugScreenshotRunnerConfig` 导出引擎基础配置后多进程并行渲染），日常默认只跑侧载渠道；`:app:testPlayDebugUnitTest` 仅在用户显式指定、改动触及 Play 专属边界或准备 Play 发行时运行，默认只跑 `src/testPlay` 里的渠道专属测试（加 `-Pinfinity.playFullUnitTests=true` 运行完整集合）。
 
 lint 不分析测试源码（`lint { ignoreTestSources = true }`），门禁只保留主变体的 lint 分析。AGP lint 默认在 Gradle 守护进程内运行，项目 `gradle.properties` 的 4g 堆供 GitHub 托管 runner 使用；本机全量门禁在用户级 `~/.gradle/gradle.properties` 设 `org.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError`，避免 lint 与打包、截图校验并行时频繁 Full GC。新机器内存不少于 32GB 时照此设置。
 
