@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.TextFields
 import com.promenar.infinity.ui.common.InfinityBottomSheet
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityHapticEvent
+import com.promenar.infinity.data.generation.isContextCompactionNotice
 import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import androidx.compose.animation.*
 import com.promenar.infinity.ui.theme.InfinityMotion
@@ -139,7 +140,7 @@ fun buildPipelineGroups(allMessages: List<Message>): List<PipelineGroup> {
     var i = 0
     while (i < messages.size) {
         val msg = messages[i]
-        if (msg.isWorkspaceSwitchNotice) {
+        if (msg.isWorkspaceSwitchNotice || msg.isContextCompactionNotice) {
             groups.add(PipelineGroup(listOf(msg), isUser = false, isNotice = true))
             i++
         } else if (msg.role == MessageRole.USER && !msg.isSessionTimelineRecord) {
@@ -151,7 +152,7 @@ fun buildPipelineGroups(allMessages: List<Message>): List<PipelineGroup> {
             val groupMsgs = mutableListOf<Message>()
             // 会话消息发送副本写在工具调用与结果之间，留在本轮内，不切分。
             while (i < messages.size && (messages[i].role != MessageRole.USER || messages[i].isSessionTimelineRecord) &&
-                !messages[i].isWorkspaceSwitchNotice) {
+                !messages[i].isWorkspaceSwitchNotice && !messages[i].isContextCompactionNotice) {
                 val candidate = messages[i]
                 val candidateIsError = candidate.isError || candidate.errorMessage != null
                 if (candidateIsError && groupMsgs.isNotEmpty()) break
@@ -237,7 +238,12 @@ fun PipelineBubble(
     ragContent: @Composable () -> Unit = {},
 ) {
     if (group.isNotice) {
-        WorkspaceSwitchNoticeRow(text = group.messages.first().content, modifier = modifier)
+        val first = group.messages.first()
+        if (first.isContextCompactionNotice) {
+            ContextCompactionTimelineDivider(delta = first.content, modifier = modifier)
+        } else {
+            WorkspaceSwitchNoticeRow(text = first.content, modifier = modifier)
+        }
         return
     }
     if (group.isUser) {
@@ -313,16 +319,27 @@ fun PipelineBubble(
     val footerContent = collapsePlan?.finalContent
         ?: allSteps.filterIsInstance<PipelineStep.Content>().lastOrNull { it.content.isNotBlank() }
     val replyCopyText = remember(allSteps, collapsePlan) { collapsePlan?.finalCopyText ?: pipelineReplyCopyText(allSteps) }
-    val allProcessCopyText = remember(collapsePlan) { collapsePlan?.allProcessCopyText() }
+    val allProcessCopyText = remember(collapsePlan) { collapsePlan?.distinctProcessCopyText() }
     Column(modifier = modifier.fillMaxWidth()) {
         ragContent()
         if (collapsePlan != null) {
-            TurnProcessSummaryRow(
-                summary = collapsePlan.summary,
-                expanded = processExpanded,
-                fontSize = fontSize,
-                onToggle = { processExpanded = !processExpanded },
-            )
+            // 实时生成刚结束进入收起态时，摘要行随过程收起同步平滑展开；翻看历史时首帧直接呈现。
+            val summaryVisibility = remember(group.messages.firstOrNull()?.id) {
+                MutableTransitionState(!sawLiveTurn.value)
+            }
+            SideEffect { summaryVisibility.targetState = true }
+            AnimatedVisibility(
+                visibleState = summaryVisibility,
+                enter = InfinityMotion.expandIn,
+                exit = ExitTransition.None,
+            ) {
+                TurnProcessSummaryRow(
+                    summary = collapsePlan.summary,
+                    expanded = processExpanded,
+                    fontSize = fontSize,
+                    onToggle = { processExpanded = !processExpanded },
+                )
+            }
             // 展开后由对应工具行显示，避免同一提示出现两次。
             AnimatedVisibility(
                 visible = !processExpanded && (collapsePlan.summary.runtimeChanges.isNotEmpty() || collapsePlan.summary.memoryChanges.isNotEmpty()),
@@ -417,61 +434,101 @@ fun PipelineBubble(
             }
             renderStep(expandedSteps.lastIndex, collapsePlan.finalContent, expandedSteps)
         }
-        LiveTailSlot(
-            visible = isGenerating && !hasPendingApproval &&
-                liveStep?.kind != LiveStepKind.APPROVAL && liveStep?.kind != LiveStepKind.QUESTION,
-            liveStep = liveStep,
-        )
+        val showLiveTail = isGenerating && !hasPendingApproval &&
+            liveStep?.kind != LiveStepKind.APPROVAL && liveStep?.kind != LiveStepKind.QUESTION
+        val footerOwner = footerContent?.let { pipelineContentOwner(group.messages, it) }
+        if (footerOwner == null) {
+            LiveTailSlot(
+                visible = showLiveTail,
+                liveStep = liveStep,
+            )
+        }
         if (!isGenerating) CanvasInvocationCards(
             allSteps.filterIsInstance<PipelineStep.ToolExec>().flatMap { it.steps },
             messageIds = remember(group.messages) { group.messages.map { it.id }.toSet() },
         )
-        if (footerContent != null) {
-            pipelineContentOwner(group.messages, footerContent)?.let { lastMsg ->
-                val context = LocalContext.current
-                val timestamp = remember(lastMsg.createdAt) {
-                    java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                        .format(java.util.Date(lastMsg.createdAt))
+        if (footerOwner != null) {
+            val lastMsg = footerOwner
+            val context = LocalContext.current
+            val timestamp = remember(lastMsg.createdAt) {
+                java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date(lastMsg.createdAt))
+            }
+            val modelDisplayName = if (lastMsg.modelId.isNullOrBlank()) "" else {
+                modelDisplayNames[lastMsg.modelId]?.takeIf(String::isNotBlank)
+                    ?: lastMsg.modelId.substringAfter("::", lastMsg.modelId)
+            }
+            val providerName = lastMsg.modelId?.substringBefore("::", "")
+                ?.takeIf(String::isNotBlank)
+                ?.let(providerDisplayNames::get)
+            // 统计只在打开浮卡时计算，列表渲染时每个气泡只保留一个轻量工厂。
+            val statsFactory = remember(group.messages, modelDisplayName, providerName, lastMsg.createdAt) {
+                {
+                    GenerationStatsCardModel(
+                        modelName = modelDisplayName,
+                        providerName = providerName,
+                        generatedAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                            .format(java.util.Date(lastMsg.createdAt)),
+                        summary = summarizeGenerationStats(group.messages),
+                    )
                 }
-                val modelDisplayName = if (lastMsg.modelId.isNullOrBlank()) "" else {
-                    modelDisplayNames[lastMsg.modelId]?.takeIf(String::isNotBlank)
-                        ?: lastMsg.modelId.substringAfter("::", lastMsg.modelId)
-                }
-                val providerName = lastMsg.modelId?.substringBefore("::", "")
-                    ?.takeIf(String::isNotBlank)
-                    ?.let(providerDisplayNames::get)
-                // 统计只在打开浮卡时计算，列表渲染时每个气泡只保留一个轻量工厂。
-                val statsFactory = remember(group.messages, modelDisplayName, providerName, lastMsg.createdAt) {
-                    {
-                        GenerationStatsCardModel(
-                            modelName = modelDisplayName,
-                            providerName = providerName,
-                            generatedAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
-                                .format(java.util.Date(lastMsg.createdAt)),
-                            summary = summarizeGenerationStats(group.messages),
+            }
+            val memoryOwner = if (onOpenTurnMemory == null) null
+                else group.assistantMessages.lastOrNull { it.turnMemory != null || it.id in turnGraphStates }
+            val branchTargetId = group.messages.lastOrNull()?.id ?: lastMsg.id
+            val liveTailVisibleInFooter = showLiveTail && resolveLiveTailContent(liveStep) != LiveTailContent.NONE
+            val footerSlotVisible = !isGenerating || liveTailVisibleInFooter
+            // 已有正文时将生成中尾部状态位与完成态操作行合入同一 36dp 槽位，结束时原地淡换，消除先收起再延迟展开的二次高度跳变。
+            val footerVisibility = remember(group.messages.firstOrNull()?.id) {
+                MutableTransitionState(footerSlotVisible)
+            }
+            SideEffect { footerVisibility.targetState = footerSlotVisible }
+            AnimatedVisibility(
+                visibleState = footerVisibility,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                AnimatedContent(
+                    targetState = isGenerating,
+                    transitionSpec = {
+                        (fadeIn(tween(InfinityMotion.DurationMedium)) togetherWith fadeOut(tween(InfinityMotion.DurationFadeOut)))
+                            .using(SizeTransform(clip = false))
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = LiveTailSlotHeight + 8.dp),
+                    contentAlignment = Alignment.TopStart,
+                    label = "assistantFooterSlot",
+                ) { generating ->
+                    if (generating) {
+                        // 用 wrapContentHeight(Alignment.Top) 阻断外层 44dp minHeight 向下传播，
+                        // 保持点阵保持原 36dp 轨道内的垂直对齐位置，同时外层仍占满 44dp 实现零跳变淡换。
+                        Box(Modifier.fillMaxWidth().wrapContentHeight(Alignment.Top)) {
+                            LiveTailSlot(
+                                visible = true,
+                                liveStep = liveStep,
+                                inlineInFooter = true,
+                            )
+                        }
+                    } else {
+                        AssistantActionRow(
+                            modelDisplayName = modelDisplayName,
+                            timestamp = timestamp,
+                            isGenerating = false,
+                            animateVisibility = false,
+                            memoryState = memoryOwner?.turnMemory,
+                            graphState = memoryOwner?.let { turnGraphStates[it.id] },
+                            onOpenMemory = memoryOwner?.let { owner -> onOpenTurnMemory?.let { open -> { open(owner.id) } } },
+                            stats = statsFactory,
+                            onCopy = { onCopy?.invoke(replyCopyText) ?: copyToClipboard(context, replyCopyText) },
+                            onCopyAllProcess = allProcessCopyText?.let { text ->
+                                { onCopy?.invoke(text) ?: copyToClipboard(context, text) }
+                            },
+                            onRegenerate = onRegenerate?.let { handler -> { handler(lastMsg.id) } },
+                            onBranch = onBranch?.let { handler -> { handler(branchTargetId) } },
+                            onDelete = onDelete?.let { handler -> { handler(lastMsg.id) } },
+                            modifier = Modifier.padding(top = 8.dp),
                         )
                     }
                 }
-                val memoryOwner = if (onOpenTurnMemory == null) null
-                    else group.assistantMessages.lastOrNull { it.turnMemory != null || it.id in turnGraphStates }
-                val branchTargetId = group.messages.lastOrNull()?.id ?: lastMsg.id
-                AssistantActionRow(
-                    modelDisplayName = modelDisplayName,
-                    timestamp = timestamp,
-                    isGenerating = isGenerating,
-                    memoryState = memoryOwner?.turnMemory,
-                    graphState = memoryOwner?.let { turnGraphStates[it.id] },
-                    onOpenMemory = memoryOwner?.let { owner -> onOpenTurnMemory?.let { open -> { open(owner.id) } } },
-                    stats = statsFactory,
-                    onCopy = { onCopy?.invoke(replyCopyText) ?: copyToClipboard(context, replyCopyText) },
-                    onCopyAllProcess = allProcessCopyText?.let { text ->
-                        { onCopy?.invoke(text) ?: copyToClipboard(context, text) }
-                    },
-                    onRegenerate = onRegenerate?.let { handler -> { handler(lastMsg.id) } },
-                    onBranch = onBranch?.let { handler -> { handler(branchTargetId) } },
-                    onDelete = onDelete?.let { handler -> { handler(lastMsg.id) } },
-                    modifier = Modifier.padding(top = 8.dp),
-                )
             }
         }
     }
@@ -1079,14 +1136,10 @@ internal fun AssistantActionRow(
     /** 本轮的图谱抽取状态；记忆已记入或未写入记忆时取代记忆状态显示。 */
     graphState: com.promenar.infinity.data.rag.TurnGraphState? = null,
     onOpenMemory: (() -> Unit)? = null,
+    /** 为 false 时交由外层统一页脚槽位控制切换过渡，不再嵌套第二次显隐动画。 */
+    animateVisibility: Boolean = true,
 ) {
-    // 生成结束后操作行淡入展开，重新生成时立即收起，不在流式输出期间占位。
-    AnimatedVisibility(
-        visible = !isGenerating,
-        enter = fadeIn(tween(InfinityMotion.DurationMedium, delayMillis = InfinityMotion.DurationFadeOut)) +
-            expandVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)),
-        exit = ExitTransition.None,
-    ) {
+    val content: @Composable () -> Unit = {
         val haptics = LocalInfinityHaptics.current
         var showMore by remember { mutableStateOf(false) }
         var showStats by remember { mutableStateOf(false) }
@@ -1220,7 +1273,20 @@ internal fun AssistantActionRow(
                 }
             }
         }
-}
+    }
+    if (animateVisibility) {
+        // 独立使用时生成结束后操作行淡入展开，重新生成时立即收起，不在流式输出期间占位。
+        AnimatedVisibility(
+            visible = !isGenerating,
+            enter = fadeIn(tween(InfinityMotion.DurationMedium, delayMillis = InfinityMotion.DurationFadeOut)) +
+                expandVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)),
+            exit = ExitTransition.None,
+        ) {
+            content()
+        }
+    } else if (!isGenerating) {
+        content()
+    }
 }
 
 /** 记忆状态文字、模型名（至少保留一段）与时间能否在 [maxWidth] 内同时排下。 */
@@ -2561,21 +2627,31 @@ internal val LiveTailSlotHeight = CompactStepRowHeight
 /** 流末尾状态位里显示的内容类别；同类之间只更新内容，不同类之间淡入淡出。 */
 private enum class LiveTailContent { NONE, CONTENT_DOTS, WAITING }
 
+private fun resolveLiveTailContent(liveStep: LiveStep?): LiveTailContent = when {
+    liveStep == null -> LiveTailContent.NONE
+    liveStep.kind == LiveStepKind.CONTENT -> LiveTailContent.CONTENT_DOTS
+    liveStep.isTailRow -> LiveTailContent.WAITING
+    else -> LiveTailContent.NONE
+}
+
 /**
- * 生成期间常驻在流末尾的一行状态位：正文流式时显示生成动画，等待模型或准备工具调用时显示等待行，其余阶段留空。
- * 高度固定不随阶段出现、消失，内容之间淡入淡出；生成结束时整行以收起动画离开。
+ * 生成期间流末尾的一行状态位：正文流式时显示生成动画，等待模型或准备工具调用时显示等待行；
+ * 思考块或工具行自带运行指示时不占空位，避免在思考块下方留出 36dp 空白造成跳变。
  */
 @Composable
-private fun LiveTailSlot(visible: Boolean, liveStep: LiveStep?) {
-    val kind = when {
-        liveStep == null -> LiveTailContent.NONE
-        liveStep.kind == LiveStepKind.CONTENT -> LiveTailContent.CONTENT_DOTS
-        liveStep.isTailRow -> LiveTailContent.WAITING
-        else -> LiveTailContent.NONE
-    }
-    AnimatedVisibility(visible = visible, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+private fun LiveTailSlot(
+    visible: Boolean,
+    liveStep: LiveStep?,
+    inlineInFooter: Boolean = false,
+) {
+    val kind = resolveLiveTailContent(liveStep)
+    val active = visible && kind != LiveTailContent.NONE
+    val livePayload = if (active) (kind to liveStep) else null
+    val shown = com.promenar.infinity.ui.theme.rememberLastNonNull(livePayload)
+    val body: @Composable () -> Unit = {
+        val target = shown ?: (LiveTailContent.NONE to null)
         androidx.compose.animation.AnimatedContent(
-            targetState = kind to liveStep,
+            targetState = target,
             contentKey = { it.first },
             transitionSpec = {
                 (fadeIn(tween(InfinityMotion.DurationMedium)) togetherWith fadeOut(tween(InfinityMotion.DurationFadeOut)))
@@ -2590,6 +2666,13 @@ private fun LiveTailSlot(visible: Boolean, liveStep: LiveStep?) {
                 LiveTailContent.WAITING -> if (step != null) LiveWaitingRow(step)
                 LiveTailContent.NONE -> Spacer(Modifier.fillMaxWidth())
             }
+        }
+    }
+    if (inlineInFooter) {
+        body()
+    } else {
+        AnimatedVisibility(visible = active, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+            body()
         }
     }
 }
@@ -2786,4 +2869,92 @@ internal fun WorkspaceSwitchNoticeRow(text: String, modifier: Modifier = Modifie
             .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)
             .semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
     )
+}
+
+/**
+ * 居中极简细分割线骨架：上下文压缩的「进行中」「已锚定成功」「无需压缩」共用同一 36dp 轨道高度，
+ * 确保原地淡换与锚定落位时零高度跳变。
+ */
+@Composable
+internal fun CompactionTimelineDividerFrame(
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+    center: @Composable () -> Unit,
+) {
+    val lineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 36.dp)
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        val reservedForLinesAndTrailing = if (trailing != null) 76.dp else 44.dp
+        val maxCenterWidth = (maxWidth - reservedForLinesAndTrailing).coerceAtLeast(120.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.HorizontalDivider(
+                modifier = Modifier.weight(1f),
+                thickness = 0.5.dp,
+                color = lineColor,
+            )
+            Box(
+                modifier = Modifier
+                    .widthIn(max = maxCenterWidth)
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                center()
+            }
+            androidx.compose.material3.HorizontalDivider(
+                modifier = Modifier.weight(1f),
+                thickness = 0.5.dp,
+                color = lineColor,
+            )
+            if (trailing != null) {
+                trailing()
+            }
+        }
+    }
+}
+
+/**
+ * 上下文已压缩的永久时间线锚点分割线：固定在触发压缩的历史位置，随消息自然滚走、不带关闭按钮。
+ */
+@Composable
+internal fun ContextCompactionTimelineDivider(
+    delta: String,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val title = stringResource(R.string.chat_context_compacted_title)
+    CompactionTimelineDividerFrame(
+        modifier = modifier
+            .testTag("context_compaction_timeline_divider")
+            .semantics(mergeDescendants = true) {},
+        trailing = trailing,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CheckCircleOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                modifier = Modifier.size(13.dp),
+            )
+            InfinityMetaLine(
+                segments = listOfNotNull(title, delta.takeIf(String::isNotBlank)),
+                style = InfinityTypography.labelSmall.copy(
+                    fontSize = 12.sp,
+                    fontFeatureSettings = "tnum",
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.84f),
+                maxLines = 1,
+            )
+        }
+    }
 }

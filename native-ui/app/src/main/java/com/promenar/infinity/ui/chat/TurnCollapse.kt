@@ -36,6 +36,10 @@ internal data class CollapsedTurnPlan(
 internal fun CollapsedTurnPlan.allProcessCopyText(): String =
     pipelineReplyCopyText(processSteps + finalContent)
 
+/** 仅当整轮包含不同于最终正文的中间正文时才提供“复制全部过程”，避免与页脚复制按钮重复。 */
+internal fun CollapsedTurnPlan.distinctProcessCopyText(): String? =
+    allProcessCopyText().takeIf { it != finalCopyText }
+
 /**
  * 判定一轮回复是否进入完成态并返回收起计划；不满足时返回 null，调用方保持逐步平铺。
  *

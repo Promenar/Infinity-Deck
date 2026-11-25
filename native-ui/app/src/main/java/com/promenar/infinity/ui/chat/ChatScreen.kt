@@ -32,10 +32,13 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -646,7 +649,8 @@ fun ChatScreenContent(
 
     val approvalIdentity = uiState.approvalRequest?.let { it.identityHash ?: it.hashCode().toString() }
     val showCompressionFeedback = compressionState.isCompressing ||
-        compressionState.result != null || compressionState.detail.isNotBlank()
+        (compressionState.result != null && compressionState.anchoredNoticeId == null) ||
+        compressionState.detail.isNotBlank()
     val trailingIndices = resolveChatTrailingItemIndices(
         pipelineGroupCount = pipelineGroups.size,
         hasCompression = showCompressionFeedback,
@@ -1275,9 +1279,13 @@ fun ChatScreenContent(
                 EmptyChatWordmark(dispersed = inputText.isNotEmpty(), pointer = wordmarkPointer)
             }
             val renderStateTag = chatRenderStateTag(uiState)
-            // 生成中多留一段底部空间：增长中的思考与工具块在跟随校正前也不贴着输入区；结束后平滑收回。
+            // 生成中多留一段底部空间：与运行坞使用同一无回弹弹簧，进出时保持同相位平滑收回。
             val generatingExtraBottom by animateDpAsState(
                 targetValue = if (uiState.isGenerating) ChatGeneratingExtraBottom else 0.dp,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
                 label = "chat_generating_bottom",
             )
             val focusManager = LocalFocusManager.current
@@ -1334,20 +1342,40 @@ fun ChatScreenContent(
                             modifier = Modifier,
                             ragContent = {
                                 val ragActiveMsg = selectRagActiveMessage(group.assistantMessages)
-
-                                if (ragActiveMsg != null) {
-                                    val targetPhases = if (isGeneratingGroup) ragPhases else emptyList()
-                                    val hasRagArtifacts = ragActiveMsg.hasRagArtifacts()
-                                    val ragLoading = isGeneratingGroup && targetPhases.any { it.status == PhaseStatus.ACTIVE }
-                                    val ragComplete = targetPhases.isNotEmpty() && targetPhases.all { it.status == PhaseStatus.DONE }
-                                    if (targetPhases.isNotEmpty() || hasRagArtifacts) {
+                                val targetPhases = if (isGeneratingGroup) ragPhases else emptyList()
+                                val hasRagArtifacts = ragActiveMsg?.hasRagArtifacts() == true
+                                val ragVisible = ragActiveMsg != null && (targetPhases.isNotEmpty() || hasRagArtifacts)
+                                val ragLoading = isGeneratingGroup && targetPhases.any { it.status == PhaseStatus.ACTIVE }
+                                val ragComplete = targetPhases.isNotEmpty() && targetPhases.all { it.status == PhaseStatus.DONE }
+                                val liveSnapshot = ragActiveMsg?.takeIf { targetPhases.isNotEmpty() || hasRagArtifacts }?.let { activeMsg ->
+                                    RagCardRenderSnapshot(
+                                        phases = targetPhases,
+                                        references = activeMsg.ragReferences,
+                                        kgPaths = activeMsg.kgPaths,
+                                        citations = activeMsg.citations,
+                                        isComplete = if (isGeneratingGroup) (ragComplete || !ragLoading) else true,
+                                        trace = activeMsg.ragMetadata?.trace,
+                                    )
+                                }
+                                val shownSnapshot = rememberLastNonNull(liveSnapshot, key = group.messages.firstOrNull()?.id)
+                                // 历史消息带 RAG 产物时首帧直接呈现；实时生成期进出与 0 命中退场走平滑纵展收起，消除单帧高度跳变。
+                                val ragVisibility = remember(group.messages.firstOrNull()?.id) {
+                                    MutableTransitionState(ragVisible && !isGeneratingGroup)
+                                }
+                                SideEffect { ragVisibility.targetState = ragVisible }
+                                AnimatedVisibility(
+                                    visibleState = ragVisibility,
+                                    enter = InfinityMotion.expandIn,
+                                    exit = InfinityMotion.shrinkOut,
+                                ) {
+                                    shownSnapshot?.let { snapshot ->
                                         RagProgressCard(
-                                            phases = targetPhases,
-                                            references = ragActiveMsg.ragReferences,
-                                            kgPaths = ragActiveMsg.kgPaths,
-                                            citations = ragActiveMsg.citations,
-                                            isComplete = if (isGeneratingGroup) (ragComplete || !ragLoading) else true,
-                                            trace = ragActiveMsg.ragMetadata?.trace,
+                                            phases = snapshot.phases,
+                                            references = snapshot.references,
+                                            kgPaths = snapshot.kgPaths,
+                                            citations = snapshot.citations,
+                                            isComplete = snapshot.isComplete,
+                                            trace = snapshot.trace,
                                         )
                                     }
                                 }
@@ -2663,100 +2691,93 @@ internal fun ContextCompactionFeedback(
             .testTag("context_compaction_feedback")
             .semantics { liveRegion = LiveRegionMode.Polite },
     ) { phase ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 36.dp)
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            when (phase) {
-                0 -> {
-                    LiveStepDots(
-                        phase = GenerationMotionPhase.WAIT,
-                        dotSize = 4.dp,
-                    )
-                    Text(
-                        text = state.detail.ifBlank { stringResource(R.string.chat_context_compacting) },
-                        style = InfinityTypography.bodySmall.copy(
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    state.startedAtMs?.let { startedAt ->
-                        LiveElapsedText(
-                            startedAt = startedAt,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                        )
-                    }
-                }
-
-                1 -> {
-                    Icon(
-                        imageVector = Icons.Rounded.CheckCircleOutline,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    com.promenar.infinity.ui.common.InfinityMetaLine(
-                        segments = listOfNotNull(
-                            stringResource(R.string.chat_context_compacted_title),
-                            state.result?.takeIf(String::isNotBlank),
-                        ),
-                        style = InfinityTypography.bodySmall.copy(
-                            fontSize = 13.sp,
-                            fontFeatureSettings = "tnum",
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(36.dp).testTag("context_compaction_dismiss"),
+        when (phase) {
+            0 -> {
+                CompactionTimelineDividerFrame {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = stringResource(R.string.common_dismiss),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                            modifier = Modifier.size(15.dp),
+                        LiveStepDots(
+                            phase = GenerationMotionPhase.WAIT,
+                            dotSize = 3.5.dp,
                         )
+                        Text(
+                            text = state.detail.ifBlank { stringResource(R.string.chat_context_compacting) },
+                            style = InfinityTypography.labelMedium.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        state.startedAtMs?.let { startedAt ->
+                            LiveElapsedText(
+                                startedAt = startedAt,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                            )
+                        }
                     }
                 }
+            }
 
-                2 -> {
-                    Icon(
-                        imageVector = Icons.Rounded.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        modifier = Modifier.size(16.dp),
-                    )
+            1 -> {
+                ContextCompactionTimelineDivider(
+                    delta = state.result.orEmpty(),
+                    trailing = {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(32.dp).testTag("context_compaction_dismiss"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = stringResource(R.string.common_dismiss),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f),
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    },
+                )
+            }
+
+            2 -> {
+                CompactionTimelineDividerFrame(
+                    trailing = {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(32.dp).testTag("context_compaction_dismiss"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = stringResource(R.string.common_dismiss),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f),
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    },
+                ) {
                     Text(
                         text = state.detail,
-                        style = InfinityTypography.bodySmall.copy(fontSize = 13.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = InfinityTypography.labelSmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
                     )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(36.dp).testTag("context_compaction_dismiss"),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = stringResource(R.string.common_dismiss),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                            modifier = Modifier.size(15.dp),
-                        )
-                    }
                 }
+            }
 
-                else -> {
+            else -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 36.dp)
+                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.ErrorOutline,
                         contentDescription = null,
@@ -2770,7 +2791,7 @@ internal fun ContextCompactionFeedback(
                         Text(
                             text = stringResource(R.string.chat_context_compaction_failed_title),
                             style = InfinityTypography.bodySmall.copy(
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = FontWeight.Medium,
                             ),
                             color = MaterialTheme.colorScheme.error,
@@ -2780,7 +2801,7 @@ internal fun ContextCompactionFeedback(
                         if (state.detail.isNotBlank()) {
                             Text(
                                 text = state.detail,
-                                style = InfinityTypography.labelSmall.copy(fontSize = 12.sp),
+                                style = InfinityTypography.labelSmall.copy(fontSize = 11.5.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
@@ -2799,13 +2820,13 @@ internal fun ContextCompactionFeedback(
                     }
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(36.dp).testTag("context_compaction_dismiss"),
+                        modifier = Modifier.size(32.dp).testTag("context_compaction_dismiss"),
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Close,
                             contentDescription = stringResource(R.string.common_dismiss),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(14.dp),
                         )
                     }
                 }
@@ -2813,6 +2834,15 @@ internal fun ContextCompactionFeedback(
         }
     }
 }
+
+private data class RagCardRenderSnapshot(
+    val phases: List<com.promenar.infinity.data.model.RagPhase>,
+    val references: List<com.promenar.infinity.data.model.RagReference>?,
+    val kgPaths: List<com.promenar.infinity.data.model.KgPath>?,
+    val citations: List<com.promenar.infinity.data.model.Citation>?,
+    val isComplete: Boolean,
+    val trace: com.promenar.infinity.data.model.RagRetrievalTrace?,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -3621,8 +3651,9 @@ fun ChatInputBar(
         // 材质层垫在最底：毛玻璃的模糊背景，或环境光的阶段色柔光。
         ComposerIslandSurface(glow, Modifier.matchParentSize())
         ComposerIslandLights(glow, motionStyle, Modifier.matchParentSize())
-        // 尺寸动画会按矩形裁剪，放在容器内部；放在外层会把圆角投影切成直角。
-        Column(Modifier.animateContentSize()) {
+        // 运行坞、排队托盘与斜杠候选各自自带 AnimatedVisibility；外层不再叠加 animateContentSize 避免双重弹簧拉扯，
+        // 仅在输入框文本区内部使用 animateContentSize，让多行清空与增高平滑过渡。
+        Column {
         // 运行坞下沿一排细灯带隔开输入区；点阵波形屏在运行坞这一行的右侧。
         AnimatedVisibility(
             visible = runDockVisible,
@@ -3645,6 +3676,7 @@ fun ChatInputBar(
                 value = text,
                 onValueChange = onTextChange,
                 modifier = Modifier.fillMaxWidth()
+                    .animateContentSize(InfinityMotion.contentSizeSpec())
                     .heightIn(min = InfinitySpacing.MinimumTouchTarget)
                     .semantics { if (shownPlaceholder.isNotBlank()) contentDescription = shownPlaceholder }
                     .testTag(UiTags.CHAT_INPUT),

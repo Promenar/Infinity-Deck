@@ -1523,6 +1523,45 @@ class ChatViewModelTest {
         assertThat(viewModel.compressionState.value.isCompressing).isFalse()
     }
 
+    @Test
+    fun `压缩写入时间线锚点后回填 anchoredNoticeId，发送新消息时自动清除旧失败或无操作提示`() = runTest {
+        compactionOperation = { _ ->
+            com.promenar.infinity.data.generation.ContextCompactionResult(
+                PromptRequest(model = "model", messages = emptyList()),
+                foldedToolResults = 0,
+                summarizedTurns = 2,
+                beforeTokens = 155_100,
+                afterTokens = 76_900,
+                noticeMessageId = "context_compaction_anchor_1",
+            )
+        }
+        seedSession("s1")
+        advanceUntilIdle()
+
+        viewModel.compactNow()
+        runCurrent()
+        assertThat(viewModel.compressionState.value.anchoredNoticeId).isEqualTo("context_compaction_anchor_1")
+        assertThat(viewModel.compressionState.value.result).isNotNull()
+
+        compactionOperation = { _ ->
+            com.promenar.infinity.data.generation.ContextCompactionResult(
+                PromptRequest(model = "model", messages = emptyList()),
+                foldedToolResults = 0,
+                summarizedTurns = 0,
+                beforeTokens = 5_000,
+                afterTokens = 5_000,
+            )
+        }
+        viewModel.compactNow()
+        runCurrent()
+        assertThat(viewModel.compressionState.value.isNoOp).isTrue()
+        assertThat(viewModel.compressionState.value.detail).isNotEmpty()
+
+        viewModel.sendMessage("继续下一轮")
+        runCurrent()
+        assertThat(viewModel.compressionState.value).isEqualTo(ChatViewModel.CompressionState())
+    }
+
     private fun seedSession(
         id: String = "s1",
         messages: List<Message> = emptyList(),
@@ -3836,7 +3875,9 @@ class ChatViewModelTest {
         val timeline = Message("sent", MessageRole.USER, "派发记录",
             name = com.promenar.infinity.data.branch.SessionMessageStore.SENT_MESSAGE_NAME)
         seedSession(messages = multiMessageTurn() + listOf(
-            internal, timeline, com.promenar.infinity.data.workspace.WorkspaceSwitchNotice.create("切换工作区"),
+            internal, timeline,
+            com.promenar.infinity.data.workspace.WorkspaceSwitchNotice.create("切换工作区"),
+            com.promenar.infinity.data.generation.ContextCompactionNotice.create(12_000, 4_000),
             Message("u2", MessageRole.USER, "后续问题"),
         ))
         advanceUntilIdle()

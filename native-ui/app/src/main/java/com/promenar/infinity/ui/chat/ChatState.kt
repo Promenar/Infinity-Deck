@@ -17,8 +17,10 @@ data class ChatState(
 
 class ChatStore {
     val turnAdmission = com.promenar.infinity.data.generation.GenerationTurnAdmission()
-    // 界面与应用级运行器共享插入顺序，确保同毫秒消息按 Room 的写入顺序同步。
-    internal val messageInsertion = Mutex()
+    // 界面与应用级运行器按会话共享插入锁，确保同会话同毫秒消息按 Room 写入顺序同步且不阻塞其它会话。
+    private val messageInsertions = ConcurrentHashMap<String, Mutex>()
+    internal fun messageInsertionLock(sessionId: String): Mutex =
+        messageInsertions.computeIfAbsent(sessionId) { Mutex() }
     // 界面与应用级运行器各自持有 MessageManager，共享同一会话的编辑快照。
     internal val pendingUserEditSnapshots = ConcurrentHashMap<String, Message>()
     private val loading = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()

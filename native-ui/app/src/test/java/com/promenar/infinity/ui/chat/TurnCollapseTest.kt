@@ -182,7 +182,21 @@ class TurnCollapseTest {
         assertThat(plan.finalCopyText).isEqualTo("最终结论：已经修改完成。")
         assertThat(plan.allProcessCopyText()).isEqualTo(pipelineReplyCopyText(allSteps))
         assertThat(plan.allProcessCopyText()).isEqualTo("先看看文件。\n\n最终结论：已经修改完成。")
+        assertThat(plan.distinctProcessCopyText()).isEqualTo("先看看文件。\n\n最终结论：已经修改完成。")
         assertThat(plan.allProcessCopyText()).doesNotContain("秘密")
+    }
+
+    @Test
+    fun `收起轮没有中间正文时不提供重复的复制全部过程入口`() {
+        val thinkingOnly = requireNotNull(plan(listOf(Message("only", MessageRole.ASSISTANT, "最终答复", reasoning = "思考"))))
+        assertThat(thinkingOnly.distinctProcessCopyText()).isNull()
+
+        val toolsWithoutIntermediateText = requireNotNull(plan(listOf(
+            Message("a1", MessageRole.ASSISTANT, "", executionSteps = toolCall("t1", "read_file", 1_000), toolCalls = listOf(ToolCall("t1", "read_file", "{}"))),
+            Message("tool-1", MessageRole.TOOL, "结果", toolCallId = "t1", name = "read_file"),
+            Message("final", MessageRole.ASSISTANT, "只有最终答复"),
+        )))
+        assertThat(toolsWithoutIntermediateText.distinctProcessCopyText()).isNull()
     }
 
     @Test

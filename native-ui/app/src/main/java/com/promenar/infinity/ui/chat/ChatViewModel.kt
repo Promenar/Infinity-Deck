@@ -7,6 +7,7 @@ import android.net.Uri
 import com.promenar.infinity.data.branch.SessionMessageStore
 import com.promenar.infinity.data.generation.ContextCompactionFailureReason
 import com.promenar.infinity.data.session.EditedUserMessagePayload
+import com.promenar.infinity.data.generation.isContextCompactionNotice
 import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import com.promenar.infinity.domain.generation.GenerationTaskSnapshot
 import com.promenar.infinity.domain.media.ImageAnnotation
@@ -775,6 +776,7 @@ class ChatViewModel(
         val failureReason: ContextCompactionFailureReason? = null,
         val startedAtMs: Long? = null,
         val isNoOp: Boolean = false,
+        val anchoredNoticeId: String? = null,
     )
 
     private val _compressionState = MutableStateFlow(CompressionState())
@@ -1521,6 +1523,7 @@ class ChatViewModel(
                         _backgroundServiceStoppedError.value = null
                         _backgroundWarning.value = null
                         _providerResolutionFailure.value = null
+                        if (!_compressionState.value.isCompressing) dismissCompressionResult()
                     }
 
                     val imageAnnotations = try {
@@ -3113,6 +3116,7 @@ class ChatViewModel(
                 formatCompactTokenCount(result.afterTokens),
             ),
             failureReason = progress.failureReason,
+            anchoredNoticeId = result.noticeMessageId,
         )
     }
 
@@ -3708,7 +3712,8 @@ class ChatViewModel(
     }
 
     private fun Message.isConversationMessage(): Boolean =
-        !isWorkspaceSwitchNotice && !SessionMessageStore.isInternal(name) && !SessionMessageStore.isTimelineRecord(name)
+        !isWorkspaceSwitchNotice && !isContextCompactionNotice &&
+            !SessionMessageStore.isInternal(name) && !SessionMessageStore.isTimelineRecord(name)
 
     private fun List<Message>.userTurnIndex(messageId: String): Int {
         val messageIndex = indexOfFirst { it.id == messageId }

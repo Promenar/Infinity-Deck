@@ -142,7 +142,7 @@ class MessageManager(
         private const val DB_DEBOUNCE_MS = 500L
     }
 
-    suspend fun addMessage(sessionId: String, message: Message) = store.messageInsertion.withLock {
+    suspend fun addMessage(sessionId: String, message: Message) = store.messageInsertionLock(sessionId).withLock {
         if (store.getSession(sessionId)?.messages?.any { it.id == message.id } == true) return@withLock
         messageRepository.insert(message, sessionId)
         val preview = message.role != MessageRole.SYSTEM

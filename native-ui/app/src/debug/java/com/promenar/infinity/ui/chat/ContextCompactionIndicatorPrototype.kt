@@ -4,14 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -19,8 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,124 +50,125 @@ import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.forReading
 
 /*
- * 上下文压缩轻量指示器高保真隔离原型 v2（待用户确认后接入 ChatScreen.kt / ChatInlineComponents.kt）：
- * 1. 所有状态（进行中 / 已完成 / 无需压缩 / 失败）统一复用同一行轻量内联指示器，无卡片框、无底板堆积、无摘要正文展开；
- * 2. 进行中：[LiveStepDots] + 正在压缩上下文… + m:ss 中性计时；
- * 3. 已完成：原地切换为 [CheckCircleOutline] + 上下文已压缩（附简短用量变化，如 48.2k → 11.4k）+ 轻量关闭按钮；
- * 4. 无需压缩：原地切换为 [Info] + 当前记录较短，暂无需压缩 + 轻量关闭按钮；
- * 5. 失败：原地切换为 [ErrorOutline] + 上下文压缩失败 + 具体原因（如 请求超时，完整记录已保留）+ 紧凑「重试」胶囊按钮 + 关闭按钮。
+ * 上下文压缩时间线锚点高保真隔离原型 v3（居中极简分割线，供用户确认后接入正式实现）：
+ * 1. 锚定在消息流中触发压缩的精确时间线位置（位于被压缩的旧消息下方、后续新消息上方），不悬浮、不随新消息下漂；
+ * 2. 压缩进行中：居中细分割线 + [LiveStepDots] + 正在压缩上下文… + m:ss 计时；
+ * 3. 压缩成功：原地淡换为永久时间线分割线（─── ✓ 上下文已压缩 · 155.1k → 76.9k ───），无关闭按钮、零高度跳变；
+ * 4. 无需压缩：居中极简分割线（─── 仅保留最近 4 轮对话，暂无需压缩 ───）+ 轻量关闭按钮；
+ * 5. 压缩失败：轻量内联错误行 + 具体原因 + 紧凑「重试」胶囊按钮 + 关闭按钮，确保 360dp / 1.3x 零裁切；
+ * 6. 彻底移除浮岛上方多余的 [记忆] / [摘要] PostProcessChip 浮标。
  */
 
-private sealed interface CompactionIndicatorProtoState {
-    data class Running(val elapsedSeconds: Long) : CompactionIndicatorProtoState
-    data class Success(val message: String) : CompactionIndicatorProtoState
-    data class NoOp(val message: String) : CompactionIndicatorProtoState
-    data class Failed(val title: String, val reason: String) : CompactionIndicatorProtoState
+private sealed interface CompactionTimelineProtoState {
+    data class Running(val elapsedSeconds: Long) : CompactionTimelineProtoState
+    data class Anchored(val title: String, val delta: String) : CompactionTimelineProtoState
+    data class NoOp(val message: String) : CompactionTimelineProtoState
+    data class Failed(val title: String, val reason: String) : CompactionTimelineProtoState
 }
 
 @Composable
-private fun CompactCompactionIndicatorProtoV2(
-    state: CompactionIndicatorProtoState,
+private fun CompactionTimelineProtoV3(
+    state: CompactionTimelineProtoState,
     english: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    // 统一单行无卡片轻量轨道，原地平滑切换状态，不造成布局高度跳变
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 36.dp)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        when (state) {
-            is CompactionIndicatorProtoState.Running -> {
-                LiveStepDots(
-                    phase = GenerationMotionPhase.WAIT,
-                    dotSize = 4.dp,
-                )
-                Text(
-                    text = if (english) "Compacting context…" else "正在压缩上下文…",
-                    style = InfinityTypography.bodySmall.copy(
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Text(
-                    text = liveClockText(state.elapsedSeconds),
-                    style = InfinityTypography.labelSmall.copy(
-                        fontSize = 12.sp,
-                        fontFeatureSettings = "tnum",
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                    maxLines = 1,
-                )
-            }
-
-            is CompactionIndicatorProtoState.Success -> {
-                Icon(
-                    imageVector = Icons.Rounded.CheckCircleOutline,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(
-                    text = state.message,
-                    style = InfinityTypography.bodySmall.copy(
-                        fontSize = 13.sp,
-                        fontFeatureSettings = "tnum",
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(
-                    onClick = {},
-                    modifier = Modifier.size(36.dp),
+    when (state) {
+        is CompactionTimelineProtoState.Running -> {
+            CompactionTimelineDividerFrame(modifier = modifier) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = if (english) "Dismiss" else "关闭",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                        modifier = Modifier.size(15.dp),
+                    LiveStepDots(
+                        phase = GenerationMotionPhase.WAIT,
+                        dotSize = 3.5.dp,
+                    )
+                    Text(
+                        text = if (english) "Compacting context…" else "正在压缩上下文…",
+                        style = InfinityTypography.labelMedium.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Text(
+                        text = liveClockText(state.elapsedSeconds),
+                        style = InfinityTypography.labelSmall.copy(
+                            fontSize = 11.5.sp,
+                            fontFeatureSettings = "tnum",
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                        maxLines = 1,
                     )
                 }
             }
+        }
 
-            is CompactionIndicatorProtoState.NoOp -> {
-                Icon(
-                    imageVector = Icons.Rounded.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(
-                    text = state.message,
-                    style = InfinityTypography.bodySmall.copy(fontSize = 13.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(
-                    onClick = {},
-                    modifier = Modifier.size(36.dp),
+        is CompactionTimelineProtoState.Anchored -> {
+            CompactionTimelineDividerFrame(modifier = modifier) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = if (english) "Dismiss" else "关闭",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                        modifier = Modifier.size(15.dp),
+                        imageVector = Icons.Rounded.CheckCircleOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                        modifier = Modifier.size(13.dp),
+                    )
+                    InfinityMetaLine(
+                        segments = listOf(state.title, state.delta),
+                        style = InfinityTypography.labelSmall.copy(
+                            fontSize = 12.sp,
+                            fontFeatureSettings = "tnum",
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.84f),
+                        maxLines = 1,
                     )
                 }
             }
+        }
 
-            is CompactionIndicatorProtoState.Failed -> {
+        is CompactionTimelineProtoState.NoOp -> {
+            CompactionTimelineDividerFrame(
+                modifier = modifier,
+                trailing = {
+                    IconButton(
+                        onClick = {},
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = if (english) "Dismiss" else "关闭",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.68f),
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                },
+            ) {
+                Text(
+                    text = state.message,
+                    style = InfinityTypography.labelSmall.copy(fontSize = 12.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        is CompactionTimelineProtoState.Failed -> {
+            Row(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 36.dp)
+                    .padding(horizontal = 2.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Icon(
                     imageVector = Icons.Rounded.ErrorOutline,
                     contentDescription = null,
@@ -177,7 +182,7 @@ private fun CompactCompactionIndicatorProtoV2(
                     Text(
                         text = state.title,
                         style = InfinityTypography.bodySmall.copy(
-                            fontSize = 13.sp,
+                            fontSize = 12.5.sp,
                             fontWeight = FontWeight.Medium,
                         ),
                         color = MaterialTheme.colorScheme.error,
@@ -186,7 +191,7 @@ private fun CompactCompactionIndicatorProtoV2(
                     )
                     Text(
                         text = state.reason,
-                        style = InfinityTypography.labelSmall.copy(fontSize = 12.sp),
+                        style = InfinityTypography.labelSmall.copy(fontSize = 11.5.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -201,13 +206,13 @@ private fun CompactCompactionIndicatorProtoV2(
                 )
                 IconButton(
                     onClick = {},
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(32.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = if (english) "Dismiss" else "关闭",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier.size(14.dp),
                     )
                 }
             }
@@ -216,34 +221,35 @@ private fun CompactCompactionIndicatorProtoV2(
 }
 
 @Composable
-private fun ContextCompactionIndicatorShowcase(english: Boolean) {
+private fun ContextCompactionTimelineShowcase(english: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = if (english) "Context Compaction Indicator v2" else "上下文压缩指示器 · 极简原地切换原型 v2",
+                text = if (english) "Compaction Timeline Anchor v3" else "上下文压缩时间线锚点 · 居中极简分割线原型 v3",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             InfinityMetaLine(
                 segments = if (english) {
-                    listOf("Zero card box", "In-place state morph", "No summary output")
+                    listOf("Anchored in timeline", "Centered hairline", "Zero floating chip")
                 } else {
-                    listOf("全状态无卡片框", "原地平滑切为成功/失败", "不展示摘要成果")
+                    listOf("锚定触发位置不漂移", "居中极简细分割线", "移除底部记忆浮标")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        // 模拟真实聊天气泡底部上下文语境
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // 真实会话流上下文：旧消息 → 居中压缩分割线锚点 → 后续新消息
+        SectionLabel(if (english) "In-stream placement (between old & new turns)" else "真实时间线位置（锚定在旧回复与新消息之间）")
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = if (english) {
                     "Current versions in /mnt/skills match the repository archive byte-for-byte."
@@ -260,27 +266,45 @@ private fun ContextCompactionIndicatorShowcase(english: Boolean) {
             )
         }
 
-        SectionLabel(if (english) "1. In progress" else "1. 压缩进行中")
-        CompactCompactionIndicatorProtoV2(
-            state = CompactionIndicatorProtoState.Running(elapsedSeconds = 8L),
-            english = english,
-        )
-
-        SectionLabel(if (english) "2. Completed (in-place morph, no card)" else "2. 压缩成功（原地转为单行消息，无卡片/无成果展开）")
-        CompactCompactionIndicatorProtoV2(
-            state = CompactionIndicatorProtoState.Success(
-                message = if (english) {
-                    "Context compacted · 48.2k → 11.4k"
-                } else {
-                    "上下文已压缩 · 48.2k → 11.4k"
-                },
+        CompactionTimelineProtoV3(
+            state = CompactionTimelineProtoState.Anchored(
+                title = if (english) "Context compacted" else "上下文已压缩",
+                delta = "155.1k → 76.9k",
             ),
             english = english,
         )
 
-        SectionLabel(if (english) "3. Nothing to compact" else "3. 无需压缩")
-        CompactCompactionIndicatorProtoV2(
-            state = CompactionIndicatorProtoState.NoOp(
+        // 模拟后续发出的新用户气泡（验证分割线留在原位，不随新消息下漂）
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 280.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    text = if (english) {
+                        "Can you retrieve the compacted history via tools?"
+                    } else {
+                        "很好，你能查到被压缩掉的历史会话吗？"
+                    },
+                    style = InfinityTypography.bodyMedium.forReading(),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+        SectionLabel(if (english) "1. In progress (same centered track, zero height jump)" else "1. 压缩进行中（同居中细线轨道，完成后原地等高淡换）")
+        CompactionTimelineProtoV3(
+            state = CompactionTimelineProtoState.Running(elapsedSeconds = 8L),
+            english = english,
+        )
+
+        SectionLabel(if (english) "2. Nothing to compact (dismissible)" else "2. 无需压缩（可关闭）")
+        CompactionTimelineProtoV3(
+            state = CompactionTimelineProtoState.NoOp(
                 message = if (english) {
                     "Recent 4 turns kept; nothing earlier to compact"
                 } else {
@@ -290,9 +314,9 @@ private fun ContextCompactionIndicatorShowcase(english: Boolean) {
             english = english,
         )
 
-        SectionLabel(if (english) "4. Failed (in-place error + Retry)" else "4. 压缩失败（原地报错 + 原因 + 重试）")
-        CompactCompactionIndicatorProtoV2(
-            state = CompactionIndicatorProtoState.Failed(
+        SectionLabel(if (english) "3. Failed (reason + Retry pill + dismiss)" else "3. 压缩失败（具体原因 + 重试按钮 + 关闭）")
+        CompactionTimelineProtoV3(
+            state = CompactionTimelineProtoState.Failed(
                 title = if (english) "Compaction failed" else "上下文压缩失败",
                 reason = if (english) {
                     "Request timed out · full history kept"
@@ -303,7 +327,8 @@ private fun ContextCompactionIndicatorShowcase(english: Boolean) {
             english = english,
         )
 
-        Spacer(Modifier.size(8.dp))
+        Spacer(Modifier.height(4.dp))
+        // 纯净浮岛（上方不再有 [记忆] 浮标）
         val composerShape = RoundedCornerShape(24.dp)
         Box(
             modifier = Modifier
@@ -344,61 +369,57 @@ private fun ProtoTheme(dark: Boolean, content: @Composable () -> Unit) {
     )
 }
 
-@Preview(name = "深色 · 外屏 360dp", widthDp = 360, heightDp = 640)
+@Preview(name = "深色 · 外屏 360dp · v3", widthDp = 360, heightDp = 700)
 @Composable
 fun ContextCompactionIndicatorProtoDarkPhone() {
-    ProtoTheme(dark = true) { ContextCompactionIndicatorShowcase(english = false) }
+    ProtoTheme(dark = true) { ContextCompactionTimelineShowcase(english = false) }
 }
 
-@Preview(name = "浅色 · 标准 411dp", widthDp = 411, heightDp = 640)
+@Preview(name = "浅色 · 标准 411dp · v3", widthDp = 411, heightDp = 700)
 @Composable
 fun ContextCompactionIndicatorProtoLightPhone() {
-    ProtoTheme(dark = false) { ContextCompactionIndicatorShowcase(english = false) }
+    ProtoTheme(dark = false) { ContextCompactionTimelineShowcase(english = false) }
 }
 
-@Preview(name = "深色 · 大字号 1.3x · 360dp", widthDp = 360, heightDp = 760, fontScale = 1.3f)
+@Preview(name = "深色 · 大字号 1.3x · 360dp · v3", widthDp = 360, heightDp = 820, fontScale = 1.3f)
 @Composable
 fun ContextCompactionIndicatorProtoLargeFont() {
-    ProtoTheme(dark = true) { ContextCompactionIndicatorShowcase(english = false) }
+    ProtoTheme(dark = true) { ContextCompactionTimelineShowcase(english = false) }
 }
 
-@Preview(name = "英文 · 展开内屏 680dp", widthDp = 680, heightDp = 600)
+@Preview(name = "英文 · 展开内屏 680dp · v3", widthDp = 680, heightDp = 660)
 @Composable
 fun ContextCompactionIndicatorProtoEnglishWide() {
-    ProtoTheme(dark = true) { ContextCompactionIndicatorShowcase(english = true) }
+    ProtoTheme(dark = true) { ContextCompactionTimelineShowcase(english = true) }
 }
 
-@Preview(name = "正式实现 1:1 对照 · 深色 360dp", widthDp = 360, heightDp = 640)
+@Preview(name = "正式组件核验 · 深色 360dp · v3", widthDp = 360, heightDp = 700, locale = "zh-rCN")
 @Composable
-fun ContextCompactionFeedbackProductionDarkPhone() {
+fun ContextCompactionProductionV3DarkPhone() {
     ProtoTheme(dark = true) {
-        androidx.compose.runtime.CompositionLocalProvider(LocalLiveStepNow provides 1_800_000_008_000L) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalLiveStepNow provides 8_000L) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                SectionLabel("1. 正式组件：进行中")
+                SectionLabel("正式组件 · 时间线锚定分割线（永久，无关闭按钮）")
+                ContextCompactionTimelineDivider(delta = "155.1k → 76.9k")
+
+                SectionLabel("正式组件 · 进行中（ContextCompactionFeedback）")
                 ContextCompactionFeedback(
                     state = ChatViewModel.CompressionState(
                         isCompressing = true,
                         detail = "正在压缩上下文…",
-                        startedAtMs = 1_800_000_000_000L,
+                        startedAtMs = 0L,
                     ),
                     onDismiss = {},
                 )
-                SectionLabel("2. 正式组件：压缩完成")
-                ContextCompactionFeedback(
-                    state = ChatViewModel.CompressionState(
-                        progress = 1f,
-                        result = "48.2k → 11.4k",
-                    ),
-                    onDismiss = {},
-                )
-                SectionLabel("3. 正式组件：无需压缩")
+
+                SectionLabel("正式组件 · 无需压缩（可关闭）")
                 ContextCompactionFeedback(
                     state = ChatViewModel.CompressionState(
                         progress = 1f,
@@ -407,7 +428,8 @@ fun ContextCompactionFeedbackProductionDarkPhone() {
                     ),
                     onDismiss = {},
                 )
-                SectionLabel("4. 正式组件：压缩失败（带真实原因 + 重试）")
+
+                SectionLabel("正式组件 · 压缩失败（原因 + 重试 + 关闭）")
                 ContextCompactionFeedback(
                     state = ChatViewModel.CompressionState(
                         detail = "请求超时，完整记录已保留",

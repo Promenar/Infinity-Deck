@@ -66,6 +66,21 @@ class ContextCompactionNoticeTest {
         assertThat(historyCompactionCandidates(messages, current.id, keepRecentTurns = 1)).containsExactly(previous)
     }
 
+    @Test fun `压缩提示在消息流分组中独立成组且锚定于新旧轮次之间`() {
+        val notice = ContextCompactionNotice.create(155_100, 76_900, now = 3)
+        val groups = com.promenar.infinity.ui.chat.buildPipelineGroups(listOf(
+            Message("u1", MessageRole.USER, "旧问", createdAt = 1),
+            Message("a1", MessageRole.ASSISTANT, "旧答", createdAt = 2),
+            notice,
+            Message("u2", MessageRole.USER, "新问", createdAt = 4),
+            Message("a2", MessageRole.ASSISTANT, "新答", createdAt = 5),
+        ))
+        assertThat(groups.map { it.messages.map(Message::id) })
+            .containsExactly(listOf("u1"), listOf("a1"), listOf(notice.id), listOf("u2"), listOf("a2")).inOrder()
+        assertThat(groups[2].isNotice).isTrue()
+        assertThat(groups[2].messages.single().isContextCompactionNotice).isTrue()
+    }
+
     private fun timeline(previousAt: Long, currentAt: Long) = listOf(
         Message("previous", MessageRole.USER, "上一轮", createdAt = previousAt),
         Message("current", MessageRole.USER, "当前轮", createdAt = currentAt),
