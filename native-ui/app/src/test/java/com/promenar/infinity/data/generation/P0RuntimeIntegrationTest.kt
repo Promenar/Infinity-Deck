@@ -1038,7 +1038,7 @@ class P0RuntimeIntegrationTest {
                 }
                 override suspend fun sendPromptSync(request: PromptRequest): PromptResponse {
                     summaryPrompts += request
-                    postEvents += if (request.messages.any { it.content.startsWith("你是一个信息压缩助手") }) "history-summary" else "tool-summary"
+                    postEvents += if (request.messages.any { it.role == "system" && it.content.contains("上下文检查点压缩") }) "history-summary" else "tool-summary"
                     summaryFailure?.let { throw it }
                     return summaryResponse
                 }

@@ -137,7 +137,7 @@ class SessionHeaderGenerationWiringTest {
                     val bodies = endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }
                     assertThat(bodies).hasSize(if (manual) 1 else 2)
                     assertThat(bodies.any { it.contains("压缩工具") }).isEqualTo(!manual)
-                    assertThat(bodies.last()).contains("对话记录压缩")
+                    assertThat(bodies.last()).contains("上下文检查点压缩")
                     bodies.forEach { assertThat(it).doesNotContain("\"max_tokens\"") }
                     endpoint.requests.forEach {
                         assertThat(it.headers["x-opencode-session"]).isEqualTo(if (enabled) endpoint.identifier("compaction-session") else null)
