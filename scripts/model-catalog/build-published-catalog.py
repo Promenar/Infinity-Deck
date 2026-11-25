@@ -748,8 +748,8 @@ def build_catalog(
     records: list[dict[str, Any]] = []
     for document in documents:
         records.extend(NORMALIZERS[document.source_id](document))
-    canonical_ids = {
-        record["canonicalModelId"]
+    canonical_records = {
+        record["canonicalModelId"]: record
         for record in records
         if record["source"] == "MODELS_DEV" and "providerScope" not in record
     }
@@ -759,7 +759,19 @@ def build_catalog(
         url, raw, value = read_source(official_overrides)
         override_document = SourceDocument("official-overrides", url, raw, value)
         override_source, override_records = _normalize_official_overrides(override_document)
-        records.extend(record for record in override_records if record["canonicalModelId"] not in canonical_ids)
+        for override in override_records:
+            upstream = canonical_records.get(override["canonicalModelId"])
+            if upstream is None:
+                records.append(override)
+            elif override.get("workload") == "RERANK":
+                # 重排模型需要工作负载、上下文和网关别名均已接管。
+                has_all_facts = (
+                    upstream.get("workload") == "RERANK"
+                    and upstream.get("contextTokens") == override.get("contextTokens")
+                    and set(override["exactAliases"]) <= set(upstream.get("exactAliases", []))
+                )
+                if not has_all_facts:
+                    records.append(override)
     records.sort(key=lambda item: (item.get("providerScope", ""), item["canonicalModelId"], item["source"]))
     _validate_records(records)
 

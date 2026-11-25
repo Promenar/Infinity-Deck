@@ -309,7 +309,7 @@ private val MODEL_FAMILIES: List<ModelFamily> = listOf(
 
     // MiniMax：temperature、top_p 固定，其余采样参数被忽略。
     vendor(
-        setOf("minimax.io", "minimaxi.com", "minimax.chat", "minimaxi.chat"),
+        setOf("minimax.io", "minimaxi.com", "minimax.chat", "minimaxi.chat", "minimax.cn"),
         family("^minimax-m3\\.1", ReasoningDialect.THINKING_TYPE, ALL_FIVE, default = MX, unsupported = setOf(TEMP, TOP_P, TOP_K, FREQ, PRES, REP)),
         family("^minimax-m3$END", ReasoningDialect.THINKING_TYPE, canDisable = true, unsupported = setOf(TEMP, TOP_P, TOP_K, FREQ, PRES, REP)),
         family("^minimax-", null, unsupported = setOf(TEMP, TOP_P, TOP_K, FREQ, PRES, REP)),

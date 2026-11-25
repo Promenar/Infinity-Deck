@@ -139,10 +139,18 @@ internal fun ResolvedModelMetadata.toModelInfo(
     providerMetadata = providerMetadata,
 )
 
+private val nonChatModelTypes = setOf("video", "audio", "image", "embedding", "rerank")
+
+private fun ModelInfo.disablesChatEndpoint(userFields: Set<String>): Boolean =
+    mediaSettings != null || ("type" in userFields && type in nonChatModelTypes)
+
 internal fun ModelInfo.mergeResolvedMetadata(resolved: ResolvedModelMetadata): ModelInfo {
     val userFields = userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS)
-    val resolvedChatEndpoint = if (mediaSettings != null || mediaModelPreset(remoteModelId) != null) SupportState.UNSUPPORTED
-        else resolved.capabilities[ModelCapability.CHAT_ENDPOINT] ?: SupportState.UNKNOWN
+    val resolvedChatEndpoint = if (disablesChatEndpoint(userFields) || mediaModelPreset(remoteModelId) != null) {
+        SupportState.UNSUPPORTED
+    } else {
+        resolved.capabilities[ModelCapability.CHAT_ENDPOINT] ?: SupportState.UNKNOWN
+    }
     return copy(
         name = if ("name" in userFields) name else resolved.displayName,
         description = resolved.familyName ?: resolved.remoteModelId,
@@ -167,6 +175,7 @@ internal fun ModelInfo.mergeResolvedMetadata(resolved: ResolvedModelMetadata): M
         metadataSourceByField = resolved.sourceByField,
         metadataDiagnostics = resolved.diagnostics,
         userEditedFields = userFields,
+        mediaSettings = mediaSettings?.withKnownPresetId(remoteModelId),
     )
 }
 
@@ -180,11 +189,19 @@ internal fun ModelInfo.withRecordedUserEdits(previous: ModelInfo): ModelInfo {
         if (maxOutputTokens != previous.maxOutputTokens) add("maxOutputTokens")
         if (mediaSettings != previous.mediaSettings) add("mediaSettings")
     }
-    return copy(
-        userEditedFields = previous.userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS) +
-            userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS) +
-            changedFields,
-    )
+    val userFields = previous.userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS) +
+        userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS) + changedFields
+    val chatSupport = when {
+        disablesChatEndpoint(userFields) -> SupportState.UNSUPPORTED
+        previous.disablesChatEndpoint(previous.userEditedFields) && chatEndpointCompatible == SupportState.UNSUPPORTED -> {
+            if (remoteModelId != previous.remoteModelId) SupportState.UNKNOWN
+            else providerMetadata?.capabilities?.get(ModelCapability.CHAT_ENDPOINT)
+                ?: SupportState.entries.firstOrNull { it.name == autoMetadataFingerprint?.substringAfterLast('|') }
+                ?: SupportState.UNKNOWN
+        }
+        else -> chatEndpointCompatible
+    }
+    return copy(userEditedFields = userFields, chatEndpointCompatible = chatSupport)
 }
 
 internal fun ModelInfo.migrateLegacyMetadata(

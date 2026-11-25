@@ -3,7 +3,7 @@
   "source": {
     "id": "infinity-official-overrides",
     "url": "https://github.com/Promenar/Infinity-Deck/blob/main/scripts/model-catalog/official-model-overrides.json",
-    "license": "Google documentation: CC BY 4.0; SenseNova official API documentation: no repository license declared"
+    "license": "Google documentation: CC BY 4.0; SenseNova official API documentation: no repository license declared; Reranker sources: public vendor model cards and API documentation, model metadata only"
   },
   "records": [
     {
@@ -59,6 +59,177 @@
       "status": "preview",
       "evidenceUrl": "https://github.com/OpenSenseNova/SenseNova6.8/blob/main/API_CN.md",
       "reviewedAt": "2026-09-22"
+    },
+    {
+      "canonicalModelId": "BAAI/bge-reranker-v2-m3",
+      "displayName": "BGE Reranker V2 M3",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "bge-reranker-v2-m3",
+        "Pro/BAAI/bge-reranker-v2-m3"
+      ],
+      "family": "BGE",
+      "workload": "RERANK",
+      "contextTokens": 8192,
+      "evidenceUrl": "https://huggingface.co/BAAI/bge-reranker-v2-m3",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "BAAI/bge-reranker-large",
+      "displayName": "BGE Reranker Large",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "bge-reranker-large"
+      ],
+      "family": "BGE",
+      "workload": "RERANK",
+      "contextTokens": 512,
+      "evidenceUrl": "https://huggingface.co/BAAI/bge-reranker-large",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "BAAI/bge-reranker-base",
+      "displayName": "BGE Reranker Base",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "bge-reranker-base"
+      ],
+      "family": "BGE",
+      "workload": "RERANK",
+      "contextTokens": 512,
+      "evidenceUrl": "https://huggingface.co/BAAI/bge-reranker-base",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "Qwen/Qwen3-Reranker-8B",
+      "displayName": "Qwen3 Reranker 8B",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "qwen3-reranker-8b",
+        "Pro/Qwen/Qwen3-Reranker-8B"
+      ],
+      "family": "Qwen3",
+      "workload": "RERANK",
+      "contextTokens": 32768,
+      "evidenceUrl": "https://huggingface.co/Qwen/Qwen3-Reranker-8B",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "Qwen/Qwen3-Reranker-4B",
+      "displayName": "Qwen3 Reranker 4B",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "qwen3-reranker-4b"
+      ],
+      "family": "Qwen3",
+      "workload": "RERANK",
+      "contextTokens": 32768,
+      "evidenceUrl": "https://huggingface.co/Qwen/Qwen3-Reranker-4B",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "Qwen/Qwen3-Reranker-0.6B",
+      "displayName": "Qwen3 Reranker 0.6B",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "qwen3-reranker-0.6b"
+      ],
+      "family": "Qwen3",
+      "workload": "RERANK",
+      "contextTokens": 32768,
+      "evidenceUrl": "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "netease-youdao/bce-reranker-base_v1",
+      "displayName": "BCE Reranker Base V1",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "bce-reranker-base_v1"
+      ],
+      "family": "BCE",
+      "workload": "RERANK",
+      "contextTokens": 512,
+      "evidenceUrl": "https://huggingface.co/maidalun1020/bce-reranker-base_v1",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "jinaai/jina-reranker-v2-base-multilingual",
+      "displayName": "Jina Reranker V2 Base Multilingual",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "jina-reranker-v2-base-multilingual"
+      ],
+      "family": "Jina Reranker",
+      "workload": "RERANK",
+      "contextTokens": 1024,
+      "evidenceUrl": "https://huggingface.co/jinaai/jina-reranker-v2-base-multilingual",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "jinaai/jina-reranker-v3",
+      "displayName": "Jina Reranker V3",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "jina-reranker-v3"
+      ],
+      "family": "Jina Reranker",
+      "workload": "RERANK",
+      "contextTokens": 131072,
+      "evidenceUrl": "https://huggingface.co/jinaai/jina-reranker-v3",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "cohere/rerank-v3.5",
+      "displayName": "Cohere Rerank 3.5",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "rerank-v3.5"
+      ],
+      "family": "Cohere Rerank",
+      "workload": "RERANK",
+      "contextTokens": 4096,
+      "evidenceUrl": "https://docs.cohere.com/v2/docs/rerank",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "cohere/rerank-multilingual-v3.0",
+      "displayName": "Cohere Rerank Multilingual 3.0",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "rerank-multilingual-v3.0"
+      ],
+      "family": "Cohere Rerank",
+      "workload": "RERANK",
+      "contextTokens": 4096,
+      "evidenceUrl": "https://docs.cohere.com/v2/docs/rerank",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "alibaba/gte-rerank-v2",
+      "displayName": "GTE Rerank V2",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "gte-rerank-v2"
+      ],
+      "family": "GTE",
+      "workload": "RERANK",
+      "contextTokens": 8192,
+      "evidenceUrl": "https://help.aliyun.com/zh/model-studio/text-rerank-api",
+      "reviewedAt": "2026-11-25"
+    },
+    {
+      "canonicalModelId": "alibaba/qwen3-rerank",
+      "displayName": "Qwen3 Rerank",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "qwen3-rerank"
+      ],
+      "family": "Qwen3",
+      "workload": "RERANK",
+      "contextTokens": 32768,
+      "evidenceUrl": "https://www.alibabacloud.com/help/en/model-studio/qwen3-rerank-api",
+      "reviewedAt": "2026-11-25"
     }
   ]
 }

@@ -103,6 +103,29 @@ class PublishedModelCatalogTest {
         assertThat(records.single().exactAliases).containsExactly("alias")
     }
 
+    @Test
+    fun `云端重排记录与本地覆盖合并时仍可解析精确身份`() {
+        val catalog = PublishedModelCatalog.fromJson(catalogJson("""
+            {
+              "canonicalModelId":"BAAI/bge-reranker-v2-m3",
+              "displayName":"BGE Reranker V2 M3",
+              "source":"INFINITY_OVERRIDE",
+              "exactAliases":["bge-reranker-v2-m3","Pro/BAAI/bge-reranker-v2-m3"],
+              "family":"BGE",
+              "workload":"RERANK",
+              "contextTokens":8192
+            }
+        """))
+
+        assertThat(catalog.records.single().capabilities[ModelCapability.CHAT_ENDPOINT])
+            .isEqualTo(SupportState.UNSUPPORTED)
+        val resolver = ModelMetadataResolver(catalog.records + INFINITY_EXACT_MODEL_OVERRIDES.values)
+        val result = resolver.resolve("Free/BAAI/bge-reranker-v2-m3")
+        assertThat(result.workload).isEqualTo(ModelWorkload.RERANK)
+        assertThat(result.canonicalModelId).isEqualTo("BAAI/bge-reranker-v2-m3")
+        assertThat(result.diagnostics).isEmpty()
+    }
+
     private fun catalogJson(records: String) = """
         {
           "schemaVersion":3,

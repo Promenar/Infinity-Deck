@@ -79,6 +79,10 @@ class OpenAIResponsesProtocolTest {
         assertThat(error.code).isEqualTo(GenerationFailureCode.RATE_LIMIT)
         assertThat(error.retryable).isTrue()
         assertThat(error.retryAfterSeconds).isEqualTo(23)
+        assertThat(error.httpStatus).isEqualTo(429)
+        assertThat(error.errorCode).isEqualTo("rate_limit_exceeded")
+        assertThat(error.providerMessage).isEqualTo("provider-private-detail")
+        assertThat(error.rawDiagnostic).contains("provider-private-detail")
         assertInternalOnly(error)
     }
 
@@ -121,6 +125,10 @@ class OpenAIResponsesProtocolTest {
         assertThat(error.code).isEqualTo(expectedCode)
         assertThat(error.retryable).isEqualTo(retryable)
         assertThat(error.retryAfterSeconds).isNull()
+        assertThat(error.httpStatus).isNull()
+        assertThat(error.errorCode).isEqualTo(code)
+        assertThat(error.providerMessage).isEqualTo(message)
+        assertThat(error.rawDiagnostic).contains(message)
         assertInternalOnly(error)
     }
 

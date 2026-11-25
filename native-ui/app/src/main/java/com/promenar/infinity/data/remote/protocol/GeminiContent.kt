@@ -412,8 +412,9 @@ internal class GeminiStreamState(
     fun process(chunk: JsonObject): List<StreamChunk> {
         (chunk["error"] as? JsonObject)?.let { error ->
             val status = (error["code"] as? JsonPrimitive)?.intOrNull ?: 500
-            ProtocolContextLimit.fromError(ProtocolType.Google_Gemini, error, status)?.let { return listOf(it) }
-            throw HttpStatusException(status, error.toString())
+            val eventBody = chunk.toString()
+            ProtocolContextLimit.fromError(ProtocolType.Google_Gemini, error, status, eventBody)?.let { return listOf(it) }
+            throw HttpStatusException(status, eventBody)
         }
         GeminiContentCodec.promptBlockReason(chunk)?.let {
             return listOf(StreamChunk.Error(

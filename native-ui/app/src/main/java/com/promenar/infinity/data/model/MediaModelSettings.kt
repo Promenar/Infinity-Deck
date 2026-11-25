@@ -12,6 +12,50 @@ import kotlinx.serialization.json.*
 @Serializable
 enum class CloudMediaApi { SEEDANCE, MINIMAX_VIDEO_V1, MINIMAX_VIDEO_V2, MINIMAX_SPEECH }
 
+enum class CloudMediaPreset(val group: MediaGroup, val presetRemoteId: String) {
+    SEEDANCE_2_5(MediaGroup.VIDEO, "doubao-seedance-2-5-pro"),
+    SEEDANCE_2_0(MediaGroup.VIDEO, "doubao-seedance-2-0-pro"),
+    SEEDANCE_2_0_FAST(MediaGroup.VIDEO, "doubao-seedance-2-0-fast"),
+    SEEDANCE_1_0_PRO(MediaGroup.VIDEO, "doubao-seedance-1-0-pro"),
+    SEEDANCE_1_0_PRO_FAST(MediaGroup.VIDEO, "doubao-seedance-1-0-pro-fast"),
+    MINIMAX_H3(MediaGroup.VIDEO, "minimax-h3"),
+    MINIMAX_H3_HIGHSPEED(MediaGroup.VIDEO, "minimax-h3-highspeed"),
+    MINIMAX_H3_LITE(MediaGroup.VIDEO, "minimax-h3-lite"),
+    MINIMAX_H3_MAX(MediaGroup.VIDEO, "minimax-h3-max"),
+    MINIMAX_HAILUO_02(MediaGroup.VIDEO, "minimax-hailuo-02"),
+    MINIMAX_S2V_01(MediaGroup.VIDEO, "s2v-01"),
+    MINIMAX_SPEECH_2_8_HD(MediaGroup.AUDIO, "speech-2.8-hd"),
+    MINIMAX_SPEECH_2_8_TURBO(MediaGroup.AUDIO, "speech-2.8-turbo"),
+}
+
+fun cloudMediaPresetsFor(group: MediaGroup): List<CloudMediaPreset> =
+    CloudMediaPreset.entries.filter { it.group == group }
+
+fun mediaPresetSettings(preset: CloudMediaPreset): MediaModelSettings =
+    requireNotNull(mediaModelPreset(preset.presetRemoteId))
+
+fun matchCloudMediaPreset(settings: MediaModelSettings?): CloudMediaPreset? {
+    if (settings?.api == null) return null
+    val matches = cloudMediaPresetsFor(settings.group).filter { preset ->
+        val candidate = mediaPresetSettings(preset)
+        candidate.api == settings.api &&
+            candidate.capabilities == settings.capabilities.copy(
+                characterReferenceMode = candidate.capabilities.characterReferenceMode,
+                referenceOrder = candidate.capabilities.referenceOrder,
+            ) &&
+            candidate.options.requiresVisualReferenceForAudio == settings.options.requiresVisualReferenceForAudio
+    }
+    return matches.firstOrNull { it.presetRemoteId == settings.presetRemoteId } ?: matches.singleOrNull()
+}
+
+internal fun MediaModelSettings.withKnownPresetId(remoteModelId: String): MediaModelSettings {
+    if (presetRemoteId != null) return this
+    val preset = CloudMediaPreset.entries.firstOrNull { it.presetRemoteId.equals(remoteModelId, ignoreCase = true) }
+        ?: return this
+    val candidate = copy(presetRemoteId = preset.presetRemoteId)
+    return candidate.takeIf { matchCloudMediaPreset(it) == preset } ?: this
+}
+
 @Serializable
 data class CloudMediaOptions(
     val baseUrl: String? = null,
@@ -48,6 +92,8 @@ data class MediaModelSettings(
     val api: CloudMediaApi? = null,
     val options: CloudMediaOptions = CloudMediaOptions(),
     val tariff: MediaTariff? = null,
+    /** 区分能力相同的预设，供手动绑定和历史设置回显。 */
+    val presetRemoteId: String? = null,
 ) {
     init {
         require(capabilities.modes.isNotEmpty())
@@ -113,7 +159,7 @@ private val defaultReferenceOrder = listOf("front_full_body", "side_full_body", 
 fun mediaModelPreset(remoteId: String): MediaModelSettings? {
     val id = remoteId.lowercase()
     val videoModes = setOf(GenerationMode.TEXT, GenerationMode.FIRST_FRAME, GenerationMode.FIRST_LAST_FRAME, GenerationMode.REFERENCE)
-    return when {
+    val settings = when {
         id.startsWith("doubao-seedance-2-0") || id.startsWith("doubao-seedance-2-5") -> {
             val v25 = id.startsWith("doubao-seedance-2-5")
             MediaModelSettings(MediaGroup.VIDEO, MediaCapabilities(videoModes, maxImages = if (v25) 30 else 9,
@@ -141,8 +187,10 @@ fun mediaModelPreset(remoteId: String): MediaModelSettings? {
             MediaCapabilities(setOf(GenerationMode.REFERENCE), maxImages = 1, referenceOrder = defaultReferenceOrder), CloudMediaApi.MINIMAX_VIDEO_V1)
         id.matches(Regex("speech-(02|2\\.[568])-(hd|turbo)")) -> MediaModelSettings(MediaGroup.AUDIO,
             MediaCapabilities(setOf(GenerationMode.SPEECH)), CloudMediaApi.MINIMAX_SPEECH)
-        else -> null
+        else -> return null
     }
+    val presetId = CloudMediaPreset.entries.firstOrNull { it.presetRemoteId == id }?.presetRemoteId
+    return settings.copy(presetRemoteId = presetId)
 }
 
 fun ModelInfo.effectiveMediaSettings(): MediaModelSettings? = if (mediaSettingsInvalid) null else mediaSettings ?: mediaModelPreset(remoteModelId) ?: when (type) {
@@ -157,7 +205,7 @@ fun ModelInfo.toMediaChannel(): MediaChannel? = if (!enabled || providerId.isNul
 /** MiniMax 的对话模型列表未必列出媒体模型；把官方已核验的媒体候选交给同一同步入口，默认不启用。 */
 fun builtInMediaModelIds(baseUrl: String): List<String> {
     val host = runCatching { java.net.URI(baseUrl).host?.lowercase() }.getOrNull()
-    return if (host in setOf("api.minimax.io", "api.minimaxi.com")) listOf(
+    return if (host in setOf("api.minimax.io", "api.minimaxi.com", "api.minimax.cn")) listOf(
         "MiniMax-H3", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite", "MiniMax-H3-Max", "MiniMax-Hailuo-02", "S2V-01", "speech-2.8-hd", "speech-2.8-turbo",
     ) else emptyList()
 }

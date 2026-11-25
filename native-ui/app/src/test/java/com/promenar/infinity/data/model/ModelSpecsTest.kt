@@ -4,19 +4,74 @@ import android.app.Application
 import android.content.res.AssetManager
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import com.promenar.infinity.data.mediagen.cloud.BillingUnit
+import com.promenar.infinity.data.mediagen.cloud.MediaRate
+import com.promenar.infinity.data.mediagen.cloud.MediaTariff
 import com.promenar.infinity.data.model.catalog.MetadataSource
 import com.promenar.infinity.data.model.catalog.ModelCapability
 import com.promenar.infinity.data.model.catalog.ModelCatalogRuntime
 import com.promenar.infinity.data.model.catalog.ModelMetadataRecord
+import com.promenar.infinity.data.model.catalog.ModelMetadataOverride
 import com.promenar.infinity.data.model.catalog.ModelMetadataResolver
 import com.promenar.infinity.data.model.catalog.ModelWorkload
 import com.promenar.infinity.data.model.catalog.SupportState
+import com.promenar.infinity.domain.mediagen.CharacterReferenceMode
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Test
 import java.io.File
 
 class ModelSpecsTest {
+    @Test
+    fun `媒体预设往返保留相同能力的不同预设以及角色参考配置`() {
+        val customTariff = MediaTariff("CNY", listOf(MediaRate(BillingUnit.TASK, "1")))
+        for (preset in CloudMediaPreset.entries) {
+            val settings = mediaPresetSettings(preset)
+                .withCharacterReferences(CharacterReferenceMode.SEPARATE, listOf("face"))
+                .copy(tariff = customTariff)
+            val restored = MediaModelSettingsCodec.decode(MediaModelSettingsCodec.encode(settings))
+            assertThat(matchCloudMediaPreset(restored)).isEqualTo(preset)
+            assertThat(cloudMediaPresetsFor(preset.group)).contains(preset)
+        }
+        val legacyH3 = mediaPresetSettings(CloudMediaPreset.MINIMAX_H3).copy(presetRemoteId = null)
+        assertThat(matchCloudMediaPreset(legacyH3)).isEqualTo(CloudMediaPreset.MINIMAX_H3)
+        val legacySpeech = mediaPresetSettings(CloudMediaPreset.MINIMAX_SPEECH_2_8_HD).copy(presetRemoteId = null)
+        assertThat(matchCloudMediaPreset(legacySpeech)).isNull()
+        val legacyModel = ModelInfo("Speech", "speech", "", true,
+            remoteModelId = "speech-2.8-hd", type = "audio", mediaSettings = legacySpeech)
+        val refreshed = legacyModel.mergeResolvedMetadata(ModelMetadataResolver().resolve(legacyModel.remoteModelId))
+        assertThat(matchCloudMediaPreset(refreshed.mediaSettings)).isEqualTo(CloudMediaPreset.MINIMAX_SPEECH_2_8_HD)
+        val seedance = mediaPresetSettings(CloudMediaPreset.SEEDANCE_2_0)
+        assertThat(matchCloudMediaPreset(seedance.copy(options = seedance.options.copy(requiresVisualReferenceForAudio = false))))
+            .isNull()
+        assertThat(builtInMediaModelIds("https://api.minimax.cn/v1")).contains("MiniMax-H3")
+        assertThat(builtInMediaModelIds("https://api.minimax.cn.example.test")).isEmpty()
+        assertThat(findRemoteModelSpec("MiniMax-H3")?.type).isEqualTo(ModelType.VIDEO)
+        assertThat(findRemoteModelSpec("speech-2.8-hd")?.type).isEqualTo(ModelType.AUDIO)
+    }
+
+    @Test
+    fun `手动非对话类型和媒体配置覆盖网关对话能力`() {
+        val model = ModelInfo("Ark", "ark", "", true, remoteModelId = "ep-example", type = "chat",
+            chatEndpointCompatible = SupportState.SUPPORTED)
+        val resolved = ModelMetadataResolver().resolve("ep-example", providerMetadata =
+            ModelMetadataOverride(
+                capabilities = mapOf(ModelCapability.CHAT_ENDPOINT to SupportState.SUPPORTED),
+            ),
+        )
+        for (type in listOf("video", "audio", "image", "embedding", "rerank")) {
+            val edited = model.copy(type = type).withRecordedUserEdits(model)
+            assertThat(edited.chatEndpointCompatible).isEqualTo(SupportState.UNSUPPORTED)
+            assertThat(edited.mergeResolvedMetadata(resolved).chatEndpointCompatible).isEqualTo(SupportState.UNSUPPORTED)
+            val restored = edited.copy(type = "chat").withRecordedUserEdits(edited)
+            assertThat(restored.chatEndpointCompatible).isEqualTo(SupportState.UNKNOWN)
+            assertThat(restored.mergeResolvedMetadata(resolved).chatEndpointCompatible).isEqualTo(SupportState.SUPPORTED)
+        }
+        val bound = model.copy(mediaSettings = mediaPresetSettings(CloudMediaPreset.SEEDANCE_2_5))
+        assertThat(bound.withRecordedUserEdits(model).chatEndpointCompatible).isEqualTo(SupportState.UNSUPPORTED)
+        assertThat(bound.mergeResolvedMetadata(resolved).chatEndpointCompatible).isEqualTo(SupportState.UNSUPPORTED)
+    }
+
     @org.junit.Test
     fun `未核实模型后缀不能继承家族缓存价`() {
         for (model in listOf("gpt-5.4-mini", "gpt-5.5-pro", "gemini-2.5-flash-lite")) {
@@ -110,7 +165,7 @@ class ModelSpecsTest {
             LegacyExpectation("qwen-long", 10_000_000, ModelType.CHAT),
             LegacyExpectation("grok-4.1", 2_000_000, ModelType.REASONING, reasoning = true, vision = true, maxOutputTokens = 65_536),
             LegacyExpectation("gemma-4-31b", 256_000, ModelType.REASONING, reasoning = true, vision = true, maxOutputTokens = 8_192),
-            LegacyExpectation("bge-reranker-v2-m3", 4_096, ModelType.RERANK),
+            LegacyExpectation("bge-reranker-v2-m3", 8_192, ModelType.RERANK),
             LegacyExpectation("gemini-3.1-pro", 2_000_000, ModelType.REASONING, reasoning = true, vision = true, maxOutputTokens = 65_536),
             LegacyExpectation("gemini-3-flash", 1_000_000, ModelType.REASONING, reasoning = true, vision = true, maxOutputTokens = 65_536),
             LegacyExpectation("glm-4v", 128_000, ModelType.CHAT, vision = true),
@@ -189,7 +244,10 @@ class ModelSpecsTest {
     @Test
     fun `旧 ModelSpecs 保留给尚未迁移调用点`() {
         assertThat(MODEL_SPECS).isNotEmpty()
-        assertThat(MODEL_SPECS.all { it.contextLength > 0 }).isTrue()
+        val (mediaSpecs, textSpecs) = MODEL_SPECS.partition { it.type in setOf(ModelType.VIDEO, ModelType.AUDIO) }
+        assertThat(textSpecs.all { it.contextLength > 0 }).isTrue()
+        assertThat(mediaSpecs.map { it.type }).containsExactly(ModelType.VIDEO, ModelType.AUDIO)
+        assertThat(mediaSpecs.all { it.contextLength == 0 }).isTrue()
         assertThat(MODEL_SPECS.size).isAtLeast(100)
         assertThat(MODEL_SPECS.size).isAtMost(500)
     }

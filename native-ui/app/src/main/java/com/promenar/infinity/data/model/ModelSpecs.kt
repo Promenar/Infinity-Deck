@@ -7,7 +7,7 @@ import com.promenar.infinity.data.model.catalog.ResolvedModelMetadata
 import com.promenar.infinity.data.model.catalog.SupportState
 
 enum class ModelType {
-    CHAT, REASONING, IMAGE, EMBEDDING, RERANK
+    CHAT, REASONING, IMAGE, EMBEDDING, RERANK, VIDEO, AUDIO
 }
 
 data class ModelCapabilities(
@@ -76,6 +76,19 @@ data class ModelSpec(
 )
 
 val MODEL_SPECS: List<ModelSpec> = listOf(
+    ModelSpec(
+        pattern = ModelPattern.RegexPattern(Regex(
+            """^(?:doubao-seedance-(?:2-[05](?:-(?:pro|fast|mini))?|1-0-pro(?:-fast)?)(?:-\d{6,8})?|minimax-h3(?:-highspeed|-lite|-max)?|minimax-hailuo-02|s2v-01)$""",
+            RegexOption.IGNORE_CASE,
+        )),
+        type = ModelType.VIDEO,
+        contextLength = 0,
+    ),
+    ModelSpec(
+        pattern = ModelPattern.RegexPattern(Regex("""^speech-(?:02|2\.[568])-(?:hd|turbo)$""", RegexOption.IGNORE_CASE)),
+        type = ModelType.AUDIO,
+        contextLength = 0,
+    ),
 
     // ==================== OpenAI (2025-2026) ====================
     ModelSpec(
@@ -1765,10 +1778,9 @@ private fun ResolvedModelMetadata.toLegacyModelSpec(): ModelSpec = ModelSpec(
         ModelWorkload.EMBEDDING -> ModelType.EMBEDDING
         ModelWorkload.RERANK -> ModelType.RERANK
         ModelWorkload.IMAGE_GENERATION -> ModelType.IMAGE
-        ModelWorkload.AUDIO,
-        ModelWorkload.VIDEO,
-        ModelWorkload.UNKNOWN,
-        -> null
+        ModelWorkload.AUDIO -> ModelType.AUDIO
+        ModelWorkload.VIDEO -> ModelType.VIDEO
+        ModelWorkload.UNKNOWN -> null
     },
     capabilities = ModelCapabilities(
         vision = capabilities[ModelCapability.VISION_INPUT] == SupportState.SUPPORTED,

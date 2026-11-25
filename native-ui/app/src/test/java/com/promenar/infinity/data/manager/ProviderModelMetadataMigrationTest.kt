@@ -283,6 +283,30 @@ class ProviderModelMetadataMigrationTest {
     }
 
     @Test
+    fun `保存手动媒体类型时立即退出普通对话模型并在重载后保留`() {
+        val manager = manager()
+        val original = model().copy(
+            remoteModelId = "ep-example",
+            chatEndpointCompatible = SupportState.SUPPORTED,
+            providerMetadata = ModelMetadataOverride(
+                capabilities = mapOf(ModelCapability.CHAT_ENDPOINT to SupportState.SUPPORTED),
+            ),
+        )
+        manager.addModel(original)
+        val displayed = manager.providerModels.value.single()
+        manager.applyUserModelUpdate(displayed.copy(type = "video", userEditedFields = setOf("type")))
+
+        assertThat(manager.providerModels.value.single().chatEndpointCompatible).isEqualTo(SupportState.UNSUPPORTED)
+        val reloaded = ProviderManager.createForTest(app, MemorySecretStore()).providerModels.value.single()
+        assertThat(reloaded.type).isEqualTo("video")
+        assertThat(reloaded.chatEndpointCompatible).isEqualTo(SupportState.UNSUPPORTED)
+
+        val saved = manager.providerModels.value.single()
+        manager.applyUserModelUpdate(saved.copy(type = "chat", userEditedFields = setOf("type")))
+        assertThat(manager.providerModels.value.single().chatEndpointCompatible).isEqualTo(SupportState.SUPPORTED)
+    }
+
+    @Test
     fun `元数据刷新与用户提交交错时基于最新模型原子合并`() {
         val transformEntered = CountDownLatch(1)
         val allowTransform = CountDownLatch(1)

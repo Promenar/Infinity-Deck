@@ -170,7 +170,10 @@ class ModelMetadataResolver private constructor(
                 normalizeRemoteModelId(remoteModelId.removePrefix("openai-chatgpt/"))
             else -> null
         }
-        return listOfNotNull(exact, prefixCandidate).distinct()
+        val tierCandidate = exact.substringAfter('/', "").takeIf {
+            exact.substringBefore('/') in setOf("pro", "free") && '/' in it
+        }
+        return listOfNotNull(exact, prefixCandidate, tierCandidate).distinct()
     }
 
     internal fun resolveExactOrNull(remoteModelId: String): ResolvedModelMetadata? {
@@ -306,7 +309,8 @@ internal fun normalizeRemoteModelId(value: String): String = value
     .lowercase()
 
 private fun ModelMetadataRecord.defensiveCopy(): ModelMetadataRecord = copy(
-    exactAliases = immutableSet(exactAliases),
+    // 云端协议把规范 ID 独立编码，本地与云端采用同一别名表示后可去除等价记录。
+    exactAliases = immutableSet(exactAliases + canonicalModelId),
     capabilities = immutableMap(capabilities),
 )
 

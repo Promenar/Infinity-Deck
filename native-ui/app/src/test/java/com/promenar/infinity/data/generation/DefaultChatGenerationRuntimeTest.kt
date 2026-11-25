@@ -2040,6 +2040,10 @@ class DefaultChatGenerationRuntimeTest {
                         retryable = true,
                         retryAfterSeconds = 37,
                         technical = "HTTP 429 provider raw",
+                        providerMessage = "Too many requests",
+                        httpStatus = 429,
+                        errorCode = "rate_limit_exceeded",
+                        rawDiagnostic = "upstream request limited",
                     ),
                 )
             }
@@ -2093,6 +2097,12 @@ class DefaultChatGenerationRuntimeTest {
         assertThat(chunk.failure.code).isEqualTo(GenerationFailureCode.RATE_LIMIT)
         assertThat(chunk.failure.retryAfterSeconds).isEqualTo(37)
         assertThat(chunk.failure.technical).isEqualTo("HTTP 429 provider raw")
+        val persisted = GenerationFailureCodec.decode(GenerationFailureCodec.encode(chunk.failure))
+        assertThat(persisted?.httpStatus).isEqualTo(429)
+        assertThat(persisted?.providerMessage).isEqualTo("Too many requests")
+        assertThat(persisted?.errorCode).isEqualTo("rate_limit_exceeded")
+        assertThat(persisted?.rawDiagnostic).isEqualTo("upstream request limited")
+        assertThat(persisted?.technical).isNull()
     }
 
     @Test

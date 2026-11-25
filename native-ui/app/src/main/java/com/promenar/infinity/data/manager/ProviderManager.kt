@@ -15,6 +15,7 @@ import com.promenar.infinity.data.model.USER_EDITABLE_MODEL_FIELDS
 import com.promenar.infinity.data.model.mergeResolvedMetadata
 import com.promenar.infinity.data.model.migrateLegacyMetadata
 import com.promenar.infinity.data.model.toModelInfo
+import com.promenar.infinity.data.model.withRecordedUserEdits
 import com.promenar.infinity.data.model.catalog.ModelCatalogRuntime
 import com.promenar.infinity.data.model.catalog.SupportState
 import com.promenar.infinity.data.model.catalog.MetadataSource
@@ -1111,7 +1112,6 @@ class ProviderManager private constructor(
                     },
                     mediaSettings = if ("mediaSettings" in submittedFields) submitted.mediaSettings else current.mediaSettings,
                     mediaSettingsInvalid = if ("mediaSettings" in submittedFields) false else current.mediaSettingsInvalid,
-                    chatEndpointCompatible = if ("mediaSettings" in submittedFields && submitted.mediaSettings != null) SupportState.UNSUPPORTED else current.chatEndpointCompatible,
                     name = if ("name" in submittedFields) submitted.name else current.name,
                     type = if ("type" in submittedFields) submitted.type else current.type,
                     capabilities = if ("capabilities" in submittedFields) {
@@ -1129,9 +1129,8 @@ class ProviderManager private constructor(
                     } else {
                         current.maxOutputTokens
                     },
-                    userEditedFields = current.userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS) +
-                        submittedFields,
-                )
+                    userEditedFields = submittedFields,
+                ).withRecordedUserEdits(current)
                 if (updated != current) changed = true
                 updated
             }

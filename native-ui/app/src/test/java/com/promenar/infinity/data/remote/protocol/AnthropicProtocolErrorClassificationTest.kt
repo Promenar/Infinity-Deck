@@ -98,6 +98,22 @@ class AnthropicProtocolErrorClassificationTest {
     }
 
     @Test
+    fun `SSE 顶层余额错误码保留非重试诊断`() = runBlocking {
+        val payload = """{"type":"error","code":"insufficient_balance","message":"请求失败"}"""
+        val protocol = protocolResponding(
+            status = HttpStatusCode.OK,
+            body = "event: error\ndata: $payload\n\n",
+            headers = headersOf(HttpHeaders.ContentType, "text/event-stream"),
+        )
+        val error = protocolError(protocol)
+        assertThat(error.code).isEqualTo(GenerationFailureCode.QUOTA)
+        assertThat(error.retryable).isFalse()
+        assertThat(error.httpStatus).isNull()
+        assertThat(error.errorCode).isEqualTo("insufficient_balance")
+        assertThat(error.providerMessage).isEqualTo("请求失败")
+    }
+
+    @Test
     fun `请求取消异常不会被转换为错误分片`() = runBlocking {
         val protocol = AnthropicProtocol(
             baseUrl = "https://example.test",
