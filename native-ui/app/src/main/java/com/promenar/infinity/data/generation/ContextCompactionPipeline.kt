@@ -8,6 +8,7 @@ import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.remote.protocol.PromptRequest
 import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 import com.promenar.infinity.data.repository.ContextFoldCache
+import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import java.io.IOException
 import kotlin.math.floor
 import kotlinx.coroutines.CancellationException
@@ -46,6 +47,7 @@ data class ContextCompactionResult(
     val newlyFoldedToolResults: Int = 0,
     val blockedFloor: ContextInputFloor? = null,
     val failureReason: ContextCompactionFailureReason? = null,
+    val noticeMessageId: String? = null,
 )
 
 enum class ContextCompactionStage { FOLDING, SUMMARIZING, COMPLETE }
@@ -336,7 +338,9 @@ fun historyCompactionCandidates(messages: List<Message>, currentTurnId: String?,
     val current = currentTurnId?.let { id -> turns.indexOfFirst { turn -> turn.any { it.id == id } } }
         ?.takeIf { it >= 0 } ?: turns.size
     val protectedFrom = (turns.size - keepRecentTurns.coerceIn(1, 20)).coerceAtLeast(0)
-    return turns.take(minOf(current, protectedFrom)).flatten().filterNot(Message::isArchived)
+    return turns.take(minOf(current, protectedFrom)).flatten().filterNot {
+        it.isArchived || it.isWorkspaceSwitchNotice || it.isContextCompactionNotice
+    }
 }
 
 private fun currentTurnMessageIds(messages: List<Message>, currentTurnId: String?): Set<String> {

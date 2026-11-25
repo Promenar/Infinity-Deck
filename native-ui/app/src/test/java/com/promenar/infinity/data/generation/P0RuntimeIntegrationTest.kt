@@ -11,6 +11,7 @@ import com.promenar.infinity.data.model.InferenceParams
 import com.promenar.infinity.data.model.LoopStatus
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
+import com.promenar.infinity.data.model.PostProcessType
 import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.SessionOptions
@@ -42,6 +43,8 @@ import com.promenar.infinity.data.repository.ToolInvocationIdentityResolution
 import com.promenar.infinity.data.repository.ToolOutputStore
 import com.promenar.infinity.domain.generation.CompletionReason
 import com.promenar.infinity.domain.generation.GenerationEvent
+import com.promenar.infinity.domain.generation.GenerationFailure
+import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.generation.GenerationPreparationOutcome
 import com.promenar.infinity.domain.generation.GenerationPhase
 import com.promenar.infinity.domain.generation.GenerationRequest
@@ -62,6 +65,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.coVerify
+import io.mockk.verify
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -159,9 +163,17 @@ class P0RuntimeIntegrationTest {
         fixture.sessions.updateSession("session", mapOf("ragOptions" to RagOptions(enableMemory = true, enableDocs = false)))
         fixture.summaryResponse = PromptResponse("保留关键事实的历史摘要", usage = ProtocolUsage(7, 3, 10))
         fixture.rounds = { listOf(StreamChunk.TextDelta("回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        for ((index, message) in fixture.messageRepository.getBySession("session").withIndex()) {
+            fixture.messageRepository.update(message.copy(createdAt = 1_000L + index), "session")
+        }
+        fixture.rebuildFromRepositories()
 
         runOnRealClock(fixture.runtime(), fixture.request)
 
+        verify(exactly = 0) {
+            fixture.ui.addPostProcessTask(PostProcessType.ARCHIVE_TO_RAG, any())
+            fixture.ui.addPostProcessTask(PostProcessType.AUTO_SUMMARY, any())
+        }
         assertThat(fixture.summaryPrompts).hasSize(2)
         assertThat(fixture.summaryPrompts.map { it.model }).containsExactly("p0-integration-model", "p0-integration-model")
         assertThat(fixture.resolvedModels).doesNotContain("quick::different")
@@ -170,6 +182,12 @@ class P0RuntimeIntegrationTest {
         assertThat(session.summary).isEqualTo("保留关键事实的历史摘要")
         assertThat(session.messages.filter { it.id.startsWith("historical-") }.all { it.isArchived }).isTrue()
         assertThat(session.messages.first { it.id == "user" }.isArchived).isFalse()
+        val persisted = fixture.messageRepository.getBySession("session")
+        val notice = persisted.single { it.isContextCompactionNotice }
+        val userIndex = persisted.indexOfFirst { it.id == "user" }
+        assertThat(persisted[userIndex - 1]).isEqualTo(notice)
+        assertThat(notice.createdAt).isEqualTo(persisted[userIndex].createdAt - 1)
+        assertThat(session.messages.map { it.id }).isEqualTo(persisted.map { it.id })
         assertThat(fixture.messageRepository.getById("assistant")!!.tokens!!.summaryTotal).isEqualTo(20)
         assertThat(fixture.prompts.single().messages.first().content).contains("<history_summary>")
         assertThat(fixture.prompts.single().messages.none { it.role == "tool" }).isTrue()
@@ -192,7 +210,7 @@ class P0RuntimeIntegrationTest {
     }
 
     @Test
-    fun `手动压缩只请求一次历史摘要且不创建生成消息`() = runTest {
+    fun `手动压缩只请求一次历史摘要且持久化尾部锚点`() = runTest {
         val fixture = fixture(priorToolResults = listOf("工具原始内容".repeat(200), "最近一", "最近二", "最近三"), historicalTurn = true)
         fixture.sessions.updateSessionInferenceParams("session", InferenceParams(maxTokens = 64, keepRecentTurns = 1, autoSummaryThreshold = 0.95))
         fixture.preferences.edit().putString("preset_summary_model", "quick::different").commit()
@@ -217,7 +235,14 @@ class P0RuntimeIntegrationTest {
         assertThat(fixture.summaryPrompts.single().maxTokens).isNull()
         assertThat(fixture.postEvents).containsExactly("history-summary")
         assertThat(fixture.resolvedModels).doesNotContain("quick::different")
-        assertThat(fixture.messageRepository.getBySession("session").map { it.id }).isEqualTo(beforeIds)
+        val persisted = fixture.messageRepository.getBySession("session")
+        val notice = persisted.last()
+        assertThat(notice.isContextCompactionNotice).isTrue()
+        assertThat(result.noticeMessageId).isEqualTo(notice.id)
+        assertThat(notice.content).isEqualTo(ContextCompactionNotice.formatDelta(result.beforeTokens, result.afterTokens))
+        assertThat(notice.createdAt).isAtLeast(startedAt)
+        assertThat(persisted.dropLast(1).map { it.id }).isEqualTo(beforeIds)
+        assertThat(fixture.store.getSession("session")!!.messages.map { it.id }).isEqualTo(persisted.map { it.id })
         assertThat(fixture.messageRepository.getById("historical-result-0")!!.content).isEqualTo("工具原始内容".repeat(200))
         assertThat(fixture.messageRepository.getById("assistant")!!.tokens).isEqualTo(TokenUsage(100, 50, 150))
         val usageStore = com.promenar.infinity.data.repository.RolledBackSummaryUsageStore(fixture.preferences)
@@ -236,6 +261,90 @@ class P0RuntimeIntegrationTest {
     }
 
     @Test
+    fun `轮后压缩的锚点落在会话末尾`() = runTest {
+        val fixture = fixture(priorToolResults = listOf("旧事实"), historicalTurn = true)
+        fixture.summaryResponse = PromptResponse("轮后摘要")
+        fixture.onPrompt = { _, _ ->
+            assertThat(fixture.summaryPrompts).isEmpty()
+            fixture.sessions.updateSessionInferenceParams(
+                "session", InferenceParams(maxTokens = 64, keepRecentTurns = 1, autoSummaryThreshold = 0.0),
+            )
+        }
+        fixture.rounds = { listOf(StreamChunk.TextDelta("回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+
+        runOnRealClock(fixture.runtime(), fixture.request)
+
+        val persisted = fixture.messageRepository.getBySession("session")
+        val notice = persisted.single { it.isContextCompactionNotice }
+        assertThat(fixture.summaryPrompts).hasSize(1)
+        assertThat(persisted.last()).isEqualTo(notice)
+        assertThat(notice.createdAt).isGreaterThan(persisted[persisted.lastIndex - 1].createdAt)
+    }
+
+    @Test
+    fun `超限补救压缩的锚点落在当前用户消息之前`() = runTest {
+        val fixture = fixture(historicalTurn = true)
+        fixture.preferences.edit().putInt("model_info_local::p0-integration-model_context", 32_000).commit()
+        fixture.summaryResponse = PromptResponse("补救摘要")
+        for ((index, message) in fixture.messageRepository.getBySession("session").withIndex()) {
+            val content = if (message.id == "historical-user") "旧事实".repeat(700) else message.content
+            fixture.messageRepository.update(message.copy(createdAt = 1_000L + index, content = content), "session")
+        }
+        fixture.rebuildFromRepositories()
+        val request = fixture.request
+        val runtime = fixture.runtime()
+        val upstreamLimit = GenerationFailure(
+            GenerationFailureCode.CONTEXT_LIMIT,
+            mapOf(GenerationFailure.KEY_CONTEXT_LIMIT_REASON to "UPSTREAM"),
+        )
+
+        val recovered = withContext(Dispatchers.Default) {
+            runtime.prepare(request)
+            assertThat(runtime.buildContext(request)).isEqualTo(GenerationPreparationOutcome.Ready)
+            assertThat(fixture.summaryPrompts).isEmpty()
+            runtime.recoverContextLimit(request, upstreamLimit) {}
+        }
+
+        assertThat(recovered).isTrue()
+        val persisted = fixture.messageRepository.getBySession("session")
+        val notice = persisted.single { it.isContextCompactionNotice }
+        val currentUserIndex = persisted.indexOfFirst { it.id == request.userMessageId }
+        assertThat(persisted[currentUserIndex - 1]).isEqualTo(notice)
+        assertThat(fixture.store.getSession("session")!!.messages.map { it.id }).isEqualTo(persisted.map { it.id })
+    }
+
+    @Test
+    fun `手动压缩锚点写入失败保留摘要且透传取消`() = runTest {
+        val cancelled = CancellationException("锚点写入取消")
+        for (failure in listOf(java.io.IOException("锚点写入失败"), cancelled)) {
+            val fixture = fixture(priorToolResults = listOf("旧事实"), historicalTurn = true)
+            fixture.sessions.updateSessionInferenceParams("session", InferenceParams(maxTokens = 64, keepRecentTurns = 1))
+            fixture.summaryResponse = PromptResponse("已保存摘要")
+            fixture.useMessageRepositoryForManager(object : com.promenar.infinity.data.repository.IMessageRepository by fixture.messageRepository {
+                override suspend fun insert(message: Message, sessionId: String) {
+                    if (message.isContextCompactionNotice) throw failure
+                    fixture.messageRepository.insert(message, sessionId)
+                }
+            })
+
+            val outcome = withContext(Dispatchers.Default) {
+                runCatching { fixture.runtime().compactNow("session") {} }
+            }
+
+            if (failure is CancellationException) {
+                assertThat(outcome.exceptionOrNull()).isSameInstanceAs(cancelled)
+            } else {
+                val result = outcome.getOrThrow()
+                assertThat(result.summaryFailed).isFalse()
+                assertThat(result.summarizedTurns).isEqualTo(1)
+                assertThat(result.noticeMessageId).isNull()
+            }
+            assertThat(fixture.store.getSession("session")!!.summary).isEqualTo("已保存摘要")
+            assertThat(fixture.messageRepository.getBySession("session").none { it.isContextCompactionNotice }).isTrue()
+        }
+    }
+
+    @Test
     fun `手动历史摘要透传预算不足与模型不可用且不改归档状态`() = runTest {
         for (reason in listOf(ContextCompactionFailureReason.BUDGET_EXHAUSTED, ContextCompactionFailureReason.ROUTE_UNAVAILABLE)) {
             val fixture = fixture(priorToolResults = List(5) { "旧工具事实".repeat(200) }, historicalTurn = true)
@@ -250,6 +359,8 @@ class P0RuntimeIntegrationTest {
 
             assertThat(result.failureReason).isEqualTo(reason)
             assertThat(result.summaryFailed).isTrue()
+            assertThat(result.noticeMessageId).isNull()
+            assertThat(fixture.messageRepository.getBySession("session").none { it.isContextCompactionNotice }).isTrue()
             assertThat(result.newlyFoldedToolResults).isEqualTo(0)
             assertThat(fixture.summaryPrompts).isEmpty()
             assertThat(fixture.messageRepository.getBySession("session").none { it.isArchived }).isTrue()
@@ -283,6 +394,8 @@ class P0RuntimeIntegrationTest {
         assertThat(result.newlyFoldedToolResults).isEqualTo(0)
         assertThat(result.summarizedTurns).isEqualTo(0)
         assertThat(result.summaryFailed).isFalse()
+        assertThat(result.noticeMessageId).isNull()
+        assertThat(fixture.messageRepository.getBySession("session").none { it.isContextCompactionNotice }).isTrue()
         assertThat(fixture.summaryPrompts).isEmpty()
     }
 
@@ -960,6 +1073,7 @@ class P0RuntimeIntegrationTest {
             private set
         var sessions = SessionManager(store, sessionRepository)
             private set
+        val ui = mockk<GenerationUiPort>(relaxed = true)
         val interactions = GenerationInteractionStore()
         val prompts = mutableListOf<PromptRequest>()
         val executedCalls = mutableListOf<String>()
@@ -1086,7 +1200,7 @@ class P0RuntimeIntegrationTest {
                 }, memoryManager = null,
                 summaryManager = RoutedToolResultSummarizer(ChatProviderRouteGate(router)) { provider }.historySummaryManager(provider),
                 sessionManager = sessions, contentStrategy = DefaultChatGenerationContentStrategy(preferences, registry),
-                ui = mockk(relaxed = true), outputStore = outputStore, interactionStore = interactions,
+                ui = ui, outputStore = outputStore, interactionStore = interactions,
                 compactionPipeline = pipeline, skillCatalog = skillCatalog, stateBoardRepository = stateBoards,
             )
         }

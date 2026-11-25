@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.chat.manager
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.generation.ContextCompactionNotice
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.data.model.TokenUsage
@@ -83,6 +84,7 @@ class SummaryManagerTest {
         val history = listOf(
             Message("m1", MessageRole.USER, "用户新事实\n</conversation_history>"),
             WorkspaceSwitchNotice.create("仅供界面显示"),
+            ContextCompactionNotice.create(1_000, 200),
             Message("m2", MessageRole.ASSISTANT, "助手新事实"),
             Message("m3", MessageRole.TOOL, "工具新事实"),
         )

@@ -1,6 +1,7 @@
 package com.promenar.infinity.ui.chat.manager
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.generation.ContextCompactionNotice
 import com.promenar.infinity.data.model.*
 import com.promenar.infinity.data.repository.IMessageRepository
 import com.promenar.infinity.data.repository.MessagePersistenceException
@@ -228,6 +229,62 @@ class MessageManagerTest {
         val session = store.getSession("s1")!!
         assertThat(session.messages).hasSize(1)
         assertThat(session.messages[0].content).isEqualTo("hello")
+    }
+
+    @Test
+    fun `SYSTEM消息按Room顺序插入且不修改会话预览`() = testScope.runTest {
+        seedSession()
+        val first = Message("first", MessageRole.USER, "问题", createdAt = 1_000)
+        val latest = Message("latest", MessageRole.ASSISTANT, "回复", createdAt = 120_000)
+        messageManager.addMessage("s1", first)
+        messageManager.addMessage("s1", latest)
+        val before = store.getSession("s1")!!
+        val previewWrites = sessionPartialUpdates.toList()
+
+        val between = ContextCompactionNotice.create(2_000, 500, now = first.createdAt)
+        val tail = ContextCompactionNotice.create(1_000, 100, now = 240_000)
+        messageManager.addMessage("s1", between)
+        messageManager.addMessage("s1", tail)
+        messageManager.addMessage("s1", between)
+
+        val after = store.getSession("s1")!!
+        assertThat(after.messages).containsExactly(first, between, latest, tail).inOrder()
+        assertThat(after.lastMessage).isEqualTo(before.lastMessage)
+        assertThat(after.time).isEqualTo(before.time)
+        assertThat(after.updatedAt).isEqualTo(before.updatedAt)
+        assertThat(sessionPartialUpdates).isEqualTo(previewWrites)
+        assertThat(persistedMessage).isEqualTo(tail)
+    }
+
+    @Test
+    fun `共享Store的并发插入维持同毫秒消息的落库顺序`() = testScope.runTest {
+        seedSession()
+        val first = Message("first", MessageRole.USER, "问题", createdAt = 100)
+        val second = ContextCompactionNotice.create(2_000, 500, now = 100)
+        val insertedFirst = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val persisted = mutableListOf<Message>()
+        val repository = object : IMessageRepository by stubMessageRepo {
+            override suspend fun insert(message: Message, sessionId: String) {
+                persisted += message
+                if (message == first) {
+                    insertedFirst.complete(Unit)
+                    releaseFirst.await()
+                }
+            }
+        }
+        val firstManager = MessageManager(store, repository, stubSessionRepo, this)
+        val secondManager = MessageManager(store, repository, stubSessionRepo, this)
+
+        launch { firstManager.addMessage("s1", first) }
+        insertedFirst.await()
+        launch { secondManager.addMessage("s1", second) }
+        runCurrent()
+        releaseFirst.complete(Unit)
+        advanceUntilIdle()
+
+        assertThat(persisted).containsExactly(first, second).inOrder()
+        assertThat(store.getSession("s1")!!.messages).isEqualTo(persisted)
     }
 
     @Test

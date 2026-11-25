@@ -1,5 +1,6 @@
 package com.promenar.infinity.ui.chat.manager
 
+import com.promenar.infinity.data.generation.isContextCompactionNotice
 import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import com.promenar.infinity.data.generation.ApproximateTokenEstimator
 import com.promenar.infinity.data.generation.ContextCompactionFailureReason
@@ -55,7 +56,9 @@ class SummaryManager private constructor(
     ): ContextCompactionOutcome<String> = withContext(Dispatchers.IO) {
         if (overflowMessages.isEmpty()) return@withContext Success(oldSummary.orEmpty())
         if (currentModelId.isBlank()) return@withContext Failure(ContextCompactionFailureReason.ROUTE_UNAVAILABLE)
-        val historyText = overflowMessages.filterNot { it.isWorkspaceSwitchNotice }.joinToString("\n") { msg ->
+        val historyText = overflowMessages.filterNot {
+            it.isWorkspaceSwitchNotice || it.isContextCompactionNotice
+        }.joinToString("\n") { msg ->
             val body = "${msg.role.name}: ${truncateMessage(msg.content)}"
             val references = UserAttachmentModelContent.summaryReferences(msg, sourceSession)
             if (references.isEmpty()) body else "$body\n$references"

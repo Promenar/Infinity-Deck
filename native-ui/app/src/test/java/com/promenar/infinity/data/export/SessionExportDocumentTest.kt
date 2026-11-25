@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.export
 
+import com.promenar.infinity.data.generation.ContextCompactionNotice
 import com.promenar.infinity.data.model.*
 import com.promenar.infinity.domain.export.*
 import org.junit.jupiter.api.Assertions.*
@@ -31,6 +32,14 @@ class SessionExportDocumentTest {
             assertFalse(rendered.contains("MODEL_ONLY_INSTRUCTION"))
             assertTrue(rendered.contains("正文"))
         }
+    }
+
+    @Test fun `上下文压缩提示不进入导出消息列表`() {
+        val options = SessionExportOptions(true, true)
+        val baseline = ExportDocumentBuilder.build(session, messages, options, 1000)
+        val notice = ContextCompactionNotice.create(1_000, 200, now = 150)
+        val withNotice = listOf(messages.first(), notice) + messages.drop(1)
+        assertEquals(baseline, ExportDocumentBuilder.build(session, withNotice, options, 1000))
     }
 
     @Test fun `文档保留元数据引用且思考和工具默认隐藏`() {

@@ -142,31 +142,38 @@ class MessageManager(
         private const val DB_DEBOUNCE_MS = 500L
     }
 
-    suspend fun addMessage(sessionId: String, message: Message) {
+    suspend fun addMessage(sessionId: String, message: Message) = store.messageInsertion.withLock {
+        if (store.getSession(sessionId)?.messages?.any { it.id == message.id } == true) return@withLock
         messageRepository.insert(message, sessionId)
-        // 首页按最近消息时间排序；这笔记账失败不影响消息本身。
-        try {
-            sessionRepository.updatePartial(sessionId, mapOf("lastMessage" to message.content))
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
+        val preview = message.role != MessageRole.SYSTEM
+        if (preview) {
+            // 首页按最近消息时间排序，预览写入失败时仍同步已持久化的消息。
+            try {
+                sessionRepository.updatePartial(sessionId, mapOf("lastMessage" to message.content))
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+            }
         }
-        store.update { state ->
-            state.copy(
-                sessions = state.sessions.map { s ->
-                    if (s.id == sessionId) {
-                        val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-                        s.copy(
-                            messages = s.messages + message,
-                            lastMessage = message.content,
-                            time = timeFormatter.format(Date(message.createdAt)),
-                            updatedAt = maxOf(s.updatedAt, message.createdAt),
-                        )
-                    } else s
-                }
-            )
+        store.updateSession(sessionId) { session ->
+            if (session.messages.any { it.id == message.id }) return@updateSession session
+            val messages = session.messages.insertInTimelineOrder(message)
+            if (preview) {
+                val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+                session.copy(
+                    messages = messages,
+                    lastMessage = message.content,
+                    time = timeFormatter.format(Date(message.createdAt)),
+                    updatedAt = maxOf(session.updatedAt, message.createdAt),
+                )
+            } else session.copy(messages = messages)
         }
+    }
 
+    private fun List<Message>.insertInTimelineOrder(message: Message): List<Message> {
+        if (isEmpty() || message.createdAt >= last().createdAt) return this + message
+        val index = indexOfFirst { it.createdAt > message.createdAt }
+        return toMutableList().apply { add(index, message) }
     }
 
     /**
@@ -183,7 +190,7 @@ class MessageManager(
                         // SYSTEM 记录（会话消息发送副本、暂停标记）不作为会话预览，避免首页显示内部 JSON。
                         val preview = message.role != MessageRole.SYSTEM
                         session.copy(
-                            messages = session.messages + message,
+                            messages = session.messages.insertInTimelineOrder(message),
                             lastMessage = if (preview) message.content else session.lastMessage,
                             time = if (preview) timeFormatter.format(Date(message.createdAt)) else session.time,
                             updatedAt = maxOf(session.updatedAt, message.createdAt),

@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.export
 
+import com.promenar.infinity.data.generation.isContextCompactionNotice
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageQuoteFormatter
 import com.promenar.infinity.data.model.MessageRole
@@ -70,7 +71,7 @@ internal object ExportDocumentBuilder {
         val byCall = toolMessages.filter { it.toolCallId != null }.associateBy { it.toolCallId }
         val consumed = mutableSetOf<String>()
         val result = messages.mapNotNull { message ->
-            if (message.role == MessageRole.TOOL) return@mapNotNull null
+            if (message.role == MessageRole.TOOL || message.isContextCompactionNotice) return@mapNotNull null
             val tools = if (!options.includeToolCalls) emptyList() else buildList {
                 val steps = message.executionSteps.orEmpty().filter { it.type in setOf("tool_call", "tool_result", "error") }
                 val groups = linkedMapOf<String, MutableList<com.promenar.infinity.data.model.ExecutionStep>>()

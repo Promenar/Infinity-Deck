@@ -1727,7 +1727,7 @@ class DefaultChatGenerationRuntimeTest {
     }
 
     @Test
-    fun `postProcess普通归档失败不得把异常原文写入任务detail`() = runTest {
+    fun `postProcess归档失败后继续摘要且不创建浮标`() = runTest {
         val fixture = postProcessFixture(
             ragOptions = RagOptions(enableMemory = true, enableDocs = false),
             inferenceParams = InferenceParams(keepRecentTurns = 1, autoSummaryThreshold = 0.0),
@@ -1738,18 +1738,18 @@ class DefaultChatGenerationRuntimeTest {
             fixture.postProcessor.archiveMessagesToRag(any(), any(), any(), any())
         } throws IllegalStateException("private-provider-marker")
 
+        coEvery { fixture.summaryManager.summarizeOutcome(any(), any(), any(), any(), any(), any(), any()) } returns
+            ContextCompactionOutcome.Success("summary")
+
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 
-        val detail = slot<String?>()
-        verify {
-            fixture.ui.updatePostProcessTask(
-                any(),
-                PostProcessStatus.ERROR,
-                any(),
-                captureNullable(detail),
-            )
+        coVerify(exactly = 1) { fixture.postProcessor.archiveMessagesToRag(any(), any(), any(), isNull()) }
+        coVerify(exactly = 1) { fixture.summaryManager.summarizeOutcome(any(), any(), any(), any(), any(), any(), any()) }
+        verify(exactly = 0) {
+            fixture.ui.addPostProcessTask(any(), any())
+            fixture.ui.updatePostProcessTask(any(), any(), any(), any())
+            fixture.ui.removePostProcessTask(any())
         }
-        assertThat(detail.captured).isNull()
     }
 
     @Test

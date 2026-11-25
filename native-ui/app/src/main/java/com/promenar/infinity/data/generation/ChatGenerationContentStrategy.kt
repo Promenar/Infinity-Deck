@@ -137,8 +137,8 @@ class DefaultChatGenerationContentStrategy(
         replaySource: String?,
     ): List<ProtocolMessage> = buildList {
         if (systemPrompt.isNotBlank()) add(ProtocolMessage(role = "system", content = systemPrompt))
-        // 工作区切换提示只供界面展示；当前工作区由系统提示词说明。
-        val visibleMessages = session.messages.filterNot { it.id in excludedMessageIds || it.isWorkspaceSwitchNotice ||
+        // 时间线提示仅供界面展示，当前工作区由系统提示词说明。
+        val visibleMessages = session.messages.filterNot { it.id in excludedMessageIds || it.isWorkspaceSwitchNotice || it.isContextCompactionNotice ||
             com.promenar.infinity.data.branch.SessionMessageStore.isInternal(it.name) || com.promenar.infinity.data.branch.SessionMessageStore.isTimelineRecord(it.name) }
         val currentStart = visibleMessages.indexOfFirst {
             it.id == pinnedUserMessageId && it.role == MessageRole.USER

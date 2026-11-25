@@ -341,16 +341,17 @@ internal class DefaultChatGenerationRuntime(
         session: com.promenar.infinity.data.model.Session,
         prompt: PromptRequest,
         systemPrompt: String,
+        anchorBeforeMessageId: String?,
         manual: Boolean = false,
         currentTurnId: String? = request.userMessageId,
         onProgress: (ContextCompactionStage) -> Unit = {},
         recoveryBudget: Int? = null,
     ): ContextCompactionResult {
-        val operation: suspend () -> ContextCompactionResult = {
+        val operation: suspend () -> ContextCompactionResult = operation@{
             val summaryInvalidated = hasInvalidatedSummary(request, session)
             val contextSession = session.forReplacementContext(request)
             val eligible = contextSession.copy(messages = contextSession.messages.filterNot { it.id in request.messageIdsToReplace })
-            compactionPipeline.compact(
+            val result = compactionPipeline.compact(
                 ContextCompactionInput(
                     session = eligible,
                     currentTurnId = currentTurnId,
@@ -399,12 +400,25 @@ internal class DefaultChatGenerationRuntime(
                 },
                 onProgress = onProgress,
             )
-        }
-        val result = if (manual || compactionService == null) operation()
-            else compactionService.compactAutomatically(request.sessionId, operation)
-        if (result.newlyFoldedToolResults > 0 || result.summarizedTurns > 0)
+            if (result.newlyFoldedToolResults == 0 && result.summarizedTurns == 0) return@operation result
             sessionManager.updateContextUsageBaseline(request.sessionId, null)
-        return result
+            if (result.summaryFailed) return@operation result
+
+            val messages = store.getSession(request.sessionId)?.messages ?: session.messages
+            val timestamp = resolveCompactionNoticeTimestamp(messages, anchorBeforeMessageId, System.currentTimeMillis())
+            val notice = ContextCompactionNotice.create(result.beforeTokens, result.afterTokens, timestamp)
+            try {
+                messageManager.addMessage(request.sessionId, notice)
+                result.copy(noticeMessageId = notice.id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                InfinityLogger.logError("[GenerationRuntime] 上下文压缩锚点写入失败", error)
+                result
+            }
+        }
+        return if (manual || compactionService == null) operation()
+            else compactionService.compactAutomatically(request.sessionId, operation)
     }
 
     private fun canSpendOnSummary(request: GenerationRequest, estimatedTokens: Long): Boolean {
@@ -546,7 +560,10 @@ internal class DefaultChatGenerationRuntime(
     internal suspend fun compactNow(sessionId: String, onProgress: (ContextCompactionStage) -> Unit): ContextCompactionResult {
         manualCompaction = true
         val context = prepareStoredContext(sessionId)
-        return compactContext(context.request, context.session, context.prompt, context.systemPrompt, manual = true, onProgress = onProgress)
+        return compactContext(
+            context.request, context.session, context.prompt, context.systemPrompt,
+            anchorBeforeMessageId = null, manual = true, onProgress = onProgress,
+        )
     }
 
     internal suspend fun estimateContext(sessionId: String): ContextUsageEstimate {
@@ -862,7 +879,7 @@ internal class DefaultChatGenerationRuntime(
         }
         val compacted = if (refreshingForSend) {
             compactionPipeline.preview(session, prompt.copy(messages = offloadToolResults(request.sessionId, prompt.messages)), route.modelId)
-        } else compactContext(request, storedSession, prompt, systemPrompt)
+        } else compactContext(request, storedSession, prompt, systemPrompt, anchorBeforeMessageId = request.userMessageId)
         compacted.blockedFloor?.let { blocked ->
             val failure = blocked.failure(hasFullContextDocuments)
             handleDocumentBudgetFailure(request, failure)
@@ -914,8 +931,10 @@ internal class DefaultChatGenerationRuntime(
         val budget = maxOf(floor.tokens.toLong(), minOf(available * 4 / 5, failedTokens.toLong() * 3 / 4)).toInt()
         beforeRetry()
         val reset = store.getSession(request.sessionId) ?: return false
-        val result = compactContext(request, reset, prompt, preparedContext?.finalSystemPrompt.orEmpty(),
-            manual = true, recoveryBudget = budget)
+        val result = compactContext(
+            request, reset, prompt, preparedContext?.finalSystemPrompt.orEmpty(),
+            anchorBeforeMessageId = request.userMessageId, manual = true, recoveryBudget = budget,
+        )
         return ContextLimitRecovery.meetsRecoveryBudget(result, budget)
     }
 
@@ -1746,7 +1765,10 @@ internal class DefaultChatGenerationRuntime(
             }
             // 轮后按下一次请求实际发送的未摘要历史估算，不使用累计账单 token 触发摘要。
             val nextPrompt = (preparedPrompt ?: PromptRequest(model = session.modelId.orEmpty(), messages = emptyList()))
-            compactContext(request, store.getSession(request.sessionId) ?: session, nextPrompt, context.finalSystemPrompt)
+            compactContext(
+                request, store.getSession(request.sessionId) ?: session, nextPrompt, context.finalSystemPrompt,
+                anchorBeforeMessageId = null,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -1903,6 +1925,7 @@ internal class DefaultChatGenerationRuntime(
 
     private fun messagesCreatedSincePrepare(request: GenerationRequest): List<String> {
         val currentIds = store.getSession(request.sessionId)?.messages.orEmpty()
+            .filterNot { it.isContextCompactionNotice }
             .map { it.id }
             .filterNot { it in rollbackBaselineMessageIds }
         return (listOf(request.assistantMessageId) + currentIds + assistantMessageId(request)).distinct()
@@ -2018,20 +2041,14 @@ internal class DefaultChatGenerationRuntime(
         modelId: String,
         messages: List<com.promenar.infinity.data.model.Message>,
     ) {
-        val taskId = ui.addPostProcessTask(PostProcessType.ARCHIVE_TO_RAG, "")
         try {
-            postProcessor.archiveMessagesToRag(request.sessionId, messages.map { it.copy(content = it.contentForModel(), quotes = null) }, modelId) { progress, detail ->
-                ui.updatePostProcessTask(taskId, progress = progress)
-            }
-            ui.updatePostProcessTask(taskId, PostProcessStatus.DONE, 1f)
-            applicationScope.launch {
-                kotlinx.coroutines.delay(3000)
-                ui.removePostProcessTask(taskId)
-            }
+            postProcessor.archiveMessagesToRag(
+                request.sessionId, messages.map { it.copy(content = it.contentForModel(), quotes = null) }, modelId,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            ui.updatePostProcessTask(taskId, PostProcessStatus.ERROR, detail = null)
+            // 归档失败时继续生成历史摘要。
         }
     }
 
@@ -2040,7 +2057,6 @@ internal class DefaultChatGenerationRuntime(
         session: com.promenar.infinity.data.model.Session,
         messages: List<com.promenar.infinity.data.model.Message>,
     ): ContextCompactionOutcome<com.promenar.infinity.data.model.Session> {
-        val taskId = ui.addPostProcessTask(PostProcessType.AUTO_SUMMARY, "")
         return try {
             var usage: TokenUsage? = null
             val outcome = try {
@@ -2048,7 +2064,6 @@ internal class DefaultChatGenerationRuntime(
                     session.summary,
                     messages.map { it.copy(content = it.contentForModel(), quotes = null) },
                     preparedRoute?.modelId ?: preparedPrompt?.model ?: session.modelId.orEmpty(),
-                    onProgress = { ui.updatePostProcessTask(taskId, progress = 0.5f) },
                     onUsage = { usage = it },
                     sessionId = request.sessionId,
                     sourceSession = session,
@@ -2056,27 +2071,17 @@ internal class DefaultChatGenerationRuntime(
             } finally {
                 usage?.let { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { recordSummaryUsage(request, it) } }
             }
-            if (outcome is Failure) {
-                ui.updatePostProcessTask(taskId, PostProcessStatus.ERROR, detail = null)
-                return outcome
-            }
+            if (outcome is Failure) return outcome
             val summary = (outcome as Success).value
             sessionManager.commitContextCompaction(
                 request.sessionId, summary, messages.map { it.id },
                 com.promenar.infinity.data.model.ContextCompactionSource(session.summary, messages.toList()),
             )
             val updated = checkNotNull(store.getSession(request.sessionId)) { "压缩后的会话不存在" }
-            ui.updatePostProcessTask(taskId, PostProcessStatus.DONE, 1f)
-            applicationScope.launch {
-                kotlinx.coroutines.delay(3000)
-                ui.removePostProcessTask(taskId)
-            }
             Success(updated)
         } catch (cancelled: CancellationException) {
-            ui.removePostProcessTask(taskId)
             throw cancelled
         } catch (error: Exception) {
-            ui.updatePostProcessTask(taskId, PostProcessStatus.ERROR, detail = null)
             Failure(error.toCompactionFailure())
         }
     }
