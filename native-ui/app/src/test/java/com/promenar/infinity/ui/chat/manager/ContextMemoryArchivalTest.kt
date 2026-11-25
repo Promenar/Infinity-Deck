@@ -6,6 +6,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.generation.ContextCompactionInput
+import com.promenar.infinity.data.generation.ContextCompactionFailureReason
+import com.promenar.infinity.data.generation.ContextCompactionOutcome
 import com.promenar.infinity.data.generation.ContextCompactionPipeline
 import com.promenar.infinity.data.generation.DefaultChatGenerationContentStrategy
 import com.promenar.infinity.data.generation.PromptWindow
@@ -71,7 +73,7 @@ class ContextMemoryArchivalTest {
             input(fixture), fixture::prompt,
             summarizeHistory = { _, messages ->
                 fixture.archiveMemory(messages)
-                null
+                ContextCompactionOutcome.Failure(ContextCompactionFailureReason.EMPTY_OUTPUT)
             },
         )
 

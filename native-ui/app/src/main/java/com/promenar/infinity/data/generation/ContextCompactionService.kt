@@ -1,8 +1,10 @@
 package com.promenar.infinity.data.generation
 
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
@@ -15,6 +17,7 @@ data class ContextCompactionProgress(
     val stage: ContextCompactionStage? = null,
     val result: ContextCompactionResult? = null,
     val failed: Boolean = false,
+    val failureReason: ContextCompactionFailureReason? = null,
 )
 
 /** 自动与手动压缩共享会话锁；生成准入也使用该锁，关闭手动检查与生成启动之间的竞态。 */
@@ -36,14 +39,26 @@ class ContextCompactionService(
     }
 
     suspend fun compactNow(sessionId: String): ContextCompactionResult {
-        if (isGenerating(sessionId)) throw ContextCompactionBusyException()
+        checkGenerationInactive(sessionId)
         return applicationScope?.async { compactAdmitted(sessionId) }?.await() ?: compactAdmitted(sessionId)
+    }
+
+    private fun checkGenerationInactive(sessionId: String) {
+        if (!isGenerating(sessionId)) return
+        state(sessionId).update { current ->
+            if (current.isRunning) current else ContextCompactionProgress(
+                stage = ContextCompactionStage.COMPLETE,
+                failed = true,
+                failureReason = ContextCompactionFailureReason.GENERATION_ACTIVE,
+            )
+        }
+        throw ContextCompactionBusyException()
     }
 
     private suspend fun compactAdmitted(sessionId: String): ContextCompactionResult {
         return admission(sessionId) {
             lock(sessionId).withLock {
-                if (isGenerating(sessionId)) throw ContextCompactionBusyException()
+                checkGenerationInactive(sessionId)
                 val state = state(sessionId)
                 state.value = ContextCompactionProgress(isRunning = true)
                 try {
@@ -51,11 +66,22 @@ class ContextCompactionService(
                         state.value = ContextCompactionProgress(isRunning = true, stage = stage)
                     }
                     state.value = ContextCompactionProgress(
-                        stage = ContextCompactionStage.COMPLETE, result = result, failed = result.summaryFailed,
+                        stage = ContextCompactionStage.COMPLETE,
+                        result = result,
+                        failed = result.summaryFailed || (result.failureReason != null &&
+                            result.newlyFoldedToolResults == 0 && result.summarizedTurns == 0),
+                        failureReason = result.failureReason,
                     )
                     result
-                } catch (error: Throwable) {
-                    state.value = ContextCompactionProgress(failed = true)
+                } catch (cancelled: CancellationException) {
+                    state.value = ContextCompactionProgress()
+                    throw cancelled
+                } catch (error: Exception) {
+                    state.value = ContextCompactionProgress(
+                        stage = ContextCompactionStage.COMPLETE,
+                        failed = true,
+                        failureReason = error.toCompactionFailure(),
+                    )
                     throw error
                 }
             }

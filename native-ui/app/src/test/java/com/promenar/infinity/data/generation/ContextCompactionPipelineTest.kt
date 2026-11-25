@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.generation
 
+import com.promenar.infinity.data.generation.ContextCompactionOutcome.Failure
+import com.promenar.infinity.data.generation.ContextCompactionOutcome.Success
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
@@ -132,7 +134,7 @@ class ContextCompactionPipelineTest {
         val result = ContextCompactionPipeline().compact(
             // 窗口足够大，使阈值（2700）而非安全余量决定预算。
             input(session, context = 27_000, threshold = 0.1), ::prompt,
-            summarizeTool = { summarized += it; "保留事实" },
+            summarizeTool = { summarized += it; Success("保留事实") },
             summarizeHistory = { _, _ -> error("预算已足够，不应摘要") },
         )
 
@@ -161,7 +163,7 @@ class ContextCompactionPipelineTest {
 
         val result = ContextCompactionPipeline().compact(
             input(session, manual = true), ::prompt,
-            summarizeTool = { "short fact" }, onProgress = stages::add,
+            summarizeTool = { Success("short fact") }, onProgress = stages::add,
         )
 
         assertThat(result.newlyFoldedToolResults).isEqualTo(2)
@@ -218,14 +220,14 @@ class ContextCompactionPipelineTest {
             prompt(current.copy(messages = current.messages.map { it.copy(isArchived = false) }))
         }
         val first = ContextCompactionPipeline(ContextFoldStore(root)).compact(
-            input(session, manual = true), builder, summarizeTool = { "当前轮工具事实" },
+            input(session, manual = true), builder, summarizeTool = { Success("当前轮工具事实") },
         )
 
         assertThat(first.newlyFoldedToolResults).isEqualTo(1)
         assertThat(ContextFoldStore(root).peek(session.id, source.id, source.content)).isNotNull()
         var requests = 0
         val restored = ContextCompactionPipeline(ContextFoldStore(root)).compact(
-            input(session, manual = true), builder, summarizeTool = { requests++; "不应产生新摘要" },
+            input(session, manual = true), builder, summarizeTool = { requests++; Success("不应产生新摘要") },
         )
         assertThat(requests).isEqualTo(0)
         assertThat(restored.newlyFoldedToolResults).isEqualTo(0)
@@ -250,7 +252,7 @@ class ContextCompactionPipelineTest {
             })
         }
         val pipeline = ContextCompactionPipeline(cache)
-        pipeline.compact(input(session, manual = true), { preview(it, outputId) }, summarizeTool = { "fact" })
+        pipeline.compact(input(session, manual = true), { preview(it, outputId) }, summarizeTool = { Success("fact") })
 
         val result = pipeline.compact(
             input(session), { preview(it, nextOutputId) }, summarizeTool = { error("应命中原始正文缓存") },
@@ -285,7 +287,7 @@ class ContextCompactionPipelineTest {
         }
 
         val result = ContextCompactionPipeline(cache).compact(
-            input(toolSession(4), manual = true), ::prompt, summarizeTool = { "fact" },
+            input(toolSession(4), manual = true), ::prompt, summarizeTool = { Success("fact") },
         )
 
         assertThat(result.newlyFoldedToolResults).isEqualTo(1)
@@ -303,11 +305,12 @@ class ContextCompactionPipelineTest {
 
         val result = ContextCompactionPipeline().compact(
             input(session, manual = true), ::prompt,
-            summarizeTool = { delay(16_000); "late fact" },
+            summarizeTool = { delay(16_000); Success("late fact") },
         )
 
         val folded = result.prompt.messages.first { it.role == "tool" }.content
         assertThat(testScheduler.currentTime).isEqualTo(15_000)
+        assertThat(result.failureReason).isEqualTo(ContextCompactionFailureReason.TIMEOUT)
         assertThat(folded).contains("HEAD")
         assertThat(folded).contains("TAIL")
         assertThat(folded).contains(reference)
@@ -316,26 +319,26 @@ class ContextCompactionPipelineTest {
     }
 
     @Test
-    fun `模型摘要被限制长度且只有减少token的内容才会应用`() = runTest {
+    fun `长摘要即使耗用更多令牌也会完整采用并复用`() = runTest {
         val session = toolSession(4)
         val result = ContextCompactionPipeline().compact(
-            input(session, manual = true), ::prompt, summarizeTool = { "z".repeat(1_500) },
+            input(session, manual = true), ::prompt, summarizeTool = { Success("z".repeat(1_500)) },
         )
 
-        assertThat(result.prompt.messages.first { it.role == "tool" }.content.count { it == 'z' }).isAtMost(768)
+        assertThat(result.prompt.messages.first { it.role == "tool" }.content.count { it == 'z' }).isEqualTo(1_500)
         assertThat(result.afterTokens).isLessThan(result.beforeTokens)
 
         val shortAscii = session.copy(messages = session.messages.map {
             if (it.toolCallId == "call-0") it.copy(content = "HEAD" + "x".repeat(592) + "TAIL") else it
         })
-        val fallback = ContextCompactionPipeline().compact(
-            input(shortAscii, manual = true), ::prompt, summarizeTool = { "界".repeat(300) },
+        val pipeline = ContextCompactionPipeline()
+        val expanded = pipeline.compact(
+            input(shortAscii, manual = true), ::prompt, summarizeTool = { Success("界".repeat(300)) },
         )
-        val folded = fallback.prompt.messages.first { it.role == "tool" }.content
-        assertThat(folded).doesNotContain("界")
-        assertThat(folded).contains("HEAD")
-        assertThat(folded).contains("TAIL")
-        assertThat(fallback.afterTokens).isLessThan(fallback.beforeTokens)
+        val folded = expanded.prompt.messages.first { it.role == "tool" }.content
+        assertThat(folded).contains("界".repeat(300))
+        assertThat(expanded.afterTokens).isGreaterThan(expanded.beforeTokens)
+        assertThat(pipeline.preview(shortAscii, prompt(shortAscii)).prompt).isEqualTo(expanded.prompt)
     }
 
     @Test
@@ -350,7 +353,7 @@ class ContextCompactionPipelineTest {
 
         val result = ContextCompactionPipeline().compact(
             input(session, keep = 1, context = 3_000, threshold = 0.2), build,
-            summarizeHistory = { current, messages -> archive(current, messages) },
+            summarizeHistory = { current, messages -> Success(archive(current, messages)) },
         )
 
         assertThat(result.beforeTokens).isGreaterThan(800)
@@ -363,7 +366,7 @@ class ContextCompactionPipelineTest {
 
         val result = ContextCompactionPipeline().compact(
             input(session, keep = 1, context = 2_000, reserve = 900, threshold = 0.95), ::prompt,
-            summarizeHistory = { current, messages -> archive(current, messages) },
+            summarizeHistory = { current, messages -> Success(archive(current, messages)) },
         )
 
         assertThat(result.beforeTokens).isGreaterThan(300)
@@ -389,7 +392,7 @@ class ContextCompactionPipelineTest {
         }
         val compacted = ContextCompactionPipeline().compact(
             input(session, keep = 1, context = 10_000, threshold = 0.00505), overBudget,
-            summarizeHistory = { current, messages -> archive(current, messages) },
+            summarizeHistory = { current, messages -> Success(archive(current, messages)) },
         )
         assertThat(compacted.beforeTokens).isEqualTo(51)
         assertThat(compacted.summarizedTurns).isEqualTo(1)
@@ -453,7 +456,7 @@ class ContextCompactionPipelineTest {
             { built += it; prompt(it) },
             summarizeHistory = { current, messages ->
                 assertThat(messages.map(Message::id)).containsExactly("old-user", "old-assistant").inOrder()
-                archive(current, messages)
+                Success(archive(current, messages))
             },
             onProgress = stages::add,
         )
@@ -469,16 +472,16 @@ class ContextCompactionPipelineTest {
     }
 
     @Test
-    fun `历史摘要返回null或抛异常时保持原文且同一轮不重试`() = runTest {
+    fun `历史摘要失败或抛异常时保持原文且同一轮不重试`() = runTest {
         listOf(false, true).forEach { throws ->
             val session = twoTurns("old ".repeat(1_000))
             val state = ContextCompactionTurnState()
             val request = input(session, keep = 1, context = 1_800).copy(turnState = state)
             var calls = 0
-            val summarize: suspend (Session, List<Message>) -> Session? = { _, _ ->
+            val summarize: suspend (Session, List<Message>) -> ContextCompactionOutcome<Session> = { _, _ ->
                 calls++
                 if (throws) throw IllegalStateException("unavailable")
-                null
+                Failure(ContextCompactionFailureReason.OUTPUT_LIMIT)
             }
             val pipeline = ContextCompactionPipeline()
 
@@ -500,7 +503,7 @@ class ContextCompactionPipelineTest {
 
         val result = ContextCompactionPipeline().compact(
             input(session, keep = 1, manual = true), ::prompt,
-            summarizeHistory = { current, _ -> current },
+            summarizeHistory = { current, _ -> Success(current) },
         )
 
         assertThat(result.summaryFailed).isTrue()
@@ -509,20 +512,53 @@ class ContextCompactionPipelineTest {
     }
 
     @Test
-    fun `手动压缩同时执行工具折叠和历史摘要`() = runTest {
-        val old = toolSession(4)
-        val session = old.copy(messages = old.messages + Message("current", MessageRole.USER, "current question"))
+    fun `手动压缩先归档历史且只折叠保留窗口中的工具结果`() = runTest {
+        val old = toolSession(8)
+        val session = old.copy(messages = old.messages.toMutableList().apply {
+            add(9, Message("recent", MessageRole.USER, "recent question"))
+            add(Message("current", MessageRole.USER, "current question"))
+        })
+        val calls = mutableListOf<String>()
 
         val result = ContextCompactionPipeline().compact(
-            input(session, keep = 1, manual = true).copy(currentTurnId = "current"), ::prompt,
-            summarizeTool = { "tool fact" },
-            summarizeHistory = { current, messages -> archive(current, messages) },
+            input(session, keep = 2, manual = true).copy(currentTurnId = "current"), ::prompt,
+            summarizeTool = { text -> calls += text.substringBefore("x"); Success("tool fact") },
+            summarizeHistory = { current, messages -> calls += "history"; Success(archive(current, messages)) },
         )
 
+        assertThat(calls).containsExactly("history", "HEAD-4").inOrder()
         assertThat(result.newlyFoldedToolResults).isEqualTo(1)
         assertThat(result.summarizedTurns).isEqualTo(1)
-        assertThat(result.prompt.messages.map(ProtocolMessage::role)).containsExactly("system", "user").inOrder()
-        assertThat(result.foldedToolResults).isEqualTo(0)
+        assertThat(result.foldedToolResults).isEqualTo(1)
+    }
+
+    @Test
+    fun `手动历史摘要失败即停止且保留原文和失败原因`() = runTest {
+        val old = toolSession(8)
+        val session = old.copy(messages = old.messages + Message("current", MessageRole.USER, "current question"))
+        val stages = mutableListOf<ContextCompactionStage>()
+        var toolCalls = 0
+
+        val request = input(session, keep = 1, manual = true)
+        val pipeline = ContextCompactionPipeline()
+        val result = pipeline.compact(
+            request, ::prompt,
+            summarizeHistory = { _, _ -> Failure(ContextCompactionFailureReason.OUTPUT_LIMIT) },
+            summarizeTool = { toolCalls++; Success("不应调用") },
+            onProgress = stages::add,
+        )
+
+        val retried = pipeline.compact(
+            request, ::prompt,
+            summarizeTool = { toolCalls++; Success("不应调用") },
+        )
+
+        assertThat(toolCalls).isEqualTo(0)
+        assertThat(retried.failureReason).isEqualTo(ContextCompactionFailureReason.OUTPUT_LIMIT)
+        assertThat(result.summaryFailed).isTrue()
+        assertThat(result.failureReason).isEqualTo(ContextCompactionFailureReason.OUTPUT_LIMIT)
+        assertThat(result.prompt).isEqualTo(prompt(session))
+        assertThat(stages).containsExactly(ContextCompactionStage.SUMMARIZING, ContextCompactionStage.COMPLETE).inOrder()
     }
 
     @Test

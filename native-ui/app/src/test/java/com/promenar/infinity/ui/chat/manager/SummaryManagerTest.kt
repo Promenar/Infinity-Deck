@@ -39,13 +39,24 @@ class SummaryManagerTest {
         assertThat(request.sessionId).isEqualTo("session-id")
         assertThat(request.model).isEqualTo("current-provider::current-remote")
         assertThat(request.stream).isFalse()
-        assertThat(request.maxTokens).isEqualTo(1024)
+        assertThat(request.maxTokens).isNull()
         assertThat(request.tools.orEmpty()).isEmpty()
         assertThat(request.webSearch).isFalse()
         assertThat(request.enableGeminiSearch).isFalse()
         assertThat(request.messages.single().role).isEqualTo("user")
         assertThat(protocol.dispatchers).containsExactly(Dispatchers.IO)
         assertThat(progress).containsExactly("context_summary_calling")
+    }
+
+    @Test
+    fun `历史摘要保留长正文且不限制模型输出`() = runTest {
+        val content = "已确认的历史事实。".repeat(800) + "末尾未决事项"
+        val protocol = RecordingProtocol(PromptResponse(content))
+
+        val result = SummaryManager(LlmProvider(protocol)).summarizeOutcome(null, messages(), "current::remote")
+
+        assertThat(result.getOrNull()).isEqualTo(content)
+        assertThat(protocol.requests.single().maxTokens).isNull()
     }
 
     @Test

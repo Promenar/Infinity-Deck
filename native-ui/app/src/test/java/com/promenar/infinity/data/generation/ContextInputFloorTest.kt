@@ -41,7 +41,7 @@ class ContextInputFloorTest {
         val result = ContextCompactionPipeline().compact(
             ContextCompactionInput(session, "new", 1, 0.5, PromptWindow(8000, 1024)),
             buildPrompt = { if (it.summary == null) prompt else prompt.copy(messages = prompt.messages.filterIndexed { i, _ -> i != 1 }) },
-            summarizeHistory = { s, messages -> candidates = messages; s.copy(summary = "摘要") })
+            summarizeHistory = { s, messages -> candidates = messages; ContextCompactionOutcome.Success(s.copy(summary = "摘要")) })
         assertThat(result.blockedFloor).isNull()
         assertThat(result.summarizedTurns).isEqualTo(1)
         assertThat(candidates.map { it.id }).containsExactly("old")

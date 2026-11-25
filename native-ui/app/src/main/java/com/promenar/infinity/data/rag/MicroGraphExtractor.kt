@@ -19,6 +19,7 @@ class MicroGraphExtractor(
     private val timeoutMs: Long = 5000,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val executionGate: SessionExecutionGate? = null,
+    private val maxOutputTokens: Int? = null,
 ) : AutoCloseable {
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
     private val pendingMerges = Channel<PendingMerge>(capacity = 8)
@@ -69,7 +70,10 @@ class MicroGraphExtractor(
                 return@withTimeoutOrNull cached
             }
             val extracted = if (text.isBlank()) ExtractionResult(emptyList(), emptyList())
-            else requestClient.extract(modelId, systemPrompt, "检索问题：$query\n\n请从以下文本片段提取关系：\n$text", timeout, sessionId = sessionId)
+            else requestClient.extract(
+                modelId, systemPrompt, "检索问题：$query\n\n请从以下文本片段提取关系：\n$text",
+                timeout, maxOutputTokens = maxOutputTokens, sessionId = sessionId,
+            )
             if (!extracted.isSuccess) return@withTimeoutOrNull MicroGraphResult.failure(extracted.status, extracted.error.orEmpty(), query)
             val graph = ValidatedGraph.from(extracted.nodes, extracted.edges)
             val result = MicroGraphResult(graph.nodes, graph.edges, graph.context, input.sources.map { it.id }, query, System.currentTimeMillis(), sourceDocumentIds = sources.mapNotNull { it.docId }.distinct().sorted(), modelCalled = text.isNotBlank())

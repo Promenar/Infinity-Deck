@@ -60,6 +60,9 @@ data class StreamConfig(
     internal val latencyTrace: ModelLatencyTrace? = null,
 )
 
+internal class ProviderConfigurationUnavailableException :
+    IllegalStateException("Provider configuration is unavailable")
+
 class UnifiedLlmClient private constructor(
     private val providerConfigResolver: () -> UnifiedProviderConfig?,
     private val middlewares: List<LlmMiddleware>,
@@ -110,7 +113,7 @@ class UnifiedLlmClient private constructor(
         diagnostic: LlmRequestDiagnostic,
     ) {
         val providerConfig = providerConfigResolver()
-            ?: throw IllegalStateException("Provider configuration is unavailable")
+            ?: throw ProviderConfigurationUnavailableException()
         val protocol = protocolFactory(providerConfig)
 
         val chain = LlmMiddlewareChain(middlewares)

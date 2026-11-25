@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.generation
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.model.params.ReasoningEffort
 import com.promenar.infinity.data.remote.ProviderRequestRouter
 import com.promenar.infinity.data.remote.ProviderResolution
 import com.promenar.infinity.data.remote.ProviderResolutionError
@@ -15,6 +16,8 @@ import com.promenar.infinity.data.remote.protocol.ProtocolToolChoice
 import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.remote.protocol.ProtocolUsage
 import com.promenar.infinity.data.remote.protocol.StreamChunk
+import com.promenar.infinity.data.remote.protocol.adaptedTo
+import com.promenar.infinity.data.remote.protocol.putChatReasoning
 import com.promenar.infinity.data.remote.provider.LlmProvider
 import com.promenar.infinity.domain.generation.CompletionReason
 import com.promenar.infinity.domain.generation.GenerationFailureCode
@@ -27,9 +30,83 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 
 class RoutedToolResultSummarizerTest {
+    @Test
+    fun `深度思考摘要关闭可关闭的思考且不设置输出限额`() = runTest {
+        val protocol = RecordingProtocol(successfulStream("摘要"))
+        val remote = "deepseek-v4.1-flash"
+        val stableId = "current::$remote"
+        val router = RecordingRouter(mapOf(stableId to endpoint("current", remote, protocol)))
+
+        val result = RoutedToolResultSummarizer(ChatProviderRouteGate(router)) { error("不使用本地模型") }
+            .summarizeWithUsageOutcome("待摘要数据", stableId)
+
+        assertThat(result.getOrNull()?.content).isEqualTo("摘要")
+        val request = protocol.requests.single()
+        assertThat(request.maxTokens).isNull()
+        assertThat(request.reasoningEffort).isEqualTo(ReasoningEffort.NONE)
+        val wire = buildJsonObject { putChatReasoning(request.adaptedTo(protocol.protocolType, remote)) }
+        assertThat(wire["thinking"]?.jsonObject?.get("type")?.jsonPrimitive?.content).isEqualTo("disabled")
+        assertThat(wire.keys).doesNotContain("reasoning_effort")
+    }
+
+    @Test
+    fun `必需思考的模型使用最低档位且未知兼容模型不序列化思考字段`() = runTest {
+        val protocol = RecordingProtocol(successfulStream("摘要"))
+        val models = listOf("o3", "unknown-vendor-model")
+        val router = RecordingRouter(models.associate { "current::$it" to endpoint("current", it, protocol) })
+        val summarizer = RoutedToolResultSummarizer(ChatProviderRouteGate(router)) { error("不使用本地模型") }
+
+        models.forEach { summarizer.summarize("待摘要数据", "current::$it") }
+
+        val (required, unknown) = protocol.requests
+        assertThat(required.reasoningEffort).isEqualTo(ReasoningEffort.LOW)
+        val requiredWire = buildJsonObject { putChatReasoning(required.adaptedTo(protocol.protocolType, required.model)) }
+        val unknownWire = buildJsonObject { putChatReasoning(unknown.adaptedTo(protocol.protocolType, unknown.model)) }
+        assertThat(requiredWire["reasoning_effort"]?.jsonPrimitive?.content).isEqualTo("low")
+        assertThat(unknownWire).isEmpty()
+    }
+
+    @Test
+    fun `结构化保留终态失败码且丢弃部分正文`() = runTest {
+        val reasons = mapOf(
+            GenerationFailureCode.OUTPUT_LIMIT to ContextCompactionFailureReason.OUTPUT_LIMIT,
+            GenerationFailureCode.TIMEOUT to ContextCompactionFailureReason.TIMEOUT,
+            GenerationFailureCode.NETWORK to ContextCompactionFailureReason.NETWORK,
+            GenerationFailureCode.CONTEXT_LIMIT to ContextCompactionFailureReason.CONTEXT_LIMIT,
+            GenerationFailureCode.RATE_LIMIT to ContextCompactionFailureReason.RATE_LIMITED,
+            GenerationFailureCode.AUTH to ContextCompactionFailureReason.AUTH,
+            GenerationFailureCode.SERVER to ContextCompactionFailureReason.PROVIDER_ERROR,
+        )
+        for ((code, reason) in reasons) {
+            val protocol = RecordingProtocol(flowOf(StreamChunk.TextDelta("部分正文"), StreamChunk.Error(code)))
+            val result = summarizer(protocol).summarizeWithUsageOutcome("数据", "current::remote")
+            assertThat(result).isEqualTo(ContextCompactionOutcome.Failure(reason))
+        }
+    }
+
+    @Test
+    fun `历史摘要透传路由和空正文失败原因`() = runTest {
+        val protocol = RecordingProtocol(successfulStream(" "))
+        val manager = summarizer(protocol).historySummaryManager(LlmProvider(protocol))
+        val history = listOf(com.promenar.infinity.data.model.Message(
+            "old", com.promenar.infinity.data.model.MessageRole.USER, "旧消息",
+        ))
+
+        val usage = mutableListOf<com.promenar.infinity.data.model.TokenUsage>()
+        assertThat(manager.summarizeOutcome(null, history, "missing::remote", onUsage = usage::add))
+            .isEqualTo(ContextCompactionOutcome.Failure(ContextCompactionFailureReason.ROUTE_UNAVAILABLE))
+        assertThat(usage).isEmpty()
+        assertThat(manager.summarizeOutcome(null, history, "current::remote"))
+            .isEqualTo(ContextCompactionOutcome.Failure(ContextCompactionFailureReason.EMPTY_OUTPUT))
+        assertThat(protocol.requests.single().maxTokens).isNull()
+    }
+
     @Test
     fun `失败摘要仍通过用量回调保留提供商实报值`() = runTest {
         val outputs = listOf(
@@ -87,7 +164,7 @@ class RoutedToolResultSummarizerTest {
         assertThat(currentProtocol.requests).hasSize(1)
         val request = currentProtocol.requests.single()
         assertThat(request.model).isEqualTo("current-remote")
-        assertThat(request.maxTokens).isEqualTo(256)
+        assertThat(request.maxTokens).isNull()
         assertThat(request.stream).isTrue()
         assertThat(request.toolChoice).isEqualTo(ProtocolToolChoice.NONE)
         assertThat(request.tools.orEmpty()).isEmpty()
@@ -299,7 +376,7 @@ class RoutedToolResultSummarizerTest {
         assertThat(localProtocol.requests).isEmpty()
         val request = localProtocol.syncRequests.single()
         assertThat(request.model).isEqualTo("gguf-model")
-        assertThat(request.maxTokens).isEqualTo(256)
+        assertThat(request.maxTokens).isNull()
         assertThat(request.stream).isFalse()
         assertThat(request.toolChoice).isEqualTo(ProtocolToolChoice.NONE)
         assertThat(request.tools.orEmpty()).isEmpty()

@@ -49,7 +49,7 @@ class GraphExtractionBudgetTest {
     }
 
     @Test
-    fun `每次KG请求都声明输出token上限`() = runTest {
+    fun `文档图谱抽取每次请求仍显式声明窗口输出预算`() = runTest {
         val protocol = mockk<LlmProtocol>()
         var sent: PromptRequest? = null
         coEvery { protocol.sendPromptSync(any()) } answers {
@@ -57,7 +57,7 @@ class GraphExtractionBudgetTest {
             PromptResponse(GRAPH)
         }
 
-        val result = testKgClient(protocol).extract("owner::model", "提取实体", "甲与乙认识", 1000)
+        val result = testGraphExtractor(protocol, mockk(relaxed = true)).extractCandidate("甲与乙认识")
 
         assertThat(result.isSuccess).isTrue()
         assertThat(sent!!.maxTokens).isEqualTo(16384)

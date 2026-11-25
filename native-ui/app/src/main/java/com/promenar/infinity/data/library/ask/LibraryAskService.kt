@@ -1,6 +1,11 @@
 package com.promenar.infinity.data.library.ask
 
 import com.promenar.infinity.data.generation.ApproximateTokenEstimator
+import com.promenar.infinity.data.remote.protocol.LlmProtocol
+import com.promenar.infinity.data.remote.protocol.PromptRequest
+import com.promenar.infinity.data.remote.protocol.ProtocolMessage
+import com.promenar.infinity.data.remote.protocol.StreamChunk
+import com.promenar.infinity.domain.generation.CompletionReason
 import com.promenar.infinity.domain.library.AskErrorCode
 import com.promenar.infinity.domain.library.AskEvent
 import com.promenar.infinity.domain.library.AskHit
@@ -90,6 +95,28 @@ internal const val ASK_SYSTEM_PROMPT =
         "用纯文本作答，不使用 Markdown 标记（如 **、#、反引号）；可以分段或用 1. 2. 编号列举。"
 
 internal data class AskPrompt(val system: String, val user: String, val allowedIndexes: Set<Int>)
+
+internal fun streamLibraryAskAnswer(protocol: LlmProtocol, modelId: String, prompt: AskPrompt): Flow<String> = flow {
+    var completed = false
+    protocol.sendPrompt(PromptRequest(
+        model = modelId,
+        messages = listOf(ProtocolMessage("system", prompt.system), ProtocolMessage("user", prompt.user)),
+        maxTokens = null,
+        stream = true,
+        sessionId = "library-ask",
+    )).collect { chunk ->
+        when (chunk) {
+            is StreamChunk.TextDelta -> emit(chunk.content)
+            is StreamChunk.Error -> error("问资料模型请求失败")
+            is StreamChunk.Completed -> {
+                check(chunk.reason == CompletionReason.END_TURN)
+                completed = true
+            }
+            else -> Unit
+        }
+    }
+    check(completed) { "问资料模型未返回完成信号" }
+}
 
 internal fun buildAskPrompt(query: String, hits: List<AskHit>, maxTokens: Int = 3000): AskPrompt {
     val questionBudget = (maxTokens - ApproximateTokenEstimator.estimate(ASK_SYSTEM_PROMPT) - 32)

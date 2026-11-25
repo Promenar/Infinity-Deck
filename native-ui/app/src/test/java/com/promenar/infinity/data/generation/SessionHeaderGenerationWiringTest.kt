@@ -118,7 +118,7 @@ class SessionHeaderGenerationWiringTest {
         }
     }
 
-    @Test fun `自动摘要和手动压缩中的历史与工具折叠摘要都带当前会话`() = ioTest {
+    @Test fun `自动折叠和历史摘要及手动历史摘要均携带当前会话`() = ioTest {
         listOf(false, true).forEach { manual ->
             var enabledBodies: List<String>? = null
             listOf(true, false).forEach { enabled ->
@@ -134,14 +134,15 @@ class SessionHeaderGenerationWiringTest {
                     ) } + initial.last() }
                     val f = fixture(endpoint, "compaction-session", history, threshold = 0.0)
                     if (manual) f.runtime.compactNow(f.request.sessionId) {} else f.runtime.buildContext(f.request)
-                    assertThat(endpoint.requests).hasSize(2)
-                    assertThat(endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }.any { it.contains("压缩工具") }).isTrue()
-                    assertThat(endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }.any { it.contains("对话记录压缩") }).isTrue()
+                    val bodies = endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }
+                    assertThat(bodies).hasSize(if (manual) 1 else 2)
+                    assertThat(bodies.any { it.contains("压缩工具") }).isEqualTo(!manual)
+                    assertThat(bodies.last()).contains("对话记录压缩")
+                    bodies.forEach { assertThat(it).doesNotContain("\"max_tokens\"") }
                     endpoint.requests.forEach {
                         assertThat(it.headers["x-opencode-session"]).isEqualTo(if (enabled) endpoint.identifier("compaction-session") else null)
                         if (!enabled) assertThat(it.headers["User-Agent"]?.startsWith("Infinity-Deck/") == true).isFalse()
                     }
-                    val bodies = endpoint.requests.map { SessionHeaderWiringEndpoint.body(it) }
                     if (enabled) enabledBodies = bodies else assertThat(bodies).isEqualTo(enabledBodies)
                 }
             }

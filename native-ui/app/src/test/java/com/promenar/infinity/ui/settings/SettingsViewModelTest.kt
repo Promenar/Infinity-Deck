@@ -4,6 +4,14 @@ import android.app.Application
 import android.content.SharedPreferences
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.manager.ProviderManager
+import com.promenar.infinity.data.model.ModelInfo
+import com.promenar.infinity.data.model.ProviderConfig
+import com.promenar.infinity.data.model.ProviderListItem
+import com.promenar.infinity.data.model.catalog.SupportState
+import com.promenar.infinity.data.remote.protocol.LlmProtocol
+import com.promenar.infinity.data.remote.protocol.PromptRequest
+import com.promenar.infinity.data.remote.protocol.PromptResponse
+import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.security.SecretId
 import com.promenar.infinity.data.security.SecretStore
 import com.promenar.infinity.data.repository.ISkillRepository
@@ -23,6 +31,9 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.slot
+import io.mockk.unmockkObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -95,6 +106,40 @@ class SettingsViewModelTest {
     @AfterEach
     fun teardown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `引导验证未知模型不限制输出令牌`() = runTest {
+        val provider = ProviderListItem(id = "probe", name = "Probe", protocolType = ProtocolType.OpenAI_ChatCompletions)
+        val model = ModelInfo(
+            id = "probe::test-model", name = "Test", description = "", providerId = provider.id,
+            remoteModelId = "test-model", type = "unknown", enabled = false,
+        )
+        val manager = mockk<ProviderManager>(relaxed = true) {
+            every { providerModels } returns MutableStateFlow(listOf(model))
+            every { providers } returns MutableStateFlow(listOf(provider))
+            every { getProviderConfig(provider.id) } returns ProviderConfig(
+                protocolType = provider.protocolType, baseUrl = "https://probe.invalid", apiKey = "synthetic",
+            )
+        }
+        val request = slot<PromptRequest>()
+        val protocol = mockk<LlmProtocol> {
+            coEvery { sendPromptSync(capture(request)) } returns PromptResponse("OK")
+        }
+        every { mockApp.createRoutedModelProtocol(any(), "model-verify:${model.id}") } returns protocol
+        mockkObject(ProviderManager.Companion)
+        try {
+            every { ProviderManager.getInstance() } returns manager
+            val vm = SettingsViewModel(mockApp, vectorRepo, tokenStatsRepo)
+
+            val verified = vm.verifyOnboardingModel(provider.id, model)
+
+            assertThat(verified?.chatEndpointCompatible).isEqualTo(SupportState.SUPPORTED)
+            assertThat(request.captured.model).isEqualTo(model.remoteModelId)
+            assertThat(request.captured.maxTokens).isNull()
+        } finally {
+            unmockkObject(ProviderManager.Companion)
+        }
     }
 
     @Test

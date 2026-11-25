@@ -130,7 +130,7 @@ class PromptUsageCalibrationTest {
             com.promenar.infinity.data.model.Message("new-user", com.promenar.infinity.data.model.MessageRole.USER, "新问题")))
         val result = pipeline.compact(ContextCompactionInput(history, "new-user", 1, 0.5, PromptWindow(10000, 1000), stableModelId = session.modelId),
             buildPrompt = { if (it.summary == null) historyPrompt else original.copy(messages = listOf(ProtocolMessage("system", "摘要"))) },
-            summarizeHistory = { previous, _ -> summarized = true; previous.copy(summary = "压缩摘要") })
+            summarizeHistory = { previous, _ -> summarized = true; ContextCompactionOutcome.Success(previous.copy(summary = "压缩摘要")) })
         assertThat(result.beforeTokens).isEqualTo(20000)
         assertThat(summarized).isTrue()
         assertThat(result.afterTokens).isEqualTo(ApproximateTokenEstimator.estimate(result.prompt))

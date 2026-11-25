@@ -222,7 +222,7 @@ class DefaultChatGenerationRuntimeTest {
         val archived = slot<List<Message>>()
         coEvery { fixture.postProcessor.archiveMessagesToRag(any(), capture(archived), any(), any()) } returns Unit
         val summarized = slot<List<Message>>()
-        coEvery { fixture.summaryManager.summarizeOrNull(any(), capture(summarized), any(), any(), any(), any(), any()) } returns "摘要"
+        coEvery { fixture.summaryManager.summarizeOutcome(any(), capture(summarized), any(), any(), any(), any(), any()) } returns ContextCompactionOutcome.Success("摘要")
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 
@@ -1655,7 +1655,7 @@ class DefaultChatGenerationRuntimeTest {
         )
         val cancellation = CancellationException("summary-cancel")
         coEvery { fixture.postProcessor.updateStats(any()) } returns Unit
-        coEvery { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any(), any()) } throws cancellation
+        coEvery { fixture.summaryManager.summarizeOutcome(any(), any(), any(), any(), any(), any(), any()) } throws cancellation
 
         val result = runCatching {
             fixture.runtime.postProcess(
@@ -1681,7 +1681,7 @@ class DefaultChatGenerationRuntimeTest {
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 
-        coVerify(exactly = 0) { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { fixture.summaryManager.summarizeOutcome(any(), any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { fixture.messageManager.updateMessage(any(), any(), any()) }
     }
 
@@ -1695,8 +1695,8 @@ class DefaultChatGenerationRuntimeTest {
         coEvery { fixture.postProcessor.updateStats(any()) } returns Unit
         val overflow = slot<List<Message>>()
         coEvery {
-            fixture.summaryManager.summarizeOrNull(any(), capture(overflow), any(), any(), any(), "session", any())
-        } returns "summary"
+            fixture.summaryManager.summarizeOutcome(any(), capture(overflow), any(), any(), any(), "session", any())
+        } returns ContextCompactionOutcome.Success("summary")
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 
@@ -1718,7 +1718,8 @@ class DefaultChatGenerationRuntimeTest {
             messageCount = 6,
         )
         coEvery { fixture.postProcessor.updateStats(any()) } returns Unit
-        coEvery { fixture.summaryManager.summarizeOrNull(any(), any(), any(), any(), any(), any(), any()) } returns null
+        coEvery { fixture.summaryManager.summarizeOutcome(any(), any(), any(), any(), any(), any(), any()) } returns
+            ContextCompactionOutcome.Failure(ContextCompactionFailureReason.EMPTY_OUTPUT)
 
         fixture.runtime.postProcess(fixture.request, GenerationSnapshot(content = "answer"))
 

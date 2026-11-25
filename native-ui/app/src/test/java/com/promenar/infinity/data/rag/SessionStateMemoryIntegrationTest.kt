@@ -129,7 +129,7 @@ class SessionStateMemoryIntegrationTest {
         }
         assertThat(embedded).hasSize(1)
         assertThat(embedded.single()).containsExactly("确定了界面主题", "Infinity Deck · theme: dark", "Infinity Deck · plan: (no longer applies)").inOrder()
-        coVerify(exactly = 1) { protocol.sendPromptSync(match { it.maxTokens == 1024 && !it.stream }) }
+        coVerify(exactly = 1) { protocol.sendPromptSync(match { it.maxTokens == null && !it.stream }) }
     }
 
     @Test

@@ -40,7 +40,8 @@ class PetLineGeneratorTest {
         val prefs = preferences()
         val usage = Usage()
         var calls = 0
-        val generator = PetLineGenerator(prefs, usage, { _, _ ->
+        val generator = PetLineGenerator(prefs, usage, { request, _ ->
+            assertThat(request.maxTokens).isNull()
             calls++
             "  “你好”\n" to TokenUsage(1, 2, 3)
         }, PetLineLimiter({ 100_000L }))

@@ -3,6 +3,13 @@ package com.promenar.infinity.data.library.ask
 import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.generation.ApproximateTokenEstimator
 import com.promenar.infinity.data.rag.DocumentReach
+import com.promenar.infinity.data.remote.protocol.LlmProtocol
+import com.promenar.infinity.data.remote.protocol.PromptRequest
+import com.promenar.infinity.data.remote.protocol.StreamChunk
+import com.promenar.infinity.domain.generation.CompletionReason
+import io.mockk.coEvery
+import io.mockk.mockk
+import io.mockk.slot
 import com.promenar.infinity.domain.library.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
@@ -18,6 +25,23 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Test
 
 class LibraryAskServiceTest {
+    @Test fun `问资料流使用会话路由且不限制模型输出`() = runBlocking {
+        val request = slot<PromptRequest>()
+        val protocol = mockk<LlmProtocol> {
+            coEvery { sendPrompt(capture(request)) } returns flowOf(
+                StreamChunk.TextDelta("资料结论"),
+                StreamChunk.Completed(CompletionReason.END_TURN),
+            )
+        }
+
+        val answer = streamLibraryAskAnswer(protocol, "remote-model", AskPrompt("系统", "问题", emptySet())).toList()
+
+        assertThat(answer).containsExactly("资料结论")
+        assertThat(request.captured.model).isEqualTo("remote-model")
+        assertThat(request.captured.sessionId).isEqualTo("library-ask")
+        assertThat(request.captured.maxTokens).isNull()
+    }
+
     @Test fun settingsSelectTheThreeModes() {
         assertThat(determineAskMode("", false)).isEqualTo(AskMode.KEYWORD_ONLY)
         assertThat(determineAskMode("quick", false)).isEqualTo(AskMode.KEYWORD_ONLY)

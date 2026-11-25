@@ -169,6 +169,7 @@ class PostProcessorTest {
 
         val title = PostProcessor.generateTitleWithFallback(titleParams(), "quick::model") { request ->
             calls += request.model
+            assertThat(request.maxTokens).isNull()
             "快速标题"
         }
 
@@ -182,6 +183,7 @@ class PostProcessorTest {
 
         val title = PostProcessor.generateTitleWithFallback(titleParams(), "quick::model") { request ->
             calls += request.model
+            assertThat(request.maxTokens).isNull()
             if (request.model == "quick::model") "" else "天气分析"
         }
         val none = PostProcessor.generateTitleWithFallback(titleParams(), "quick::model") { error("offline") }

@@ -192,7 +192,7 @@ class P0RuntimeIntegrationTest {
     }
 
     @Test
-    fun `手动压缩忽略高阈值执行工具折叠和历史摘要且不创建生成消息`() = runTest {
+    fun `手动压缩只请求一次历史摘要且不创建生成消息`() = runTest {
         val fixture = fixture(priorToolResults = listOf("工具原始内容".repeat(200), "最近一", "最近二", "最近三"), historicalTurn = true)
         fixture.sessions.updateSessionInferenceParams("session", InferenceParams(maxTokens = 64, keepRecentTurns = 1, autoSummaryThreshold = 0.95))
         fixture.preferences.edit().putString("preset_summary_model", "quick::different").commit()
@@ -210,28 +210,67 @@ class P0RuntimeIntegrationTest {
 
         val result = withContext(Dispatchers.Default) { fixture.runtime().compactNow("session") {} }
 
-        assertThat(result.newlyFoldedToolResults).isEqualTo(1)
+        assertThat(result.newlyFoldedToolResults).isEqualTo(0)
         assertThat(result.summarizedTurns).isEqualTo(1)
         assertThat(result.afterTokens).isLessThan(result.beforeTokens)
         assertThat(fixture.prompts).isEmpty()
-        assertThat(fixture.summaryPrompts).hasSize(2)
+        assertThat(fixture.summaryPrompts.single().maxTokens).isNull()
+        assertThat(fixture.postEvents).containsExactly("history-summary")
         assertThat(fixture.resolvedModels).doesNotContain("quick::different")
         assertThat(fixture.messageRepository.getBySession("session").map { it.id }).isEqualTo(beforeIds)
         assertThat(fixture.messageRepository.getById("historical-result-0")!!.content).isEqualTo("工具原始内容".repeat(200))
         assertThat(fixture.messageRepository.getById("assistant")!!.tokens).isEqualTo(TokenUsage(100, 50, 150))
         val usageStore = com.promenar.infinity.data.repository.RolledBackSummaryUsageStore(fixture.preferences)
         val records = usageStore.withRecords { it.toList() }
-        assertThat(records).hasSize(2)
+        assertThat(records).hasSize(1)
         assertThat(records.map { it.modelId }.distinct()).containsExactly("local::p0-integration-model")
         assertThat(records.all { it.createdAt in startedAt..System.currentTimeMillis() }).isTrue()
-        assertThat(records.sumOf { it.usage.input }).isEqualTo(14)
-        assertThat(records.sumOf { it.usage.output }).isEqualTo(6)
+        assertThat(records.sumOf { it.usage.input }).isEqualTo(7)
+        assertThat(records.sumOf { it.usage.output }).isEqualTo(3)
         val statistics = com.promenar.infinity.data.repository.TokenStatsRepository(
             fixture.database.messageDao(), rolledBackSummaryUsageStore = usageStore,
         )
         val sessionUsage = statistics.getUsageBySession("session")
-        assertThat(sessionUsage.inputTokens).isEqualTo(118L)
-        assertThat(sessionUsage.outputTokens).isEqualTo(60L)
+        assertThat(sessionUsage.inputTokens).isEqualTo(111L)
+        assertThat(sessionUsage.outputTokens).isEqualTo(57L)
+    }
+
+    @Test
+    fun `手动历史摘要透传预算不足与模型不可用且不改归档状态`() = runTest {
+        for (reason in listOf(ContextCompactionFailureReason.BUDGET_EXHAUSTED, ContextCompactionFailureReason.ROUTE_UNAVAILABLE)) {
+            val fixture = fixture(priorToolResults = List(5) { "旧工具事实".repeat(200) }, historicalTurn = true)
+            fixture.sessions.updateSessionInferenceParams("session", InferenceParams(maxTokens = 64, keepRecentTurns = 1))
+            if (reason == ContextCompactionFailureReason.BUDGET_EXHAUSTED) {
+                fixture.preferences.edit().putInt("task_token_limit", 1).commit()
+            } else {
+                fixture.providerUnavailable = true
+            }
+
+            val result = fixture.runtime().compactNow("session") {}
+
+            assertThat(result.failureReason).isEqualTo(reason)
+            assertThat(result.summaryFailed).isTrue()
+            assertThat(result.newlyFoldedToolResults).isEqualTo(0)
+            assertThat(fixture.summaryPrompts).isEmpty()
+            assertThat(fixture.messageRepository.getBySession("session").none { it.isArchived }).isTrue()
+        }
+    }
+
+    @Test
+    fun `工具摘要取消且无实报用量时不写入估算费用`() = runTest {
+        val fixture = fixture(priorToolResults = listOf("旧工具事实".repeat(200), "最近一", "最近二", "最近三"))
+        val cancelled = kotlinx.coroutines.CancellationException("工具摘要已取消")
+        fixture.summaryFailure = cancelled
+
+        val failure = withContext(Dispatchers.Default) {
+            runCatching { fixture.runtime().compactNow("session") {} }.exceptionOrNull()
+        }
+
+        assertThat(failure).isInstanceOf(kotlinx.coroutines.CancellationException::class.java)
+        assertThat(failure?.message).isEqualTo(cancelled.message)
+        assertThat(fixture.summaryPrompts).hasSize(1)
+        val usageStore = com.promenar.infinity.data.repository.RolledBackSummaryUsageStore(fixture.preferences)
+        assertThat(usageStore.withRecords { it.toList() }).isEmpty()
     }
 
     @Test
@@ -929,6 +968,7 @@ class P0RuntimeIntegrationTest {
         var realContextBuilder: ContextBuilder? = null
         var stateBoards: com.promenar.infinity.data.repository.StateBoardRepository? = null
         var toolAction: (suspend (String, ToolCall) -> String)? = null
+        var summaryFailure: Exception? = null
         var summaryResponse = PromptResponse("")
         var toolResult = "完整工具结果"
         var onPrompt: suspend (Int, PromptRequest) -> Unit = { _, _ -> }
@@ -999,6 +1039,7 @@ class P0RuntimeIntegrationTest {
                 override suspend fun sendPromptSync(request: PromptRequest): PromptResponse {
                     summaryPrompts += request
                     postEvents += if (request.messages.any { it.content.startsWith("你是一个信息压缩助手") }) "history-summary" else "tool-summary"
+                    summaryFailure?.let { throw it }
                     return summaryResponse
                 }
                 override fun cancel() = Unit

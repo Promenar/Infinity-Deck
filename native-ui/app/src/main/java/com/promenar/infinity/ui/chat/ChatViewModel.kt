@@ -5,6 +5,7 @@ import com.promenar.infinity.ui.common.providerDisplayName
 import android.app.Application
 import android.net.Uri
 import com.promenar.infinity.data.branch.SessionMessageStore
+import com.promenar.infinity.data.generation.ContextCompactionFailureReason
 import com.promenar.infinity.data.session.EditedUserMessagePayload
 import com.promenar.infinity.data.workspace.isWorkspaceSwitchNotice
 import com.promenar.infinity.domain.generation.GenerationTaskSnapshot
@@ -770,7 +771,8 @@ class ChatViewModel(
         val isCompressing: Boolean = false,
         val progress: Float = 0f,
         val detail: String = "",
-        val result: String? = null
+        val result: String? = null,
+        val failureReason: ContextCompactionFailureReason? = null,
     )
 
     private val _compressionState = MutableStateFlow(CompressionState())
@@ -3054,10 +3056,13 @@ class ChatViewModel(
             } catch (_: com.promenar.infinity.data.generation.ContextCompactionBusyException) {
                 if (_currentSessionId.value == sessionId) _compressionState.value = CompressionState(
                     detail = stringResourceResolver(R.string.chat_context_compress_unavailable_generating),
+                    failureReason = ContextCompactionFailureReason.GENERATION_ACTIVE,
                 )
             } catch (_: Exception) {
                 if (_currentSessionId.value == sessionId) _compressionState.value = CompressionState(
                     detail = stringResourceResolver(R.string.chat_context_compaction_failed),
+                    failureReason = contextCompactionService.observe(sessionId).value.failureReason
+                        ?: ContextCompactionFailureReason.UNKNOWN,
                 )
             }
         }
@@ -3075,7 +3080,11 @@ class ChatViewModel(
             }
             return CompressionState(true, fraction, stringResourceResolver(resource))
         }
-        if (progress.failed) return CompressionState(detail = stringResourceResolver(R.string.chat_context_compaction_failed))
+        if (progress.failed) {
+            val resource = if (progress.failureReason == ContextCompactionFailureReason.GENERATION_ACTIVE)
+                R.string.chat_context_compress_unavailable_generating else R.string.chat_context_compaction_failed
+            return CompressionState(detail = stringResourceResolver(resource), failureReason = progress.failureReason)
+        }
         val result = progress.result ?: return CompressionState()
         val session = store.getSession(sessionId)
         val keep = com.promenar.infinity.domain.usecase.resolveKeepRecentTurns(
@@ -3091,6 +3100,7 @@ class ChatViewModel(
                 java.util.Locale.getDefault(), stringResourceResolver(R.string.chat_context_compaction_result),
                 result.newlyFoldedToolResults, result.summarizedTurns, result.beforeTokens, result.afterTokens,
             ) + session?.summary?.takeIf { result.summarizedTurns > 0 }?.let { "\n\n$it" }.orEmpty(),
+            failureReason = progress.failureReason,
         )
     }
 

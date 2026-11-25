@@ -20,6 +20,25 @@ class ContextCompactionServiceTest {
         val error = runCatching { service.compactNow("s") }.exceptionOrNull()
         assertThat(error).isInstanceOf(ContextCompactionBusyException::class.java)
         assertThat(calls).isEqualTo(0)
+        assertThat(service.observe("s").value.failureReason).isEqualTo(ContextCompactionFailureReason.GENERATION_ACTIVE)
+    }
+
+    @Test
+    fun `手动摘要失败原因与最终结果一同发布`() = runTest {
+        val failedResult = emptyResult().copy(
+            summaryFailed = true, failureReason = ContextCompactionFailureReason.BUDGET_EXHAUSTED,
+        )
+        val service = ContextCompactionService(
+            isGenerating = { false },
+            manualCompaction = { _, _ -> failedResult },
+        )
+
+        assertThat(service.compactNow("s")).isEqualTo(failedResult)
+        val progress = service.observe("s").value
+        assertThat(progress.isRunning).isFalse()
+        assertThat(progress.failed).isTrue()
+        assertThat(progress.result).isEqualTo(failedResult)
+        assertThat(progress.failureReason).isEqualTo(ContextCompactionFailureReason.BUDGET_EXHAUSTED)
     }
 
     @Test

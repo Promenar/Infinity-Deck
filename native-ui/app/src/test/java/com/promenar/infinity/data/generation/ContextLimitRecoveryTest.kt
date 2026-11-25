@@ -36,7 +36,7 @@ class ContextLimitRecoveryTest {
         var summaries = 0
         val result = ContextCompactionPipeline().compact(ContextCompactionInput(session, "current", 1, 0.8,
             PromptWindow(8000, 1024), manual = true, inputBudgetOverride = 100),
-            buildPrompt = { prompt }, summarizeHistory = { s, _ -> summaries++; s.copy(summary = "摘要") })
+            buildPrompt = { prompt }, summarizeHistory = { s, _ -> summaries++; ContextCompactionOutcome.Success(s.copy(summary = "摘要")) })
         assertThat(summaries).isEqualTo(1)
         assertThat(ContextLimitRecovery.meetsRecoveryBudget(result, 100)).isFalse()
     }

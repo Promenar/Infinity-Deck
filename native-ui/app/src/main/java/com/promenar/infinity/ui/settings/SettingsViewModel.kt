@@ -617,7 +617,7 @@ class SettingsViewModel(
                                 )
                             ),
                             model = remoteModelId,
-                            maxTokens = 1,
+                            maxTokens = null,
                             tools = null,
                             stream = false,
                             sessionId = "model-verify:${resolved.modelId}",

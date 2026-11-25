@@ -1950,28 +1950,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 kotlinx.coroutines.flow.flow {
                     val route = providerRequestRouter.requireModelRoute(modelId, ::modelRouteError)
                     val protocol = createRoutedModelProtocol(route, defaultSessionId = "library-ask")
-                    var completed = false
-                    protocol.sendPrompt(com.promenar.infinity.data.remote.protocol.PromptRequest(
-                        model = route.remoteModelId,
-                        messages = listOf(
-                            com.promenar.infinity.data.remote.protocol.ProtocolMessage("system", prompt.system),
-                            com.promenar.infinity.data.remote.protocol.ProtocolMessage("user", prompt.user),
-                        ),
-                        maxTokens = 1024,
-                        stream = true,
-                        sessionId = "library-ask",
-                    )).collect { chunk ->
-                        when (chunk) {
-                            is com.promenar.infinity.data.remote.protocol.StreamChunk.TextDelta -> emit(chunk.content)
-                            is com.promenar.infinity.data.remote.protocol.StreamChunk.Error -> error("问资料模型请求失败")
-                            is com.promenar.infinity.data.remote.protocol.StreamChunk.Completed -> {
-                                check(chunk.reason == com.promenar.infinity.domain.generation.CompletionReason.END_TURN)
-                                completed = true
-                            }
-                            else -> Unit
-                        }
-                    }
-                    check(completed) { "问资料模型未返回完成信号" }
+                    emitAll(com.promenar.infinity.data.library.ask.streamLibraryAskAnswer(protocol, route.remoteModelId, prompt))
                 }
             },
         )
@@ -3205,7 +3184,6 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
     private fun createKgRequestClient() = com.promenar.infinity.data.rag.KgRequestClient(
         router = providerRequestRouter,
         usageStore = kgUsageStore,
-        defaultMaxOutputTokens = ragConfigPersistence.loadFullConfig().kgRequestMaxOutputTokens.coerceIn(128, 65536),
         protocolFactory = ::createRoutedModelProtocol,
     )
 
@@ -3246,6 +3224,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     requestClient = createKgRequestClient(),
                     graphStore = graphStore,
                     jitCacheDao = database.kgJitCacheDao(),
+                    maxOutputTokens = kgRequestMaxOutputTokens(),
                     modelId = settings.modelId,
                     systemPrompt = settings.systemPrompt,
                     executionGate = sessionExecutionGate,

@@ -34,7 +34,7 @@ class PetLineGenerator(
                         PromptRequest(
                             messages = listOf(ProtocolMessage("system", prompt.system), ProtocolMessage("user", prompt.user)),
                             model = modelId,
-                            maxTokens = 256,
+                            maxTokens = null,
                             stream = false,
                             sessionId = "pet-lines",
                         ),

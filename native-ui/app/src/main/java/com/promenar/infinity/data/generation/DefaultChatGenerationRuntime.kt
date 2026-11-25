@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.generation
 
+import com.promenar.infinity.data.generation.ContextCompactionOutcome.Failure
+import com.promenar.infinity.data.generation.ContextCompactionOutcome.Success
 import com.promenar.infinity.data.remote.protocol.canonicalizedForRequest
 
 import kotlinx.serialization.encodeToString
@@ -371,19 +373,23 @@ internal class DefaultChatGenerationRuntime(
                     ))
                 },
                 summarizeTool = { text -> summarizeToolResult(request, prompt, text) },
-                summarizeHistory = { previous, messages ->
+                summarizeHistory = history@{ previous, messages ->
+                    // 替换提交前保留原摘要与归档状态，以便生成失败时恢复。
+                    if (summaryInvalidated) return@history Failure(ContextCompactionFailureReason.GENERATION_ACTIVE)
+                    preparedRoute?.failure?.let { return@history Failure(it.reason.toCompactionFailure()) }
                     val estimatedInput = 128L + ApproximateTokenEstimator.estimate(previous.summary.orEmpty()) +
                         messages.sumOf { ApproximateTokenEstimator.estimate(it.contentForModel().take(2000)).toLong() + 8 }
-                    // 替换成功前保留原摘要与归档状态，失败时可以原样恢复。
-                    if (summaryInvalidated || !canSpendOnSummary(request, estimatedInput + 1024)) null else {
-                        if (memoryEnabled(session)) {
-                            archiveMessages(request, preparedRoute?.modelId ?: prompt.model, messages)
-                        }
-                        if (!summarize(request, previous, messages)) null else {
-                            store.getSession(request.sessionId)?.let { updated ->
-                                updated.copy(messages = updated.messages.filterNot { it.id in request.messageIdsToReplace })
-                            }
-                        }
+                    if (!canSpendOnSummary(request, estimatedInput + 1024)) {
+                        return@history Failure(ContextCompactionFailureReason.BUDGET_EXHAUSTED)
+                    }
+                    if (memoryEnabled(session)) {
+                        archiveMessages(request, preparedRoute?.modelId ?: prompt.model, messages)
+                    }
+                    when (val outcome = summarize(request, previous, messages)) {
+                        is Failure -> outcome
+                        is Success -> Success(outcome.value.copy(
+                            messages = outcome.value.messages.filterNot { it.id in request.messageIdsToReplace },
+                        ))
                     }
                 },
                 onProgress = onProgress,
@@ -402,25 +408,37 @@ internal class DefaultChatGenerationRuntime(
             baselineTokens + mainSpentTokens + summarySpentTokens + estimatedTokens <= limit)
     }
 
-    private suspend fun summarizeToolResult(request: GenerationRequest, prompt: PromptRequest, text: String): String? {
-        if (!canSpendOnSummary(request, ApproximateTokenEstimator.estimate(text).toLong() + 384)) return null
+    private suspend fun summarizeToolResult(
+        request: GenerationRequest,
+        prompt: PromptRequest,
+        text: String,
+    ): ContextCompactionOutcome<String> {
+        preparedRoute?.failure?.let { return Failure(it.reason.toCompactionFailure()) }
+        if (!canSpendOnSummary(request, ApproximateTokenEstimator.estimate(text).toLong() + 384)) {
+            return Failure(ContextCompactionFailureReason.BUDGET_EXHAUSTED)
+        }
         var reported: TokenUsage? = null
-        var result: RoutedToolSummary? = null
+        var result: ContextCompactionOutcome<RoutedToolSummary>? = null
         try {
-            result = kotlinx.coroutines.withTimeoutOrNull(12_000) {
-                RoutedToolResultSummarizer(routeGate, localProviderFactory).summarizeWithUsage(
+            val outcome = kotlinx.coroutines.withTimeoutOrNull(12_000) {
+                RoutedToolResultSummarizer(routeGate, localProviderFactory).summarizeWithUsageOutcome(
                     text, preparedRoute?.modelId ?: prompt.model, sessionId = request.sessionId, onUsage = { reported = it },
                 )
+            } ?: Failure(ContextCompactionFailureReason.TIMEOUT)
+            result = outcome
+            return when (outcome) {
+                is Failure -> outcome
+                is Success -> Success(outcome.value.content)
             }
-            return result?.content
         } finally {
-            val usage = result?.usage ?: reported ?: TokenUsage(
-                input = ApproximateTokenEstimator.estimate(text) + 128,
-                output = 256,
-                total = ApproximateTokenEstimator.estimate(text) + 384,
-                estimated = true,
-            )
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { recordSummaryUsage(request, usage) }
+            val failed = result as? Failure
+            val usage = result?.getOrNull()?.usage ?: reported ?: failed?.takeIf { it.reason.canEstimateUsage() }?.let {
+                val input = ApproximateTokenEstimator.estimate(text) + 128
+                TokenUsage(input = input, output = 256, total = input + 256, estimated = true)
+            }
+            if (usage != null) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { recordSummaryUsage(request, usage) }
+            }
         }
     }
 
@@ -2010,12 +2028,12 @@ internal class DefaultChatGenerationRuntime(
         request: GenerationRequest,
         session: com.promenar.infinity.data.model.Session,
         messages: List<com.promenar.infinity.data.model.Message>,
-    ): Boolean {
+    ): ContextCompactionOutcome<com.promenar.infinity.data.model.Session> {
         val taskId = ui.addPostProcessTask(PostProcessType.AUTO_SUMMARY, "")
         return try {
             var usage: TokenUsage? = null
-            val summary = try {
-                summaryManager.summarizeOrNull(
+            val outcome = try {
+                summaryManager.summarizeOutcome(
                     session.summary,
                     messages.map { it.copy(content = it.contentForModel(), quotes = null) },
                     preparedRoute?.modelId ?: preparedPrompt?.model ?: session.modelId.orEmpty(),
@@ -2027,25 +2045,28 @@ internal class DefaultChatGenerationRuntime(
             } finally {
                 usage?.let { kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { recordSummaryUsage(request, it) } }
             }
-            if (summary.isNullOrBlank()) {
+            if (outcome is Failure) {
                 ui.updatePostProcessTask(taskId, PostProcessStatus.ERROR, detail = null)
-                return false
+                return outcome
             }
+            val summary = (outcome as Success).value
             sessionManager.commitContextCompaction(
                 request.sessionId, summary, messages.map { it.id },
                 com.promenar.infinity.data.model.ContextCompactionSource(session.summary, messages.toList()),
             )
+            val updated = checkNotNull(store.getSession(request.sessionId)) { "压缩后的会话不存在" }
             ui.updatePostProcessTask(taskId, PostProcessStatus.DONE, 1f)
             applicationScope.launch {
                 kotlinx.coroutines.delay(3000)
                 ui.removePostProcessTask(taskId)
             }
-            true
+            Success(updated)
         } catch (cancelled: CancellationException) {
+            ui.removePostProcessTask(taskId)
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             ui.updatePostProcessTask(taskId, PostProcessStatus.ERROR, detail = null)
-            false
+            Failure(error.toCompactionFailure())
         }
     }
 

@@ -1,5 +1,7 @@
 package com.promenar.infinity.data.generation
 
+import com.promenar.infinity.data.generation.ContextCompactionOutcome.Failure
+import com.promenar.infinity.data.generation.ContextCompactionOutcome.Success
 import com.promenar.infinity.data.model.Message
 import com.promenar.infinity.data.model.MessageRole
 import com.promenar.infinity.data.model.Session
@@ -14,7 +16,12 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 
 class ContextCompactionTurnState {
+    internal var historySummaryFailure: ContextCompactionFailureReason? = null
     var historySummaryAttempted: Boolean = false
+        set(value) {
+            field = value
+            if (!value) historySummaryFailure = null
+        }
 }
 
 data class ContextCompactionInput(
@@ -38,6 +45,7 @@ data class ContextCompactionResult(
     val summaryFailed: Boolean = false,
     val newlyFoldedToolResults: Int = 0,
     val blockedFloor: ContextInputFloor? = null,
+    val failureReason: ContextCompactionFailureReason? = null,
 )
 
 enum class ContextCompactionStage { FOLDING, SUMMARIZING, COMPLETE }
@@ -57,8 +65,10 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
     suspend fun compact(
         input: ContextCompactionInput,
         buildPrompt: suspend (Session) -> PromptRequest,
-        summarizeTool: suspend (String) -> String? = { null },
-        summarizeHistory: suspend (Session, List<Message>) -> Session? = { _, _ -> null },
+        summarizeTool: suspend (String) -> ContextCompactionOutcome<String> = { Failure(ContextCompactionFailureReason.EMPTY_OUTPUT) },
+        summarizeHistory: suspend (Session, List<Message>) -> ContextCompactionOutcome<Session> = { _, _ ->
+            Failure(ContextCompactionFailureReason.EMPTY_OUTPUT)
+        },
         onProgress: (ContextCompactionStage) -> Unit = {},
     ): ContextCompactionResult {
         var session = input.session
@@ -68,15 +78,21 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
         if (floor.exceeded) {
             val tokens = PromptUsageCalibration.estimate(session, original, input.stableModelId)
             onProgress(ContextCompactionStage.COMPLETE)
-            return ContextCompactionResult(original, 0, 0, tokens, tokens, blockedFloor = floor)
+            return ContextCompactionResult(
+                original, 0, 0, tokens, tokens, blockedFloor = floor,
+                failureReason = ContextCompactionFailureReason.CONTEXT_LIMIT,
+            )
         }
         var prepared = applyCached(session, original, localFolds)
         val beforeTokens = PromptUsageCalibration.estimate(session, prepared.prompt, input.stableModelId)
         var tokens = beforeTokens
         val budget = budget(input)
         val newlyFolded = mutableSetOf<FoldKey>()
+        val attemptedFolds = mutableSetOf<FoldKey>()
         var summarizedTurns = 0
-        var summaryFailed = false
+        var archivedThisPass: Set<String> = emptySet()
+        var historyFailure: ContextCompactionFailureReason? = null
+        var toolFailure: ContextCompactionFailureReason? = null
         var foldingAnnounced = false
 
         suspend fun foldTools(currentTurnOnly: Boolean) {
@@ -88,14 +104,23 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
                 if (index in prepared.foldedIndexes) continue
                 val source = prepared.sources[index]
                 if (currentIds != null && source?.id !in currentIds) continue
+                if (input.manual && source?.id in archivedThisPass) continue
+                val message = prepared.prompt.messages[index]
+                val key = foldKey(source, message, index)
+                if (!attemptedFolds.add(key)) continue
                 if (!foldingAnnounced) {
                     onProgress(ContextCompactionStage.FOLDING)
                     foldingAnnounced = true
                 }
-                val message = prepared.prompt.messages[index]
-                val replacement = foldContent(message.content, source?.content, summarizeTool)
-                if (!reduces(message, replacement)) continue
-                val key = foldKey(source, message, index)
+                val replacement = when (val outcome = foldContent(message.content, source?.content, summarizeTool)) {
+                    is Success -> outcome.value
+                    is Failure -> {
+                        if (toolFailure == null) toolFailure = outcome.reason
+                        preserveOutputReferences(headTail(message.content), source?.content.orEmpty())
+                            .takeIf { reduces(message, it) } ?: continue
+                    }
+                }
+                if (replacement == message.content) continue
                 localFolds[key] = replacement
                 val updated = message.copy(content = replacement)
                 prepared = prepared.copy(
@@ -109,32 +134,45 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
             }
         }
 
-        if (input.manual || tokens > budget) {
-            foldTools(currentTurnOnly = false)
-            if ((input.manual || tokens > budget) && !input.turnState.historySummaryAttempted) {
-                val candidates = historyCompactionCandidates(session.messages, input.currentTurnId, input.keepRecentTurns)
-                if (candidates.isNotEmpty()) {
-                    input.turnState.historySummaryAttempted = true
-                    onProgress(ContextCompactionStage.SUMMARIZING)
-                    val summarized = try {
-                        summarizeHistory(session, candidates)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        null
-                    }
-                    if (summarized != null && summarized != session) {
-                        summarizedTurns = candidates.count { it.role == MessageRole.USER }
-                        session = summarized
-                        prepared = applyCached(session, buildPrompt(session), localFolds)
-                        session = session.copy(stats = session.stats?.copy(contextUsageBaseline = null))
-                        tokens = PromptUsageCalibration.estimate(session, prepared.prompt, input.stableModelId)
-                    } else {
-                        summaryFailed = true
-                    }
+        suspend fun archiveHistory() {
+            val candidates = historyCompactionCandidates(session.messages, input.currentTurnId, input.keepRecentTurns)
+            if (candidates.isEmpty()) return
+            if (input.turnState.historySummaryAttempted) {
+                historyFailure = input.turnState.historySummaryFailure ?: ContextCompactionFailureReason.UNKNOWN
+                return
+            }
+            input.turnState.historySummaryAttempted = true
+            onProgress(ContextCompactionStage.SUMMARIZING)
+            val outcome = try {
+                summarizeHistory(session, candidates)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Failure(error.toCompactionFailure())
+            }
+            when (outcome) {
+                is Failure -> historyFailure = outcome.reason
+                is Success -> if (outcome.value == session) {
+                    historyFailure = ContextCompactionFailureReason.UNKNOWN
+                } else {
+                    summarizedTurns = candidates.count { it.role == MessageRole.USER }
+                    if (input.manual) archivedThisPass = candidates.mapTo(mutableSetOf(), Message::id)
+                    session = outcome.value
+                    prepared = applyCached(session, buildPrompt(session), localFolds)
+                    session = session.copy(stats = session.stats?.copy(contextUsageBaseline = null))
+                    tokens = PromptUsageCalibration.estimate(session, prepared.prompt, input.stableModelId)
                 }
             }
-            if (input.manual || tokens > budget) foldTools(currentTurnOnly = true)
+            input.turnState.historySummaryFailure = historyFailure
+        }
+
+        if (input.manual) {
+            archiveHistory()
+            if (historyFailure == null) foldTools(currentTurnOnly = false)
+        } else if (tokens > budget) {
+            foldTools(currentTurnOnly = false)
+            if (tokens > budget && !input.turnState.historySummaryAttempted) archiveHistory()
+            if (tokens > budget) foldTools(currentTurnOnly = true)
         }
         onProgress(ContextCompactionStage.COMPLETE)
         return ContextCompactionResult(
@@ -143,7 +181,8 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
             summarizedTurns = summarizedTurns,
             beforeTokens = beforeTokens,
             afterTokens = tokens,
-            summaryFailed = summaryFailed,
+            summaryFailed = historyFailure != null,
+            failureReason = historyFailure ?: toolFailure,
             newlyFoldedToolResults = newlyFolded.size,
         )
     }
@@ -165,7 +204,9 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
             val key = foldKey(source, message, index)
             val cached = localFolds[key] ?: source?.let { cacheRead(session.id, it, readOnly) } ?: return@mapIndexed message
             val replacement = preserveOutputReferences(cached, message.content, source?.content.orEmpty())
-            if (!reduces(message, replacement)) return@mapIndexed message
+            // 只有带摘要标记的缓存可以比原文长。头尾兜底及旧缓存仍需缩短正文。
+            val hasSummary = cached.startsWith(TOOL_SUMMARY_PREFIX) && cached.substringAfter("]\n", "").isNotBlank()
+            if (replacement == message.content || (!hasSummary && !reduces(message, replacement))) return@mapIndexed message
             localFolds[key] = replacement
             foldedIndexes += index
             message.copy(content = replacement)
@@ -176,25 +217,27 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
     private suspend fun foldContent(
         content: String,
         originalContent: String?,
-        summarizeTool: suspend (String) -> String?,
-    ): String {
-        val summary = try {
+        summarizeTool: suspend (String) -> ContextCompactionOutcome<String>,
+    ): ContextCompactionOutcome<String> {
+        val outcome = try {
             withTimeoutOrNull(15_000) { summarizeTool(headTail(content, 1_800)) }
+                ?: Failure(ContextCompactionFailureReason.TIMEOUT)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            null
+        } catch (error: Exception) {
+            Failure(error.toCompactionFailure())
         }
-        val candidate = summary?.trim()?.takeIf(String::isNotEmpty)?.let {
-            preserveOutputReferences(
-                "[Tool result summary; original_chars=${originalContent?.length ?: content.length}]\n${takeWholeCodePoints(it, 768)}",
-                content, originalContent.orEmpty(),
-            )
+        return when (outcome) {
+            is Failure -> outcome
+            is Success -> {
+                val summary = outcome.value.trim()
+                if (summary.isEmpty()) return Failure(ContextCompactionFailureReason.EMPTY_OUTPUT)
+                Success(preserveOutputReferences(
+                    "$TOOL_SUMMARY_PREFIX${originalContent?.length ?: content.length}]\n$summary",
+                    content, originalContent.orEmpty(),
+                ))
+            }
         }
-        if (candidate != null && ApproximateTokenEstimator.estimate(candidate) < ApproximateTokenEstimator.estimate(content)) {
-            return candidate
-        }
-        return preserveOutputReferences(headTail(content, 384), originalContent.orEmpty())
     }
 
     private suspend fun cacheRead(sessionId: String, message: Message, readOnly: Boolean): String? = try {
@@ -262,6 +305,7 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
 
     companion object {
         private const val KEEP_RECENT_TOOL_ROUNDS = 3
+        private const val TOOL_SUMMARY_PREFIX = "[Tool result summary; original_chars="
         private val outputReference = Regex("output_id=out_[a-f0-9]{64}")
 
         fun headTail(content: String, retainedChars: Int = 384): String {
@@ -282,12 +326,6 @@ class ContextCompactionPipeline(private val folds: ContextFoldCache? = null) {
             append(content)
             originals.asSequence().flatMap { outputReference.findAll(it).map(MatchResult::value) }.distinct()
                 .filterNot(content::contains).forEach { reference -> append('\n').append(reference) }
-        }
-
-        private fun takeWholeCodePoints(content: String, length: Int): String {
-            if (content.length <= length) return content
-            val end = if (length > 0 && content[length - 1].isHighSurrogate()) length - 1 else length
-            return content.substring(0, end)
         }
     }
 }

@@ -241,7 +241,7 @@ class PostProcessor(
                             messages = listOf(ProtocolMessage(role = "user", content = prompt)),
                             model = modelId,
                             // 思考型模型的推理也计入输出上限。
-                            maxTokens = 2048,
+                            maxTokens = null,
                             stream = false,
                             sessionId = sessionId,
                         )
