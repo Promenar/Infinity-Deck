@@ -1,10 +1,38 @@
 package com.promenar.infinity.ui.chat.manager.skills
 
+import com.promenar.infinity.data.branch.SESSION_READ_DEFAULT_CHARS
+import com.promenar.infinity.data.branch.SESSION_READ_MAX_CHARS
+import com.promenar.infinity.data.branch.SessionMessageStore
+import com.promenar.infinity.data.branch.putMessageContentPreview
+import com.promenar.infinity.data.branch.putMessageContentSlice
 import com.promenar.infinity.data.model.ToolResult
+import com.promenar.infinity.data.remote.protocol.ProtocolMessage
 import com.promenar.infinity.data.subagent.*
 import com.promenar.infinity.domain.tool.*
 import com.promenar.infinity.ui.chat.manager.registry.*
 import kotlinx.serialization.json.*
+
+private val sessionReadPageKeys = setOf("before", "after", "limit")
+
+private fun validSessionReadSlice(args: JsonObject): Boolean {
+    val messageId = args["message_id"]?.jsonPrimitive?.content
+    if (messageId == null) return "offset" !in args && "max_chars" !in args
+    if (messageId.isBlank() || sessionReadPageKeys.any { it in args }) return false
+    val offset = args["offset"]?.jsonPrimitive?.long ?: 0L
+    val maxChars = args["max_chars"]?.jsonPrimitive?.long ?: SESSION_READ_DEFAULT_CHARS.toLong()
+    return offset >= 0 && maxChars in 1L..SESSION_READ_MAX_CHARS.toLong()
+}
+
+private fun JsonObjectBuilder.putHistoryToolCalls(message: ProtocolMessage) {
+    put("tool_calls", buildJsonArray {
+        message.toolCalls.orEmpty().forEach { call ->
+            add(buildJsonObject {
+                put("name", call.name)
+                put("arguments", call.arguments.take(500))
+            })
+        }
+    })
+}
 
 internal fun validSubagentWaitTimeout(args: JsonObject): Boolean {
     if (args["timeout_seconds"] == null) return true
@@ -28,8 +56,22 @@ class SubagentAddressHandler(private val launcher: () -> SubagentLauncher,
     override suspend fun execute(operation: String, id: String, args: JsonObject, context: SkillExecutionContext): String {
         require(context.sourceSubagentId == null) { "子代理只能与自己的主会话通信" }
         val runtime = launcher()
-        if (operation == "session_read" && listOf("before", "after", "limit").any { it in args }) {
+        val messageId = if (operation == "session_read") args["message_id"]?.jsonPrimitive?.content else null
+        if (operation == "session_read" && (messageId != null || sessionReadPageKeys.any { it in args })) {
             val history = runtime.readHistory(context.sessionId, id)
+            if (messageId != null) {
+                val index = messageId.toIntOrNull()
+                require(index != null && index in history.indices && index.toString() == messageId) { "消息不存在" }
+                val message = history[index]
+                require(!SessionMessageStore.isInternal(message.name)) { "消息不存在" }
+                return buildJsonObject {
+                    put("id", id)
+                    put("message_id", messageId)
+                    put("role", message.role)
+                    putMessageContentSlice(message.content, args)
+                    putHistoryToolCalls(message)
+                }.toString()
+            }
             val before = args["before"]?.jsonPrimitive?.content
             val after = args["after"]?.jsonPrimitive?.content
             val cursor = (before ?: after)?.let { value ->
@@ -40,20 +82,24 @@ class SubagentAddressHandler(private val launcher: () -> SubagentLauncher,
             val limit = args["limit"]?.jsonPrimitive?.intOrNull ?: 40
             val start = if (after != null) cursor!! + 1 else 0
             val end = if (before != null) cursor!! else history.size
-            val pageStart = if (after != null) start else (end - limit).coerceAtLeast(start)
-            val pageEnd = if (after != null) (start + limit).coerceAtMost(end) else end
+            fun visible(index: Int) = !SessionMessageStore.isInternal(history[index].name)
+            val forward = after != null
+            val candidates = if (forward) start until end else end - 1 downTo start
+            // 按可见消息数分页，同时以检查点中的原始索引作为游标。
+            val matches = candidates.asSequence().filter(::visible).take(limit + 1).toList()
+            val page = matches.take(limit).let { if (forward) it else it.asReversed() }
             return buildJsonObject {
                 put("id", id)
-                put("has_more_before", pageStart > 0)
-                put("has_more_after", pageEnd < history.size)
+                put("has_more_before", if (forward) (0 until start).any(::visible) else matches.size > limit)
+                put("has_more_after", if (forward) matches.size > limit else (end until history.size).any(::visible))
                 put("messages", buildJsonArray {
-                    for (index in pageStart until pageEnd) {
+                    for (index in page) {
                         val message = history[index]
                         add(buildJsonObject {
-                            put("index", index.toString()); put("role", message.role); put("content", message.content.take(8_000))
-                            put("tool_calls", buildJsonArray { message.toolCalls.orEmpty().forEach { call ->
-                                add(buildJsonObject { put("name", call.name); put("arguments", call.arguments.take(500)) })
-                            } })
+                            put("index", index.toString())
+                            put("role", message.role)
+                            putMessageContentPreview(message.content)
+                            putHistoryToolCalls(message)
                         })
                     }
                 })
@@ -85,19 +131,28 @@ class SessionSubagentSkill(
     override val mcpServerId: String? = null
     override val risk = ToolRisk.SESSION_STATE
     override val description = when (name) {
-        "session_read" -> "读取家族会话或本会话子代理的状态与最近记录。同一智能体其它会话的读取每次需批准，其它智能体的会话不可见。"
+        "session_read" -> "读取家族会话或本会话子代理的状态与历史。列表中 truncated=true 表示正文已截断，可用消息 id（子代理用 index）作为 message_id 分段读取，随后将 next_offset 作为 offset 续读至 has_more=false。同一智能体其它会话的读取每次需批准，其它智能体的会话不可见。"
         "session_search" -> "按关键词检索会话原始消息，同一智能体其它会话的读取每次需批准。"
         "session_send" -> "向主会话或本会话的分支、子代理发消息；wrapUp=true 请求收尾并交回结论。其它会话不能发送。停止的子代理不能恢复。"
         else -> "立即停止本会话分支当前一轮生成或本会话子代理；不删除会话。分支不能停止主会话。"
     }
     override val parametersSchema = when (name) {
         "session_send" -> """{"type":"object","properties":{"id":{"type":"string"},"message":{"type":"string"},"wrapUp":{"type":"boolean"}},"required":["id","message"],"additionalProperties":false}"""
-        "session_read" -> """{"type":"object","properties":{"id":{"type":"string"},"before":{"type":"string","description":"消息 ID，取其之前的消息"},"after":{"type":"string","description":"消息 ID，取其之后的消息"},"limit":{"type":"integer","description":"1–100，默认 40"}},"additionalProperties":false}"""
+        "session_read" -> """{"type":"object","properties":{
+            "id":{"type":"string"},
+            "before":{"type":"string","description":"消息 ID，取其之前的消息"},
+            "after":{"type":"string","description":"消息 ID，取其之后的消息"},
+            "limit":{"type":"integer","description":"1–100，默认 40"},
+            "message_id":{"type":"string","description":"分段读取的单条消息 ID，子代理历史使用从 0 开始的索引字符串。与 before、after、limit 互斥"},
+            "offset":{"type":"integer","description":"起始 UTF-16 码元偏移，非负，仅与 message_id 同用","default":0},
+            "max_chars":{"type":"integer","description":"单段 UTF-16 码元上限，范围 1–$SESSION_READ_MAX_CHARS，仅与 message_id 同用","default":$SESSION_READ_DEFAULT_CHARS}
+        },"additionalProperties":false}"""
         "session_search" -> """{"type":"object","properties":{"id":{"type":"string"},"query":{"type":"string","description":"1–200 个字符"},"role":{"type":"string","enum":["user","assistant","tool"]},"limit":{"type":"integer","description":"1–50，默认 20"}},"required":["query"],"additionalProperties":false}"""
         else -> """{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}"""
     }
     override suspend fun execute(args: JsonObject, context: SkillExecutionContext): ToolResult {
         if (ToolSchemaValidator().validate(parametersSchema, args) is ToolSchemaValidation.Invalid) return result("Invalid $name arguments.", false)
+        if (name == "session_read" && !validSessionReadSlice(args)) return result("Invalid $name arguments.", false)
         val limit = args["limit"]?.jsonPrimitive?.intOrNull
         val query = args["query"]?.jsonPrimitive?.content.orEmpty()
         if (args["limit"] != null && (limit == null || limit !in 1..(if (name == "session_search") 50 else 100)) ||

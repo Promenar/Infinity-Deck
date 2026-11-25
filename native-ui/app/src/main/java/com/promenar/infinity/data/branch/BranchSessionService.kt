@@ -260,6 +260,22 @@ class BranchSessionService(
             }
             "session_read" -> {
                 val dao = database.messageDao()
+                val messageId = args["message_id"]?.jsonPrimitive?.content
+                if (messageId != null) {
+                    val row = requireNotNull(dao.getById(messageId)?.takeIf {
+                        it.sessionId == id && !SessionMessageStore.isInternal(it.name)
+                    }) { "消息不存在" }
+                    return@withContext buildJsonObject {
+                        put("id", id)
+                        put("title", target.title)
+                        put("message_id", row.id)
+                        put("role", row.role)
+                        put("name", row.name)
+                        put("archived", row.isArchived != 0)
+                        put("created_at", row.createdAt)
+                        putMessageContentSlice(row.content, args)
+                    }.toString()
+                }
                 val internal = listOf(SessionMessageStore.DELIVERY_MESSAGE_NAME, SessionMessageStore.WAKE_MESSAGE_NAME, BranchWorktreeAuthorization.MESSAGE_NAME)
                 val before = args["before"]?.jsonPrimitive?.content
                 val after = args["after"]?.jsonPrimitive?.content
@@ -280,7 +296,7 @@ class BranchSessionService(
                     put("id", id); put("title", target.title); put("phase", coordinator.observe(id).value?.phase?.name ?: target.loopStatus)
                     put("has_more_before", moreBefore); put("has_more_after", moreAfter)
                     put("messages", buildJsonArray { rows.forEach {
-                        add(buildJsonObject { put("id", it.id); put("role", it.role); put("name", it.name); put("content", it.content.take(8_000))
+                        add(buildJsonObject { put("id", it.id); put("role", it.role); put("name", it.name); putMessageContentPreview(it.content)
                             put("archived", it.isArchived != 0); put("created_at", it.createdAt) })
                     } })
                 }.toString()
@@ -304,6 +320,51 @@ class BranchSessionService(
             }
             else -> throw IllegalArgumentException("不支持的会话操作")
         }
+    }
+}
+
+internal const val SESSION_READ_DEFAULT_CHARS = 8_000
+internal const val SESSION_READ_MAX_CHARS = 16_000
+
+internal data class SessionMessageSlice(
+    val content: String,
+    val offset: Int,
+    val totalChars: Int,
+    val nextOffset: Int?,
+)
+
+internal fun sliceMessageContent(content: String, offset: Int, maxChars: Int): SessionMessageSlice {
+    val total = content.length
+    if (offset >= total) return SessionMessageSlice("", total, total, null)
+    val start = if (offset > 0 && content[offset].isLowSurrogate()) offset + 1 else offset
+    val rawEnd = start + minOf(maxChars, total - start)
+    val end = if (rawEnd < total && rawEnd > start &&
+        content[rawEnd - 1].isHighSurrogate() && content[rawEnd].isLowSurrogate()
+    ) {
+        // 容量仅剩一个码元且片段以代理对开始时，返回完整字符以保证续读前进。
+        if (rawEnd - start == 1) rawEnd + 1 else rawEnd - 1
+    } else rawEnd
+    return SessionMessageSlice(content.substring(start, end), start, total, end.takeIf { it < total })
+}
+
+internal fun JsonObjectBuilder.putMessageContentSlice(content: String, args: JsonObject) {
+    val offset = args["offset"]?.jsonPrimitive?.long ?: 0L
+    val maxChars = args["max_chars"]?.jsonPrimitive?.int ?: SESSION_READ_DEFAULT_CHARS
+    // 字符串长度以 Int 表示，超出该范围的偏移等同于读取末尾。
+    val slice = sliceMessageContent(content, offset.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), maxChars)
+    put("content", slice.content)
+    put("offset", slice.offset)
+    put("total_chars", slice.totalChars)
+    put("has_more", slice.nextOffset != null)
+    slice.nextOffset?.let { put("next_offset", it) }
+}
+
+internal fun JsonObjectBuilder.putMessageContentPreview(content: String) {
+    val slice = sliceMessageContent(content, 0, SESSION_READ_DEFAULT_CHARS)
+    put("content", slice.content)
+    if (slice.nextOffset != null) {
+        put("truncated", true)
+        put("total_chars", slice.totalChars)
     }
 }
 

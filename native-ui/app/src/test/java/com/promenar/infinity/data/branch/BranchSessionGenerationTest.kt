@@ -102,6 +102,82 @@ class BranchSessionGenerationTest {
         override val sessionId = "main"; override val agentId = "a"
         override val workspacePath: String? = null; override val workspaceRootUuid = "root"
     }
+    @Test fun `归档长消息可按 UTF-16 偏移无损续读`() = runBlocking {
+        val prefix = "前".repeat(7_999)
+        val original = prefix + "😀" + "后".repeat(8_100)
+        db.messageDao().insert(MessageEntity("long", "main", "assistant", original, isArchived = 1, createdAt = 3))
+        suspend fun read(args: JsonObject) =
+            Json.parseToJsonElement(service.address("session_read", "main", args, context())).jsonObject
+        val messages = read(buildJsonObject {})["messages"]!!.jsonArray
+        val preview = messages.last().jsonObject
+        assertThat(preview["content"]).isEqualTo(JsonPrimitive(prefix))
+        assertThat(preview["truncated"]).isEqualTo(JsonPrimitive(true))
+        assertThat(preview["total_chars"]).isEqualTo(JsonPrimitive(original.length))
+        assertThat(messages.first().jsonObject.keys).containsNoneOf("truncated", "total_chars")
+
+        suspend fun slice(offset: Long? = null, maxChars: Int? = null) = read(buildJsonObject {
+            put("message_id", "long")
+            offset?.let { put("offset", it) }
+            maxChars?.let { put("max_chars", it) }
+        })
+        val first = slice()
+        assertThat(first["message_id"]).isEqualTo(JsonPrimitive("long"))
+        assertThat(first["archived"]).isEqualTo(JsonPrimitive(true))
+        assertThat(first["created_at"]).isEqualTo(JsonPrimitive(3))
+        assertThat(first["offset"]).isEqualTo(JsonPrimitive(0))
+        assertThat(first["total_chars"]).isEqualTo(JsonPrimitive(original.length))
+        assertThat(first["has_more"]).isEqualTo(JsonPrimitive(true))
+        assertThat(first["next_offset"]).isEqualTo(JsonPrimitive(prefix.length))
+        val second = slice(first["next_offset"]!!.jsonPrimitive.long, 1)
+        assertThat(second["content"]).isEqualTo(JsonPrimitive("😀"))
+        assertThat(second["next_offset"]).isEqualTo(JsonPrimitive(prefix.length + 2))
+        val last = slice(second["next_offset"]!!.jsonPrimitive.long, 16_000)
+        assertThat(listOf(first, second, last).joinToString("") { it["content"]!!.jsonPrimitive.content }).isEqualTo(original)
+        assertThat(last["has_more"]).isEqualTo(JsonPrimitive(false))
+        assertThat(last["next_offset"].let { it == null || it == JsonNull }).isTrue()
+        assertThat(slice(prefix.length.toLong() + 1, 1)["offset"]).isEqualTo(JsonPrimitive(prefix.length + 2))
+        for (offset in listOf(original.length.toLong(), Long.MAX_VALUE)) {
+            val empty = slice(offset)
+            assertThat(empty["content"]).isEqualTo(JsonPrimitive(""))
+            assertThat(empty["offset"]).isEqualTo(JsonPrimitive(original.length))
+            assertThat(empty["has_more"]).isEqualTo(JsonPrimitive(false))
+        }
+    }
+
+    @Test fun `分段读取复用会话审批并隐藏内部消息和其它会话的消息 ID`() = runBlocking {
+        db.sessionDao().insert(SessionEntity("other", "a", createdAt = 1, updatedAt = 1))
+        db.sessionDao().insert(SessionEntity("another", "a", createdAt = 1, updatedAt = 1))
+        db.sessionDao().insert(SessionEntity("foreign", "b", createdAt = 1, updatedAt = 1))
+        db.sessionDao().insert(SessionEntity("child", "a", parentSessionId = "main", createdAt = 1, updatedAt = 1))
+        db.messageDao().insert(MessageEntity("other-message", "other", "user", "其它会话正文", createdAt = 3))
+        db.messageDao().insert(MessageEntity("another-message", "another", "user", "另一会话正文", createdAt = 3))
+        db.messageDao().insert(MessageEntity("foreign-message", "foreign", "user", "其它智能体正文", createdAt = 3))
+        db.messageDao().insert(MessageEntity("child-message", "child", "user", "分支正文", createdAt = 3))
+        suspend fun read(id: String, messageId: String, ctx: SkillExecutionContext = context()) =
+            service.address("session_read", id, buildJsonObject { put("message_id", messageId) }, ctx)
+        assertThat(runCatching { read("main", "missing") }.exceptionOrNull()?.message).isEqualTo("消息不存在")
+        assertThat(runCatching { read("main", "other-message") }.exceptionOrNull()?.message).isEqualTo("消息不存在")
+        for ((index, name) in listOf(SessionMessageStore.DELIVERY_MESSAGE_NAME, SessionMessageStore.WAKE_MESSAGE_NAME,
+            BranchWorktreeAuthorization.MESSAGE_NAME).withIndex()) {
+            val messageId = "internal-$index"
+            db.messageDao().insert(MessageEntity(messageId, "main", "system", "内部正文", name = name, createdAt = 4))
+            assertThat(runCatching { read("main", messageId) }.exceptionOrNull()?.message).isEqualTo("消息不存在")
+        }
+        assertThat(read("child", "child-message")).contains("分支正文")
+        val target = service.approvalTarget(load("main")!!, "session_read", """{"id":"other","message_id":"other-message"}""")
+        assertThat(target).isNotNull()
+        assertThat(runCatching { read("other", "other-message") }.exceptionOrNull()?.message).contains("需要用户批准")
+        val approved = object : SkillExecutionContext by context() {
+            override val isApprovalBoundExecution = true
+            override val approvedExecutionTarget = target
+        }
+        assertThat(read("other", "other-message", approved)).contains("其它会话正文")
+        assertThat(runCatching { read("another", "another-message", approved) }.exceptionOrNull()?.message)
+            .contains("需要用户批准")
+        assertThat(runCatching { read("foreign", "foreign-message", approved) }.exceptionOrNull()?.message)
+            .contains("未找到可执行该操作的会话")
+    }
+
     @Test fun `历史分页和字面检索覆盖归档消息与内部记录`() = runBlocking {
         val dao = db.messageDao()
         dao.insert(MessageEntity("archived", "main", "user", "前".repeat(155) + "😀A%_\\B" + "后".repeat(155), isArchived = 1, createdAt = 3))
