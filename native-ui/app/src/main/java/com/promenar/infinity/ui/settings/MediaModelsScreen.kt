@@ -1,16 +1,12 @@
 package com.promenar.infinity.ui.settings
 
-import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.mediagen.MediaGroup
+import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsSection
 
@@ -18,7 +14,7 @@ import com.promenar.infinity.ui.common.InfinitySettingsSection
 internal fun MediaModelsScreenContent(
     state: MediaSettingsUiState,
     onBack: () -> Unit = {},
-    onMoveUp: (MediaGroup, String) -> Unit = { _, _ -> },
+    @Suppress("UNUSED_PARAMETER") onMoveUp: (MediaGroup, String) -> Unit = { _, _ -> },
     onOpen: (MediaChannelRow) -> Unit = {},
     onProviders: () -> Unit = {},
     onRetry: () -> Unit = {},
@@ -31,27 +27,35 @@ internal fun MediaModelsScreenContent(
                 val rows = groups[group].orEmpty()
                 if (state.loaded && rows.isEmpty()) MediaNotice(stringResource(R.string.media_settings_empty))
                 rows.forEachIndexed { index, row ->
+                    if (index > 0) InfinityGroupDivider()
+                    val canOpen = row.modelId != null ||
+                        row.templateId != null ||
+                        (row.workflowHostId != null && row.workflowId != null)
                     InfinitySettingsItem(
                         title = row.name,
                         subtitleSegments = channelDescriptionSegments(row),
                         subtitleMaxLines = 2,
                         titleMaxLines = 2,
+                        showChevron = canOpen,
+                        enabled = canOpen,
                         onClick = { onOpen(row) },
-                        leadingContent = {
-                            IconButton(onClick = { onMoveUp(group, row.channel.id) }, enabled = index > 0 && !state.busy,
-                                modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Rounded.ArrowUpward, stringResource(R.string.media_settings_move_up, row.name))
-                            }
-                        },
                         trailingContent = if (row.isDefault) ({
-                            com.promenar.infinity.ui.production.ProductionStatusChip(stringResource(R.string.media_settings_default), com.promenar.infinity.ui.production.ProductionTone.INFO)
+                            com.promenar.infinity.ui.production.ProductionStatusChip(
+                                stringResource(R.string.media_settings_default),
+                                com.promenar.infinity.ui.production.ProductionTone.INFO,
+                            )
                         }) else null,
                     )
                 }
             }
         }
-        InfinitySettingsSection(title = stringResource(R.string.media_settings_providers)) {
-            InfinitySettingsItem(icon = androidx.compose.material.icons.Icons.Rounded.Hub, title = stringResource(R.string.media_settings_providers), onClick = onProviders, showChevron = true)
+        InfinitySettingsSection(title = stringResource(R.string.media_settings_providers_and_hosts)) {
+            InfinitySettingsItem(
+                icon = Icons.Rounded.Hub,
+                title = stringResource(R.string.media_settings_providers_and_hosts),
+                onClick = onProviders,
+                showChevron = true,
+            )
         }
     }
 }

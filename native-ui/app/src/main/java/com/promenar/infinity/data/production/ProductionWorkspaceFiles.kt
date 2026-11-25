@@ -11,4 +11,6 @@ interface ProductionWorkspaceFiles {
     /** 实现须使用条件写入，避免覆盖读取之后被外部修改的内容。expectedSha256 为 null 时仅新建。 */
     suspend fun write(sessionId: String, path: String, bytes: ByteArray, expectedSha256: String?)
     suspend fun isImageOrVideo(sessionId: String, path: String): Boolean
+    /** 浅层安全扫描当前会话工作区中已存在的 `production.json` 相对路径列表。 */
+    suspend fun findManifestPaths(sessionId: String): List<String> = emptyList()
 }

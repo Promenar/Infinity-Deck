@@ -93,6 +93,7 @@ private val previewSnapshot = MediaSettingsSnapshot(
     submitters = listOf(previewSubmitter),
     workflows = listOf(ComfyWorkflowState(previewWorkflow, PreflightResult(PreflightStatus.PASS))),
     pythonAvailable = true,
+    defaultImageModelId = previewImage.id,
 )
 private val previewState = MediaSettingsUiState(previewSnapshot, loaded = true, connections = mapOf("main" to ComfyConnection.ONLINE))
 

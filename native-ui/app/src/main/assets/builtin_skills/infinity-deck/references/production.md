@@ -4,7 +4,7 @@
 
 1. 已有清单时调用 `production_attach(manifest_path="productions/demo/production.json")`。清单路径须与根目录对应。同 id 项目保留数据库内容，外部差异会报告同步冲突。
 2. 从零开始时调用 `production_define(title="雾港", kind="film", root_path="productions/demo")`，按依赖顺序用 `production_update` 成批建季、集、场、镜头与资产。kind 为 `film` 或 `series`，root_path 默认 `productions/标题 slug`。可选 logline（≤1000 字）、aspect_ratio（≤120 字）。
-3. 已有小说或原剧本时先用文件工具读原文，拆成季、集、场、镜头、对白与资产。用 `production_define` 建项并分批录入。先写入集剧本文档，再用 `upsert_episode.script_path` 登记；同路径改写剧本文档后仍建议重新登记路径，且已发送否决的剧本、场、角色造型、资产参考视角与剪辑在内容更新（或磁盘剧本文档发生变更）后会自动退回待审，同时保留既有审核轮次历史。
+3. 已有小说、原剧本或短片制作方案时先用文件工具读原文，拆成季、集、场、镜头、对白与资产。用 `production_define` 建项并分批录入。凡需用户在「剧本」页阅读并审批的剧本文档或短片/试验片文字方案，应写入文档并通过 `upsert_episode.script_path` 登记（而不要仅放入 `set_bible` 设定集）；同路径改写剧本文档后仍建议重新登记路径，且已发送否决的剧本、场、角色造型、资产参考视角与剪辑在内容更新（或磁盘剧本文档发生变更）后会自动退回待审，同时保留既有审核轮次历史。
 
 `production_get(scope="overview")` 读取修订号、清单同步状态、阶段与成本提醒。`episode` 需要 `episode_id`，`shot` 还需 `shot_code`，`assets` 列资产与生成次数，`changes` 查审核与未结事项。只有 `changes` 的 `runs`、`chains`、`unregistered_files`、`open_items` 使用 `limit`（1～50，默认 10）与 `offset`（默认 0，非负）分页。
 
@@ -43,7 +43,8 @@
 - **双模参考资产与版本分工红线**：
   - `versions`（`add_asset_version`）：仅用于同一定妆或原画的**纵向迭代替换**（`v1 → v2` 在面板中互斥审批，同时只生效一版）或**单图多视图整卡主图**；**禁止**用 `v1/v2/v3` 存放同一套造型的正/侧/背，也**禁止**因拆分三视图而另外新建重复角色资产。
   - **角色双模（`looks` / `upsert_look` / `set_look_slot`）**：同一造型同时支持单图多视图整卡（`sheet_path`/`sheet_note`，适合 Seedance 等直接接收整卡的模型）和分张单视图组（`slots` 里的 `front`/`side`/`back` 及自定义位，适合 H3 等分张多参模型）；支持二选一登记或双模并存，提交后即可由用户在造型区独立批准定稿。
-  - **场景 / 道具 / 画风双模（`versions` + `reference_views` / `set_asset_view`）**：同样支持单图整卡（`add_asset_version`）和自由命名单视图组（`set_asset_view`，如全景、门头、细节），按项目设置的 `reference_input_mode`（`sheet` 或 `separate`）自动适配规划与提交。
+  - **场景 / 道具 / 画风双模（`versions` + `reference_views` / `set_asset_view`）**：同样支持单图整卡（`add_asset_version`）和自由命名单视图组（`set_asset_view`，如全景、门头、细节）。
+  - **按镜头逐通道路由与参考入参**：不同镜头可按方案在 `upsert_shot.channel_id` 自由指定不同的云端模型或 ComfyUI 工作流；规划与提交自动遵循该镜头所选通道/工作流声明的 `characterReferenceMode`（`separate` 分张单视图 / `composite` 多视图整卡），无需再设置项目级默认视频模型或项目级参考模式（旧操作 `set_video_settings` 仅作历史清单兼容，不再推荐主动调用）。若需对某 ComfyUI 工作流单次实验切换参考入参模式，可在 `comfy_run_workflow` 中传 `fixed_overrides: {"character_reference_mode": "separate"|"composite"}` 触发一次性 Diff 审批。
 - 外层字段用表中的 snake_case，嵌套字段使用下列精确拼写。问号表示可选。
   - dialogue 为 `[{characterAssetId, text, tone?, audioSource?}]`，audioSource 取 native（默认）或 dubbed。
   - appearances 为 `[{characterAssetId, lookId, referenceSlotIds?}]`，referenceSlotIds 为字符串数组（省略时自动选取该造型已备齐的默认视角，显式传空数组表示暂不引用）。prop_asset_ids 为资产 ID 字符串数组。
@@ -54,12 +55,11 @@
   - plan_snapshot 为 `{mode, inputs, prompt, channelId?, mediaInputs?, specs?, generationMode?, templateFingerprint?, params?}`。mediaInputs 每项用 location、kind、role。specs 可含 resolution、durationSeconds、width、height、frames、seed、durationSecondsExact。documents 为 `[{title, path}]`。
 - 优先使用工作区相对路径，如 `productions/demo/ep1.md`。普通会话的 `/productions/demo/ep1.md`，以及 Linux 当前工作区下的 `/workspace/...`、登记的工作区目录或 `/home/session/...`，会归一后写入清单。独立私有目录保留归属。制作相对路径也可直接用于参考图。禁止 URI、点路径、空段、反斜杠、Linux 系统根和不属于项目的外部挂载。媒体须已保存到工作区。调用 `generate_image` 时参考图放在数组 `images`，例如 `{"prompt":"调整光线","images":["productions/demo/assets/hero.png"]}`。
 
-### 批次一 建季、集、场、视频设置与双模资产
+### 批次一 建季、集、场与双模资产
 
 ```json
 {
   "operations": [
-    {"op":"set_video_settings","default_video_channel_id":"comfy:h3-ref2va","reference_input_mode":"separate"},
     {"op":"upsert_season","id":"S1","number":1},
     {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"归港","script_path":"productions/demo/ep1.md"},
     {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"外景 港口 黄昏"},

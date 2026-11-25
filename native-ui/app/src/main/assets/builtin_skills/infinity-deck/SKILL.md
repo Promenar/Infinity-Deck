@@ -1,6 +1,6 @@
 ---
 name: infinity-deck
-description: 管理或创建技能、编辑技能文件、管理智能体规则与会话提示词、说明自身能力、运行环境、路径或权限、处理审批被拒，以及需要让进程持续运行、使用后台任务或定时任务、命令结果难以判断时，先读取本指南。使用影视制作与视频创作工具（production_*）建项、导入剧本分镜与资产或排查报错时，按需读 references/production.md。
+description: 管理或创建技能、编辑技能文件、管理智能体规则与会话提示词、说明自身能力、运行环境、路径或权限、处理审批被拒，以及需要让进程持续运行、使用后台任务或定时任务、命令结果难以判断时，先读取本指南。处理多镜头/分镜、视觉资产、剧本方案或需分步审片的视频创作与动作试验片时，须先通过制作工具（production_define / production_attach / production_update）装载制作面板，并按需读 references/production.md。
 ---
 
 # Infinity Deck 运行环境指南

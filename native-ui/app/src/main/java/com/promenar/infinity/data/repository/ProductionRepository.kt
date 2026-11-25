@@ -146,7 +146,30 @@ class ProductionRepository(
         }
     }
 
-    suspend fun attach(sessionId: String, manifestPath: String): ProductionSnapshot = withContext(Dispatchers.IO) {
+    override suspend fun listAttachableManifests(sessionId: String): List<ProductionManifestCandidate> = withContext(Dispatchers.IO) {
+        val paths = runCatching { files.findManifestPaths(sessionId) }.getOrDefault(emptyList())
+        paths.mapNotNull { rawPath ->
+            runCatching {
+                val normalized = files.normalizeRelativePath(sessionId, rawPath)
+                val bytes = files.read(sessionId, normalized) ?: return@mapNotNull null
+                val manifest = ProductionManifestCodec.decode(bytes)
+                if (normalized != "${manifest.production.rootPath}/production.json") return@mapNotNull null
+                val otherSession = mutex.withLock { dao.otherActiveSession(manifest.production.id, sessionId) }
+                if (otherSession != null) return@mapNotNull null
+                val episodes = manifest.production.seasons.flatMap { it.episodes }
+                val shots = episodes.sumOf { ep -> ep.scenes.sumOf { it.shots.size } }
+                ProductionManifestCandidate(
+                    manifestPath = normalized,
+                    title = manifest.production.title,
+                    kind = manifest.production.kind,
+                    episodeCount = episodes.size,
+                    shotCount = shots,
+                )
+            }.getOrNull()
+        }
+    }
+
+    override suspend fun attach(sessionId: String, manifestPath: String): ProductionSnapshot = withContext(Dispatchers.IO) {
         val normalizedManifest = files.normalizeRelativePath(sessionId, manifestPath)
         // 未知项目先按文件路径发现身份，再按项目锁顺序重新读取与核对。
         val discovered = manifestPathMutex(sessionId, normalizedManifest).withLock {
@@ -173,7 +196,7 @@ class ProductionRepository(
             }
         }
     }
-    suspend fun unbind(sessionId: String) = withContext(Dispatchers.IO) { mutex.withLock { dao.unbind(sessionId); clearReads(sessionId) } }
+    override suspend fun unbind(sessionId: String) = withContext(Dispatchers.IO) { mutex.withLock { dao.unbind(sessionId); clearReads(sessionId) } }
 
     suspend fun update(sessionId: String, owner: String, operations: List<JsonElement>): ProductionSnapshot =
         update(sessionId, owner, operations, authorizedLockTarget = null)

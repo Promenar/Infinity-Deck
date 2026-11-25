@@ -538,7 +538,23 @@ data class ComfyWorkflow(
         val diffs = mutableListOf<WorkflowFixedOverrideDiff>()
         for ((key, newVal) in fixedOverrides) {
             val spec = field(key)
-                ?: throw IllegalArgumentException("未知工作流字段：$key")
+            if (spec == null && key == CHARACTER_REFERENCE_MODE_OVERRIDE_KEY) {
+                require(GenerationMode.REFERENCE in capabilities.modes) {
+                    "当前工作流未声明参考模式，不支持覆写 $key"
+                }
+                val parsed = parseCharacterReferenceModeOverride(newVal)
+                if (parsed != capabilities.characterReferenceMode) {
+                    diffs += WorkflowFixedOverrideDiff(
+                        key = key,
+                        label = "资产参考入参模式",
+                        oldDisplayValue = displayCharacterReferenceMode(capabilities.characterReferenceMode),
+                        newDisplayValue = displayCharacterReferenceMode(parsed),
+                        newValue = JsonPrimitive(parsed.name.lowercase()),
+                    )
+                }
+                continue
+            }
+            if (spec == null) throw IllegalArgumentException("未知工作流字段：$key")
             require(spec.mutability == FieldMutability.FIXED) {
                 "字段 $key 属于内容字段，请传入 content_inputs 而非 fixed_overrides"
             }
@@ -557,6 +573,24 @@ data class ComfyWorkflow(
     }
 
     companion object {
+        /** 工作流级参考入参模式保留覆写键：未显式建字段时也允许走一次性 fixed_overrides Diff 审批。 */
+        const val CHARACTER_REFERENCE_MODE_OVERRIDE_KEY = "character_reference_mode"
+
+        fun parseCharacterReferenceModeOverride(value: JsonElement): CharacterReferenceMode {
+            val raw = (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.lowercase()
+                ?: throw IllegalArgumentException("$CHARACTER_REFERENCE_MODE_OVERRIDE_KEY 须为字符串 separate 或 composite")
+            return when (raw) {
+                "separate" -> CharacterReferenceMode.SEPARATE
+                "composite", "sheet" -> CharacterReferenceMode.COMPOSITE
+                else -> throw IllegalArgumentException("$CHARACTER_REFERENCE_MODE_OVERRIDE_KEY 仅支持 separate（分张单视图）或 composite（多视图整卡）")
+            }
+        }
+
+        private fun displayCharacterReferenceMode(mode: CharacterReferenceMode): String = when (mode) {
+            CharacterReferenceMode.SEPARATE -> "分张单视图 (separate)"
+            CharacterReferenceMode.COMPOSITE -> "多视图整卡 (composite)"
+        }
+
         /** 将历史 ComfyTemplate 无损投影为通用工作流视角，便于统一列表展示。 */
         fun fromLegacyTemplate(template: ComfyTemplate): ComfyWorkflow {
             val fields = buildList {

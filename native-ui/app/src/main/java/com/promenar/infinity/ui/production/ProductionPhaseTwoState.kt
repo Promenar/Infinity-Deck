@@ -30,6 +30,8 @@ data class ProductionPanelServices(
     val comfyRepository: com.promenar.infinity.data.mediagen.comfy.ComfyRepository? = null,
     val comfyChainStore: com.promenar.infinity.data.mediagen.comfy.StatefulChainStore? = null,
     val comfyExecutionEngine: com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowExecutionEngine? = null,
+    /** 空面板「让智能体建立制作项目」：向当前会话发送或排队一条建项引导消息，返回可展示的状态与文案。 */
+    val requestCreateProduction: (suspend () -> Pair<com.promenar.infinity.ui.common.InfinityStatusKind, String>)? = null,
 )
 
 /** 通道名称作为完整句子的插值使用。 */
@@ -163,7 +165,9 @@ fun Production.cutClips(preview: Boolean): List<ProductionCutClip> = shotLocatio
 fun Production.stageProgressCounts(stage: ProductionStage): Pair<Int, Int>? {
     val episodes = episodes()
     return when (stage) {
-        ProductionStage.SCRIPT -> episodes.count { it.scriptLocked } to episodes.size
+        ProductionStage.SCRIPT -> episodes.filter { !it.scriptPath.isNullOrBlank() || it.scriptLocked }.let { scripted ->
+            scripted.count { it.scriptLocked } to scripted.size
+        }
         ProductionStage.VISUAL_DEV -> visualAssets().let { visual -> visual.count { it.status == AssetStatus.LOCKED } to visual.size }
         ProductionStage.STORYBOARD -> episodes.flatMap { it.scenes }.let { scenes -> scenes.count { it.storyboardLocked } to scenes.size }
         ProductionStage.ANIMATIC -> shotLocations().count { it.shot.previewPath != null } to shotStats().total

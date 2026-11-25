@@ -183,4 +183,53 @@ class ComfyWorkflowContractsTest {
         assertEquals(StatefulBranchPolicy.IN_PLACE_OVERWRITE, r3.appendedNode.branchPolicy)
         assertTrue(r3.appendedNode.isolationWarning.orEmpty().contains("main::clip_0"))
     }
+
+    @Test
+    fun `ComfyTemplate 通道投影保留声明的 characterReferenceMode 而非硬编码分张`() {
+        val tpl = ComfyTemplate(
+            id = "sd_ref",
+            workflow = JsonObject(emptyMap()),
+            slots = listOf(ComfySlot("1", "image_0", SlotKind.REFERENCE_IMAGES, capacity = 2)),
+            capabilities = MediaCapabilities(
+                modes = setOf(GenerationMode.REFERENCE),
+                maxImages = 2,
+                characterReferenceMode = CharacterReferenceMode.COMPOSITE,
+            ),
+            hostId = "main",
+            group = MediaGroup.VIDEO,
+        )
+        assertEquals(CharacterReferenceMode.COMPOSITE, tpl.channel().capabilities.characterReferenceMode)
+    }
+
+    @Test
+    fun `工作流保留键 character_reference_mode 支持一次性 fixed_overrides Diff 检出与同值放行`() {
+        val wf = ComfyWorkflow(
+            workflowId = "h3_ref",
+            hostId = "main",
+            name = "H3 Ref2VA",
+            mediaCategory = ComfyMediaCategory.VIDEO,
+            submitterScriptId = "submit_h3",
+            capabilities = MediaCapabilities(
+                modes = setOf(GenerationMode.REFERENCE),
+                maxImages = 3,
+                characterReferenceMode = CharacterReferenceMode.SEPARATE,
+            ),
+        )
+        // 同值不触发 Diff 审批
+        assertTrue(wf.detectFixedOverrides(mapOf("character_reference_mode" to JsonPrimitive("separate"))).isEmpty())
+
+        // 切到 composite 检出精确 Diff
+        val diffs = wf.detectFixedOverrides(mapOf("character_reference_mode" to JsonPrimitive("composite")))
+        assertEquals(1, diffs.size)
+        assertEquals("character_reference_mode", diffs.single().key)
+        assertEquals("资产参考入参模式", diffs.single().label)
+        assertTrue(diffs.single().oldDisplayValue.contains("分张"))
+        assertTrue(diffs.single().newDisplayValue.contains("整卡"))
+        assertEquals(JsonPrimitive("composite"), diffs.single().newValue)
+
+        // 非法取值报错
+        assertThrows(IllegalArgumentException::class.java) {
+            wf.detectFixedOverrides(mapOf("character_reference_mode" to JsonPrimitive("invalid")))
+        }
+    }
 }

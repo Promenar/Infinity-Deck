@@ -252,12 +252,13 @@ class ShotGenerationPlannerTest {
         assertFalse(fromShot.channelIsDefault)
     }
 
-    @Test fun `双模入参在整卡模式优先直接引用整卡并在分张模式拦截仅整卡`() = runTest {
+    @Test fun `双模入参按镜头所选通道能力优先适配整卡与分张并支持同项目混排`() = runTest {
         files.bytes["ref/coat-sheet.png"] = byteArrayOf(11)
         files.bytes["ref/pier-wide.png"] = byteArrayOf(12)
         files.bytes["ref/pier-facade.png"] = byteArrayOf(13)
         store.production = store.production.copy(
-            referenceInputMode = ReferenceInputMode.SHEET,
+            // 即使旧清单带有项目级 SEPARATE，单镜头选择 COMPOSITE 通道时仍应优先遵循通道能力。
+            referenceInputMode = ReferenceInputMode.SEPARATE,
             assets = listOf(
                 Asset(
                     id = "lin",
@@ -292,21 +293,26 @@ class ShotGenerationPlannerTest {
                 ),
             ),
         )
-        // 整卡模式直接使用 look.sheetPath 与 location.currentVersionPath，不触发拼合也不取分张图
-        val sheetPreview = planner().preview("s", "S1E01", "SC01-01")
+        val sheetChannel = planningChannel("cloud:seedance", pack = CharacterReferenceMode.COMPOSITE)
+        val separateChannel = planningChannel("comfy:h3_ref", pack = CharacterReferenceMode.SEPARATE)
+        val mixedRegistry = PlanningRegistry(separateChannel, sheetChannel)
+
+        // 镜头指向整卡通道时，直接使用 look.sheetPath 与 location.currentVersionPath，不触发拼合也不取分张图
+        edit { it.copy(channelId = "cloud:seedance") }
+        val sheetPreview = planner(mixedRegistry).preview("s", "S1E01", "SC01-01")
         assertNull(sheetPreview.blockedReason)
         assertEquals(listOf("ref/coat-sheet.png", "ref/pier.png"), sheetPreview.inputs.map { it.path })
 
-        // 切换为分张模式后，使用分张槽位与自由视角组
-        store.production = store.production.copy(referenceInputMode = ReferenceInputMode.SEPARATE)
-        val separatePreview = planner().preview("s", "S1E01", "SC01-01")
+        // 同一项目内把镜头切到分张工作流通道后，自动使用分张槽位与自由视角组
+        edit { it.copy(channelId = "comfy:h3_ref") }
+        val separatePreview = planner(mixedRegistry).preview("s", "S1E01", "SC01-01")
         assertNull(separatePreview.blockedReason)
         assertEquals(
             listOf("ref/back.png", "ref/front.png", "ref/pier-wide.png", "ref/pier-facade.png"),
             separatePreview.inputs.map { it.path },
         )
 
-        // 若造型仅登记整卡而无分张单图，在分张模式下阻断提示 mode_mismatch_separate
+        // 若造型仅登记整卡而无分张单图，在分张工作流通道下阻断提示 mode_mismatch_separate
         store.production = store.production.copy(
             assets = store.production.assets.map { asset ->
                 if (asset.id != "lin") asset else asset.copy(
@@ -314,9 +320,9 @@ class ShotGenerationPlannerTest {
                 )
             },
         )
-        val blockedPreview = planner().preview("s", "S1E01", "SC01-01")
+        val blockedPreview = planner(mixedRegistry).preview("s", "S1E01", "SC01-01")
         assertTrue(blockedPreview.blockedReason.orEmpty().contains("需要分张单视图"))
-        assertTrue(planner().generate("s", "S1E01", "SC01-01") is ShotGenerateResult.Rejected)
+        assertTrue(planner(mixedRegistry).generate("s", "S1E01", "SC01-01") is ShotGenerateResult.Rejected)
     }
 
     @Test fun `referenceOrder未命中或为空时默认按front_side_back顺序打包`() = runTest {

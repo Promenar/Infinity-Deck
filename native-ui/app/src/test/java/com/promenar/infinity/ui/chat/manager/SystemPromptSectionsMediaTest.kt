@@ -99,8 +99,13 @@ class SystemPromptSectionsMediaTest {
         assertThat(prompt).contains("references/comfyui-submitters.md")
     }
 
-    @Test fun `长片制作保留继续生成前的提醒且独立预演沿用专用工具指引`() {
+    @Test fun `视频制作指引独立成节且覆盖短片试验片与例外边界`() {
         val production = SystemPromptSections.toolGuidance(setOf("production_generate"), false)
+        assertThat(production).contains("### 视频与影视制作（制作面板）")
+        assertThat(production).contains("production_define")
+        assertThat(production).contains("production_attach")
+        assertThat(production).contains("动作试验片")
+        assertThat(production).contains("无需建项")
         assertThat(production).contains("生成达 $PRODUCTION_COST_ALERT_COUNT 次时先告知用户再继续")
         assertThat(production).contains("references/production.md")
         val previs = SystemPromptSections.toolGuidance(setOf("production_previs"), false)

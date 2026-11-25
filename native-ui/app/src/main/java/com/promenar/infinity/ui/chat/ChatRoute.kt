@@ -243,6 +243,9 @@ fun ChatRoute(
     val sendProductionReview: suspend (String, com.promenar.infinity.data.chat.queue.PanelMessageOrigin) -> PanelSendResult = remember(chatViewModel, sessionId) {
         { text, origin -> chatViewModel.sendPanelMessage(sessionId, text, origin) }
     }
+    val sendProductionPrompt: suspend (String) -> PanelSendResult = remember(chatViewModel, sessionId) {
+        { text -> chatViewModel.sendPanelMessage(sessionId, text, origin = null) }
+    }
     // 外部文档查看器送来的附件：只由前台的聊天页取走（返回栈里的页面不在 STARTED，不收集），
     // 并等本会话的草稿恢复完成后再并入，避免被恢复覆盖。
     val inboxPending by application.composerDocumentInbox.pending.collectAsStateWithLifecycle()
@@ -1031,6 +1034,7 @@ fun ChatRoute(
                     openChatPage(ChatPage.Explorer)
                 },
                 onSendProductionReview = sendProductionReview,
+                onSendProductionPrompt = sendProductionPrompt,
                 onOpenSettings = { requestOverlay(ChatOverlay.ModelSettings) },
                 onOpenModelPicker = {
                     val anchor = popoverAnchors.model

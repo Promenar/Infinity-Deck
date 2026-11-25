@@ -59,9 +59,16 @@ class ProductionDualModeTest {
         assertThat(roundTrip).isEqualTo(s2.production)
 
         val compositeChannel = MediaChannel("sd", MediaGroup.VIDEO, MediaCapabilities(setOf(GenerationMode.REFERENCE), characterReferenceMode = CharacterReferenceMode.COMPOSITE))
-        assertThat(s1.production.copy(referenceInputMode = null).effectiveReferenceInputMode(compositeChannel))
-            .isEqualTo(ReferenceInputMode.SHEET)
+        val separateChannel = MediaChannel("h3", MediaGroup.VIDEO, MediaCapabilities(setOf(GenerationMode.REFERENCE), characterReferenceMode = CharacterReferenceMode.SEPARATE))
+        // 通道声明能力始终优先于旧清单中的项目级 referenceInputMode，保障同一项目内多模型/多工作流混排。
         assertThat(s1.production.effectiveReferenceInputMode(compositeChannel))
+            .isEqualTo(ReferenceInputMode.SHEET)
+        assertThat(s2.production.effectiveReferenceInputMode(separateChannel))
+            .isEqualTo(ReferenceInputMode.SEPARATE)
+        // 未传入通道时，兼容旧清单项目级字段；均为空时缺省分张。
+        assertThat(s2.production.effectiveReferenceInputMode(null))
+            .isEqualTo(ReferenceInputMode.SHEET)
+        assertThat(s1.production.copy(referenceInputMode = null).effectiveReferenceInputMode(null))
             .isEqualTo(ReferenceInputMode.SEPARATE)
     }
 

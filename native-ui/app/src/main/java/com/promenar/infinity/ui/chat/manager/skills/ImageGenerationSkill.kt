@@ -41,6 +41,7 @@ class ImageGenerationSkill(
     private val providerRequestRouter: ProviderRequestRouter = DefaultProviderRequestRouter(providerManager),
     private val mediaResolver: WorkspaceMediaResolver? = mediaStore as? WorkspaceMediaResolver,
     private val jobs: com.promenar.infinity.data.jobs.BackgroundJobManager? = null,
+    private val productionPanelNudge: ProductionPanelNudgeTracker? = null,
     private val imageGenClientFactory: (baseUrl: String, apiKey: String, modelId: String) -> ImageGenClient =
         { baseUrl, apiKey, modelId -> ImageGenClient(baseUrl = baseUrl, apiKey = apiKey, model = modelId) },
 ) : SkillDefinition {
@@ -194,6 +195,9 @@ class ImageGenerationSkill(
                 }
             }
             if (result.images.isEmpty()) failures += "服务端未返回图片。"
+            val panelHint = if (saved.isNotEmpty()) {
+                productionPanelNudge?.hintIfNeeded(context.sessionId, isVideoOrPostProcess = false)
+            } else null
             ToolResult(
                 id = resultId,
                 content = buildString {
@@ -203,6 +207,7 @@ class ImageGenerationSkill(
                     if (saved.isNotEmpty()) appendLine("回复中用 ![说明](工作区路径) 引用图片。")
                     failures.forEach { appendLine("保存失败：$it") }
                     revised.distinct().forEach { appendLine("模型修订提示词：$it") }
+                    panelHint?.let { appendLine("提示：$it") }
                 }.trimEnd(),
                 status = if (saved.isEmpty()) "error" else "success",
                 media = saved.takeIf { it.isNotEmpty() },

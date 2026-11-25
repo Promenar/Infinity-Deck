@@ -188,4 +188,68 @@ class ProductionPresentationTest {
         assertThat(reconcileProductionPageStack(stack, withSound, awaitingNewShot = false))
             .containsExactly(validChar, validProp).inOrder()
     }
+
+    @Test
+    fun `总览剧本阶段汇总对无剧本集不误判为待审且多集只统计已挂剧本的集`() {
+        val singleNoScript = production.copy(
+            kind = ProductionKind.FILM,
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = listOf(production.episodes().first().copy(scriptPath = null, scriptLocked = false)),
+                ),
+            ),
+        )
+        assertThat(singleNoScript.scriptStageSummary())
+            .isEqualTo(ScriptStageSummary(ScriptStageKind.NOT_STARTED, locked = 0, scriptedEpisodes = 0, totalEpisodes = 1))
+        assertThat(singleNoScript.stageProgressCounts(ProductionStage.SCRIPT)).isEqualTo(0 to 0)
+
+        val singleWithScript = production.copy(
+            kind = ProductionKind.FILM,
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = listOf(production.episodes().first().copy(scriptPath = "productions/demo/script.md", scriptLocked = false)),
+                ),
+            ),
+        )
+        assertThat(singleWithScript.scriptStageSummary())
+            .isEqualTo(ScriptStageSummary(ScriptStageKind.SINGLE_EPISODE, locked = 0, scriptedEpisodes = 1, totalEpisodes = 1))
+
+        val multiNoScript = production.copy(
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = production.episodes().map { it.copy(scriptPath = null, scriptLocked = false) },
+                ),
+            ),
+        )
+        assertThat(multiNoScript.scriptStageSummary())
+            .isEqualTo(ScriptStageSummary(ScriptStageKind.NOT_STARTED, locked = 0, scriptedEpisodes = 0, totalEpisodes = 2))
+
+        val multiPartialLocked = production.copy(
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = listOf(
+                        production.episodes()[0].copy(scriptPath = "productions/harbor/s1e01.md", scriptLocked = true),
+                        production.episodes()[1].copy(scriptPath = null, scriptLocked = false),
+                    ),
+                ),
+            ),
+        )
+        assertThat(multiPartialLocked.scriptStageSummary())
+            .isEqualTo(ScriptStageSummary(ScriptStageKind.PARTIAL_SCRIPTED_APPROVED, locked = 1, scriptedEpisodes = 1, totalEpisodes = 2))
+        assertThat(multiPartialLocked.stageProgressCounts(ProductionStage.SCRIPT)).isEqualTo(1 to 1)
+
+        // 原示例 2 集都有剧本，其中 1 集锁定、1 集未锁 -> PENDING（1/2）。
+        assertThat(production.scriptStageSummary())
+            .isEqualTo(ScriptStageSummary(ScriptStageKind.PENDING, locked = 1, scriptedEpisodes = 2, totalEpisodes = 2))
+
+        val multiAllLocked = production.copy(
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = production.episodes().map { it.copy(scriptLocked = true) },
+                ),
+            ),
+        )
+        assertThat(multiAllLocked.scriptStageSummary())
+            .isEqualTo(ScriptStageSummary(ScriptStageKind.ALL_APPROVED, locked = 2, scriptedEpisodes = 2, totalEpisodes = 2))
+    }
 }

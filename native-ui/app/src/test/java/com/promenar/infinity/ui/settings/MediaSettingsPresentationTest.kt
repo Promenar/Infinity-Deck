@@ -16,14 +16,41 @@ class MediaSettingsPresentationTest {
     private val capabilities = MediaCapabilities(setOf(GenerationMode.REFERENCE), maxImages = 3,
         characterReferenceMode = CharacterReferenceMode.SEPARATE, referenceOrder = listOf("front", "side", "back"))
 
-    @Test fun everyGroupHasItsOwnDefaultAndReferenceDescription() {
-        val channels = MediaGroup.entries.flatMap { g -> listOf(MediaChannel("${g}1", g, capabilities), MediaChannel("${g}2", g, capabilities)) }
-        val groups = mediaChannelRows(channels, emptyList(), emptyList(), emptyList())
-        MediaGroup.entries.forEach { g ->
-            assertEquals(listOf(true, false), groups.getValue(g).map { it.isDefault })
-            assertEquals(ReferenceInputDescription(CharacterReferenceMode.SEPARATE, 3), groups.getValue(g).first().references)
-            assertTrue(groups.getValue(g).all { it.sourceSegments.isEmpty() })
-        }
+    @Test fun onlyRealCloudDefaultImageModelIsMarkedDefaultAndWorkflowMetadataResolves() {
+        val imageComfy = MediaChannel("comfy:qwen_edit", MediaGroup.IMAGE, capabilities)
+        val imageCloud = MediaChannel("cloud:gemini::nano", MediaGroup.IMAGE, MediaCapabilities(setOf(GenerationMode.TEXT)))
+        val videoChannels = listOf(MediaChannel("comfy:h3", MediaGroup.VIDEO, capabilities), MediaChannel("cloud:sd", MediaGroup.VIDEO, capabilities))
+        val audioChannels = listOf(MediaChannel("comfy:music3", MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.MUSIC))))
+        val cloudModel = ModelInfo("gemini::nano", "Nano Banana 2.1", "", true, "image", providerName = "Gemini")
+        val workflow = ComfyWorkflow(
+            workflowId = "qwen_edit",
+            hostId = "main",
+            name = "Qwen2.1_Edit_3Ref",
+            mediaCategory = ComfyMediaCategory.IMAGE,
+            submitterScriptId = "submit_qwen",
+            capabilities = capabilities,
+        )
+        val hosts = listOf(ComfyHost("main", "MAIN", "http://main:8188"))
+        val groups = mediaChannelRows(
+            channels = listOf(imageComfy, imageCloud) + videoChannels + audioChannels,
+            models = listOf(cloudModel),
+            templates = emptyList(),
+            hosts = hosts,
+            workflows = listOf(ComfyWorkflowState(workflow)),
+            defaultImageModelId = "gemini::nano",
+        )
+        assertEquals(listOf(false, true), groups.getValue(MediaGroup.IMAGE).map { it.isDefault })
+        assertTrue(groups.getValue(MediaGroup.VIDEO).none { it.isDefault })
+        assertTrue(groups.getValue(MediaGroup.AUDIO).none { it.isDefault })
+
+        val comfyRow = groups.getValue(MediaGroup.IMAGE).first()
+        assertEquals("Qwen2.1_Edit_3Ref", comfyRow.name)
+        assertEquals(listOf("ComfyUI", "MAIN"), comfyRow.sourceSegments)
+        assertEquals("main", comfyRow.workflowHostId)
+        assertEquals("qwen_edit", comfyRow.workflowId)
+        assertNull(comfyRow.templateId)
+        assertEquals(ReferenceInputDescription(CharacterReferenceMode.SEPARATE, 3), comfyRow.references)
+
         assertEquals(ReferenceInputDescription(CharacterReferenceMode.COMPOSITE, 3),
             referenceInputDescription(capabilities.copy(characterReferenceMode = CharacterReferenceMode.COMPOSITE)))
         assertNull(referenceInputDescription(capabilities.copy(maxImages = 0)))

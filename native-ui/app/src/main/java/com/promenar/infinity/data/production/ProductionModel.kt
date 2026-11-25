@@ -315,9 +315,11 @@ data class Production(
     val referenceInputMode: ReferenceInputMode? = null,
 )
 
-/** 项目的当前生效参考入参模式：显式设定优先，否则跟随对应（或默认）视频通道能力。 */
+/** 当前镜头的生效参考入参模式：优先遵循所选视频通道或工作流声明的能力，未指定通道时回退兼容旧清单字段，默认分张单视图。 */
 fun Production.effectiveReferenceInputMode(channel: com.promenar.infinity.domain.mediagen.MediaChannel? = null): ReferenceInputMode =
-    referenceInputMode ?: channel?.capabilities?.characterReferenceMode?.toReferenceInputMode() ?: ReferenceInputMode.SEPARATE
+    channel?.capabilities?.characterReferenceMode?.toReferenceInputMode()
+        ?: referenceInputMode
+        ?: ReferenceInputMode.SEPARATE
 
 /** 清单文件与数据库的同步状态。 */
 sealed interface ManifestSync {
@@ -390,6 +392,15 @@ enum class ManifestResolution {
     OVERWRITE_FILE,
 }
 
+/** 工作区中可一键挂载的制作清单候选。 */
+data class ProductionManifestCandidate(
+    val manifestPath: String,
+    val title: String,
+    val kind: ProductionKind,
+    val episodeCount: Int,
+    val shotCount: Int,
+)
+
 /** 界面使用的入口；实现负责 IO 调度。 */
 interface ProductionPanelSource {
     /** 会话绑定的项目；没有时为 null。打开面板时实现应顺带核对清单文件。 */
@@ -398,4 +409,13 @@ interface ProductionPanelSource {
     suspend fun resolveManifest(sessionId: String, resolution: ManifestResolution): ProductionSnapshot
     /** 会话是否曾经绑定过项目；用于功能面板入口的可用性。 */
     fun observeEverBound(sessionId: String): Flow<Boolean>
+    /** 扫描当前会话工作区中可挂载的已有 `production.json` 候选列表。 */
+    suspend fun listAttachableManifests(sessionId: String): List<ProductionManifestCandidate> = emptyList()
+    /** 将工作区已有的 `production.json` 挂载绑定到当前会话。 */
+    suspend fun attach(sessionId: String, manifestPath: String): ProductionSnapshot =
+        throw UnsupportedOperationException("当前数据源不支持直接挂载制作清单。")
+    /** 解除当前会话与制作项目的绑定，保留项目记录与磁盘文件。 */
+    suspend fun unbind(sessionId: String) {
+        throw UnsupportedOperationException("当前数据源不支持解除项目绑定。")
+    }
 }

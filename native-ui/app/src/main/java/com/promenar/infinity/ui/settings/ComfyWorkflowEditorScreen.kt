@@ -75,6 +75,12 @@ internal fun ComfyWorkflowEditorScreenContent(
     var modes by remember(existingWorkflow?.workflowId) {
         mutableStateOf(existingWorkflow?.capabilities?.modes ?: setOf(GenerationMode.TEXT))
     }
+    var characterReferenceMode by remember(existingWorkflow?.workflowId) {
+        mutableStateOf(existingWorkflow?.capabilities?.characterReferenceMode ?: CharacterReferenceMode.SEPARATE)
+    }
+    var maxImagesText by remember(existingWorkflow?.workflowId) {
+        mutableStateOf(existingWorkflow?.capabilities?.maxImages?.takeIf { it > 0 }?.toString() ?: "")
+    }
     var fpsText by remember(existingWorkflow?.workflowId) { mutableStateOf(existingWorkflow?.fps?.toString() ?: "") }
     var fields by remember(existingWorkflow?.workflowId) { mutableStateOf(existingWorkflow?.fields ?: emptyList()) }
 
@@ -102,6 +108,14 @@ internal fun ComfyWorkflowEditorScreenContent(
         val fps = fpsText.trim().takeIf { it.isNotEmpty() }?.let {
             it.toDoubleOrNull() ?: throw IllegalArgumentException("FPS 必须是有效数字")
         }
+        val effectiveModes = modes.ifEmpty { setOf(GenerationMode.TEXT) }
+        val maxImages = if (GenerationMode.REFERENCE in effectiveModes) {
+            val rawMax = maxImagesText.trim()
+            if (rawMax.isEmpty()) 0 else rawMax.toIntOrNull()?.takeIf { it in 0..32 }
+                ?: throw IllegalArgumentException("参考图上限须为 0～32 的整数")
+        } else {
+            0
+        }
         ComfyWorkflow(
             workflowId = cleanId,
             hostId = host.id,
@@ -114,8 +128,10 @@ internal fun ComfyWorkflowEditorScreenContent(
             executionMode = execMode,
             chainSpec = chainSpec,
             fields = fields,
-            capabilities = (existingWorkflow?.capabilities ?: MediaCapabilities(modes = modes)).copy(
-                modes = modes.ifEmpty { setOf(GenerationMode.TEXT) },
+            capabilities = (existingWorkflow?.capabilities ?: MediaCapabilities(modes = effectiveModes)).copy(
+                modes = effectiveModes,
+                characterReferenceMode = characterReferenceMode,
+                maxImages = maxImages,
             ),
             cliBaseArgs = cliArgs,
             fps = fps,
@@ -215,6 +231,66 @@ internal fun ComfyWorkflowEditorScreenContent(
                         onSelect = { execMode = it },
                         fillWidth = true,
                     )
+                }
+                AnimatedVisibility(
+                    visible = GenerationMode.REFERENCE in modes,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    val scheme = MaterialTheme.colorScheme
+                    Column(Modifier.fillMaxWidth()) {
+                        InfinityGroupDivider()
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.media_settings_wf_ref_input_mode),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = scheme.onSurfaceVariant,
+                            )
+                            InfinitySegmentedControl(
+                                segments = listOf(
+                                    InfinitySegment(CharacterReferenceMode.SEPARATE, stringResource(R.string.media_settings_wf_ref_mode_separate)),
+                                    InfinitySegment(CharacterReferenceMode.COMPOSITE, stringResource(R.string.media_settings_wf_ref_mode_composite)),
+                                ),
+                                selected = characterReferenceMode,
+                                onSelect = { characterReferenceMode = it; buildError = null },
+                                fillWidth = true,
+                                modifier = Modifier.testTag("comfy_workflow_ref_mode_control"),
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = scheme.surfaceContainerHigh.copy(alpha = 0.72f),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Info,
+                                        contentDescription = null,
+                                        tint = scheme.primary,
+                                        modifier = Modifier.padding(top = 1.dp).size(16.dp),
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.media_settings_wf_ref_mode_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = scheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        InfinityGroupDivider()
+                        InfinityFieldRow(
+                            label = stringResource(R.string.media_settings_wf_max_images),
+                            value = maxImagesText,
+                            onValueChange = { maxImagesText = it.filter(Char::isDigit).take(2); buildError = null },
+                            monospace = true,
+                        )
+                    }
                 }
             }
 

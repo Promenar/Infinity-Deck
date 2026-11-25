@@ -109,16 +109,6 @@ internal fun ProductionCharacterPage(
     var removeView by remember { mutableStateOf<ReferenceSlot?>(null) }
     var galleryState by remember { mutableStateOf<Pair<List<WorkspaceImageItem>, Int>?>(null) }
     val locations = remember(asset, production) { asset.referenceLocations(production) }
-    val videoChannels = remember(channels, channelOrder) {
-        channelChoices(channels, channelOrder, ShotMode.REFERENCE)
-            .ifEmpty { channelChoices(channels, channelOrder, ShotMode.TEXT) }
-            .ifEmpty { channels.filter { it.group == MediaGroup.VIDEO }.distinctBy { it.id } }
-    }
-    val projectChannel = remember(production.defaultVideoChannelId, videoChannels) {
-        production.defaultVideoChannelId?.let { id -> videoChannels.firstOrNull { it.id == id } }
-            ?: videoChannels.firstOrNull()
-    }
-    val activeMode = production.effectiveReferenceInputMode(projectChannel)
     val scheme = MaterialTheme.colorScheme
 
     Column(modifier.fillMaxSize()) {
@@ -148,7 +138,6 @@ internal fun ProductionCharacterPage(
                         asset = asset,
                         look = look,
                         production = production,
-                        activeMode = activeMode,
                         busy = busy,
                         onSelectLook = { lookId = it },
                         onNewLook = { newLook = true },
@@ -216,7 +205,6 @@ internal fun ProductionCharacterPage(
                         asset = asset,
                         version = version,
                         production = production,
-                        activeMode = activeMode,
                         busy = busy,
                         onSelectVersion = { versionNumber = it },
                         onNewView = { newView = true },
@@ -237,8 +225,10 @@ internal fun ProductionCharacterPage(
             item("references") {
                 ShotReferencesSection(
                     asset = asset,
+                    production = production,
                     locations = locations,
-                    activeMode = activeMode,
+                    channels = channels,
+                    channelOrder = channelOrder,
                     onShot = onShot,
                 )
             }
@@ -367,7 +357,6 @@ private fun CharacterDualModeLookCard(
     asset: Asset,
     look: CharacterLook,
     production: Production,
-    activeMode: ReferenceInputMode,
     busy: Boolean,
     onSelectLook: (String) -> Unit,
     onNewLook: () -> Unit,
@@ -382,9 +371,11 @@ private fun CharacterDualModeLookCard(
     val fallbackChip = ProductionChipSpec(asset.status.label(), asset.status.tone())
     val lookChip = production.reviewChipSpec(target, settled = look.locked) ?: fallbackChip
     val populatedSlots = look.populatedSlots()
+    val sheetPath = look.sheetPath?.takeIf(String::isNotBlank)
+    val sheetPrimary = populatedSlots.isEmpty() && sheetPath != null
     val slotNames = look.slots.associate { it.id to it.displayName() }
-    val galleryItems = remember(asset.name, look, activeMode, slotNames) {
-        buildLookGalleryItems(asset.name, look, activeMode, slotNames)
+    val galleryItems = remember(asset.name, look, sheetPrimary, slotNames) {
+        buildLookGalleryItems(asset.name, look, sheetFirst = sheetPrimary, slotNames = slotNames)
     }
 
     Surface(
@@ -434,7 +425,7 @@ private fun CharacterDualModeLookCard(
             }
 
             val separateSection: @Composable () -> Unit = {
-                if (activeMode == ReferenceInputMode.SHEET && populatedSlots.isEmpty()) {
+                if (sheetPrimary) {
                     EmptyModeCollapseBar(
                         sectionTitle = stringResource(R.string.p2_mode_separate_title),
                         subtitle = stringResource(R.string.p2_mode_separate_unregistered_sheet_active),
@@ -446,7 +437,7 @@ private fun CharacterDualModeLookCard(
                 } else {
                     ViewsGridBlock(
                         title = stringResource(R.string.p2_mode_separate_title),
-                        active = activeMode == ReferenceInputMode.SEPARATE,
+                        active = false,
                         readyBadge = stringResource(R.string.p2_mode_separate_ready_badge),
                         slots = look.slots,
                         isDefault = { it.id in ProductionRules.defaultSlotOrder },
@@ -466,7 +457,6 @@ private fun CharacterDualModeLookCard(
             }
 
             val sheetSection: @Composable () -> Unit = {
-                val sheetPath = look.sheetPath?.takeIf(String::isNotBlank)
                 if (sheetPath != null) {
                     val sheetTitle = look.name
                     val sheetSubtitle = look.sheetNote?.takeIf(String::isNotBlank) ?: stringResource(R.string.p2_mode_sheet_default_subtitle)
@@ -474,12 +464,12 @@ private fun CharacterDualModeLookCard(
                         val idx = galleryItems.indexOfFirst { it.path == sheetPath }.coerceAtLeast(0)
                         if (galleryItems.isNotEmpty()) onOpenGallery(galleryItems, idx)
                     }
-                    if (activeMode == ReferenceInputMode.SHEET) {
+                    if (sheetPrimary) {
                         SheetFeaturedCard(
                             path = sheetPath,
                             title = sheetTitle,
                             subtitle = sheetSubtitle,
-                            active = true,
+                            active = false,
                             onOpen = openSheet,
                         )
                     } else {
@@ -495,7 +485,7 @@ private fun CharacterDualModeLookCard(
                     EmptyModeCollapseBar(
                         sectionTitle = stringResource(R.string.p2_mode_sheet_title),
                         subtitle = stringResource(R.string.p2_mode_sheet_unregistered_hint),
-                        active = activeMode == ReferenceInputMode.SHEET,
+                        active = false,
                         showAddButton = false,
                         enabled = false,
                         onAdd = {},
@@ -503,7 +493,7 @@ private fun CharacterDualModeLookCard(
                 }
             }
 
-            if (activeMode == ReferenceInputMode.SHEET) {
+            if (sheetPrimary) {
                 sheetSection()
                 separateSection()
             } else {
@@ -534,7 +524,6 @@ private fun VisualAssetDualModeCard(
     asset: Asset,
     version: AssetVersion?,
     production: Production,
-    activeMode: ReferenceInputMode,
     busy: Boolean,
     onSelectVersion: (Int) -> Unit,
     onNewView: () -> Unit,
@@ -545,7 +534,8 @@ private fun VisualAssetDualModeCard(
 ) {
     val scheme = MaterialTheme.colorScheme
     val populatedViews = asset.populatedReferenceViews()
-    val reviewUsesViews = (activeMode == ReferenceInputMode.SEPARATE && asset.referenceViews.isNotEmpty()) || asset.versions.isEmpty()
+    val sheetPrimary = populatedViews.isEmpty() && version != null
+    val reviewUsesViews = (asset.referenceViews.isNotEmpty() && (asset.versions.isEmpty() || production.referenceInputMode != ReferenceInputMode.SHEET)) || asset.versions.isEmpty()
     val reviewTarget = if (reviewUsesViews || version == null) {
         ReviewTarget.assetViews(asset.id)
     } else {
@@ -565,8 +555,8 @@ private fun VisualAssetDualModeCard(
     val headerChip = production.reviewChipSpec(reviewTarget, settled = settled) ?: fallbackChip
     val sortedVersions = remember(asset.versions) { asset.versions.sortedBy { it.number } }
     val versionLabels = sortedVersions.map { it.number to stringResource(R.string.production_panel_version, it.number) }
-    val galleryItems = remember(asset.name, asset.referenceViews, sortedVersions, version, activeMode) {
-        buildVisualAssetGalleryItems(asset.name, asset.referenceViews, sortedVersions, activeMode)
+    val galleryItems = remember(asset.name, asset.referenceViews, sortedVersions, sheetPrimary) {
+        buildVisualAssetGalleryItems(asset.name, asset.referenceViews, sortedVersions, sheetFirst = sheetPrimary)
     }
 
     Surface(
@@ -591,7 +581,7 @@ private fun VisualAssetDualModeCard(
             }
 
             val separateSection: @Composable () -> Unit = {
-                if (activeMode == ReferenceInputMode.SHEET && populatedViews.isEmpty() && asset.referenceViews.isEmpty()) {
+                if (sheetPrimary && asset.referenceViews.isEmpty()) {
                     EmptyModeCollapseBar(
                         sectionTitle = stringResource(R.string.p2_mode_separate_title),
                         subtitle = stringResource(R.string.p2_mode_separate_unregistered_sheet_active),
@@ -603,7 +593,7 @@ private fun VisualAssetDualModeCard(
                 } else {
                     ViewsGridBlock(
                         title = stringResource(R.string.p2_mode_separate_title),
-                        active = activeMode == ReferenceInputMode.SEPARATE,
+                        active = false,
                         readyBadge = stringResource(R.string.p2_mode_separate_ready_badge),
                         slots = asset.referenceViews,
                         isDefault = { false },
@@ -630,12 +620,12 @@ private fun VisualAssetDualModeCard(
                         val idx = galleryItems.indexOfFirst { it.path == version.path }.coerceAtLeast(0)
                         if (galleryItems.isNotEmpty()) onOpenGallery(galleryItems, idx)
                     }
-                    if (activeMode == ReferenceInputMode.SHEET) {
+                    if (sheetPrimary) {
                         SheetFeaturedCard(
                             path = version.path,
                             title = sheetTitle,
                             subtitle = sheetSubtitle,
-                            active = true,
+                            active = false,
                             versions = versionLabels,
                             selectedVersion = version.number,
                             onSelectVersion = onSelectVersion,
@@ -657,7 +647,7 @@ private fun VisualAssetDualModeCard(
                     EmptyModeCollapseBar(
                         sectionTitle = stringResource(R.string.p2_mode_sheet_title),
                         subtitle = stringResource(R.string.p2_mode_sheet_unregistered_hint),
-                        active = activeMode == ReferenceInputMode.SHEET,
+                        active = false,
                         showAddButton = false,
                         enabled = false,
                         onAdd = {},
@@ -665,7 +655,7 @@ private fun VisualAssetDualModeCard(
                 }
             }
 
-            if (activeMode == ReferenceInputMode.SHEET) {
+            if (sheetPrimary) {
                 sheetSection()
                 separateSection()
             } else {
@@ -1339,19 +1329,23 @@ private fun CharacterVoiceSection(asset: Asset) {
 @Composable
 private fun ShotReferencesSection(
     asset: Asset,
+    production: Production,
     locations: List<ShotLocation>,
-    activeMode: ReferenceInputMode,
+    channels: List<MediaChannel>,
+    channelOrder: List<String>,
     onShot: (String, String) -> Unit,
 ) {
     ProductionSection(stringResource(R.string.p2_shot_references), Modifier.padding(top = 4.dp)) {
         if (locations.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_no_references))
         locations.forEach { location ->
+            val shotChannel = resolvedShotChannel(location.shot, channels, channelOrder, production.defaultVideoChannelId)
+            val shotMode = production.effectiveReferenceInputMode(shotChannel)
             val refValue = when {
                 asset.kind == AssetKind.CHARACTER -> {
                     val appearance = location.shot.appearances.firstOrNull { it.characterAssetId == asset.id }
                     val usedLook = asset.looks.firstOrNull { it.id == appearance?.lookId }
                     when {
-                        usedLook != null && activeMode == ReferenceInputMode.SHEET && !usedLook.sheetPath.isNullOrBlank() ->
+                        usedLook != null && shotMode == ReferenceInputMode.SHEET && !usedLook.sheetPath.isNullOrBlank() ->
                             listOf(usedLook.name, stringResource(R.string.p2_using_sheet_image)).joinToString(" · ") // wrap-check: allow 引用行尾固定单行，保留镜头标题空间
                         usedLook != null ->
                             listOf(usedLook.name, stringResource(R.string.p2_slot_count, appearance?.referenceSlotIds?.size ?: 0)).joinToString(" · ") // wrap-check: allow 引用行尾固定单行，保留镜头标题空间
@@ -1359,7 +1353,7 @@ private fun ShotReferencesSection(
                         else -> stringResource(R.string.p2_none)
                     }
                 }
-                activeMode == ReferenceInputMode.SEPARATE && asset.populatedReferenceViews().isNotEmpty() ->
+                shotMode == ReferenceInputMode.SEPARATE && asset.populatedReferenceViews().isNotEmpty() ->
                     stringResource(R.string.p2_views_count, asset.populatedReferenceViews().size)
                 asset.currentPath() != null -> stringResource(R.string.p2_using_sheet_image)
                 asset.populatedReferenceViews().isNotEmpty() ->
@@ -1379,7 +1373,7 @@ private fun ShotReferencesSection(
 private fun buildLookGalleryItems(
     assetName: String,
     look: CharacterLook,
-    activeMode: ReferenceInputMode,
+    sheetFirst: Boolean,
     slotNames: Map<String, String>,
 ): List<WorkspaceImageItem> {
     val slotItems = look.slots.mapNotNull { slot ->
@@ -1391,7 +1385,7 @@ private fun buildLookGalleryItems(
         val sub = listOfNotNull(assetName, look.name, look.sheetNote?.takeIf(String::isNotBlank)).joinToString(" · ") // wrap-check: allow 查看器顶部副标题单行截断
         WorkspaceImageItem(path = sheet, title = look.name, subtitle = sub)
     }
-    return if (activeMode == ReferenceInputMode.SHEET) {
+    return if (sheetFirst) {
         listOfNotNull(sheetItem) + slotItems
     } else {
         slotItems + listOfNotNull(sheetItem)
@@ -1402,7 +1396,7 @@ private fun buildVisualAssetGalleryItems(
     assetName: String,
     views: List<ReferenceSlot>,
     sortedVersions: List<AssetVersion>,
-    activeMode: ReferenceInputMode,
+    sheetFirst: Boolean,
 ): List<WorkspaceImageItem> {
     val viewItems = views.mapNotNull { slot ->
         val path = slot.path?.takeIf(String::isNotBlank) ?: return@mapNotNull null
@@ -1412,7 +1406,7 @@ private fun buildVisualAssetGalleryItems(
     val versionItems = sortedVersions.map { ver ->
         WorkspaceImageItem(path = ver.path, title = "$assetName · v${ver.number}", subtitle = ver.note) // wrap-check: allow 查看器顶部单版本标题单行截断
     }
-    return if (activeMode == ReferenceInputMode.SHEET) {
+    return if (sheetFirst) {
         versionItems + viewItems
     } else {
         viewItems + versionItems

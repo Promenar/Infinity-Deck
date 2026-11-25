@@ -35,10 +35,10 @@ internal sealed interface PanelHubBadge {
     data class Pending(val count: Int) : PanelHubBadge
 }
 
-/** 由 Agent 创建内容的条目：本会话中 Agent 从未调用过时不可用。 */
+/** 由 Agent 创建内容的条目：本会话中 Agent 从未调用过时不可用。制作面板支持空态挂载/建项，始终可进入。 */
 internal fun panelHubAgentCreated(page: ChatPage): Boolean = when (page) {
-    ChatPage.Canvas, ChatPage.State, ChatPage.Production -> true
-    ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser -> false
+    ChatPage.Canvas, ChatPage.State -> true
+    ChatPage.Run, ChatPage.Explorer, ChatPage.Git, ChatPage.Browser, ChatPage.Production -> false
 }
 
 /**
@@ -106,7 +106,8 @@ internal fun chatPanelHubEntries(
                 ChatPage.Run -> signals.pendingApprovals to (signals.generating || signals.runningJobs > 0)
                 ChatPage.Browser -> (if (signals.browser == BrowserMode.HANDOFF) 1 else 0) to (signals.browser == BrowserMode.AGENT)
                 ChatPage.Canvas -> signals.canvasCandidates to false
-                ChatPage.Production -> signals.production.attentionCount to signals.production.running
+                ChatPage.Production -> (if (signals.production.hasProduction) signals.production.attentionCount else 0) to
+                    (signals.production.hasProduction && signals.production.running)
                 ChatPage.Explorer, ChatPage.Git, ChatPage.State -> 0 to false
             }
             PanelHubEntry(

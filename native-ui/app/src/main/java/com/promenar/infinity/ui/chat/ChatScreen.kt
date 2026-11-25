@@ -397,6 +397,8 @@ data class ChatScreenActions(
     val onLocateWorkspacePath: (String) -> Unit = {},
     /** 制作面板的“发送”：把一轮审核消息发到本会话；开轮或入队返回 true，暂不能接收返回 false。 */
     val onSendProductionReview: (suspend (String, com.promenar.infinity.data.chat.queue.PanelMessageOrigin) -> PanelSendResult)? = null,
+    /** 空制作面板引导智能体建立制作项目的快捷消息发送回调。 */
+    val onSendProductionPrompt: (suspend (String) -> PanelSendResult)? = null,
     val onOpenSettings: () -> Unit = {},
     /** 点输入区模型按钮；为 null 时与 [onOpenSettings] 相同。 */
     val onOpenModelPicker: (() -> Unit)? = null,
@@ -1142,6 +1144,7 @@ fun ChatScreenContent(
                                             source,
                                             openRoute = com.promenar.infinity.ui.chat.LocalSessionSettingsNavigation.current?.openRoute,
                                             sendPanelMessage = actions.onSendProductionReview,
+                                            sendSessionPrompt = actions.onSendProductionPrompt,
                                         ),
                                         onLocate = actions.onLocateWorkspacePath,
                                         modifier = Modifier.fillMaxSize(),

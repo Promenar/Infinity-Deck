@@ -142,7 +142,7 @@ data class ComfyTemplate(
             maxImages = slots.filter { it.kind == SlotKind.REFERENCE_IMAGES }.sumOf { it.capacity },
             maxVideos = if (role == TemplateRole.DERIVE) 1 else 0,
             maxAudio = slots.filter { it.kind == SlotKind.REFERENCE_AUDIO }.sumOf { it.capacity },
-            characterReferenceMode = CharacterReferenceMode.SEPARATE,
+            characterReferenceMode = declared.characterReferenceMode,
         ))
     }
     /** 会话审批通过后的替换保持锁定，模板身份由稳定 id 约束。 */

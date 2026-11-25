@@ -23,6 +23,7 @@ internal data class MediaSettingsSnapshot(
     val submitters: List<ComfySubmitterScript> = emptyList(),
     val workflows: List<ComfyWorkflowState> = emptyList(),
     val pythonAvailable: Boolean = false,
+    val defaultImageModelId: String = "",
 )
 
 internal interface MediaSettingsStore {
@@ -75,14 +76,17 @@ internal class ApplicationMediaSettingsStore(
                 mediaPreflightTime(state, uiPreferences.getString(timeKey(state.template.id), null))?.let { state.template.id to it }
             }.toMap()
         }
+        val modelStates = combine(pm.providerModels, pm.imageModelId) { models, defaultImage ->
+            models to defaultImage
+        }
         val layerStates = combine(repository.observeSubmitters(), repository.observeEffectiveWorkflows()) { subs, wfs ->
             subs to wfs
         }
-        return combine(registry.observeChannels(), pm.providerModels, templateStates, repository.observeHosts(), layerStates) {
-                channels, models, templates, hosts, layer ->
+        return combine(registry.observeChannels(), modelStates, templateStates, repository.observeHosts(), layerStates) {
+                channels, modelState, templates, hosts, layer ->
             MediaSettingsSnapshot(
                 channels = channels,
-                models = models,
+                models = modelState.first,
                 templates = templates.first,
                 hosts = hosts,
                 credentialHosts = hosts.filter { repository.hasHostCredential(it.id) }.mapTo(mutableSetOf()) { it.id },
@@ -90,6 +94,7 @@ internal class ApplicationMediaSettingsStore(
                 submitters = layer.first,
                 workflows = layer.second,
                 pythonAvailable = submitterRunner?.isPythonAvailable == true,
+                defaultImageModelId = modelState.second,
             )
         }.flowOn(Dispatchers.IO)
     }

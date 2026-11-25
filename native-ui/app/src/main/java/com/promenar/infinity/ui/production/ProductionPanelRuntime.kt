@@ -21,12 +21,17 @@ fun rememberProductionPanelServices(
     source: ProductionPanelSource,
     openRoute: ((String) -> Unit)?,
     sendPanelMessage: (suspend (String, com.promenar.infinity.data.chat.queue.PanelMessageOrigin) -> com.promenar.infinity.ui.chat.PanelSendResult)? = null,
+    sendSessionPrompt: (suspend (String) -> com.promenar.infinity.ui.chat.PanelSendResult)? = null,
 ): ProductionPanelServices {
     val app = LocalContext.current.applicationContext as? InfinityApplication ?: return ProductionPanelServices()
     val runtime by app.installedProductionMediaRuntime.collectAsStateWithLifecycle()
     val conflict = stringResource(R.string.production_wire_conflict)
     val invalid = stringResource(R.string.production_wire_invalid_content)
     val failed = stringResource(R.string.production_panel_action_failed)
+    val createPromptText = stringResource(R.string.p2_empty_create_prompt_text)
+    val createSentText = stringResource(R.string.p2_empty_create_prompt_sent)
+    val createQueuedText = stringResource(R.string.p2_empty_create_prompt_queued)
+    val createUnavailableText = stringResource(R.string.p2_empty_create_prompt_unavailable)
     val labels by produceState<Map<String, List<String>>>(emptyMap(), runtime) {
         value = emptyMap()
         if (runtime != null) {
@@ -50,10 +55,25 @@ fun rememberProductionPanelServices(
         value = emptySet()
         runtime?.pendingRegistrations?.collect { value = it }
     }
-    return remember(runtime, labels, pending, sessionId, source, openRoute, sendPanelMessage, conflict, invalid, failed) {
+    return remember(
+        runtime, labels, pending, sessionId, source, openRoute, sendPanelMessage, sendSessionPrompt,
+        conflict, invalid, failed, createPromptText, createSentText, createQueuedText, createUnavailableText,
+    ) {
         val dispatcher = app.productionReviewDispatcher
         val sendReview: (suspend () -> com.promenar.infinity.data.production.ReviewDispatch)? =
             if (sendPanelMessage == null) null else suspend { dispatcher.send(sessionId) { text, origin -> sendPanelMessage(text, origin) } }
+        val requestCreate: (suspend () -> Pair<com.promenar.infinity.ui.common.InfinityStatusKind, String>)? = sendSessionPrompt?.let { send ->
+            suspend {
+                when (send(createPromptText)) {
+                    com.promenar.infinity.ui.chat.PanelSendResult.STARTED ->
+                        com.promenar.infinity.ui.common.InfinityStatusKind.Success to createSentText
+                    com.promenar.infinity.ui.chat.PanelSendResult.QUEUED ->
+                        com.promenar.infinity.ui.common.InfinityStatusKind.Info to createQueuedText
+                    else ->
+                        com.promenar.infinity.ui.common.InfinityStatusKind.Error to createUnavailableText
+                }
+            }
+        }
         ProductionPanelServices(
             sendReview = sendReview,
             reconcileReviews = { dispatcher.reconcile(sessionId) },
@@ -75,6 +95,7 @@ fun rememberProductionPanelServices(
             comfyRepository = app.comfyMedia.repository,
             comfyChainStore = app.comfyMedia.chainStore,
             comfyExecutionEngine = app.comfyMedia.executionEngine,
+            requestCreateProduction = requestCreate,
         )
     }
 }

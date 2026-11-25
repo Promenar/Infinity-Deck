@@ -53,8 +53,12 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
                 onBack = { navigator.back() },
                 onMoveUp = vm::moveChannelUp,
                 onOpen = { row ->
-                    row.modelId?.let { navigator.open(MediaSettingsRoutes.model(it)) }
-                        ?: row.templateId?.let { navigator.open(MediaSettingsRoutes.template(it)) }
+                    when {
+                        row.modelId != null -> navigator.open(MediaSettingsRoutes.model(row.modelId))
+                        row.workflowHostId != null && row.workflowId != null && row.templateId == null ->
+                            navigator.open(MediaSettingsRoutes.workflowEditor(row.workflowHostId, row.workflowId))
+                        row.templateId != null -> navigator.open(MediaSettingsRoutes.template(row.templateId))
+                    }
                 },
                 onProviders = { navigator.open(NavDestinations.PROVIDER_LIST) },
                 onRetry = vm::reload,

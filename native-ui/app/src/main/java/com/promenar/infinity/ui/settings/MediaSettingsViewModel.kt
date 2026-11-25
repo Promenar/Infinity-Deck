@@ -23,7 +23,7 @@ internal data class MediaSettingsUiState(
     val connections: Map<String, ComfyConnection> = emptyMap(),
 ) {
     val groups: Map<MediaGroup, List<MediaChannelRow>>
-        get() = with(snapshot) { mediaChannelRows(channels, models, templates, hosts) }
+        get() = with(snapshot) { mediaChannelRows(channels, models, templates, hosts, workflows, defaultImageModelId) }
 }
 
 internal class MediaSettingsViewModel(

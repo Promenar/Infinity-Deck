@@ -573,6 +573,49 @@ class ProductionRepositoryTest {
         assertThat(afterGet.production.seasons.single().episodes.single().scriptLocked).isTrue()
         assertThat(afterGet.production.verdictOf(scriptTarget)?.kind).isEqualTo(ReviewKind.APPROVE)
     }
+    @Test fun `扫描可挂载项目清单过滤坏清单路径错位与其他会话已绑定项目`() = runBlocking {
+        // 1. 先在 s 中建项并解绑 -> 对 s2 可挂载
+        val defined = repo.define("s", "惊澜三十秒", ProductionKind.FILM, "productions/demo")
+        val updated = repo.update(
+            "s",
+            "m",
+            Json.parseToJsonElement("""[
+                {"op":"upsert_season","id":"S1","number":1},
+                {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"测试片"},
+                {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"场一"},
+                {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"镜头1","duration_seconds":4}
+            ]""").jsonArray,
+        )
+        awaitInSync()
+        val validManifest = files.bytes.getValue("s" to "productions/demo/production.json")
+        repo.unbind("s")
+
+        // 2. 在 s 中绑定另一个活跃项目 -> s2 扫描时必须排除该项目
+        val activeOtherRepo = ProductionRepository(db, files, now = { 10 }, newId = { "active-other" })
+        try {
+            activeOtherRepo.define("s", "他会活跃片", ProductionKind.SERIES, "productions/active")
+            withTimeout(5000) { activeOtherRepo.observe("s").first { it?.manifest == ManifestSync.InSync } }
+            val activeManifest = files.bytes.getValue("s" to "productions/active/production.json")
+
+            // 准备 s2 工作区中的四个清单：有效可挂载、已被 s 绑定、rootPath 错位、JSON 损坏
+            files.bytes["s2" to "productions/demo/production.json"] = validManifest.copyOf()
+            files.bytes["s2" to "productions/active/production.json"] = activeManifest.copyOf()
+            files.bytes["s2" to "productions/moved/production.json"] = ProductionManifestCodec.encode(updated.production, 2)
+            files.bytes["s2" to "productions/broken/production.json"] = "{broken".toByteArray()
+
+            val candidates = repo.listAttachableManifests("s2")
+            assertThat(candidates).hasSize(1)
+            val only = candidates.single()
+            assertThat(only.manifestPath).isEqualTo("productions/demo/production.json")
+            assertThat(only.title).isEqualTo("惊澜三十秒")
+            assertThat(only.kind).isEqualTo(ProductionKind.FILM)
+            assertThat(only.shotCount).isEqualTo(1)
+            assertThat(only.episodeCount).isEqualTo(1)
+            assertThat(defined.production.id).isEqualTo("project")
+        } finally {
+            activeOtherRepo.close()
+        }
+    }
     private class FakeFiles : ProductionWorkspaceFiles {
         val bytes = ConcurrentHashMap<Pair<String, String>, ByteArray>()
         val mtimes = ConcurrentHashMap<Pair<String, String>, Long>()
@@ -608,5 +651,10 @@ class ProductionRepositoryTest {
         }
         override suspend fun lastModified(sessionId: String, path: String): Long? = mtimes[sessionId to path]
         override suspend fun isImageOrVideo(sessionId: String, path: String) = bytes.containsKey(sessionId to path) && (sessionId to path) in mediaPaths
+        override suspend fun findManifestPaths(sessionId: String): List<String> =
+            bytes.keys
+                .filter { (sid, path) -> sid == sessionId && (path == "production.json" || path.endsWith("/production.json")) }
+                .map { it.second }
+                .sorted()
     }
 }

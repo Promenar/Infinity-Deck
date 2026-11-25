@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Description
@@ -87,6 +88,16 @@ internal fun ProductionManagementTab(
                 }
             }
         }
+        if (stats.total > 0) item("top-progress") {
+            OverviewTopProgressCard(
+                production = production,
+                stats = stats,
+                onClick = {
+                    val targetTab = if (stats.review > 0 || stats.redo > 0 || stats.locked > 0) ProductionTab.OUTPUT else ProductionTab.STORYBOARD
+                    onOpenTab(targetTab)
+                },
+            )
+        }
         item("stages") {
             ProductionSection(stringResource(R.string.p2_workflow_section)) {
                 production.visibleStages().forEach { stage ->
@@ -136,23 +147,6 @@ internal fun ProductionManagementTab(
                     }
                 }
             }
-        } else if (stats.total > 0) {
-            item("project-progress") {
-                ProductionSection(stringResource(R.string.p2_project_progress)) {
-                    Column(
-                        Modifier.fillMaxWidth().clickable(role = Role.Button) { onOpenTab(ProductionTab.STORYBOARD) }
-                            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(production.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.p2_stage_shots_compact, stats.locked, stats.total), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
-                        ProductionProgressBar(stats.progress)
-                    }
-                }
-            }
         }
         item("models") {
             ProductionSection(null) {
@@ -163,6 +157,103 @@ internal fun ProductionManagementTab(
                     value = if (channels.isEmpty()) null else stringResource(R.string.p2_media_counts, counts.getValue(MediaGroup.IMAGE), counts.getValue(MediaGroup.VIDEO), counts.getValue(MediaGroup.AUDIO)),
                     enabled = services.onOpenMediaModels != null,
                     onClick = services.onOpenMediaModels ?: {},
+                )
+            }
+        }
+    }
+}
+
+/** 剧本阶段汇总分类：没有挂接任何剧本文档（且未锁定）的集数不视为待审。 */
+internal enum class ScriptStageKind {
+    NOT_STARTED,
+    SINGLE_EPISODE,
+    ALL_APPROVED,
+    PARTIAL_SCRIPTED_APPROVED,
+    PENDING,
+}
+
+internal data class ScriptStageSummary(
+    val kind: ScriptStageKind,
+    val locked: Int,
+    val scriptedEpisodes: Int,
+    val totalEpisodes: Int,
+)
+
+internal fun Production.scriptStageSummary(): ScriptStageSummary {
+    val episodes = episodes()
+    val scripted = episodes.filter { !it.scriptPath.isNullOrBlank() || it.scriptLocked }
+    val locked = scripted.count { it.scriptLocked }
+    val kind = when {
+        scripted.isEmpty() -> ScriptStageKind.NOT_STARTED
+        episodes.size == 1 -> ScriptStageKind.SINGLE_EPISODE
+        locked == scripted.size && scripted.size == episodes.size -> ScriptStageKind.ALL_APPROVED
+        locked == scripted.size -> ScriptStageKind.PARTIAL_SCRIPTED_APPROVED
+        else -> ScriptStageKind.PENDING
+    }
+    return ScriptStageSummary(kind = kind, locked = locked, scriptedEpisodes = scripted.size, totalEpisodes = episodes.size)
+}
+
+/** 总览置顶紧凑项目进度摘要卡：单集显示全片定稿进度，多集显示全剧汇总进度与待审/重做摘要。 */
+@Composable
+private fun OverviewTopProgressCard(
+    production: Production,
+    stats: ShotStats,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val isSeries = production.showEpisodeNumbers()
+    val label = stringResource(if (isSeries) R.string.p2_series_progress else R.string.p2_project_progress)
+    val summary = stringResource(R.string.p2_progress_shots_locked, stats.locked, stats.total)
+    val detailSegments = if (isSeries) {
+        buildList {
+            val episodeCount = production.episodes().size
+            if (episodeCount > 0) add(stringResource(R.string.p2_progress_series_episodes, episodeCount))
+            if (stats.review > 0) add(stringResource(R.string.p2_progress_shots_review, stats.review))
+            if (stats.redo > 0) add(stringResource(R.string.p2_progress_shots_redo, stats.redo))
+        }
+    } else emptyList()
+    BettboxListGroup {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = scheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            ProductionProgressBar(stats.progress)
+            if (detailSegments.isNotEmpty()) {
+                InfinityMetaLine(
+                    segments = detailSegments,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 2,
                 )
             }
         }
@@ -248,20 +339,21 @@ private fun WorkflowStageRow(
             }
         }
         ProductionStage.SCRIPT -> {
-            val done = episodes.count { it.scriptLocked }
+            val summary = production.scriptStageSummary()
             val subtitle = when {
                 episodes.isEmpty() -> stringResource(R.string.production_panel_no_script)
                 episodes.size == 1 -> episodes.single().scriptPath?.substringAfterLast('/') ?: stringResource(R.string.production_panel_no_script)
                 else -> pluralStringResource(R.plurals.production_panel_episode_count, episodes.size, episodes.size)
             }
-            val chip = when {
-                episodes.isEmpty() -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
-                episodes.size == 1 -> episodes.single().let { ep ->
+            val chip = when (summary.kind) {
+                ScriptStageKind.NOT_STARTED -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                ScriptStageKind.SINGLE_EPISODE -> episodes.single().let { ep ->
                     production.reviewChipSpec(ReviewTarget.script(ep.id), settled = ep.scriptLocked)
                         ?: ProductionChipSpec(stringResource(R.string.production_review_pending), ProductionTone.WARNING)
                 }
-                done == episodes.size -> ProductionChipSpec(stringResource(R.string.production_review_approved), ProductionTone.SUCCESS)
-                else -> ProductionChipSpec(stringResource(R.string.p2_stage_episodes, done, episodes.size), ProductionTone.WARNING)
+                ScriptStageKind.ALL_APPROVED -> ProductionChipSpec(stringResource(R.string.production_review_approved), ProductionTone.SUCCESS)
+                ScriptStageKind.PARTIAL_SCRIPTED_APPROVED -> ProductionChipSpec(stringResource(R.string.p2_stage_episodes, summary.locked, summary.totalEpisodes), ProductionTone.INFO)
+                ScriptStageKind.PENDING -> ProductionChipSpec(stringResource(R.string.p2_stage_episodes, summary.locked, summary.scriptedEpisodes), ProductionTone.WARNING)
             }
             ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
         }

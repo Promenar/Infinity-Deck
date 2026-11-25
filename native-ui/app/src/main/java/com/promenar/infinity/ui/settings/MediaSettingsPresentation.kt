@@ -24,27 +24,47 @@ internal data class MediaChannelRow(
     val isDefault: Boolean,
     val modelId: String? = null,
     val templateId: String? = null,
+    val workflowHostId: String? = null,
+    val workflowId: String? = null,
 ) {
     val references: ReferenceInputDescription? get() = referenceInputDescription(channel.capabilities)
 }
 
-/** 注册表返回的组内顺序就是默认优先级；名称通过稳定 id 关联。 */
+/** 媒体能力目录：按类型展示全部云端模型与 ComfyUI 工作流；仅对真实生效的云端默认生图模型标注“默认”，视频与音频组不设静态默认。 */
 internal fun mediaChannelRows(
-    channels: List<MediaChannel>, models: List<ModelInfo>, templates: List<ComfyTemplateState>, hosts: List<ComfyHost>,
+    channels: List<MediaChannel>,
+    models: List<ModelInfo>,
+    templates: List<ComfyTemplateState>,
+    hosts: List<ComfyHost>,
+    workflows: List<ComfyWorkflowState> = emptyList(),
+    defaultImageModelId: String = "",
 ): Map<MediaGroup, List<MediaChannelRow>> {
     val cloud = models.associateBy { "cloud:${it.id}" }
-    val comfy = templates.associateBy { it.template.channelId }
+    val comfyWorkflows = workflows.associateBy { it.workflow.channelId }
+    val comfyTemplates = templates.associateBy { it.template.channelId }
     val hostNames = hosts.associate { it.id to it.name }
+    val defaultImageChannelId = defaultImageModelId.trim().takeIf { it.isNotEmpty() }?.let { "cloud:$it" }
     return MediaGroup.entries.associateWith { group ->
-        channels.filter { it.group == group }.mapIndexed { index, channel ->
+        channels.filter { it.group == group }.map { channel ->
             val model = cloud[channel.id]
-            val template = comfy[channel.id]?.template
+            val workflow = comfyWorkflows[channel.id]?.workflow
+            val template = comfyTemplates[channel.id]?.template
             val source = when {
                 model != null -> listOf(model.providerName)
+                workflow != null -> listOfNotNull("ComfyUI", hostNames[workflow.hostId])
                 template != null -> listOfNotNull("ComfyUI", hostNames[template.hostId])
                 else -> emptyList()
             }
-            MediaChannelRow(channel, model?.name ?: template?.name ?: channel.id, source, index == 0, model?.id, template?.id)
+            MediaChannelRow(
+                channel = channel,
+                name = model?.name ?: workflow?.name ?: template?.name ?: channel.id,
+                sourceSegments = source,
+                isDefault = group == MediaGroup.IMAGE && defaultImageChannelId != null && channel.id == defaultImageChannelId,
+                modelId = model?.id,
+                templateId = template?.id,
+                workflowHostId = workflow?.hostId,
+                workflowId = workflow?.workflowId,
+            )
         }
     }
 }

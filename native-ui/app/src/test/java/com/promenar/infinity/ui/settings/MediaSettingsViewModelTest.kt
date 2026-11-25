@@ -30,7 +30,7 @@ class MediaSettingsViewModelTest {
         vm.moveChannelUp(MediaGroup.VIDEO, "cloud:b")
         advanceUntilIdle()
         assertEquals(listOf("cloud:b", "cloud:a"), store.lastOrder)
-        assertTrue(vm.state.value.groups.getValue(MediaGroup.VIDEO).first().isDefault)
+        assertTrue(vm.state.value.groups.getValue(MediaGroup.VIDEO).none { it.isDefault })
         assertEquals("cloud:b", vm.state.value.groups.getValue(MediaGroup.VIDEO).first().channel.id)
         vm.setReferenceMode("a", CharacterReferenceMode.COMPOSITE)
         advanceUntilIdle()

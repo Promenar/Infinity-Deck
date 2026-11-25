@@ -266,6 +266,12 @@
     <string name="media_settings_field_input_key">输入键（通用 JSON）</string>
     <string name="media_settings_no_fields">尚未定义该类字段</string>
     <string name="media_settings_modes_select">支持的生成模式</string>
+    <string name="media_settings_providers_and_hosts">服务商与 ComfyUI 主机</string>
+    <string name="media_settings_wf_ref_input_mode">资产参考入参模式</string>
+    <string name="media_settings_wf_ref_mode_separate">分张单视图</string>
+    <string name="media_settings_wf_ref_mode_composite">多视图整卡</string>
+    <string name="media_settings_wf_ref_mode_hint">与本工作流绑定的默认参考图传入方式；单次实验如需临时切换，仍走固定字段覆写 Diff 审批。</string>
+    <string name="media_settings_wf_max_images">参考图上限（张）</string>
 
     <string name="p2_channel_cloud_group">云端 API 通道</string>
     <string name="p2_channel_comfy_group">ComfyUI（%1$s）</string>

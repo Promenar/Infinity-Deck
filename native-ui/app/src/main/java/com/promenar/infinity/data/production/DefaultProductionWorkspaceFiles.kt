@@ -182,6 +182,49 @@ class DefaultProductionWorkspaceFiles(
         val result = media.resolve(sessionId, media.productionPath(sessionId, path))
         result is MediaResolution.Available && isProductionMediaKind(result.ref.kind)
     }
+
+    override suspend fun findManifestPaths(sessionId: String): List<String> = withContext(Dispatchers.IO) {
+        val bindings = mounts.namespaceBindings(sessionId)
+        val rooted = ExternalMountPaths.WORKSPACE_ALIAS in bindings
+        val backend = if (rooted) {
+            mounts.backend(sessionId, bindings)
+        } else {
+            val root = workspace.ensureSessionRoot(sessionId)
+            PrivateWorkspaceTransferBackend(workspace, root.uuid)
+        }
+        val found = mutableListOf<String>()
+        var visited = 0
+        withContext(ExternalMountOperationBindings(bindings)) {
+            suspend fun visit(virtualDir: String, depth: Int) {
+                if (depth > MANIFEST_SCAN_MAX_DEPTH || visited >= MANIFEST_SCAN_MAX_ENTRIES || found.size >= MANIFEST_SCAN_MAX_RESULTS) return
+                val children = runCatching { backend.list(virtualDir) }.getOrNull().orEmpty()
+                for (child in children) {
+                    if (visited >= MANIFEST_SCAN_MAX_ENTRIES || found.size >= MANIFEST_SCAN_MAX_RESULTS) return
+                    visited++
+                    val relative = child.path.trimStart('/')
+                    if (relative.isBlank()) continue
+                    val name = relative.substringAfterLast('/')
+                    if (child.isDirectory) {
+                        if (name.startsWith(".") || name in MANIFEST_SCAN_IGNORED_DIRS) continue
+                        visit("/$relative", depth + 1)
+                    } else if (name == "production.json" && '/' in relative) {
+                        if (runCatching { ProductionManifestCodec.validatePath(relative) }.isSuccess) {
+                            found += relative
+                        }
+                    }
+                }
+            }
+            visit("/", 0)
+        }
+        found.distinct().sorted()
+    }
 }
+
+private const val MANIFEST_SCAN_MAX_DEPTH = 6
+private const val MANIFEST_SCAN_MAX_ENTRIES = 1_500
+private const val MANIFEST_SCAN_MAX_RESULTS = 24
+private val MANIFEST_SCAN_IGNORED_DIRS = setOf(
+    "build", "node_modules", "__pycache__", "venv", "dist", "out", "target", "mnt", "skills",
+)
 
 internal fun isProductionMediaKind(kind: MediaKind): Boolean = kind in setOf(MediaKind.IMAGE, MediaKind.VIDEO, MediaKind.AUDIO)

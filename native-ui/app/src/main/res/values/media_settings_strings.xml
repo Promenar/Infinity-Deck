@@ -266,6 +266,12 @@
     <string name="media_settings_field_input_key">Input key (generic JSON)</string>
     <string name="media_settings_no_fields">No fields defined yet</string>
     <string name="media_settings_modes_select">Generation modes</string>
+    <string name="media_settings_providers_and_hosts">Providers &amp; ComfyUI hosts</string>
+    <string name="media_settings_wf_ref_input_mode">Asset reference mode</string>
+    <string name="media_settings_wf_ref_mode_separate">Separate views</string>
+    <string name="media_settings_wf_ref_mode_composite">Multi-view sheet</string>
+    <string name="media_settings_wf_ref_mode_hint">Default reference input mode bound to this workflow; one-off experimental overrides still go through fixed-field Diff approval.</string>
+    <string name="media_settings_wf_max_images">Max reference images</string>
 
     <string name="p2_channel_cloud_group">Cloud API channels</string>
     <string name="p2_channel_comfy_group">ComfyUI (%1$s)</string>

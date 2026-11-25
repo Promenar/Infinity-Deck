@@ -41,6 +41,7 @@ fun comfyTools(
     jobs: BackgroundJobManager? = null,
     readWorkspaceFile: (suspend (sessionId: String, path: String) -> ByteArray?)? = null,
     importSkillSubmitter: (suspend (sessionId: String, skillName: String, entryPath: String, includePaths: List<String>) -> SubmitterImportedBundle)? = null,
+    productionPanelNudge: ProductionPanelNudgeTracker? = null,
 ): List<SkillDefinition> = listOf(
     ComfyProbeSkill(repository),
     ComfyListTemplatesSkill(repository),
@@ -54,7 +55,7 @@ fun comfyTools(
     ComfyDeleteSubmitterSkill(repository),
     ComfySaveWorkflowSkill(repository),
     ComfyDeleteWorkflowSkill(repository),
-    ComfyRunWorkflowSkill(repository, executionEngine, jobs),
+    ComfyRunWorkflowSkill(repository, executionEngine, jobs, productionPanelNudge),
     ComfySetChainTipSkill(chainStore),
 )
 
@@ -175,6 +176,7 @@ class ComfyRunWorkflowSkill(
     repository: ComfyRepository,
     executionEngine: ComfyWorkflowExecutionEngine? = null,
     jobs: BackgroundJobManager? = null,
+    productionPanelNudge: ProductionPanelNudgeTracker? = null,
 ) : ComfySkill(
     repository,
     "comfy_run_workflow",
@@ -182,6 +184,7 @@ class ComfyRunWorkflowSkill(
     COMFY_RUN_WORKFLOW_SCHEMA,
     executionEngine = executionEngine,
     jobs = jobs,
+    productionPanelNudge = productionPanelNudge,
 )
 
 class ComfySetChainTipSkill(
@@ -205,6 +208,7 @@ abstract class ComfySkill(
     private val jobs: BackgroundJobManager? = null,
     private val readWorkspaceFile: (suspend (sessionId: String, path: String) -> ByteArray?)? = null,
     private val importSkillSubmitter: (suspend (sessionId: String, skillName: String, entryPath: String, includePaths: List<String>) -> SubmitterImportedBundle)? = null,
+    private val productionPanelNudge: ProductionPanelNudgeTracker? = null,
 ) : SkillDefinition {
     override val id get() = name
     override val mcpServerId: String? = null
@@ -832,6 +836,10 @@ abstract class ComfySkill(
                 }
                 if (result.invalidatedNodeIds.isNotEmpty()) {
                     put("invalidated_node_ids", JsonArray(result.invalidatedNodeIds.map(::JsonPrimitive)))
+                }
+                val isVideoWorkflow = result.workflow.mediaCategory in setOf(ComfyMediaCategory.VIDEO, ComfyMediaCategory.POST_PROCESS)
+                productionPanelNudge?.hintIfNeeded(context.sessionId, isVideoOrPostProcess = isVideoWorkflow)?.let { hint ->
+                    put("production_panel_hint", hint)
                 }
             }
             return ToolResult(id = "comfy_${UUID.randomUUID()}", content = payload.toString())

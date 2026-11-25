@@ -1058,7 +1058,7 @@ internal fun ComfyTemplateScreenContent(
         if (caps.maxImages > 0) {
             MediaValue(
                 stringResource(R.string.media_settings_reference_input),
-                referenceDescription(ReferenceInputDescription(CharacterReferenceMode.SEPARATE, caps.maxImages)),
+                referenceDescription(ReferenceInputDescription(caps.characterReferenceMode, caps.maxImages)),
             )
             InfinitySettingsSection(title = stringResource(R.string.media_settings_references)) {
                 ReferenceOrderList(order, !template.locked && !state.busy) { order = moveMediaItemUp(order, it) }

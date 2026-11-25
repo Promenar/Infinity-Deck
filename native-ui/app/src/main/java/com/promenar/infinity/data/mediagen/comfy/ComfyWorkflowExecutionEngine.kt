@@ -1077,8 +1077,23 @@ class ComfyWorkflowExecutionEngine(
         fixedOverrides: Map<String, JsonElement>,
     ): Pair<MutableMap<String, JsonElement>, Map<String, Long>> {
         val knownKeys = workflow.fields.mapTo(mutableSetOf()) { it.key }
-        (contentInputs.keys + fixedOverrides.keys).forEach { key ->
+        contentInputs.keys.forEach { key ->
+            if (key == ComfyWorkflow.CHARACTER_REFERENCE_MODE_OVERRIDE_KEY && key !in knownKeys) {
+                throw IllegalArgumentException("字段 $key 属于工作流固定基线能力，如需单次实验覆写请传入 fixed_overrides（将触发确认审批）")
+            }
             if (key !in knownKeys) throw IllegalArgumentException("未知工作流字段：$key")
+        }
+        fixedOverrides.forEach { (key, value) ->
+            if (key !in knownKeys) {
+                if (key == ComfyWorkflow.CHARACTER_REFERENCE_MODE_OVERRIDE_KEY) {
+                    require(GenerationMode.REFERENCE in workflow.capabilities.modes) {
+                        "当前工作流未声明参考模式，不支持覆写 $key"
+                    }
+                    ComfyWorkflow.parseCharacterReferenceModeOverride(value)
+                } else {
+                    throw IllegalArgumentException("未知工作流字段：$key")
+                }
+            }
         }
         contentInputs.keys.forEach { key ->
             val spec = workflow.field(key)!!

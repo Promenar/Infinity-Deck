@@ -23,15 +23,17 @@ class ProductionContextTest {
         assertThat(text).contains("\"truncated\":true")
     }
 
-    @Test fun `项目上下文暴露默认视频通道与参考入参模式`() {
+    @Test fun `项目上下文不再强推项目级默认视频通道而引导按镜头逐通道规划`() {
         val project = Production(
             "p", "项目", ProductionKind.FILM, "productions/p", createdAt = 1, updatedAt = 1,
             defaultVideoChannelId = "comfyui:h3-ref",
             referenceInputMode = ReferenceInputMode.SEPARATE,
         )
         val text = productionContext(ProductionSnapshot(project, 1, ManifestSync.InSync), 0)
-        assertThat(text).contains("\"default_video_channel_id\":\"comfyui:h3-ref\"")
-        assertThat(text).contains("\"reference_input_mode\":\"separate\"")
+        assertThat(text).contains("按目标模型或工作流声明的参考入参模式")
+        assertThat(text).contains("自由混用云端模型与 ComfyUI 工作流")
+        assertThat(text).doesNotContain("\"default_video_channel_id\"")
+        assertThat(text).doesNotContain("\"reference_input_mode\"")
         assertThat(text).doesNotContain("\"previs\":")
     }
 

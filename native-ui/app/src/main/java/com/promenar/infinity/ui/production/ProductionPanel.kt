@@ -5,35 +5,53 @@ import com.promenar.infinity.ui.common.InfinityPanelTab
 import com.promenar.infinity.ui.common.rememberPanelTabPagerState
 import com.promenar.infinity.navigation.InfinityPageStack
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.style.TextAlign
 import com.promenar.infinity.ui.settings.MediaSettingsPanelHost
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.rememberLastNonNull
 import java.net.URLDecoder
 import java.net.URLEncoder
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.semantics.Role
-import com.promenar.infinity.ui.common.InfinityBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
+import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinityMenuDivider
+import com.promenar.infinity.ui.common.InfinityMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -59,10 +77,12 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.production.ManifestResolution
 import com.promenar.infinity.data.production.ManifestSync
 import com.promenar.infinity.data.production.ProductionKind
+import com.promenar.infinity.data.production.ProductionManifestCandidate
 import com.promenar.infinity.data.production.ProductionPanelSource
 import com.promenar.infinity.data.production.ProductionSnapshot
 import com.promenar.infinity.data.production.ProductionUserAction
 import com.promenar.infinity.data.production.productionCostStats
+import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityLoadingIndicator
 import com.promenar.infinity.ui.common.InfinityMetaLine
@@ -71,6 +91,7 @@ import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillTone
 import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
+import com.promenar.infinity.ui.common.LocalFrostedChromeMaterial
 import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.toNoticeSeverity
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
@@ -83,17 +104,6 @@ import com.promenar.infinity.domain.mediagen.MediaChannel
 import com.promenar.infinity.domain.mediagen.MediaGroup
 import com.promenar.infinity.data.production.AssetKind
 import com.promenar.infinity.data.production.AssetStatus
-import com.promenar.infinity.data.production.ReferenceInputMode
-import com.promenar.infinity.data.production.ShotMode
-import com.promenar.infinity.data.production.effectiveReferenceInputMode
-import com.promenar.infinity.data.production.toReferenceInputMode
-import com.promenar.infinity.domain.mediagen.CharacterReferenceMode
-import com.promenar.infinity.ui.common.InfinitySegment
-import com.promenar.infinity.ui.common.InfinitySegmentedControl
-import com.promenar.infinity.ui.common.InfinitySwitch
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 
@@ -141,12 +151,38 @@ fun ProductionPanel(
     val media = rememberSessionWorkspaceMedia(sessionId, onLocate)
     // 媒体模型在面板所在的容器里以子页打开：宽屏在检视器内，窄屏在同一个整屏容器内，会话页不被盖住。
     var mediaSettingsOpen by rememberSaveable(sessionId) { mutableStateOf(false) }
+    val mediaTransition = updateTransition(targetState = mediaSettingsOpen, label = "production_media_settings")
+    val mediaTransitioning = mediaTransition.currentState != mediaTransition.targetState
+    val hideBaseLayer = mediaSettingsOpen && !mediaTransitioning
+    val chrome = LocalFrostedChromeMaterial.current
     val openRoute = services.openRoute
     val panelServices = remember(services) {
         if (services.openRoute == null) services else services.copy(onOpenMediaModels = { mediaSettingsOpen = true })
     }
+    var emptyCandidates by remember(sessionId) { mutableStateOf<List<ProductionManifestCandidate>>(emptyList()) }
+    var emptyScanning by remember(sessionId) { mutableStateOf(false) }
+    var emptyAttachingPath by remember(sessionId) { mutableStateOf<String?>(null) }
+    var emptyCreating by remember(sessionId) { mutableStateOf(false) }
+    var emptyError by remember(sessionId) { mutableStateOf<String?>(null) }
+    var emptyScanNonce by remember(sessionId) { mutableStateOf(0) }
+    val emptyScope = rememberCoroutineScope()
+    val emptyNoticeController = LocalInfinityNoticeController.current
+    LaunchedEffect(sessionId, source, load is ProductionLoad.Empty, emptyScanNonce) {
+        if (load !is ProductionLoad.Empty) return@LaunchedEffect
+        emptyScanning = true
+        try {
+            emptyCandidates = runCatching { source.listAttachableManifests(sessionId) }.getOrDefault(emptyList())
+        } finally {
+            emptyScanning = false
+        }
+    }
     Box(modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().then(if (mediaSettingsOpen) Modifier.clearAndSetSemantics {} else Modifier)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = if (hideBaseLayer) 0f else 1f }
+                .then(if (mediaSettingsOpen) Modifier.clearAndSetSemantics {} else Modifier),
+        ) {
             CompositionLocalProvider(LocalWorkspaceMedia provides (media ?: LocalWorkspaceMedia.current)) {
                 when (val current = load) {
                     ProductionLoad.Loading -> Column(Modifier.fillMaxSize()) {
@@ -154,8 +190,59 @@ fun ProductionPanel(
                         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
                     }
                     ProductionLoad.Empty -> Column(Modifier.fillMaxSize()) {
-                        if (onBack != null) ProductionTopBar(stringResource(R.string.p2_production_title), emptyList(), onBack)
-                        ProductionPanelEmpty(Modifier.weight(1f))
+                        ProductionTopBar(stringResource(R.string.p2_production_title), emptyList(), onBack)
+                        ProductionPanelEmpty(
+                            modifier = Modifier.weight(1f),
+                            candidates = emptyCandidates,
+                            scanning = emptyScanning,
+                            attachingPath = emptyAttachingPath,
+                            creating = emptyCreating,
+                            error = emptyError,
+                            onDismissError = { emptyError = null },
+                            onRescan = { if (!emptyScanning) emptyScanNonce += 1 },
+                            onAttach = { path ->
+                                if (emptyAttachingPath == null && !emptyCreating) {
+                                    emptyAttachingPath = path
+                                    emptyError = null
+                                    emptyScope.launch {
+                                        try {
+                                            val err = userFacing(failed) { source.attach(sessionId, path) }
+                                            if (err != null) {
+                                                if (emptyNoticeController != null) emptyNoticeController.show(InfinityNoticeSeverity.ERROR, err)
+                                                else emptyError = err
+                                            }
+                                        } finally {
+                                            emptyAttachingPath = null
+                                        }
+                                    }
+                                }
+                            },
+                            onRequestCreate = services.requestCreateProduction?.let { trigger ->
+                                {
+                                    if (!emptyCreating && emptyAttachingPath == null) {
+                                        emptyCreating = true
+                                        emptyError = null
+                                        emptyScope.launch {
+                                            try {
+                                            val (kind, message) = trigger()
+                                            if (emptyNoticeController != null) {
+                                                emptyNoticeController.showStatus(kind, message)
+                                            } else if (kind == InfinityStatusKind.Error) {
+                                                emptyError = message
+                                            }
+                                            } catch (cancelled: CancellationException) {
+                                                throw cancelled
+                                            } catch (_: Exception) {
+                                                if (emptyNoticeController != null) emptyNoticeController.show(InfinityNoticeSeverity.ERROR, failed)
+                                                else emptyError = failed
+                                            } finally {
+                                                emptyCreating = false
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                        )
                     }
                     is ProductionLoad.Ready -> ProductionPanelContent(
                         snapshot = current.snapshot,
@@ -163,6 +250,7 @@ fun ProductionPanel(
                             userFacing(failed) { source.apply(sessionId, revision, action) }
                         },
                         onResolve = { resolution -> userFacing(failed) { source.resolveManifest(sessionId, resolution) } },
+                        onUnbind = { userFacing(failed) { source.unbind(sessionId) } },
                         modifier = Modifier.fillMaxSize(),
                         sessionId = sessionId,
                         services = panelServices,
@@ -174,19 +262,35 @@ fun ProductionPanel(
                 }
             }
         }
-        if (openRoute != null) AnimatedVisibility(
-            visible = mediaSettingsOpen,
+        if (openRoute != null) mediaTransition.AnimatedVisibility(
+            visible = { it },
             enter = InfinityMotion.pageEnter(pop = false),
             exit = InfinityMotion.pageExit(pop = true),
             modifier = Modifier.fillMaxSize(),
         ) {
-            MediaSettingsPanelHost(
-                onClose = { mediaSettingsOpen = false },
-                openOutside = { route ->
-                    mediaSettingsOpen = false
-                    openRoute(route)
-                },
-            )
+            val overlayColor = when {
+                chrome == null -> MaterialTheme.colorScheme.background
+                mediaTransitioning -> chrome.frostedTint?.copy(alpha = 0.96f) ?: chrome.container
+                else -> Color.Transparent
+            }
+            Surface(
+                color = overlayColor,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
+            ) {
+                MediaSettingsPanelHost(
+                    onClose = { mediaSettingsOpen = false },
+                    openOutside = { route ->
+                        mediaSettingsOpen = false
+                        openRoute(route)
+                    },
+                )
+            }
         }
     }
 }
@@ -206,13 +310,151 @@ private suspend fun userFacing(fallback: String, block: suspend () -> Unit): Str
 }
 
 @Composable
-fun ProductionPanelEmpty(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize().testTag(ProductionUiTags.EMPTY), contentAlignment = Alignment.Center) {
-        Text(
-            stringResource(R.string.production_panel_empty),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+fun ProductionPanelEmpty(
+    modifier: Modifier = Modifier,
+    candidates: List<ProductionManifestCandidate> = emptyList(),
+    scanning: Boolean = false,
+    attachingPath: String? = null,
+    creating: Boolean = false,
+    error: String? = null,
+    onDismissError: () -> Unit = {},
+    onRescan: (() -> Unit)? = null,
+    onAttach: ((String) -> Unit)? = null,
+    onRequestCreate: (() -> Unit)? = null,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val busy = attachingPath != null || creating
+    LazyColumn(
+        modifier = modifier.fillMaxSize().testTag(ProductionUiTags.EMPTY),
+        contentPadding = PaddingValues(horizontal = InfinitySpacing.ScreenHorizontal, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(ProductionSectionGap),
+    ) {
+        if (!error.isNullOrBlank()) {
+            item("error") {
+                InfinityStatusStrip(
+                    kind = InfinityStatusKind.Error,
+                    message = error,
+                    onDismiss = onDismissError,
+                )
+            }
+        }
+        item("hero") {
+            BettboxListGroup {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = scheme.primaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.Movie,
+                                contentDescription = null,
+                                tint = scheme.onPrimaryContainer,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.p2_empty_panel_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = scheme.onSurface,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = stringResource(
+                            if (candidates.isNotEmpty()) R.string.p2_empty_panel_hint_with_candidates
+                            else R.string.p2_empty_panel_hint_no_candidates,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    if (onRequestCreate != null) {
+                        Spacer(Modifier.height(2.dp))
+                        InfinityPillButton(
+                            text = stringResource(R.string.p2_empty_ask_agent_create),
+                            onClick = onRequestCreate,
+                            tone = InfinityPillTone.PRIMARY,
+                            icon = Icons.Rounded.AutoAwesome,
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    if (candidates.isEmpty() && onRescan != null) {
+                        InfinityPillButton(
+                            text = stringResource(if (scanning) R.string.p2_empty_scanning else R.string.p2_empty_scan_workspace),
+                            onClick = onRescan,
+                            tone = InfinityPillTone.NEUTRAL,
+                            icon = Icons.Rounded.Refresh,
+                            enabled = !scanning && !busy,
+                            compact = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+        }
+        if (candidates.isNotEmpty()) {
+            item("candidates") {
+                ProductionSection(
+                    title = stringResource(R.string.p2_empty_workspace_projects),
+                    titleAction = onRescan?.let { rescan ->
+                        {
+                            InfinityPillButton(
+                                text = stringResource(if (scanning) R.string.p2_empty_scanning else R.string.p2_empty_rescan),
+                                onClick = rescan,
+                                tone = InfinityPillTone.NEUTRAL,
+                                icon = Icons.Rounded.Refresh,
+                                enabled = !scanning && !busy,
+                                compact = true,
+                            )
+                        }
+                    },
+                ) {
+                    candidates.forEachIndexed { index, item ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                Modifier.padding(horizontal = InfinitySpacing.RowHorizontal),
+                                color = scheme.outlineVariant.copy(alpha = 0.4f),
+                            )
+                        }
+                        val meta = if (item.kind == ProductionKind.SERIES || item.episodeCount > 1) {
+                            stringResource(R.string.p2_empty_series_episodes, item.episodeCount)
+                        } else {
+                            stringResource(R.string.p2_empty_film_shots, item.shotCount)
+                        }
+                        val isAttaching = attachingPath == item.manifestPath
+                        ProductionRow(
+                            title = item.title,
+                            icon = Icons.Rounded.FolderOpen,
+                            subtitleSegments = listOf(meta, item.manifestPath),
+                            subtitleMaxLines = 2,
+                            chevron = false,
+                            enabled = !busy && onAttach != null,
+                            trailing = {
+                                InfinityPillButton(
+                                    text = stringResource(if (isAttaching) R.string.p2_empty_attaching else R.string.p2_empty_attach),
+                                    onClick = { onAttach?.invoke(item.manifestPath) },
+                                    tone = InfinityPillTone.NEUTRAL,
+                                    icon = Icons.Rounded.Link,
+                                    enabled = !busy && onAttach != null,
+                                    compact = true,
+                                )
+                            },
+                            onClick = onAttach?.let { attach -> { attach(item.manifestPath) } },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -295,6 +537,7 @@ fun ProductionPanelContent(
     channels: List<MediaChannel> = emptyList(),
     channelOrder: List<String> = emptyList(),
     onBack: (() -> Unit)? = null,
+    onUnbind: (suspend () -> String?)? = null,
 ) {
     val production = snapshot.production
     var tab by rememberSaveable(production.id) { mutableStateOf(initialTab) }
@@ -470,7 +713,15 @@ fun ProductionPanelContent(
                             }
                         }
                         null -> Column(Modifier.fillMaxSize()) {
-                            ProductionHeader(snapshot, onBack, busy, services, channels, channelOrder, run, onResolve = { resolution -> onResolve(resolution).also { error = it } })
+                            ProductionHeader(
+                                snapshot = snapshot,
+                                onBack = onBack,
+                                busy = busy,
+                                services = services,
+                                onRun = run,
+                                onResolve = { resolution -> onResolve(resolution).also { error = it } },
+                                onUnbind = onUnbind?.let { handler -> { handler().also { error = it } } },
+                            )
                             ManifestBanner(snapshot.manifest, onResolve = { resolution ->
                                 onResolve(resolution).also { error = it }
                             })
@@ -583,34 +834,27 @@ fun ProductionPanelContent(
     }
 }
 
-/** 页头：返回、项目名与一行信息（类型 · 集数 · 镜头数 · 画幅），右侧“更多”菜单（项目视频与参考入参设置、流程与文件）。 */
+/** 页头：返回、项目名与一行信息（类型 · 集数 · 镜头数 · 画幅），右侧精简轻量下拉菜单（试验模式、文件、媒体目录与解绑）。 */
 @Composable
 private fun ProductionHeader(
     snapshot: ProductionSnapshot,
     onBack: (() -> Unit)?,
     busy: Boolean,
     services: ProductionPanelServices,
-    channels: List<MediaChannel>,
-    channelOrder: List<String>,
     onRun: (ProductionUserAction) -> Unit,
     onResolve: suspend (ManifestResolution) -> String?,
+    onUnbind: (suspend () -> String?)? = null,
 ) {
     val production = snapshot.production
     val episodes = production.episodes()
     val stats = production.shotStats()
     var menu by remember { mutableStateOf(false) }
-    var modelPicker by remember { mutableStateOf(false) }
     var rebuilding by remember { mutableStateOf(false) }
+    var confirmingUnbind by remember { mutableStateOf(false) }
+    var unbinding by remember { mutableStateOf(false) }
     val locate = LocalWorkspaceMedia.current?.onLocate
     val scope = rememberCoroutineScope()
-    val videoChannels = remember(channels, channelOrder) {
-        channelChoices(channels, channelOrder, ShotMode.REFERENCE)
-            .ifEmpty { channelChoices(channels, channelOrder, ShotMode.TEXT) }
-            .ifEmpty { channels.filter { it.group == MediaGroup.VIDEO }.distinctBy { it.id } }
-    }
-    val selectedChannel = production.defaultVideoChannelId?.let { id -> videoChannels.firstOrNull { it.id == id } }
-        ?: videoChannels.firstOrNull()
-    val effectiveMode = production.effectiveReferenceInputMode(selectedChannel)
+    val scheme = MaterialTheme.colorScheme
     ProductionTopBar(
         title = production.title,
         meta = listOfNotNull(
@@ -625,167 +869,93 @@ private fun ProductionHeader(
         metaAccent = if (production.experimental) stringResource(R.string.p2_trial_badge) else null,
         modifier = Modifier.testTag(ProductionUiTags.HEADER),
     ) {
-        IconButton(onClick = { menu = true }, modifier = Modifier.testTag(ProductionUiTags.MENU)) {
-            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.p2_more))
-        }
-    }
-    if (menu) {
-        val scheme = MaterialTheme.colorScheme
-        InfinityBottomSheet(show = true, onDismiss = { menu = false }, title = production.title, scrollContent = true) {
-            Column(
-                Modifier.fillMaxWidth().padding(bottom = InfinitySpacing.Small),
-                verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+        Box {
+            IconButton(onClick = { menu = true }, modifier = Modifier.testTag(ProductionUiTags.MENU)) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.p2_more))
+            }
+            InfinityDropdownMenu(
+                expanded = menu,
+                onDismissRequest = { menu = false },
+                alignToAnchorEnd = true,
+                minWidth = 236.dp,
             ) {
-                ProductionSection(stringResource(R.string.p2_video_settings_section)) {
-                    val valueSegments = when {
-                        production.defaultVideoChannelId == null -> listOf(stringResource(R.string.p2_follow_global_default))
-                        selectedChannel != null -> services.channelLabelSegments(selectedChannel.id)
-                        else -> listOf(production.defaultVideoChannelId)
-                    }
-                    val subtitleSegments = listOfNotNull(
-                        selectedChannel?.capabilities?.maxImages?.takeIf { it > 0 }?.let {
-                            stringResource(R.string.p2_channel_max_images, it)
-                        },
-                        selectedChannel?.let { ch ->
-                            stringResource(
-                                if (ch.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_recommend_sheet
-                                else R.string.p2_recommend_separate,
+                InfinityMenuItem(
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = stringResource(R.string.p2_experimental),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
                             )
+                            Text(
+                                text = stringResource(R.string.p2_experimental_menu_subtitle),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Rounded.Science,
+                            contentDescription = null,
+                            tint = if (production.experimental) scheme.primary else scheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    selected = production.experimental,
+                    enabled = !busy && !unbinding,
+                    onClick = {
+                        menu = false
+                        onRun(ProductionUserAction.SetExperimental(!production.experimental))
+                    },
+                )
+                if (locate != null) {
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.p2_open_in_files)) },
+                        leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        onClick = {
+                            menu = false
+                            locate(production.rootPath)
                         },
                     )
-                    ProductionRow(
-                        title = stringResource(R.string.p2_default_video_model),
-                        icon = Icons.Rounded.Hub,
-                        subtitleSegments = subtitleSegments.takeIf { it.isNotEmpty() },
-                        subtitleMaxLines = 2,
-                        valueSegments = valueSegments,
-                        enabled = !busy && videoChannels.isNotEmpty(),
-                        onClick = { modelPicker = true },
-                    )
-                    HorizontalDivider(
-                        Modifier.padding(horizontal = InfinitySpacing.RowHorizontal),
-                        color = scheme.outlineVariant.copy(alpha = 0.45f),
-                    )
-                    Column(
-                        Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.p2_reference_input_mode),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = scheme.onSurface,
-                        )
-                        InfinitySegmentedControl(
-                            segments = listOf(
-                                InfinitySegment(ReferenceInputMode.SHEET, stringResource(R.string.p2_input_mode_sheet)),
-                                InfinitySegment(ReferenceInputMode.SEPARATE, stringResource(R.string.p2_input_mode_separate)),
-                            ),
-                            selected = effectiveMode,
-                            onSelect = { mode ->
-                                onRun(ProductionUserAction.SetVideoSettings(production.defaultVideoChannelId, mode))
-                            },
-                            enabled = !busy,
-                            fillWidth = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = scheme.surfaceContainerHigh.copy(alpha = 0.72f),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.Top,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Info,
-                                    contentDescription = null,
-                                    tint = scheme.primary,
-                                    modifier = Modifier.padding(top = 1.dp).size(16.dp),
-                                )
-                                Text(
-                                    text = stringResource(R.string.p2_reference_input_mode_hint),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = scheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    HorizontalDivider(
-                        Modifier.padding(horizontal = InfinitySpacing.RowHorizontal),
-                        color = scheme.outlineVariant.copy(alpha = 0.45f),
-                    )
-                    ProductionRow(
-                        title = stringResource(R.string.p2_manage_media_models),
-                        icon = Icons.Rounded.SwapHoriz,
-                        enabled = services.onOpenMediaModels != null,
-                        onClick = services.onOpenMediaModels?.let { open -> { menu = false; open() } },
+                }
+                if (services.onOpenMediaModels != null) {
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.p2_manage_media_models)) },
+                        leadingIcon = { Icon(Icons.Rounded.Hub, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        onClick = {
+                            menu = false
+                            services.onOpenMediaModels.invoke()
+                        },
                     )
                 }
-                ProductionSection(stringResource(R.string.p2_workflow_and_files)) {
-                    ProductionRow(
-                        stringResource(R.string.p2_experimental),
-                        icon = Icons.Rounded.Science,
-                        subtitle = stringResource(R.string.p2_experimental_detail),
-                        chevron = false,
-                        enabled = !busy,
-                        trailing = { InfinitySwitch(checked = production.experimental, onCheckedChange = null, enabled = !busy) },
-                        role = Role.Switch,
-                        onClick = { onRun(ProductionUserAction.SetExperimental(!production.experimental)) },
+                if (snapshot.manifest is ManifestSync.ExternalChange) {
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.p2_rebuild_from_manifest)) },
+                        leadingIcon = { Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        enabled = !busy && !unbinding,
+                        onClick = {
+                            menu = false
+                            rebuilding = true
+                        },
                     )
-                    if (locate != null) ProductionRow(
-                        stringResource(R.string.p2_open_in_files),
-                        icon = Icons.Rounded.FolderOpen,
-                        subtitle = production.rootPath,
-                        subtitleMaxLines = 1,
-                        onClick = { menu = false; locate(production.rootPath) },
-                    )
-                    if (snapshot.manifest is ManifestSync.ExternalChange) ProductionRow(
-                        stringResource(R.string.p2_rebuild_from_manifest),
-                        icon = Icons.Rounded.Restore,
-                        enabled = !busy,
-                        onClick = { menu = false; rebuilding = true },
+                }
+                if (onUnbind != null) {
+                    InfinityMenuDivider()
+                    InfinityMenuItem(
+                        text = { Text(stringResource(R.string.p2_unbind_project)) },
+                        leadingIcon = { Icon(Icons.Rounded.LinkOff, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        destructive = true,
+                        enabled = !busy && !unbinding,
+                        onClick = {
+                            menu = false
+                            confirmingUnbind = true
+                        },
                     )
                 }
             }
-        }
-    }
-    if (modelPicker) {
-        val options = buildList {
-            add(
-                ProductionChoice(
-                    value = "",
-                    label = stringResource(R.string.p2_follow_global_default),
-                    detail = videoChannels.firstOrNull()?.let { services.channelLabelSegments(it.id).formatChannelLabel() },
-                ),
-            )
-            videoChannels.forEach { channel ->
-                val rec = stringResource(
-                    if (channel.capabilities.characterReferenceMode == CharacterReferenceMode.COMPOSITE) R.string.p2_recommend_sheet
-                    else R.string.p2_recommend_separate,
-                )
-                add(
-                    ProductionChoice(
-                        value = channel.id,
-                        label = channel.id,
-                        labelSegments = services.channelLabelSegments(channel.id),
-                        detail = rec,
-                    ),
-                )
-            }
-        }
-        ProductionChoiceSheet(
-            title = stringResource(R.string.p2_default_video_model),
-            options = options,
-            selected = production.defaultVideoChannelId.orEmpty(),
-            onDismiss = { modelPicker = false },
-            emptyText = stringResource(R.string.p2_no_channels),
-        ) { chosenId ->
-            val targetId = chosenId.takeIf { it.isNotEmpty() }
-            val chosen = targetId?.let { id -> videoChannels.firstOrNull { it.id == id } }
-            val recMode = chosen?.capabilities?.characterReferenceMode?.toReferenceInputMode()
-            onRun(ProductionUserAction.SetVideoSettings(targetId, recMode))
         }
     }
     if (rebuilding) {
@@ -795,6 +965,26 @@ private fun ProductionHeader(
             confirmText = stringResource(R.string.production_panel_manifest_adopt),
             onConfirm = { rebuilding = false; scope.launch { onResolve(ManifestResolution.ADOPT_FILE) } },
             onCancel = { rebuilding = false },
+            isDestructive = true,
+        )
+    }
+    if (confirmingUnbind && onUnbind != null) {
+        InfinityConfirmDialog(
+            title = stringResource(R.string.p2_unbind_project_title),
+            message = stringResource(R.string.p2_unbind_project_message),
+            confirmText = stringResource(R.string.p2_unbind_project_confirm),
+            onConfirm = {
+                confirmingUnbind = false
+                unbinding = true
+                scope.launch {
+                    try {
+                        onUnbind()
+                    } finally {
+                        unbinding = false
+                    }
+                }
+            },
+            onCancel = { confirmingUnbind = false },
             isDestructive = true,
         )
     }

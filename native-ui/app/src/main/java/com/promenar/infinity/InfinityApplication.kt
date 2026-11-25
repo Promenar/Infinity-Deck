@@ -2164,8 +2164,18 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 chatStore.getSession(sessionId)?.let { resolveMediaViewTarget(it) }
                     ?: com.promenar.infinity.data.generation.MediaViewTarget()
             })
+            val productionPanelNudge = com.promenar.infinity.ui.chat.manager.skills.ProductionPanelNudgeTracker(
+                hasProduction = { sessionId -> productionRepository.get(sessionId) != null },
+                isDefineEnabled = {
+                    com.promenar.infinity.data.generation.BuiltinToolPreferences.isEnabled(
+                        getSharedPreferences("infinity_settings", MODE_PRIVATE),
+                        "production_define",
+                    )
+                },
+            )
             register(ImageGenerationSkill(this@InfinityApplication, ProviderManager.getInstance(), workspaceMediaStore, workspaceMediaDownloader,
-                providerRequestRouter = providerRequestRouter, mediaResolver = workspaceMediaResolver, jobs = backgroundJobs))
+                providerRequestRouter = providerRequestRouter, mediaResolver = workspaceMediaResolver, jobs = backgroundJobs,
+                productionPanelNudge = productionPanelNudge))
             register(com.promenar.infinity.ui.chat.manager.skills.MediaFetchSkill(workspaceMediaStore, workspaceMediaDownloader,
                 mounts = externalFolderManager, sessionWorkspace = sessionWorkspaceResolver::resolve, jobs = backgroundJobs))
             register(mounted(FileReadSkill(fileOperationRepository, workspaceRepository)))
@@ -2216,6 +2226,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 jobs = backgroundJobs,
                 readWorkspaceFile = ::readComfyWorkspaceFile,
                 importSkillSubmitter = ::importComfySkillSubmitter,
+                productionPanelNudge = productionPanelNudge,
             ).forEach(::register)
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))
