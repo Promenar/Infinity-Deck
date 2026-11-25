@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.79.1-beta] - 2026-11-26
+
+- **补齐提供商列表音乐计数分段与 Gemini Native Audio 实时分类（[ProviderListScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderListScreen.kt)、[MediaModelCatalogRecord.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/MediaModelCatalogRecord.kt)、[BundledModelCatalog.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/BundledModelCatalog.kt)、[SettingsViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/SettingsViewModel.kt)）**：
+  - 在提供商管理列表的媒体计数摘要行补齐 `音乐 N` 分段展示（紧随 `语音 N`），使 Gemini 等提供商卡片完整展示对话、视频、语音、音乐与图像模型数量。
+  - 将仅走实时双向流的 `gemini-*-native-audio*` 系列（如 `gemini-2.5-flash-native-audio-latest`）纳入 `REALTIME`（实时）类型识别并自动排除出聊天选择器。
+
 ## [0.79.0-beta] - 2026-11-26
 
 - **Google AI Studio 语音（TTS）与音乐（Lyria 3 / 3.5）全链路接入与音频模型类型三分（[Enums.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/model/Enums.kt)、[MediaGenerationContracts.kt](native-ui/app/src/main/java/com/promenar/infinity/domain/mediagen/MediaGenerationContracts.kt)、[MediaModelSettings.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/MediaModelSettings.kt)、[BundledModelCatalog.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/BundledModelCatalog.kt)、[MediaModelCatalogRecord.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/MediaModelCatalogRecord.kt)、[GenericModelsEnvelopeParser.kt](native-ui/app/src/main/java/com/promenar/infinity/data/remote/protocol/GenericModelsEnvelopeParser.kt)、[GeminiMediaProtocol.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/cloud/GeminiMediaProtocol.kt)、[GeminiMediaGenerationBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/cloud/GeminiMediaGenerationBackend.kt)、[ModelBrand.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/ModelBrand.kt)）**：

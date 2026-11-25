@@ -84,7 +84,7 @@ class GeminiAudioAndReadAloudTest {
             assertFalse(ui.matchesModelPickerFilter("cloud_speech"))
         }
 
-        for (rtId in listOf("gemini-3.8-live", "lyria-realtime-exp")) {
+        for (rtId in listOf("gemini-3.8-live", "lyria-realtime-exp", "gemini-2.5-flash-native-audio-latest", "gemini-2.5-flash-native-audio-preview-12-2025")) {
             val resolved = resolver.resolve(rtId)
             assertEquals("Realtime $rtId 应归入 REALTIME", ModelWorkload.REALTIME, resolved.workload)
             assertEquals(SupportState.UNSUPPORTED, resolved.capabilities[ModelCapability.CHAT_ENDPOINT])

@@ -207,7 +207,7 @@ private fun Collection<String>.toWorkload(modelId: String = ""): ModelWorkload {
     val normalized = map(String::lowercase).toSet()
     val id = modelId.lowercase()
     return when {
-        "realtime" in id || Regex("""(?:^|[-_])live(?:$|[-_])""").containsMatchIn(id) -> ModelWorkload.REALTIME
+        "realtime" in id || "native-audio" in id || Regex("""(?:^|[-_])live(?:$|[-_])""").containsMatchIn(id) -> ModelWorkload.REALTIME
         id.startsWith("lyria") || "music" in id -> ModelWorkload.MUSIC
         id.endsWith("-tts") || "-tts-" in id || id.startsWith("tts-") || id.startsWith("speech-") -> ModelWorkload.SPEECH
         "text" in normalized -> ModelWorkload.GENERATIVE_TEXT

@@ -577,6 +577,7 @@ private fun ProviderCard(
                 "${stringResource(R.string.media_settings_chat)} ${countsByType.chat}".takeIf { countsByType.chat > 0 },
                 "${stringResource(R.string.media_settings_video)} ${countsByType.video}".takeIf { countsByType.video > 0 },
                 "${stringResource(R.string.media_settings_speech)} ${countsByType.speech}".takeIf { countsByType.speech > 0 },
+                "${stringResource(R.string.media_settings_music)} ${countsByType.music}".takeIf { countsByType.music > 0 },
                 "${stringResource(R.string.media_settings_image)} ${countsByType.image}".takeIf { countsByType.image > 0 },
             )
             if (segments.isNotEmpty()) {

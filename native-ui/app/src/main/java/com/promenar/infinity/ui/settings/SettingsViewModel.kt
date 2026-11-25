@@ -86,7 +86,7 @@ internal fun classifyFetchedModelType(
         Regex("(?:^|[-_/.])(rerank(?:er)?|bge-reranker)(?:$|[-_/.])").containsMatchIn(normalized) -> "rerank"
         Regex("(?:^|[-_/.])(image|dall-e|flux|stable-diffusion)(?:$|[-_/.])").containsMatchIn(normalized) -> "image"
         Regex("(?:^|[-_/.])(video|seedance|hailuo|minimax-h3|s2v-01|veo|sora|kling)(?:$|[-_/.])").containsMatchIn(normalized) -> "video"
-        Regex("(?:^|[-_/.])(live|realtime)(?:$|[-_/.])").containsMatchIn(normalized) -> "realtime"
+        Regex("(?:^|[-_/.])(live|realtime|native-audio)(?:$|[-_/.])").containsMatchIn(normalized) -> "realtime"
         Regex("(?:^|[-_/.])(lyria|music|suno|udio)(?:$|[-_/.])").containsMatchIn(normalized) -> "music"
         Regex("(?:^|[-_/.])(audio|speech|tts|whisper)(?:$|[-_/.])").containsMatchIn(normalized) -> "speech"
         else -> "unknown"

@@ -66,7 +66,10 @@ internal fun mediaModelCatalogRecord(remoteId: String): ModelMetadataRecord? {
 
 internal fun isRealtimeModelId(lowerId: String): Boolean =
     "realtime" in lowerId ||
-        (lowerId.startsWith("gemini-") && Regex("""(?:^|[-_])live(?:$|[-_])""").containsMatchIn(lowerId))
+        (lowerId.startsWith("gemini-") && (
+            Regex("""(?:^|[-_])live(?:$|[-_])""").containsMatchIn(lowerId) ||
+                "native-audio" in lowerId
+            ))
 
 private fun friendlyAudioDisplayName(id: String): String {
     val lower = id.lowercase()
@@ -75,7 +78,7 @@ private fun friendlyAudioDisplayName(id: String): String {
         lower == "lyria-3-clip-preview" -> "Lyria 3 Clip Preview"
         lower == "lyria-3-pro-preview" -> "Lyria 3 Pro Preview"
         lower == "lyria-realtime-exp" -> "Lyria Realtime Experimental"
-        lower.startsWith("gemini-") && (lower.endsWith("-tts") || "-tts-" in lower || Regex("""(?:^|[-_])live(?:$|[-_])""").containsMatchIn(lower)) ->
+        lower.startsWith("gemini-") && (lower.endsWith("-tts") || "-tts-" in lower || "native-audio" in lower || Regex("""(?:^|[-_])live(?:$|[-_])""").containsMatchIn(lower)) ->
             id.split('-').joinToString(" ") { part ->
                 when (part.lowercase()) {
                     "tts" -> "TTS"
