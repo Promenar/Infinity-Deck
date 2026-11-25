@@ -823,7 +823,7 @@ class LinuxExecIntegrationTest {
             val linux = SystemPromptSections.toolGuidance(setOf("shell_exec"), generic = false, linuxState = state, runMode = SessionRunMode.LINUX)
             // Linux 环境细节只随 shell_exec 工具说明发送，系统提示给出指向。
             assertThat(linux).contains(SystemPromptSections.LINUX_SHELL_POINTER)
-            listOf("apk add", "/workspace", "/home/session", "/mnt/<别名>", "/root", "元数据密集").forEach { assertThat(SystemPromptSections.LINUX_SHELL_GUIDANCE).contains(it) }
+            listOf("apk add", "/workspace", "/home/session", "/mnt/<别名>", "/root", "/run/infinity/bin", "高 I/O").forEach { assertThat(SystemPromptSections.LINUX_SHELL_GUIDANCE).contains(it) }
             assertThat(linux).doesNotContain("当前使用系统")
             val builtin = SystemPromptSections.toolGuidance(setOf("shell_exec", "python_exec"), generic = false, linuxState = state, runMode = SessionRunMode.BUILTIN)
             assertThat(builtin).contains("/system/bin/sh")

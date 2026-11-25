@@ -50,4 +50,11 @@ class HistorySummaryPromptTest {
         val result = replaceHistorySummary(prompt, null, "事实")
         assertThat(result).isEqualTo("规则时钟")
     }
+
+    @Test
+    fun `无历史检索工具时首次追加摘要不附带工具取回提示`() {
+        val result = replaceHistorySummary("会话规则", "真实摘要", previousSummary = null, includeRecallHint = false)
+        assertThat(result).endsWith("<history_summary>\n真实摘要\n</history_summary>\n")
+        assertThat(result).doesNotContain(HISTORY_RECALL_HINT)
+    }
 }

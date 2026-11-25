@@ -60,7 +60,7 @@ class BackgroundJobSkillsTest {
         )
         val linux = com.promenar.infinity.data.generation.SessionRunModeToolDefinitions.forSession(tool, com.promenar.infinity.domain.model.SessionRunMode.LINUX).function.description
         assertThat(linux).doesNotContain("/system/bin/sh")
-        listOf("伪终端", "15", "job_input", "apk add", "/workspace", "/mnt/<别名>").forEach { assertThat(linux).contains(it) }
+        listOf("伪终端", "自动让出", "job_*", "apk add", "/workspace", "/mnt/<别名>", "references/background-processes.md").forEach { assertThat(linux).contains(it) }
         assertThat(com.promenar.infinity.data.generation.SessionRunModeToolDefinitions.forSession(tool, com.promenar.infinity.domain.model.SessionRunMode.BUILTIN).function.description).contains("/system/bin/sh")
     }
 

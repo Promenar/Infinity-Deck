@@ -364,7 +364,12 @@ internal class DefaultChatGenerationRuntime(
                 ),
                 buildPrompt = { updated ->
                     val previousSummary = if (summaryInvalidated) session.summary ?: preparedContextSummary else preparedContextSummary
-                    val updatedSystem = replaceHistorySummary(systemPrompt, updated.summary, previousSummary)
+                    val updatedSystem = replaceHistorySummary(
+                        systemPrompt,
+                        updated.summary,
+                        previousSummary,
+                        includeRecallHint = canRecallHistorySummary(updated, prompt.tools?.mapTo(linkedSetOf()) { it.function.name }),
+                    )
                     prompt.copy(messages = offloadToolResults(
                         request.sessionId,
                         buildMessagesWithMedia(
@@ -518,11 +523,12 @@ internal class DefaultChatGenerationRuntime(
             builtinPrivateWorkspacePath = builtinPrivateWorkspacePath,
             builtinUserSkillsPath = builtinUserSkillsPath,
         ))
-        val systemPrompt = replaceHistorySummary(context.finalSystemPrompt, session.summary, session.summary)
+        val includeRecallHint = canRecallHistorySummary(session, tools.mapTo(linkedSetOf()) { it.function.name })
+        val systemPrompt = replaceHistorySummary(context.finalSystemPrompt, session.summary, session.summary, includeRecallHint)
         preparedContext = context.copy(
             finalSystemPrompt = systemPrompt,
             systemPromptSections = context.systemPromptSections.map { section ->
-                if (section.id == "history_summary") section.copy(content = replaceHistorySummary(section.content, session.summary, session.summary)) else section
+                if (section.id == "history_summary") section.copy(content = replaceHistorySummary(section.content, session.summary, session.summary, includeRecallHint)) else section
             },
         )
         preparedContextSummary = session.summary
@@ -811,7 +817,12 @@ internal class DefaultChatGenerationRuntime(
             messageManager.persistModelInputs(request.sessionId, target.id, mapOf("modelId" to route.modelId))
         val storedSession = store.getSession(request.sessionId) ?: error("生成会话不存在")
         session = storedSession.forReplacementContext(request)
-        val systemPrompt = replaceHistorySummary(context.finalSystemPrompt, session.summary, preparedContextSummary)
+        val systemPrompt = replaceHistorySummary(
+            context.finalSystemPrompt,
+            session.summary,
+            preparedContextSummary,
+            includeRecallHint = canRecallHistorySummary(session, tools.mapTo(linkedSetOf()) { it.function.name }),
+        )
         val prompt = PromptRequest(
             messages = buildMessagesWithMedia(
                 session,

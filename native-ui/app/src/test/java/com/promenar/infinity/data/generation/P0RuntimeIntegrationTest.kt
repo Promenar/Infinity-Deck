@@ -686,19 +686,24 @@ class P0RuntimeIntegrationTest {
     @Test
     fun `自动重试沿用本轮模型并重验最新权限和工具开关且复用用户块`() = runTest {
         val fixture = prefixFixture()
-        fixture.preferences.edit().putInt("stream_retry_limit", 1).commit()
-        fixture.onPrompt = { index, _ -> if (index == 1) {
-            fixture.sessions.updateSession("session", mapOf("executionMode" to "workspace", "modelId" to "local::changed-model"))
-            fixture.sessions.updateSessionOptions("session", fixture.store.getSession("session")!!.options.copy(toolsEnabled = false))
-        } }
-        fixture.rounds = { index -> if (index == 1) listOf(
+        fixture.preferences.edit().putInt("stream_retry_limit", 2).commit()
+        fixture.onPrompt = { index, _ ->
+            when (index) {
+                1 -> fixture.sessions.updateSession("session", mapOf("executionMode" to "workspace", "modelId" to "local::changed-model"))
+                2 -> fixture.sessions.updateSessionOptions("session", fixture.store.getSession("session")!!.options.copy(toolsEnabled = false))
+            }
+        }
+        fixture.rounds = { index -> if (index <= 2) listOf(
             StreamChunk.Error(code = com.promenar.infinity.domain.generation.GenerationFailureCode.NETWORK, retryable = true),
         ) else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
         runOnRealClock(fixture.runtime(), fixture.request)
-        assertThat(fixture.prompts).hasSize(2)
-        assertThat(fixture.prompts.first().tools).isNotEmpty()
-        assertThat(fixture.prompts.last().tools).isNull()
-        assertThat(fixture.prompts.last().messages.first().content).contains("权限档：按风险审批")
+        assertThat(fixture.prompts).hasSize(3)
+        assertThat(fixture.prompts[0].tools).isNotEmpty()
+        assertThat(fixture.prompts[1].tools).isNotEmpty()
+        assertThat(fixture.prompts[1].messages.first().content).contains("权限档：按风险审批")
+        assertThat(fixture.prompts[2].tools).isNull()
+        assertThat(fixture.prompts[2].messages.first().content).contains("你是 Infinity Deck 的助手")
+        assertThat(fixture.prompts[2].messages.first().content).doesNotContain("权限档：")
         assertThat(fixture.resolvedModels.last()).isEqualTo("local::p0-integration-model")
         assertThat(fixture.messageRepository.getById("assistant")!!.modelId).isEqualTo("local::p0-integration-model")
         assertThat(fixture.prompts.last().messages.first { it.role == "user" }.turnContext)

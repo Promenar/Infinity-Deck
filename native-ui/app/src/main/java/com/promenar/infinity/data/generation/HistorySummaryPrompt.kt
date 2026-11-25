@@ -1,11 +1,21 @@
 package com.promenar.infinity.data.generation
 
+import com.promenar.infinity.data.model.Session
+
 /** 历史摘要段之后的取回提示；构建上下文与中途替换摘要共用同一文字。 */
 internal const val HISTORY_RECALL_HINT =
     "Summarized turns are archived, not deleted. For exact wording, numbers, code, or details, use session_search with keywords or page through session_read with before/after; omitting id in either tool targets the current session."
 
+internal fun canRecallHistorySummary(session: Session, toolNames: Set<String>?): Boolean =
+    session.options.toolsEnabled && (toolNames == null || toolNames.containsAll(setOf("session_read", "session_search")))
+
 /** 按已知摘要原文替换实际摘要段，避免误匹配自定义指令或检索资料中的标签示例。 */
-internal fun replaceHistorySummary(systemPrompt: String, summary: String?, previousSummary: String?): String {
+internal fun replaceHistorySummary(
+    systemPrompt: String,
+    summary: String?,
+    previousSummary: String?,
+    includeRecallHint: Boolean = true,
+): String {
     fun section(content: String, english: Boolean) = buildString {
         append("\n## History Summary\n")
         appendLine(if (english) "Earlier turns of this conversation were condensed into the summary below." else "较早的会话已总结为以下摘要。")
@@ -19,8 +29,8 @@ internal fun replaceHistorySummary(systemPrompt: String, summary: String?, previ
             .map { it to systemPrompt.lastIndexOf(it) }.filter { it.second >= 0 }.maxByOrNull { it.second }
     }
     if (previous == null) {
-        // 首次压缩发生在一轮中途时摘要段直接追加，取回提示随之补上。
-        val hint = if (replacement.isNotEmpty() && HISTORY_RECALL_HINT !in systemPrompt) HISTORY_RECALL_HINT + "\n" else ""
+        // 首次压缩发生在一轮中途时摘要段直接追加，仅在具备历史检索工具时补上取回提示。
+        val hint = if (includeRecallHint && replacement.isNotEmpty() && HISTORY_RECALL_HINT !in systemPrompt) HISTORY_RECALL_HINT + "\n" else ""
         return systemPrompt + replacement + hint
     }
     val start = previous.second

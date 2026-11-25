@@ -627,7 +627,7 @@ class ChatViewModelTest {
     }
 
     private val savedSessions = mutableListOf<Session>()
-    private val savedMessages = mutableListOf<Pair<Message, String>>()
+    private val savedMessages = java.util.concurrent.CopyOnWriteArrayList<Pair<Message, String>>()
     private val deletedMessages = mutableListOf<String>()
     private var failScopedDelete = false
     private var failSessionUpdate: Throwable? = null

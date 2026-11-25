@@ -13,8 +13,13 @@ import org.junit.Test
 class WorkspaceEnvironmentAliasesTest {
     @Test fun `Linux提示说明脚本唤醒的使用方式和边界`() {
         val guidance = SystemPromptSections.LINUX_SHELL_GUIDANCE
-        for (part in listOf("infinity-wake [--key K] [--title T] [消息]", "stdin", "background:true", "60 秒", "4096", "同 key", "应用运行期间")) {
+        for (part in listOf("infinity-wake", "background:true", "references/background-processes.md")) {
             assertThat(guidance).contains(part)
+        }
+        val reference = com.promenar.infinity.data.skills.runtimeGuideMainDirectory()
+            .resolve("assets/builtin_skills/infinity-deck/references/background-processes.md").readText()
+        for (part in listOf("infinity-wake [--key K] [--title T] [消息]", "stdin", "background: true", "60 秒", "4096", "同 key", "应用运行期间")) {
+            assertThat(reference).contains(part)
         }
     }
 
