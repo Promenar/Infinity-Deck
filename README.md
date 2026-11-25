@@ -23,9 +23,9 @@
 
 **Infinity Deck** is an open-source AI workbench for Android 12+, combining multi-agent orchestration, on-device shell and code execution, private tailnet connectivity, offline speech transcription, a local knowledge base, and multimedia production workflows:
 
-- **Local execution layer**: One-tap rootless Alpine Linux (`arm64-v8a`, with `git`, `ripgrep`, Python, Node.js, and FFmpeg) alongside built-in Python 3.14, QuickJS, and a trimmed `arm64-v8a` FFmpeg/ffprobe toolchain — run scripts, process media, build projects, and transform files directly on the phone without keeping a remote desktop host awake.
-- **Models and on-device inference**: Connect major cloud APIs and Coding Plan presets with your own keys, or run `llama.cpp` GGUF inference locally (independent `MAIN`, `EMBEDDING`, and `RERANK` slots with `16K / 8K / 4K` Prefix KV Cache) and an on-device `sherpa-onnx` speech pipeline (`X-ASR` streaming, two-pass `SenseVoice-Small int8` refinement with RAM-tier gating and RTF backoff, and speaker diarization).
-- **Private networking, built-in proxy & remote ops**: Embedded userspace Tailscale node (compatible with self-hosted Headscale) paired with an independent userspace multi-protocol Built-in Proxy (`libnxproxy.so`, zero system VPN, zero RAM when off) — keeping Tailnet/LAN/Tailscale P2P strictly direct while letting you opt in per AI provider, auto-route the built-in browser and public web tools, and inject `$INFINITY_PROXY_*` on demand inside Alpine Linux.
+- **Local execution layer**: One-tap rootless Alpine Linux (`arm64-v8a`, with `git`, `ripgrep`, Python, Node.js, and FFmpeg) backed by full-runtime `proot` hardware resource governance and a single-APK 16KB-aligned **10-tool native accelerated runtime** (`git`, `rg`, `fd`, `jq`, `sqlite3`, `zstd`, `bsdtar`, `rsync`, `ffmpeg`, `ffprobe`) bridged transparently over Unix sockets to bypass `proot` overhead — alongside built-in Python 3.14, QuickJS, and first-class `git_exec` so scripts, repos, and media run directly on the phone with no desktop host awake.
+- **Models and on-device inference**: Connect major cloud APIs and Coding Plan presets with your own keys, or run `llama.cpp` GGUF inference locally (independent `MAIN`, `EMBEDDING`, and `RERANK` slots with `16K / 8K / 4K` Prefix KV Cache and an off-by-default **Auto-load on startup** toggle for lean cold-start RAM) alongside an on-device `sherpa-onnx` speech pipeline (`X-ASR` streaming, two-pass `SenseVoice-Small int8` refinement with RAM-tier gating and RTF backoff, and speaker diarization), strict Chat vs. Agent system prompt stratification, and timeline-anchored checkpoint context compaction.
+- **Private networking, built-in proxy & remote ops**: Embedded userspace Tailscale node (compatible with self-hosted Headscale) paired with an independent userspace multi-protocol Built-in Proxy (`libnxproxy.so`, zero system VPN, zero RAM when off) — keeping Tailnet/LAN/Tailscale P2P strictly direct while letting you opt in per AI provider, auto-routing the built-in browser, public web tools, and public Git/GitHub HTTPS operations, and injecting `$INFINITY_PROXY_*` on demand inside Alpine Linux.
 - **Knowledge & creative workspace**: Four-section Library › Files manager with one-step workspace cleanup and `read_only / read_write` mounted folders, hybrid vector + memory + knowledge-graph retrieval with numbered citations, rich-format offline recordings (tables, Mermaid, ECharts, LaTeX, unbounded PNG/PDF), interactive web prototypes, universal zero-hardcoding ComfyUI workflow submitters (`14` `comfy_*` tools), and a short-film production panel with offline `Three.js` 3D previs and on-device MP4 + SRT export.
 
 ## Contents
@@ -45,7 +45,7 @@
 - **Multi-protocol model routing**: Native adapters for OpenAI Responses / Chat Completions, Anthropic Messages, Google Gemini / Vertex AI, DeepSeek, and OpenAI-compatible gateways, with mid-chat model switching and per-model connectivity probes.
 - **Zero public exposure for private services**: Embedded Tailscale connects app traffic straight to private `tailnet` peers with no public port forwarding and no system VPN conflicts.
 - **Human-in-the-loop controls**: Upfront execution plans, per-command approval cards, structured `ask_user` prompts, background job tracking, and message queueing/steering.
-- **Adaptive foldable & tablet layout**: Three-column workspace (`Navigation · Chat List · Conversation`) on inner screens with a docked/expandable obsidian inspector and swipeable tabs; folds seamlessly to the cover screen with a 93% obsidian frosted drawer and preserved scroll and composer state for one-handed review.
+- **Adaptive foldable & tablet layout**: Three-column workspace (`Navigation · Chat List · Conversation`) on inner screens with a streamlined docked/expandable obsidian inspector (`Tasks / Files / Git / Browser`, plus on-demand `Artifacts / State / Production`) and window-wide **Global Thick-Glass Light Infiltration**; folds seamlessly to the cover screen with a 93% obsidian frosted drawer and preserved scroll and composer state for one-handed review.
 
 ## Core Workflows
 
@@ -75,7 +75,7 @@
     <td width="50%" valign="top">
       <img src="assets/screenshots/en/linux-terminal.webp" alt="Alpine Linux running fastfetch inside the built-in terminal">
       <h3>Built-in Rootless Alpine Linux</h3>
-      Deploy an `arm64-v8a` Alpine Linux userland in one tap with no root and no external Termux. Run Python, Node.js, FFmpeg, Git, or extend the environment with `apk add`.
+      Deploy an `arm64-v8a` Alpine Linux userland in one tap with no root and no external Termux. High-I/O tools (`git`, `rg`, `fd`, `jq`, `sqlite3`, `zstd`, `bsdtar`, `rsync`, `ffmpeg`) accelerate transparently through the native Host Tool Bridge under full-runtime hardware resource governance, or extend freely with `apk add`.
     </td>
   </tr>
   <tr>
@@ -154,10 +154,10 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/app-
 **Chat & Model Layer**
 
 - Connect OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi, Bailian, OpenRouter, SiliconFlow, xAI, and any compatible API with built-in Coding Plan presets (OpenCode Go/Zen, Bailian, Zhipu, Kimi, Ark) and fast protocol/endpoint variant switching
-- On-device GGUF inference (`llama.cpp`): independent `MAIN`, `EMBEDDING`, and `RERANK` slots with restart auto-restore, `Q8_0` KV cache quantization, cross-turn Prefix KV reuse, and RAM-adaptive `16K / 8K / 4K` context sizing; loaded main model is injected directly into the session picker
+- On-device GGUF inference (`llama.cpp`): independent `MAIN`, `EMBEDDING`, and `RERANK` slots with an optional **Auto-load on startup** toggle (off by default to keep cold-start RAM lean), `Q8_0` KV cache quantization, cross-turn Prefix KV reuse, and RAM-adaptive `16K / 8K / 4K` context sizing; loaded main model is injected directly into the session picker
 - Switch models mid-session, run up to 16 concurrent generating chats, queue or steer follow-up messages during streaming, and edit previously sent user messages to regenerate or fork a branch session
-- Original message search and pagination remain available even after automatic conversation compaction
-- Unified obsidian frosted-glass chrome & 4-step overlay system with an unblurred ambient power-saving preset, 3-tier hue-preserving color styles (**Soft / Standard / Bright**), 5-phase synchronized generation motion, zero-jump floating notice capsules, and unified `34dp` circular `+` actions alongside 2 MiB rolling diagnostics and single-session trace export
+- Strict Chat vs. Agent system prompt stratification, no artificial cloud `maxTokens` caps, 5-section checkpoint context compaction anchored inline as a centered hairline timeline divider (`ContextCompactionNotice`), plus full original-message keyword search and UTF-16 offset pagination (`session_read`) across sessions and sub-agents
+- Unified obsidian frosted-glass chrome, window-wide **Global Thick-Glass Light Infiltration** (`Interface effects` toggle), & 4-step overlay system with an unblurred ambient power-saving preset, 3-tier hue-preserving color styles (**Soft / Standard / Bright**), 5-phase synchronized generation motion, zero-jump send → generate → idle transitions, floating notice capsules, and unified `34dp` circular `+` actions alongside 2 MiB rolling diagnostics and single-session trace export
 - Structured question cards, foreground service keep-alive, and pocket touch-lock
 - Skills & MCP server support with a built-in catalog installer, plus `.idpet` chat pet packs ([download](https://infinityware.work/en/download/#pets))
 
@@ -166,15 +166,15 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/app-
 - Task plans with live step tracking
 - Parallel sub-agent orchestration: up to 32 sub-agents per session (8 per batch) with rate-limit, offline, and timeout backoff retries
 - Isolated branch sessions linked to dedicated Git worktrees
-- Background execution queue for slow commands, daemons, image generation, and downloads (up to 32 per session) with completion wakeup
+- Background execution queue for slow commands, daemons, image generation, and downloads (up to 32 per session) with completion wakeup, persistent **Task** panel job history, independent 50-log / 32 MiB log rotation, and one-tap **Clear** for finished records
 - One-shot timers and recurring Cron jobs
 
 **Local Runtime & Code Tooling**
 
-- One-tap rootless Alpine Linux (`arm64-v8a`) inside the app with cross-turn background keep-alive and `$INFINITY_PROXY_*` on-demand proxy variables, no Termux required
-- Built-in shell, Python 3.14, QuickJS, and trimmed `arm64-v8a` FFmpeg 9.1 / ffprobe (`libx264`) sandboxes using unified real Android filesystem paths, L1/L2 risk-tiered approvals (zero-side-effect read-only allowlist + non-approvable catastrophic root-wipe hard block), and encrypted secret isolation
-- Integrated Git client and visual inspector (branches, worktrees, diffs, commit log); file browser surfaces current branch and change counts
-- Per-command Git credential env injection without touching repo config files
+- One-tap rootless Alpine Linux (`arm64-v8a`) inside the app with full-runtime `proot` hardware resource governance (`nice +5`, big-core reservation, self-usage-only budgeting, RSS watchdog, API 37+ compatibility), cross-turn background keep-alive, and `$INFINITY_PROXY_*` on-demand proxy variables, no Termux required
+- Single-APK 16KB-aligned `arm64-v8a` **10-tool native accelerated runtime** (`git 2.56.1`, `rg`, `fd`, `jq`, `sqlite3`, `zstd`, `bsdtar`, `rsync`, `ffmpeg 9.1 / ffprobe`) via the Unix-socket Host Tool Bridge (`/run/infinity/bin`) in Linux and direct managed execution in built-in mode alongside Python 3.14 and QuickJS — using unified real Android filesystem paths, L1/L2 risk-tiered approvals (zero-side-effect read-only allowlist + non-approvable catastrophic root-wipe hard block), and encrypted secret isolation
+- First-class `git_exec` agent tool, native Git client (`/https/` credential proxy + SSH bridge), and visual inspector (branches, worktrees, diffs, commit log); file browser surfaces current branch and change counts
+- Per-command Git credential injection without touching repo config files
 - Chunked reading of large text files up to 100 MiB
 
 **Remote Hosts, Built-in Proxy & Private Networking**
@@ -183,7 +183,7 @@ The debug APK is written to `native-ui/app/build/outputs/apk/sideload/debug/app-
 - Embedded true terminal emulator with local port forwarding and manual session takeover
 - Keychain supports generating Ed25519 / RSA 4096 keys or importing OpenSSH / PEM / PKCS8 keys (including passphrase-protected keys), batch public-key deployment, and pre-switch login checks
 - Embedded Tailscale node (with self-hosted Headscale support) routing SSH, private model APIs, MCP, and the browser directly over `tailnet`
-- Built-in multi-protocol user-space proxy (`libnxproxy.so`, zero system VPN, zero RAM when off) with loopback-only random HTTP/SOCKS5 auth, YAML/Base64 subscriptions & share-URI import, single-node & drag-to-reorder fallback modes, Advanced YAML editor with kernel validation, per-provider opt-in switches (fail-closed, default direct), automatic browser/Agent public routing, and Tailscale P2P coexistence
+- Built-in multi-protocol user-space proxy (`libnxproxy.so`, zero system VPN, zero RAM when off) with loopback-only random HTTP/SOCKS5 auth, YAML/Base64 subscriptions & share-URI import, single-node & drag-to-reorder fallback modes, Advanced YAML editor with kernel validation, per-provider opt-in switches (fail-closed, default direct), automatic browser / Agent public tool / public Git & GitHub HTTPS routing, and Tailscale P2P coexistence
 
 **Offline Recording & Audio Cleanup**
 

@@ -23,9 +23,9 @@
 
 **Infinity Deck** 是一个面向 Android 12+ 的开源 AI 工作台，将多智能体编排、本机代码与命令执行环境、私有网络接入、离线语音转写、文档知识库与音视频生成工具整合在单应用中：
 
-- **本地执行层**：内置免 Root 的 Alpine Linux（`arm64-v8a`，含 git、ripgrep、Python、Node.js、FFmpeg）及内置 Python 3.14 / QuickJS / 精简 `arm64-v8a` FFmpeg 与 ffprobe 工具链，可在设备端直接运行脚本、处理音视频、构建项目与转换文件，不依赖远程桌面主机在线。
-- **模型与端侧推理**：支持通过自有 API Key 接入主流大模型服务商与各类 Coding Plan 接口；内置基于 `llama.cpp` 的 GGUF 本地推理引擎（支持主对话、Embedding、Rerank 三槽位与 `16K / 8K / 4K` Prefix KV Cache）及基于 `sherpa-onnx` 的离线语音管线（X-ASR 流式转写、SenseVoice 二遍校准、说话人分段与声纹识别）。
-- **私有网络、内置代理与远程运维**：内置用户态 Tailscale 节点（兼容自建 Headscale）与独立用户态多协议内置代理（`libnxproxy.so`，免系统 VPN、关闭零常驻内存）共存互补——Tailnet / 局域网与 Tailscale P2P 始终原生直连，同时支持 AI 提供商按需勾选代理、内置浏览器与 Agent 公网工具自动生效，并在 Alpine Linux 内按需注入 `$INFINITY_PROXY_*`。
+- **本地执行层**：内置免 Root 的 Alpine Linux（`arm64-v8a`，配全运行时 `proot` 硬件资源治理）与单 APK 16KB 页对齐 **10 项原生工具加速链**（`git`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync`、`ffmpeg`、`ffprobe`），经应用私有 Unix socket 转发桥透明绕过 `proot` 性能损耗，并搭配内置 Python 3.14、QuickJS 与一等 `git_exec` 工具，在设备端高效完成脚本、代码仓库与音视频处理，不依赖远程电脑在线。
+- **模型与端侧推理**：支持通过自有 API Key 接入主流大模型服务商与各类 Coding Plan 接口；内置基于 `llama.cpp` 的 GGUF 本地推理引擎（支持主对话、Embedding、Rerank 三槽位、`16K / 8K / 4K` Prefix KV Cache 与默认关闭的「启动时自动加载模型」开关，冷启常驻内存更低）及 `sherpa-onnx` 离线语音管线（X-ASR 流式转写、SenseVoice 二遍校准、说话人分段与声纹识别），并支持纯聊天/智能体系统提示词分层瘦身与时间线锚定检查点压缩。
+- **私有网络、内置代理与远程运维**：内置用户态 Tailscale 节点（兼容自建 Headscale）与独立用户态多协议内置代理（`libnxproxy.so`，免系统 VPN、关闭零常驻内存）共存互补——Tailnet / 局域网与 Tailscale P2P 始终原生直连，同时支持 AI 提供商按需勾选代理，内置浏览器、Agent 公网工具与公网 Git / GitHub HTTPS 自动生效，并在 Alpine Linux 内按需注入 `$INFINITY_PROXY_*`。
 - **知识库与创作工作台**：资料库「文件」四分类与一步确认工作区管理、外部目录 `read_only / read_write` 分级挂载、文档切片检索与实体知识图谱带编号引用溯源、离线录音富格式整理（表格 / Mermaid / ECharts / LaTeX 与长图 PNG/PDF 导出）、可交互多屏网页画布、零硬编码 ComfyUI 全能提交器框架（14 个 `comfy_*` 工具），以及集成离线 `Three.js` 3D 白模预演与剧本/资产/分镜/粗剪导出的制作面板。
 
 ## 目录
@@ -45,7 +45,7 @@
 - **多协议模型路由**：原生适配 OpenAI Responses / Chat Completions、Anthropic Messages、Google Gemini / Vertex AI 等协议，支持会话中途切换模型与单模型连通性测速。
 - **无公网暴露内网直连**：内置 Tailscale 节点将应用内网络请求直接路由至私有 `tailnet`，无需配置公网端口映射或启用系统级 VPN。
 - **人工回路（Human-in-the-loop）控制**：工具调用支持计划确认、逐条命令审批、结构化提问卡、后台任务队列与消息插队。
-- **移动与大屏自适应布局**：支持单手审批、后台保活与防误触口袋锁；在折叠屏与平板上提供三列布局与可固定/加宽的熏黑右侧检视器（支持大页签左右滑动切页），合盖外屏平滑收敛为 93% 熏黑毛玻璃上滑抽屉并保持会话与任务上下文连续。
+- **移动与大屏自适应布局**：支持单手审批、后台保活、防误触口袋锁与全站 **厚玻璃光效浸润**；在折叠屏与平板上提供三列布局与精简后的可固定/加宽熏黑右侧检视器（常驻「任务 / 文件 / Git / 浏览器」，按需显示「产物 / 状态 / 制作」，支持大页签左右滑动切页），合盖外屏平滑收敛为 93% 熏黑毛玻璃上滑抽屉并保持会话与任务上下文连续。
 
 ## 核心工作流
 
@@ -75,7 +75,7 @@
     <td width="50%" valign="top">
       <img src="assets/screenshots/zh/linux-terminal.webp" alt="内置终端运行 Alpine Linux 与 fastfetch">
       <h3>内置免 Root Alpine Linux</h3>
-      应用内一键部署 `arm64-v8a` Alpine Linux 用户态环境，无需设备 Root 或外部 Termux。可直接运行 Python、Node.js、FFmpeg、Git，或通过 `apk add` 安装所需命令行工具。
+      应用内一键部署 `arm64-v8a` Alpine Linux 用户态环境，无需设备 Root 或外部 Termux。高频工具（`git`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync`、`ffmpeg`）经宿主原生转发桥透明加速并受全运行时硬件资源治理护航，亦可通过 `apk add` 按需扩展。
     </td>
   </tr>
   <tr>
@@ -154,10 +154,10 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 **对话与模型层**
 
 - 支持接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi、百炼、OpenRouter、SiliconFlow、xAI 等服务商与任意兼容端点，内置主流 Coding Plan（OpenCode Go/Zen、百炼、智谱、Kimi、方舟）预设与端点/协议变体快切
-- 端侧 GGUF 推理（`llama.cpp`）：支持 `MAIN`（对话与工具调用）、`EMBEDDING`、`RERANK` 三槽位独立管理与重启自动恢复；支持 `Q8_0` KV 缓存量化、跨轮前缀 KV 复用与按可用内存自适应 `16K / 8K / 4K` 上下文；已加载的主槽位模型动态注入会话模型选择器
+- 端侧 GGUF 推理（`llama.cpp`）：支持 `MAIN`（对话与工具调用）、`EMBEDDING`、`RERANK` 三槽位独立管理与可选「启动时自动加载模型」开关（默认关闭以保持低冷启内存）；支持 `Q8_0` KV 缓存量化、跨轮前缀 KV 复用与按可用内存自适应 `16K / 8K / 4K` 上下文；已加载的主槽位模型动态注入会话模型选择器
 - 支持会话中途切换模型，最多 16 个会话并发生成；生成期间支持下一条消息排队或插队打断，并支持对已发送用户消息就地编辑、重新生成或派生分支会话
-- 上下文自动压缩后保留原文检索能力，智能体可按关键词搜索并分页调阅历史原始消息
-- 全站采用黑曜石熏黑毛玻璃 / 冷白磨砂材质、4 级黑曜石浮层与「环境光」无模糊省电档，提供 **柔和 / 标准 / 明亮** 三档原色相配色风格、5 阶段全同步生成动效、对话/资料统一 `34dp` 圆形 `+` 主按钮与顶部悬浮通知胶囊；内置 2 MiB 分片滚动诊断导出与单会话轨迹追踪
+- 纯聊天与智能体系统提示词严格分层瘦身、取消云端辅助请求人工输出上限，上下文压缩采用五节检查点交接并以时间线锚定居中极简分割线（`ContextCompactionNotice`）落位；压缩后保留原文关键词检索与按 UTF-16 偏移分段续读（`session_read`），覆盖主/分支会话与子代理历史
+- 全站采用黑曜石熏黑毛玻璃 / 冷白磨砂材质、窗口级 **厚玻璃光效浸润**（「界面特效」独立开关）、4 级黑曜石浮层与「环境光」无模糊省电档，提供 **柔和 / 标准 / 明亮** 三档原色相配色风格、5 阶段全同步生成动效、发送→生成→退出防跳变过渡、对话/资料统一 `34dp` 圆形 `+` 主按钮与顶部悬浮通知胶囊；内置 2 MiB 分片滚动诊断导出与单会话轨迹追踪
 - 支持结构化提问卡、后台前台服务保活、防误触触摸锁
 - 支持 Skills 技能包与 MCP 服务器接入，内置技能商店可从官方或自定义源安装经校验的技能
 - 支持导入 `.idpet` 会话宠物包（[官网下载](https://infinityware.work/download/#pets)），根据任务状态与四段作息切换动画与台词
@@ -167,15 +167,15 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 - 任务计划管理与步骤状态跟踪
 - 子代理并发调度：单会话最多 32 个并行子代理（单批最多 8 个），支持限流、断网与超时自动退避重试
 - 支持派生分支会话并关联独立 Git Worktree
-- 后台任务管理：慢命令、常驻进程、图像生成与媒体下载可转入后台（单会话最多 32 个），完成后自动唤醒会话回报
+- 后台任务管理：慢命令、常驻进程、图像生成与媒体下载可转入后台（单会话最多 32 个），完成后自动唤醒会话回报；「任务」面板历史记录持久保留（日志文件独立 50 份 / 32 MiB 配额回收），并支持一键「清空记录」
 - 支持单次定时与 Cron 周期性任务调度
 
 **本地运行环境与代码工具**
 
-- 应用内一键安装 Alpine Linux（`arm64-v8a`），免 Root、免 Termux，支持跨轮后台保活与 `$INFINITY_PROXY_*` 按需代理环境变量
-- 未安装 Linux 时提供内置 Shell 命令、Python 3.14、QuickJS 与精简 `arm64-v8a` FFmpeg 9.1 / ffprobe（`libx264`）沙箱，采用统一真实 Android 路径体系、L1/L2 按命令风险分级审批（含零副作用只读命令白名单与不可审批的毁灭性根目录破坏硬拦截）及加密密钥库硬隔离
-- 内置 Git 客户端与可视化 Git 检视面板（分支、工作树、文件 Diff、提交记录）；文件浏览页直接展示当前分支与改动计数
-- Git 凭据按单次命令注入环境变量，不写入仓库配置文件
+- 应用内一键安装 Alpine Linux（`arm64-v8a`），免 Root、免 Termux，具备全运行时 `proot` 硬件资源治理（`nice +5`、大核保留、仅扣自身占用的内存包络、RSS 紧急熔断与 API 37+ 兼容）、跨轮后台保活与 `$INFINITY_PROXY_*` 按需代理环境变量
+- 单 APK 16KB 页对齐 `arm64-v8a` **10 项原生工具加速链**（`git 2.56.1`、`rg`、`fd`、`jq`、`sqlite3`、`zstd`、`bsdtar`、`rsync`、`FFmpeg 9.1 / ffprobe`）：Linux 内经应用私有 Unix socket 转发桥（`/run/infinity/bin`）透明加速，未安装 Linux 时内置模式同样直接提供这组原生工具与 Python 3.14 / QuickJS 沙箱，统一采用真实 Android 路径体系、L1/L2 按命令风险分级审批（含零副作用只读命令白名单与不可审批的毁灭性根目录破坏硬拦截）及加密密钥库硬隔离
+- 一等结构化 `git_exec` 工具、原生 Git 客户端（`/https/` 通用凭据代理与 SSH 桥）及可视化 Git 检视面板（分支、工作树、文件 Diff、提交记录）；文件浏览页直接展示当前分支与改动计数
+- Git 凭据按单次命令安全注入，不写入仓库配置文件
 - 支持分段读取最大 100 MiB 的大文本文件
 
 **远程服务器、内置代理与私有网络**
@@ -184,7 +184,7 @@ Debug APK 输出路径为 `native-ui/app/build/outputs/apk/sideload/debug/app-si
 - 内置终端模拟器与本地端口转发，支持随时手动接管会话
 - 钥匙串支持生成 Ed25519 / RSA 4096 密钥或导入 OpenSSH / PEM / PKCS8 私钥（含带口令私钥），支持公钥批量部署与切换前登录验证
 - 内置 Tailscale 节点（支持自建 Headscale），SSH、模型端点、MCP 与内置浏览器直连 `tailnet`
-- 内置独立用户态多协议代理（`libnxproxy.so`，免系统 VPN、关闭零内存）：仅监听本机回环并按次随机签发 HTTP/SOCKS5 认证，支持 YAML/Base64 订阅与分享链接导入、单节点与可拖拽排序的顺序降级模式、高级 YAML 编辑器与内核校验、AI 提供商按需勾选开关（默认直连、未开启严格失败）、内置浏览器与 Agent 公网自动路由，与 Tailscale P2P 共存直连
+- 内置独立用户态多协议代理（`libnxproxy.so`，免系统 VPN、关闭零内存）：仅监听本机回环并按次随机签发 HTTP/SOCKS5 认证，支持 YAML/Base64 订阅与分享链接导入、单节点与可拖拽排序的顺序降级模式、高级 YAML 编辑器与内核校验、AI 提供商按需勾选开关（默认直连、未开启严格失败）、内置浏览器 / Agent 公网工具与公网 Git / GitHub HTTPS 自动路由，与 Tailscale P2P 共存直连
 
 **离线录音与语音整理**
 
