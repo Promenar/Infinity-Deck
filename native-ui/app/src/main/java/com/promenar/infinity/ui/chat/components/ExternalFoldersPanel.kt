@@ -403,7 +403,7 @@ private fun ExternalFoldersPanelContent(
                 backToManager()
                 onManagerDismiss()
             },
-            height = InfinitySheetHeight.Full,
+            height = InfinitySheetHeight.Large,
             dismissEnabled = !(busy || pickerActive),
             // 面板内有可滚动列表与输入框，关闭拖动避免与内容滚动争抢。
             dragGesturesEnabled = false,

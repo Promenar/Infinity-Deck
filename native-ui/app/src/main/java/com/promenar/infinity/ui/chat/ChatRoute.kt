@@ -433,7 +433,14 @@ fun ChatRoute(
     // 媒体不可用占位请求定位的工作区目录；资源管理器打开后消费。
     var workspaceLocatePath by rememberSaveable { mutableStateOf<String?>(null) }
     var queuedOverlayToken by rememberSaveable { mutableStateOf<String?>(null) }
-    var chatPagesToken by rememberSaveable { mutableStateOf("") }
+    var chatPagesToken by rememberSaveable(sessionId) { mutableStateOf("") }
+    var wideInspectorRestored by rememberSaveable(sessionId) { mutableStateOf(false) }
+    val persistedWideInspectorToken = remember(sessionId) {
+        application.chatInspectorPreferenceStore.initialPagesToken(sessionId)
+    }
+    val persistedLastInspectorRoot = remember(sessionId) {
+        application.chatInspectorPreferenceStore.lastRootToken(sessionId)
+    }
     val chatPages = restoreChatPages(chatPagesToken)
     // 二级页面由检视器还是整页承载，以会话宿主自身的宽度为准：内屏三列的会话列虽在宽窗口里，自身仍是窄窗口。
     var paneInspector by remember { mutableStateOf(wideWindow) }
@@ -446,7 +453,15 @@ fun ChatRoute(
     val shownChatPages = pageStack.ifEmpty { lastPageStack }
     val setChatPages: (List<ChatPage>) -> Unit = { next ->
         val pages = restoreChatPages(chatPagesToken)
+        wideInspectorRestored = true
         chatPagesToken = saveChatPages(next)
+        if (paneInspector) {
+            application.chatInspectorPreferenceStore.record(
+                sessionId = sessionId,
+                open = next.isNotEmpty(),
+                root = next.firstOrNull() ?: pages.firstOrNull(),
+            )
+        }
         // 离开 Git 后刷新顶栏与资源管理器入口的分支与改动；离开资源管理器后不再定位目录。
         if (ChatPage.Git in pages && ChatPage.Git !in next) {
             application.gitStatusCache.invalidate(sessionId)
@@ -852,7 +867,25 @@ fun ChatRoute(
         pane = {},
     ) {
     val hostInspector = com.promenar.infinity.ui.common.LocalInfinityInspectorLayout.current
-    SideEffect { paneInspector = hostInspector }
+    val effectiveChatPages = if (
+        hostInspector &&
+        !wideInspectorRestored &&
+        chatPagesToken.isEmpty() &&
+        persistedWideInspectorToken.isNotEmpty()
+    ) {
+        restoreChatPages(persistedWideInspectorToken)
+    } else {
+        chatPages
+    }
+    SideEffect {
+        paneInspector = hostInspector
+        if (hostInspector && !wideInspectorRestored) {
+            wideInspectorRestored = true
+            if (chatPagesToken.isEmpty() && persistedWideInspectorToken.isNotEmpty()) {
+                chatPagesToken = persistedWideInspectorToken
+            }
+        }
+    }
     val branchParentId = uiState.session?.parentSessionId
     val branchParentTitle = remember(branchParentId) {
         branchParentId?.let { id -> application.database.sessionDao().observeById(id).map { it?.title } } ?: kotlinx.coroutines.flow.flowOf(null)
@@ -963,7 +996,8 @@ fun ChatRoute(
                     )
                 },
                 timedGrants = timedGrants,
-                inspectorPages = chatPages,
+                inspectorPages = effectiveChatPages,
+                initialLastInspectorRoot = persistedLastInspectorRoot,
                 browser = browserState,
                 backgroundJobsRequest = backgroundJobsRequest,
                 portraitDrawerSuspended = hasGenerationInteraction,

@@ -62,17 +62,20 @@ import com.promenar.infinity.ui.theme.InfinityTypography
 
 /**
  * 全站上滑面板的高度策略：
- * - [Full]：内容面板、浏览器、编辑器与长表单，展开即占满屏幕（状态栏以下）；
- * - [Content]：单选列表、目标选择与短表单，按内容高度显示，超出屏幕时由内容自行滚动。
+ * - [Large]：大内容面板（模型选择、会话设置、工作区、技能与长表单），窄屏/外屏固定 93% 高度保留顶部暗幕层次，宽屏/内屏居中弹窗 88%；
+ * - [Content]：单选列表、目标选择与短表单，按内容高度显示，超出最高 93%（宽屏 88%）时由内容自行滚动。
  */
-enum class InfinitySheetHeight { Full, Content }
+enum class InfinitySheetHeight { Large, Content }
+
+internal const val INFINITY_LARGE_SHEET_HEIGHT_FRACTION = 0.93f
+internal const val INFINITY_CENTERED_SHEET_HEIGHT_FRACTION = 0.88f
 
 /**
  * 全站统一的上滑面板外壳：同一形状、底色与拖动条，始终直接完全展开（不停在半屏）。
  * 只提供外壳，不加标题与内边距；需要标题与标准内边距时用 [InfinityBottomSheet]。
  *
- * 宽窗口（[rememberInfinityWideWindow]，折叠屏内屏、平板）不从底边升起整屏面板，改为居中的圆角对话框：
- * 最宽 640dp，[InfinitySheetHeight.Full] 占窗口高度的 88%，[InfinitySheetHeight.Content] 贴合内容；
+ * 宽窗口（[rememberInfinityWideWindow]，折叠屏内屏、平板）不从底边升起上滑面板，改为居中的圆角对话框：
+ * 最宽 640dp，[InfinitySheetHeight.Large] 占窗口高度的 88%，[InfinitySheetHeight.Content] 贴合内容；
  * 点外部与返回按 [properties] 关闭，没有拖动关闭。
  * 给出 [popover] 且已量到触发控件位置时，宽窗口改为贴着控件的弹出层（[InfinityPopover]），窄窗口不受影响。
  */
@@ -116,7 +119,7 @@ fun InfinityModalSheet(
                 modifier = modifier,
             ) {
                 when (height) {
-                    InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().weight(1f, fill = false), content = content)
+                    InfinitySheetHeight.Large -> Column(Modifier.fillMaxWidth().weight(1f, fill = false), content = content)
                     InfinitySheetHeight.Content -> content()
                 }
             }
@@ -128,9 +131,14 @@ fun InfinityModalSheet(
         }
         InfinitySheetPresentation.BottomSheet -> Unit
     }
+    val narrowMaxHeight = (LocalConfiguration.current.screenHeightDp * INFINITY_LARGE_SHEET_HEIGHT_FRACTION).dp
+    val sheetHeightModifier = when (height) {
+        InfinitySheetHeight.Large -> Modifier.fillMaxHeight(INFINITY_LARGE_SHEET_HEIGHT_FRACTION)
+        InfinitySheetHeight.Content -> Modifier.heightIn(max = narrowMaxHeight)
+    }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        modifier = modifier,
+        modifier = modifier.then(sheetHeightModifier),
         sheetState = sheetState,
         sheetGesturesEnabled = sheetGesturesEnabled,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -157,7 +165,7 @@ fun InfinityModalSheet(
             InfinityWindowBackScope {
                 val handoff = if (contentDragsSheet) Modifier else Modifier.nestedScroll(NoSheetHandoff)
                 when (height) {
-                    InfinitySheetHeight.Full -> Column(Modifier.fillMaxWidth().fillMaxHeight().then(handoff), content = content)
+                    InfinitySheetHeight.Large -> Column(Modifier.fillMaxWidth().weight(1f).then(handoff), content = content)
                     InfinitySheetHeight.Content -> if (contentDragsSheet) content() else Column(Modifier.fillMaxWidth().then(handoff), content = content)
                 }
             }
@@ -190,7 +198,7 @@ private fun InfinityCenteredSheet(
     containerColor: Color,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.88f).dp
+    val maxHeight = (LocalConfiguration.current.screenHeightDp * INFINITY_CENTERED_SHEET_HEIGHT_FRACTION).dp
     val dismissOutside = properties.shouldDismissOnClickOutside
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -229,13 +237,13 @@ private fun InfinityCenteredSheet(
                             .padding(horizontal = 32.dp)
                             .widthIn(max = 640.dp)
                             .fillMaxWidth()
-                            .then(if (height == InfinitySheetHeight.Full) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight))
+                            .then(if (height == InfinitySheetHeight.Large) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight))
                             .testTag(InfinitySheetTags.CENTERED),
                     ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .then(if (height == InfinitySheetHeight.Full) Modifier.fillMaxHeight() else Modifier)
+                                .then(if (height == InfinitySheetHeight.Large) Modifier.fillMaxHeight() else Modifier)
                                 .obsidianTopGlint(
                                     color = if (dark) InfinityPureWhite.copy(alpha = 0.14f) else Color.Transparent,
                                     cornerRadius = 26.dp,
@@ -355,7 +363,7 @@ fun InfinityBottomSheet(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .then(if (height == InfinitySheetHeight.Full) Modifier.weight(1f) else Modifier)
+                .then(if (height == InfinitySheetHeight.Large) Modifier.weight(1f) else Modifier)
                 .then(if (scrollContent) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp)

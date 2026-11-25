@@ -530,8 +530,8 @@ class P0RuntimeIntegrationTest {
     fun `下一轮上下文挂起时取消仍保留已执行调用与结果的持久配对`() = runTest {
         val fixture = fixture()
         val continuationEntered = CompletableDeferred<Unit>()
-        fixture.onContext = { round ->
-            if (round == 3) {
+        fixture.onContext = {
+            if (fixture.builtContexts.last().assistantMsgId != fixture.request.assistantMessageId) {
                 continuationEntered.complete(Unit)
                 awaitCancellation()
             }
@@ -958,6 +958,101 @@ class P0RuntimeIntegrationTest {
     }
 
     @Test
+    fun `配置稳定时首发与工具续轮各构建一次上下文`() = runTest {
+        val fixture = fixture()
+        val contextCounts = mutableListOf<Int>()
+        fixture.onPrompt = { _, _ -> contextCounts += fixture.builtContexts.size }
+        runOnRealClock(fixture.runtime(), fixture.request)
+        assertThat(contextCounts).containsExactly(1, 2).inOrder()
+    }
+
+    @Test
+    fun `首发消费预备上下文后自动重试只刷新一次并沿用冻结用户块`() = runTest {
+        val fixture = prefixFixture()
+        val builder = spyk(ContextBuilder())
+        fixture.realContextBuilder = builder
+        fixture.preferences.edit().putInt("stream_retry_limit", 1).commit()
+        fixture.onPrompt = { index, _ ->
+            if (index == 1) fixture.sessions.updateSession("session", mapOf("executionMode" to "workspace"))
+        }
+        fixture.rounds = { index ->
+            if (index == 1) listOf(StreamChunk.Error(code = GenerationFailureCode.NETWORK, retryable = true))
+            else listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN))
+        }
+
+        runOnRealClock(fixture.runtime(), fixture.request)
+
+        coVerify(exactly = 1) { builder.buildContext(match { it.cachedTurnContext == null }) }
+        coVerify(exactly = 1) { builder.buildContext(match { it.cachedTurnContext != null && it.session.executionMode == "workspace" }) }
+        coVerify(exactly = 2) { builder.buildContext(any()) }
+        val turnContexts = fixture.prompts.map { prompt -> prompt.messages.single { it.role == "user" }.turnContext }
+        assertThat(turnContexts[0]).isNotEmpty()
+        assertThat(turnContexts).containsExactly(turnContexts[0], turnContexts[0])
+    }
+
+    @Test
+    fun `首发前全局工具开关变化时重建上下文`() = runTest {
+        val fixture = fixture()
+        fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        val runtime = fixture.runtime()
+        runtime.prepare(fixture.request)
+        assertThat(runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        assertThat(fixture.builtContexts.single().availableToolNames).contains("write_file")
+
+        fixture.preferences.edit().putStringSet("enabled_skills", emptySet()).commit()
+        runtime.stream(fixture.request, 0).toList()
+
+        assertThat(fixture.builtContexts).hasSize(2)
+        assertThat(fixture.prompts.single().tools).isNull()
+    }
+
+    @Test
+    fun `技能在构建工具表期间变化时首发刷新工具定义`() = runTest {
+        val fixture = fixture()
+        val changes = kotlinx.coroutines.flow.MutableStateFlow(0L)
+        fixture.skillCatalog = mockk<com.promenar.infinity.data.skills.SkillCatalog> {
+            every { revision } returns changes
+            coEvery { scan(any()) } coAnswers {
+                if (changes.value == 0L) {
+                    fixture.advertisedTools = emptyList()
+                    changes.value++
+                }
+                com.promenar.infinity.data.skills.SkillSnapshot(firstArg(), emptyList())
+            }
+        }
+        fixture.rounds = { listOf(StreamChunk.TextDelta("完成"), StreamChunk.Completed(CompletionReason.END_TURN)) }
+        val runtime = fixture.runtime()
+        runtime.prepare(fixture.request)
+        assertThat(runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        assertThat(fixture.builtContexts.single().availableToolNames).contains("write_file")
+
+        runtime.stream(fixture.request, 0).toList()
+
+        assertThat(fixture.builtContexts).hasSize(2)
+        assertThat(fixture.prompts.single().tools).isNull()
+    }
+
+    @Test
+    fun `路由重解析期间运行权限撤销时首发失败`() = runTest {
+        val fixture = fixture()
+        var allowed = true
+        fixture.runModeCheck = {
+            if (allowed) null else GenerationFailure(GenerationFailureCode.LINUX_UNAVAILABLE)
+        }
+        val runtime = fixture.runtime()
+        runtime.prepare(fixture.request)
+        assertThat(runtime.buildContext(fixture.request)).isEqualTo(GenerationPreparationOutcome.Ready)
+        fixture.onResolve = { allowed = false }
+
+        val chunk = runtime.stream(fixture.request, 0).toList().single()
+
+        assertThat((chunk as com.promenar.infinity.domain.generation.GenerationChunk.Failure).failure.code)
+            .isEqualTo(GenerationFailureCode.LINUX_UNAVAILABLE)
+        assertThat(fixture.prompts).isEmpty()
+        assertThat(fixture.messageRepository.getById("assistant")).isNotNull()
+    }
+
+    @Test
     fun `发送前配置刷新拒绝可重试且不得提前删除重新生成目标`() = runTest {
         val fixture = prefixFixture()
         fixture.rounds = { listOf(StreamChunk.TextDelta("原回答"), StreamChunk.Completed(CompletionReason.END_TURN)) }
@@ -1092,6 +1187,8 @@ class P0RuntimeIntegrationTest {
         var toolResult = "完整工具结果"
         var onPrompt: suspend (Int, PromptRequest) -> Unit = { _, _ -> }
         var onContext: suspend (Int) -> Unit = {}
+        var onResolve: () -> Unit = {}
+        var runModeCheck: (suspend (String) -> GenerationFailure?)? = null
         var rounds: (Int) -> List<StreamChunk> = { index ->
             if (index == 1) listOf(
                 StreamChunk.ToolCallDelta("call-1", "write_file", """{"path":"/a.md"}""", 0),
@@ -1167,6 +1264,7 @@ class P0RuntimeIntegrationTest {
             val router = object : ProviderRequestRouter {
                 override fun resolve(modelId: String): ProviderResolution {
                     resolvedModels += modelId
+                    onResolve()
                     if (providerUnavailable) return ProviderResolution.Failure(
                         com.promenar.infinity.data.remote.ProviderResolutionError.MODEL_NOT_FOUND, modelId = modelId,
                     )
@@ -1187,7 +1285,7 @@ class P0RuntimeIntegrationTest {
                 ContextBuilderResult("", "", emptyList(), emptyList(), null, "执行用户任务")
             }
             val registry = mockk<SkillRegistry>()
-            every { registry.getAllTools(any()) } returns advertisedTools
+            every { registry.getAllTools(any()) } answers { advertisedTools }
             return DefaultChatGenerationRuntime(
                 settings = preferences, applicationScope = scope, store = store,
                 agentRepository = mockk<IAgentRepository> { coEvery { getById(any()) } returns null },
@@ -1202,6 +1300,7 @@ class P0RuntimeIntegrationTest {
                 sessionManager = sessions, contentStrategy = DefaultChatGenerationContentStrategy(preferences, registry),
                 ui = ui, outputStore = outputStore, interactionStore = interactions,
                 compactionPipeline = pipeline, skillCatalog = skillCatalog, stateBoardRepository = stateBoards,
+                runModeCheck = runModeCheck,
             )
         }
     }

@@ -112,7 +112,7 @@ internal fun AgentReachSheet(
         show = true,
         onDismiss = onDismiss,
         title = stringResource(R.string.agent_reach_title),
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
     ) {
         AgentReachContent(
             state = state.copy(executionMode = ExecutionModeCodec.parseOrWorkspace(executionMode)),

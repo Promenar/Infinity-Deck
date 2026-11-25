@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.automirrored.rounded.NoteAdd
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Close
@@ -91,6 +92,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.files.FileItem
+import com.promenar.infinity.domain.files.FileLocation
+import com.promenar.infinity.domain.files.FileLocationKind
+import com.promenar.infinity.domain.files.FileLocationStorageKind
 import com.promenar.infinity.domain.files.FileTypeFilter
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
@@ -109,8 +113,10 @@ import com.promenar.infinity.ui.files.state.FileViewMode
 import com.promenar.infinity.ui.hub.HubExpandButton
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.infinityDomainColors
+import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.rememberLastNonNull
 
@@ -198,13 +204,7 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
             if (!inInspector || hasLeading) {
                 FileManagerLeadingButton(host.leading)
             }
-            val gitBranch = state.gitHeaderBranch(host)
-            val onOpenGit = host.onOpenGit
-            if (gitBranch != null && onOpenGit != null) {
-                FileGitHeader(gitBranch, state.location?.gitChangeCount, onOpenGit, Modifier.weight(1f))
-            } else {
-                FileHeaderTitle(state, actions, Modifier.weight(1f), inInspector = inInspector)
-            }
+            FileHeaderTitle(state, actions, Modifier.weight(1f), inInspector = inInspector)
             // 内屏的合集信息在标题下的信息行里，外屏用小标签。
             host.folderBadge?.takeUnless { host.leading.isInnerScreen || inInspector }?.let { HostBadge(it) }
             IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
@@ -291,82 +291,90 @@ private fun FileSettingsBrowseBar(state: FileManagerUiState, actions: FileManage
 }
 
 /**
- * 页头的 Git 分支卡片所指的分支：宿主能打开 Git 面板、位置是仓库且不需要“位置 ▾”切换时，
- * 卡片取代页头标题（当前目录名由路径条给出），子文件夹里也保持指向仓库；否则为 null。
+ * 页头的 Git 副标题所指的分支：宿主支持打开 Git 面板且当前位置是 Git 仓库时返回分支标签，
+ * 在检视器内统一并入 B 档双行轻页头，根目录不再额外重复展示 Git 状态条。
  */
 @Composable
 internal fun FileManagerUiState.gitHeaderBranch(host: FileManagerHostSpec): String? {
-    if (host.onOpenGit == null || (host.allowLocationSwitch && locations.size > 1)) return null
+    if (host.onOpenGit == null) return null
     return location?.gitLabel()
 }
 
-/** Git 分支卡片：分支名、改动数胶囊与进入箭头，整块点按打开宿主的 Git 面板。 */
+/** 非 Git 普通文件夹在检视器双行页头第二行展示的目录来源/属性标签。 */
+@StringRes
+internal fun plainFolderSubtitleRes(location: FileLocation): Int = when (location.storageKind) {
+    FileLocationStorageKind.EXTERNAL_MOUNT ->
+        if (location.capabilities.writable) R.string.fm_source_external_folder
+        else R.string.fm_source_external_folder_readonly
+    FileLocationStorageKind.SHARED_STORAGE -> R.string.fm_source_shared_storage
+    FileLocationStorageKind.APP_PROJECT -> R.string.fm_source_project_workspace
+    FileLocationStorageKind.RETAINED_SESSION -> R.string.fm_source_retained_workspace
+    FileLocationStorageKind.BRANCH_WORKTREE -> R.string.fm_source_worktree
+    FileLocationStorageKind.LINUX_HOME -> R.string.fm_source_linux_home
+    FileLocationStorageKind.BUILTIN -> when (location.kind) {
+        FileLocationKind.KNOWLEDGE_BASE -> R.string.fm_source_storage
+        else -> R.string.fm_source_local_workspace
+    }
+}
+
+/** B 档双行轻页头的 Git 元信息行：分支树图标 + 等宽分支名 + 改动计数（暖琥珀）或干净态 + 跳转箭头。 */
 @Composable
-private fun FileGitHeader(branch: String, changes: Int?, onOpen: () -> Unit, modifier: Modifier) {
-    val colors = MaterialTheme.infinityDomainColors
+private fun ExplorerGitMetaRow(branch: String, changes: Int?) {
+    val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
     Row(
-        modifier = modifier
-            .padding(horizontal = InfinitySpacing.XSmall)
-            .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_git_view), onClick = onOpen)
-            .padding(start = InfinitySpacing.Medium, end = InfinitySpacing.Small)
-            .testTag(UiTags.FM_GIT_STRIP),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Icon(
-            Icons.AutoMirrored.Rounded.CallSplit,
+            Icons.Rounded.AccountTree,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp),
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(13.dp),
         )
-        Spacer(Modifier.width(InfinitySpacing.Small))
-        // 分支名与改动胶囊占满箭头前的空间：胶囊先量，分支名过长时省略。
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = branch,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            style = InfinityTypography.labelMedium.copy(fontFamily = InfinityMonospace),
+            color = scheme.onSurface,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
+            softWrap = false, // wrap-check: allow 共享页头信息行固定单行横滑
         )
-        Spacer(Modifier.width(InfinitySpacing.Small))
-        when {
-            changes == null -> Unit
-            changes > 0 -> Text(
-                text = pluralStringResource(R.plurals.fm_git_changes, changes, changes),
+        if (changes != null) {
+            Text(
+                text = "·",
                 style = MaterialTheme.typography.labelMedium,
-                color = colors.onWarningContainer,
+                color = scheme.outline,
                 maxLines = 1,
-                softWrap = false,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(colors.warningContainer)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                softWrap = false, // wrap-check: allow 共享页头信息行分隔符
             )
-            else -> Text(
-                text = stringResource(R.string.fm_git_clean),
+            Text(
+                text = if (changes > 0) {
+                    pluralStringResource(R.plurals.fm_git_changes, changes, changes)
+                } else {
+                    stringResource(R.string.fm_git_clean)
+                },
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (changes > 0) domain.onWarningContainer else scheme.onSurfaceVariant,
                 maxLines = 1,
-                softWrap = false,
+                softWrap = false, // wrap-check: allow 共享页头信息行固定单行横滑
             )
-        }
         }
         Icon(
             Icons.AutoMirrored.Rounded.KeyboardArrowRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(15.dp),
         )
     }
 }
 
 /**
- * 标题单行居中，过长时横滑并在右侧渐隐。副标题只在两种情况出现：会话宿主可切换位置时的“位置 ▾”，
- * 以及位置根目录的剩余空间；子文件夹的位置名由页头下方的路径条给出。
+ * 标题区统一收口为无卡片背景的轻页头：
+ * - 检视器与含 Git 跳转的宿主采用与 Git/任务/状态页签一致的 B 档 56dp 大小字双行轻页头：
+ *   - Git 仓库（单位置）：上行仓库名，下行「分支树 + 分支名 · 改动数 ›」，整块点按跳转 Git 页签；
+ *   - Git 仓库（多位置）：上行位置名 + 主色 ▾ 切位置，下行 Git 元信息点按跳转 Git 页签；
+ *   - 非 Git 普通文件夹：上行文件夹/工作区名（多位置带 ▾），下行展示目录属性/来源（避免与标题同名重复）。
+ * - 非检视器普通页头保留原有单/双行与位置切换行为。
  */
 @Composable
 private fun FileHeaderTitle(
@@ -376,89 +384,207 @@ private fun FileHeaderTitle(
     inInspector: Boolean = false,
 ) {
     val host = actions.host
-    val title = host.title ?: state.currentFolderTitle()
+    val gitBranch = state.gitHeaderBranch(host)
+    val onOpenGit = host.onOpenGit
+    val hasGitHeader = gitBranch != null && onOpenGit != null
+    val title = if (inInspector || hasGitHeader) {
+        host.title ?: state.location?.title?.takeIf { it.isNotBlank() } ?: state.currentFolderTitle()
+    } else {
+        host.title ?: state.currentFolderTitle()
+    }
     val switchable = host.allowLocationSwitch && state.locations.size > 1
     val locationTitle = state.location?.title.orEmpty()
     val freeBytes = state.location?.freeBytes
+    val plainInspectorSubtitle = if (inInspector && !hasGitHeader) {
+        state.location?.let { loc ->
+            val sourceLabel = stringResource(plainFolderSubtitleRes(loc))
+            sourceLabel.takeUnless { it == title }
+                ?: freeBytes?.let { stringResource(R.string.fm_free_space, formatFileSize(it)) }
+                ?: stringResource(R.string.fm_source_local_folder)
+        }
+    } else {
+        null
+    }
     val subtitle = when {
+        plainInspectorSubtitle != null -> plainInspectorSubtitle
         switchable -> locationTitle
         state.path != "/" -> null
         freeBytes != null -> stringResource(R.string.fm_free_space, formatFileSize(freeBytes))
         else -> null
     }
     var open by remember { mutableStateOf(false) }
-    val inner = host.leading.isInnerScreen || inInspector
-    // 内屏右列与会话检视器：统一 16sp 标题（B 档轻页头），合集信息或位置副标题放在信息行；整块点按打开合集设置。
-    val badge = host.folderBadge?.takeIf { inner }
+    val inner = host.leading.isInnerScreen || inInspector || hasGitHeader
+    val badge = host.folderBadge?.takeIf { inner && !hasGitHeader }
     val badgeClick = badge?.onClick
+    val scheme = MaterialTheme.colorScheme
     Box(modifier) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                .clip(RoundedCornerShape(12.dp))
-                .then(
-                    when {
-                        switchable -> Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_switch_location)) { open = true }
-                        badgeClick != null -> Modifier.clickable(role = Role.Button, onClickLabel = badge.onClickLabel, onClick = badgeClick)
-                        else -> Modifier
-                    },
-                )
-                .padding(horizontal = if (inInspector) 0.dp else InfinitySpacing.Small)
-                .testTag(UiTags.FM_TITLE),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            if (inner) {
-                val metaText = badge?.description ?: subtitle
-                AnimatedContent(targetState = title to metaText, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { (text, meta) ->
-                    InfinityPaneHeaderTitle(
-                        title = text,
-                        modifier = Modifier.fillMaxWidth(),
-                        meta = meta?.let {
-                            {
-                                badge?.icon?.let { icon ->
-                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(13.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                }
-                                Text(
-                                    text = meta,
-                                    color = if (switchable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.testTag(UiTags.FM_HOST_BADGE),
-                                )
-                                if (switchable) {
-                                    Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        },
-                    )
-                }
-            } else AnimatedContent(targetState = title, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { text ->
-                InfinityHeaderTitle(
-                    text = text,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            if (subtitle != null && !inner) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        if (switchable && hasGitHeader) {
+            // 多位置 + Git 仓库：上行切位置，下行跳 Git，维持标准 B 档 56dp 高度与零卡片外观。
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                    .padding(horizontal = if (inInspector) 0.dp else InfinitySpacing.Small),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_switch_location)) { open = true }
+                        .testTag(UiTags.FM_TITLE),
+                ) {
                     Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (switchable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (switchable) {
-                        Icon(
-                            Icons.Rounded.ArrowDropDown,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp),
+                    Spacer(Modifier.width(2.dp))
+                    Icon(
+                        Icons.Rounded.ArrowDropDown,
+                        contentDescription = null,
+                        tint = scheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_git_view), onClick = onOpenGit)
+                        .testTag(UiTags.FM_GIT_STRIP),
+                ) {
+                    ExplorerGitMetaRow(gitBranch, state.location?.gitChangeCount)
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                    .clip(RoundedCornerShape(10.dp))
+                    .then(
+                        when {
+                            hasGitHeader -> Modifier
+                                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_git_view), onClick = onOpenGit)
+                                .testTag(UiTags.FM_GIT_STRIP)
+                            switchable -> Modifier
+                                .clickable(role = Role.Button, onClickLabel = stringResource(R.string.fm_switch_location)) { open = true }
+                            badgeClick != null -> Modifier
+                                .clickable(role = Role.Button, onClickLabel = badge.onClickLabel, onClick = badgeClick)
+                            else -> Modifier
+                        },
+                    )
+                    .padding(horizontal = if (inInspector) 0.dp else InfinitySpacing.Small)
+                    .then(if (!hasGitHeader) Modifier.testTag(UiTags.FM_TITLE) else Modifier),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                if (inner) {
+                    when {
+                        hasGitHeader -> {
+                            InfinityPaneHeaderTitle(
+                                title = title,
+                                modifier = Modifier.fillMaxWidth(),
+                                meta = { ExplorerGitMetaRow(gitBranch, state.location?.gitChangeCount) },
+                            )
+                        }
+                        switchable && inInspector -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
+                            ) {
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = scheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Icon(
+                                    Icons.Rounded.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = scheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            if (subtitle != null) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) {
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = scheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                        else -> {
+                            val metaText = badge?.description ?: subtitle
+                            AnimatedContent(targetState = title to metaText, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { (text, meta) ->
+                                InfinityPaneHeaderTitle(
+                                    title = text,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    meta = meta?.let {
+                                        {
+                                            badge?.icon?.let { icon ->
+                                                Icon(icon, contentDescription = null, tint = scheme.tertiary, modifier = Modifier.size(13.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                            }
+                                            Text(
+                                                text = meta,
+                                                color = if (switchable) scheme.primary else scheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                softWrap = false, // wrap-check: allow 共享页头信息行固定单行横滑
+                                                modifier = Modifier.testTag(UiTags.FM_HOST_BADGE),
+                                            )
+                                            if (switchable) {
+                                                Icon(Icons.Rounded.ArrowDropDown, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                } else AnimatedContent(targetState = title, transitionSpec = { InfinityMotion.fadeThrough() }, label = "fm_title") { text ->
+                    InfinityHeaderTitle(
+                        text = text,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = scheme.onSurface,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (subtitle != null && !inner) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (switchable) scheme.primary else scheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
+                        if (switchable) {
+                            Icon(
+                                Icons.Rounded.ArrowDropDown,
+                                contentDescription = null,
+                                tint = scheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }

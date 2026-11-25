@@ -3,6 +3,19 @@ package com.promenar.infinity.data.remote.parser
 import com.promenar.infinity.domain.generation.GenerationFailure
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.generation.ProviderErrorMessage
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.utils.io.ClosedByteChannelException
+import io.ktor.utils.io.ConnectionClosedException
+import java.io.EOFException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.nio.channels.ClosedChannelException
+import java.util.Collections
+import java.util.IdentityHashMap
+import javax.net.ssl.SSLException
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 
 enum class ErrorCategory {
     NETWORK,
@@ -135,22 +148,28 @@ object ErrorNormalizer {
             return NormalizedError.Unknown(technicalMessage = "null error")
         }
 
-        val errorMsg = error.message ?: error.toString()
+        val causes = causeChain(error)
+        // 包装异常也可能携带明确的 HTTP 响应，优先沿用原有 HTTP 分类与响应体处理。
+        val classifiedError = causes.firstOrNull { it is HttpStatusException }
+            ?: causes.firstOrNull { extractStatusCode(it) != 0 }
+            ?: error
+        val errorMsg = classifiedError.message ?: classifiedError.toString()
         val errorMsgLower = errorMsg.lowercase()
-        val statusCode = extractStatusCode(error)
-        val provider = (error as? HttpStatusException)?.let { ProviderErrorMessage.extract(it.message) }
+        val statusCode = extractStatusCode(classifiedError)
+        val provider = (classifiedError as? HttpStatusException)?.let { ProviderErrorMessage.extract(it.message) }
 
-        // HTTP 错误先看状态码；响应体文本只作为分类补充，避免把正文里的数字或单词当成网络/鉴权错误。
-        if (error !is HttpStatusException && isNetworkError(error, errorMsgLower)) {
-            return NormalizedError.Network(technicalMessage = errorMsg)
+        if (statusCode == 0 && classifiedError !is HttpStatusException) {
+            // 先检查整条链的超时，再识别可能包裹超时的连接关闭或重置。
+            if (causes.any(::isTransportTimeout)) return NormalizedError.Timeout(technicalMessage = errorMsg)
+            if (causes.any(::isTransportFailure)) return NormalizedError.Network(technicalMessage = errorMsg)
         }
 
-        if (isAuthError(error, statusCode, errorMsgLower)) {
+        if (isAuthError(classifiedError, statusCode, errorMsgLower)) {
             return NormalizedError.Auth(technicalMessage = "$statusCode: $errorMsg", providerMessage = provider)
         }
 
-        if (isRateLimitError(error, statusCode, errorMsgLower)) {
-            val retryAfter = extractRetryAfter(error) ?: 60
+        if (isRateLimitError(classifiedError, statusCode, errorMsgLower)) {
+            val retryAfter = extractRetryAfter(classifiedError) ?: 60
             return NormalizedError.RateLimit(
                 technicalMessage = errorMsg,
                 retryAfter = retryAfter,
@@ -162,7 +181,7 @@ object ErrorNormalizer {
             return NormalizedError.QuotaExceeded(technicalMessage = errorMsg, providerMessage = provider)
         }
 
-        if (statusCode == 408 || isTimeoutError(error, errorMsgLower)) {
+        if (statusCode == 408 || isTimeoutError(classifiedError, errorMsgLower)) {
             return NormalizedError.Timeout(technicalMessage = errorMsg, providerMessage = provider)
         }
 
@@ -174,12 +193,47 @@ object ErrorNormalizer {
             return NormalizedError.ServerError(technicalMessage = errorMsg, providerMessage = provider)
         }
 
-        if (error is HttpStatusException && isNetworkError(error, errorMsgLower)) {
+        if (classifiedError is HttpStatusException && isNetworkError(classifiedError, errorMsgLower)) {
             return NormalizedError.Network(technicalMessage = errorMsg)
         }
 
         return NormalizedError.Unknown(technicalMessage = errorMsg, providerMessage = provider)
     }
+
+    private fun causeChain(error: Throwable): List<Throwable> {
+        val visited = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
+        return generateSequence(error) { it.cause }.takeWhile(visited::add).toList()
+    }
+
+    private fun isTransportTimeout(error: Throwable): Boolean {
+        val message = error.message.orEmpty().lowercase()
+        return isTimeoutError(error, message) ||
+            (error !is IllegalArgumentException && error !is IllegalStateException && "timed out" in message)
+    }
+
+    private fun isTransportFailure(error: Throwable): Boolean = when (error) {
+        // ConnectException 继承 SocketException。
+        is EOFException, is SocketException, is UnknownHostException, is SSLException,
+        is ClosedChannelException, is ClosedReceiveChannelException, is ClosedByteChannelException,
+        is ConnectionClosedException -> true
+        is IllegalArgumentException, is IllegalStateException -> false
+        else -> {
+            val message = (error.message ?: error.toString()).trim().lowercase()
+            isNetworkError(error, message) ||
+                STREAM_FAILURE_PHRASES.any { it in message } ||
+                message == "eof" || message == "premature" ||
+                ("stream" in message || "response" in message || "socket" in message) &&
+                ("premature" in message || EOF_WORD.containsMatchIn(message))
+        }
+    }
+
+    private val STREAM_FAILURE_PHRASES = listOf(
+        "unexpected end of stream", "unexpected eof", "premature eof",
+        "stream was reset", "broken pipe", "software caused connection abort",
+    )
+    private val EOF_WORD = Regex("""\beof\b""")
+    private val HTTP_STATUS_PATTERN =
+        Regex("""(?i)\b(?:status(?:[_ ]?code)?|http(?:/\d(?:\.\d)?)?)[\s:=]*(\d{3})\b""")
 
     private fun extractStatusCode(error: Throwable): Int {
         return when (error) {
@@ -187,7 +241,7 @@ object ErrorNormalizer {
             else -> {
                 val msg = error.message ?: ""
                 // 只认带 status / HTTP 前缀的状态码，避免把 JSON 偏移量等任意三位数当成 HTTP 状态。
-                val match = Regex("""(?i)\b(?:status(?:[_ ]?code)?|http(?:/\d(?:\.\d)?)?)[\s:=]*(\d{3})\b""").find(msg)
+                val match = HTTP_STATUS_PATTERN.find(msg)
                 val code = match?.groupValues?.lastOrNull()?.toIntOrNull()
                 if (code != null && code in 100..599) code else 0
             }
@@ -239,7 +293,8 @@ object ErrorNormalizer {
     }
 
     private fun isTimeoutError(error: Throwable, msg: String): Boolean {
-        return msg.contains("timeout") ||
+        return error is SocketTimeoutException || error is HttpRequestTimeoutException || error is ConnectTimeoutException ||
+            msg.contains("timeout") ||
             msg.contains("etimedout") ||
             error::class.simpleName?.lowercase()?.contains("timeout") == true
     }

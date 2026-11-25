@@ -37,7 +37,7 @@ internal fun KnowledgeGraphAccessibilitySheet(
     val nodesById = remember(nodes) { nodes.associateBy { it.id } }
     InfinityModalSheet(
         onDismissRequest = onDismiss,
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
         modifier = Modifier.testTag(UiTags.KG_ACCESSIBILITY_LIST),
     ) {
         Text(

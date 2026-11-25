@@ -78,7 +78,17 @@
         <item quantity="other">%1$d changes</item>
     </plurals>
     <string name="fm_git_view">View changes</string>
-    <string name="fm_git_clean">No changes</string>
+    <string name="fm_git_clean">Clean</string>
+    <string name="fm_source_local_workspace">Local workspace</string>
+    <string name="fm_source_project_workspace">Project workspace</string>
+    <string name="fm_source_retained_workspace">Retained workspace</string>
+    <string name="fm_source_external_folder">External folder</string>
+    <string name="fm_source_external_folder_readonly">External folder · Read-only</string>
+    <string name="fm_source_shared_storage">Shared storage</string>
+    <string name="fm_source_linux_home">Linux home</string>
+    <string name="fm_source_storage">Storage</string>
+    <string name="fm_source_worktree">Branch worktree</string>
+    <string name="fm_source_local_folder">Local folder</string>
 
     <!-- 资料状态 -->
     <string name="fm_knowledge_none">Not in library</string>

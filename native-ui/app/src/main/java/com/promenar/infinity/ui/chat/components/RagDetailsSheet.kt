@@ -179,7 +179,7 @@ fun RagDetailsSheet(
     knowledgeSearch: KnowledgeSearchDetails? = null,
 ) {
     // 外框与内容同为 surfaceContainerLow，顶部拖动条一带不会露出另一层底色。
-    InfinityModalSheet(onDismissRequest = onDismissRequest, height = InfinitySheetHeight.Full, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InfinityModalSheet(onDismissRequest = onDismissRequest, height = InfinitySheetHeight.Large, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         RagDetailsSheetContent(
             references = references.orEmpty(),
             citations = citations.orEmpty(),

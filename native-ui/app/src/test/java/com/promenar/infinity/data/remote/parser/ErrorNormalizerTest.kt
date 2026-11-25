@@ -2,6 +2,20 @@ package com.promenar.infinity.data.remote.parser
 
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.google.common.truth.Truth.assertThat
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.utils.io.ClosedByteChannelException
+import io.ktor.utils.io.ConnectionClosedException
+import java.io.EOFException
+import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.nio.channels.ClosedChannelException
+import javax.net.ssl.SSLException
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.serialization.SerializationException
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -37,6 +51,56 @@ class ErrorNormalizerTest {
     @Nested
     @DisplayName("Network errors")
     inner class NetworkErrors {
+
+        @Test
+        fun `断流和传输异常可重试且支持包装异常`() {
+            val failures = listOf(
+                EOFException(),
+                SocketException(),
+                ConnectException(),
+                UnknownHostException(),
+                SSLException("peer closed"),
+                ClosedChannelException(),
+                ClosedReceiveChannelException("Channel closed"),
+                ClosedByteChannelException(),
+                ConnectionClosedException(),
+            )
+            for (failure in failures) {
+                for (error in listOf(failure, IllegalStateException("流读取失败", failure))) {
+                    val result = normalize(error)
+                    assertThat(result).isInstanceOf(NormalizedError.Network::class.java)
+                    assertThat(result.retryable).isTrue()
+                    assertFailure(result, GenerationFailureCode.NETWORK)
+                }
+            }
+        }
+
+        @Test
+        fun `按传输异常消息识别提前结束与重置`() {
+            val messages = listOf(
+                "unexpected end of stream", "unexpected EOF", "premature end of response",
+                "stream was reset: CANCEL", "broken pipe", "connection reset",
+                "software caused connection abort", "EOF",
+            )
+            for (message in messages) {
+                assertThat(normalize(Exception("流读取失败", IOException(message))).category)
+                    .isEqualTo(ErrorCategory.NETWORK)
+            }
+        }
+
+        @Test
+        fun `异常链循环保留已找到的传输原因并能终止`() {
+            val outer = Exception("流读取失败")
+            val reset = EOFException()
+            outer.initCause(reset)
+            reset.initCause(outer)
+            assertThat(normalize(outer).category).isEqualTo(ErrorCategory.NETWORK)
+
+            val unrelated = Exception("输入失败")
+            val cause = IllegalStateException("无效状态", unrelated)
+            unrelated.initCause(cause)
+            assertThat(normalize(unrelated).category).isEqualTo(ErrorCategory.UNKNOWN)
+        }
 
         @Test
         fun `network in message`() {
@@ -244,6 +308,22 @@ class ErrorNormalizerTest {
     inner class TimeoutErrors {
 
         @Test
+        fun `超时优先于异常链任一层的传输特征`() {
+            val failures = listOf(
+                SocketTimeoutException("Read timed out"),
+                HttpRequestTimeoutException("https://example.test", 123L),
+                ConnectTimeoutException("peer unreachable", null),
+                IOException("connection timed out"),
+            )
+            for (failure in failures) {
+                val wrapper = SocketException("connection reset").apply { initCause(failure) }
+                assertThat(normalize(wrapper).category).isEqualTo(ErrorCategory.TIMEOUT)
+            }
+            assertThat(normalize(HttpStatusException(408, "Request expired")).category)
+                .isEqualTo(ErrorCategory.TIMEOUT)
+        }
+
+        @Test
         fun `timeout in message`() {
             val result = normalize(Exception("Request timeout"))
             assertThat(result).isInstanceOf(NormalizedError.Timeout::class.java)
@@ -316,6 +396,21 @@ class ErrorNormalizerTest {
     inner class UnknownErrors {
 
         @Test
+        fun `解析与业务异常不会因字段文本或普通IO异常被判成断流`() {
+            val failures = listOf(
+                SerializationException("Unexpected JSON token at offset 501: EOF"),
+                IllegalStateException("premature state transition"),
+                IllegalArgumentException("Invalid connection field"),
+                IllegalStateException("local workspace validation timed out"),
+                IOException("Cannot read local file"),
+                IOException("Invalid EOF marker in local file"),
+            )
+            for (failure in failures) {
+                assertThat(normalize(failure).category).isEqualTo(ErrorCategory.UNKNOWN)
+            }
+        }
+
+        @Test
         fun `unrecognized error returns Unknown`() {
             val result = normalize(Exception("Something went wrong"))
             assertThat(result).isInstanceOf(NormalizedError.Unknown::class.java)
@@ -332,6 +427,31 @@ class ErrorNormalizerTest {
     @Nested
     @DisplayName("Priority / precedence")
     inner class Precedence {
+
+        @Test
+        fun `显式HTTP状态维持既有分类`() {
+            val expected = mapOf(
+                400 to ErrorCategory.INVALID_REQUEST, 401 to ErrorCategory.AUTH,
+                403 to ErrorCategory.AUTH, 408 to ErrorCategory.TIMEOUT,
+                429 to ErrorCategory.RATE_LIMIT, 502 to ErrorCategory.SERVER_ERROR,
+            )
+            for ((status, category) in expected) {
+                val typed = HttpStatusException(status, "connection reset").apply { initCause(EOFException()) }
+                val withStatus = IOException("HTTP $status: connection reset", EOFException())
+                assertThat(normalize(typed).category).isEqualTo(category)
+                assertThat(normalize(withStatus).category).isEqualTo(category)
+            }
+            assertThat(normalize(HttpStatusException(400, "insufficient_quota")).category)
+                .isEqualTo(ErrorCategory.QUOTA_EXCEEDED)
+            val wrapped = IOException("流读取失败", HttpStatusException(502, """{"error":{"message":"Upstream unavailable"}}"""))
+            assertThat(normalize(wrapped).category).isEqualTo(ErrorCategory.SERVER_ERROR)
+            assertThat(normalize(wrapped).providerMessage).isEqualTo("Upstream unavailable")
+
+            val rateLimit = HttpStatusException(429, """{"error":{"message":"Wait 23 seconds"}}""")
+            val mismatchedStatus = IOException("gateway status 502", rateLimit)
+            assertThat(normalize(mismatchedStatus).category).isEqualTo(ErrorCategory.RATE_LIMIT)
+            assertThat(normalize(mismatchedStatus).retryAfter).isEqualTo(23)
+        }
 
         @Test
         fun `network takes priority over rate limit text`() {

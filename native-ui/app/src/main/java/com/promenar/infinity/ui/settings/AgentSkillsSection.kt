@@ -198,7 +198,7 @@ fun AgentSkillEditorSheet(
     val canSave = name.isNotBlank() && nameError == null && description.isNotBlank() &&
         description.length <= SkillMarkdownParser.MAX_DESCRIPTION_LENGTH
 
-    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Full) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Large) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

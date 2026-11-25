@@ -319,7 +319,7 @@ fun WorkspacePickerSheet(
         show = true,
         onDismiss = onDismiss,
         title = stringResource(R.string.workspace_picker_title),
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
         dismissEnabled = !busy,
     ) {
         // 系统返回先逐级回到上一层目录，回到首页后再关闭面板。

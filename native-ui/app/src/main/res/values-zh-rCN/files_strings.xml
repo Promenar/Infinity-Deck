@@ -73,7 +73,17 @@
         <item quantity="other">%1$d 处改动</item>
     </plurals>
     <string name="fm_git_view">查看变更</string>
-    <string name="fm_git_clean">无改动</string>
+    <string name="fm_git_clean">工作区干净</string>
+    <string name="fm_source_local_workspace">本地工作区</string>
+    <string name="fm_source_project_workspace">项目工作区</string>
+    <string name="fm_source_retained_workspace">保留工作区</string>
+    <string name="fm_source_external_folder">外部文件夹</string>
+    <string name="fm_source_external_folder_readonly">外部文件夹 · 只读</string>
+    <string name="fm_source_shared_storage">共享存储</string>
+    <string name="fm_source_linux_home">Linux 主目录</string>
+    <string name="fm_source_storage">存储空间</string>
+    <string name="fm_source_worktree">分支工作树</string>
+    <string name="fm_source_local_folder">本地文件夹</string>
 
     <!-- 资料状态 -->
     <string name="fm_knowledge_none">未加入资料</string>

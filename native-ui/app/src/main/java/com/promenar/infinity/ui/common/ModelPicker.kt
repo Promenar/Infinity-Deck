@@ -79,7 +79,7 @@ fun ModelPicker(
         }
     }
 
-    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Full) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Large) {
         ModelPickerSheetContent(
             title = title ?: stringResource(R.string.common_model_picker_title),
             searchQuery = searchQuery,

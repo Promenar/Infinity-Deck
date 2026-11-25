@@ -219,7 +219,7 @@ internal fun BackupSettingsScreen(
                 tempWebdavPass = ""
                 showWebdavSheet = false
             },
-            height = InfinitySheetHeight.Full,
+            height = InfinitySheetHeight.Large,
         ) {
             Column(
                 modifier = Modifier

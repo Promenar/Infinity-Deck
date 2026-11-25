@@ -208,7 +208,7 @@ fun AgentAvatarPickerSheet(
     InfinityBottomSheet(
         show = show,
         onDismiss = onDismiss,
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
         // 网格自带滚动，面板不跟随拖动，避免两者在边界处争抢位移。
         dragGesturesEnabled = false,
         modifier = Modifier.testTag(UiTags.AGENT_AVATAR_PICKER),

@@ -137,7 +137,7 @@ internal fun RunDetailSheet(
     onEditState: suspend (Long, StateOperation) -> String?,
     onRemoveState: suspend (Long) -> String?,
 ) {
-    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Full, contentDragsSheet = false) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Large, contentDragsSheet = false) {
         RunDetailContent(
             initialTab = initialTab,
             plan = plan,

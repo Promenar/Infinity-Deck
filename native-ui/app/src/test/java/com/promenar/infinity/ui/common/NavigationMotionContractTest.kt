@@ -64,11 +64,11 @@ class NavigationMotionContractTest {
     }
 
     @Test
-    fun `外部文件夹在同一个全高面板内逐页切换而不是叠放对话框`() {
+    fun `外部文件夹在同一个93占比大面板内逐页切换而不是叠放对话框`() {
         val panel = source("chat/components/ExternalFoldersPanel.kt")
 
         assertThat(panel).doesNotContain("AlertDialog")
-        assertThat(panel).contains("height = InfinitySheetHeight.Full")
+        assertThat(panel).contains("height = InfinitySheetHeight.Large")
         assertThat(panel).contains("ExternalMountPage.Manager -> ExternalMountManagerContent(")
         assertThat(panel).contains("is ExternalMountPage.Form -> ExternalMountFormContent(")
         // 管理页按已挂载和添加方式分组，刷新在页头。

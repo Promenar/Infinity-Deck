@@ -46,9 +46,11 @@ class BackupPreferenceInventoryTest {
     }
 
     @Test
-    fun `检视器边缘条位置登记为本机状态且不参与备份`() {
-        assertThat(BackupPreferencePolicy.isKnown("infinity_ui_state", "chat_inspector_strip_lift")).isTrue()
-        assertThat(BackupPreferencePolicy.isAllowed("infinity_ui_state", "chat_inspector_strip_lift")).isFalse()
+    fun `检视器边缘条位置与按会话展开状态登记为本机状态且不参与备份`() {
+        for (key in listOf("chat_inspector_strip_lift", "chat_inspector_session_states")) {
+            assertThat(BackupPreferencePolicy.isKnown("infinity_ui_state", key)).isTrue()
+            assertThat(BackupPreferencePolicy.isAllowed("infinity_ui_state", key)).isFalse()
+        }
     }
 
     @Test
@@ -195,6 +197,7 @@ class BackupPreferenceInventoryTest {
             "ui/rag/KnowledgeBaseSettingsLogic.kt#prefs" to "rag_index_baseline",
             // 检视器边缘条位置：本机界面状态，独立偏好文件，不参与备份。
             "ui/chat/ChatInspector.kt#prefs" to "infinity_ui_state",
+            "ui/chat/ChatInspectorPreferenceStore.kt#preferences" to "infinity_ui_state",
             // 资料页知识源与固定文件夹由 LibraryKnowledgeModule / DefaultFileManagerServices 注入 infinity_settings。
             "data/library/DefaultLibraryKnowledgeSource.kt#preferences" to "infinity_settings",
             "data/files/DefaultPinnedFolderStore.kt#preferences" to "infinity_settings",

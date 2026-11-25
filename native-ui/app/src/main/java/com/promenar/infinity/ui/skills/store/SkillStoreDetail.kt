@@ -297,7 +297,7 @@ private fun SkillMarkdownSheet(key: String, load: suspend () -> Result<String>, 
         show = true,
         onDismiss = onDismiss,
         title = "SKILL.md",
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
         scrollContent = true,
     ) {
         val phase = when {

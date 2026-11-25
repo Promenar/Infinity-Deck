@@ -152,7 +152,7 @@ fun SessionSettingsSheet(
         stringResource(R.string.sheet_tab_settings)
     )
 
-    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Full) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Large) {
         Text(
             stringResource(R.string.sheet_title),
             style = MaterialTheme.typography.titleLarge,

@@ -181,7 +181,7 @@ private fun KnowledgeWorkspacesSheet(
         show = true,
         onDismiss = onDismiss,
         title = stringResource(R.string.workspace_kb_entry),
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
         dragGesturesEnabled = false,
     ) {
         // 系统返回先逐级回到上一页，回到列表后再关闭面板。

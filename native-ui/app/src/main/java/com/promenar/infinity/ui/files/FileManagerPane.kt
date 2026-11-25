@@ -297,6 +297,8 @@ fun FileManagerPane(
 @Composable
 private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActions, modifier: Modifier) {
     val controller = actions.controller
+    val inInspector = com.promenar.infinity.ui.common.LocalInfinityPanePresentation.current ==
+        com.promenar.infinity.ui.common.InfinityPanePresentation.Inspector
     val showGitStrip = state.search == null && state.path == "/" &&
         state.location?.gitLabel() != null && state.gitHeaderBranch(actions.host) == null
     val lastGitState = rememberLastNonNull(state.takeIf { showGitStrip })
@@ -311,7 +313,7 @@ private fun FileListColumn(state: FileManagerUiState, actions: FileManagerUiActi
                     modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Small, end = InfinitySpacing.XSmall),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    if (actions.host.settingsPage && state.path == "/") {
+                    if ((actions.host.settingsPage || inInspector || state.gitHeaderBranch(actions.host) != null) && state.path == "/") {
                         FolderCountLine(state, Modifier.weight(1f))
                     } else {
                         FileBreadcrumbs(crumbs = state.fullCrumbs(), onGo = controller::goTo, modifier = Modifier.weight(1f))

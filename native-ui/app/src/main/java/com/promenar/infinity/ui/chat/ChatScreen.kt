@@ -353,6 +353,7 @@ data class ChatScreenState(
     val workspace: com.promenar.infinity.ui.workspace.SessionWorkspaceUi? = null,
     /** 会话二级内容层级；宽窗口下其根即检视器当前页签，为空表示检视器收起。 */
     val inspectorPages: List<ChatPage> = emptyList(),
+    val initialLastInspectorRoot: String? = null,
     /** 本会话 Agent 浏览器的页面与操作权状态；还没有打开网页时为 null，入口仍常驻并进入空状态。 */
     val browser: com.promenar.infinity.data.browser.BrowserUiState? = null,
     /** 外部入口请求打开后台任务列表的次数；每次加一，打开运行详情的“后台”页。 */
@@ -887,7 +888,9 @@ fun ChatScreenContent(
         val toggleInspectorPage: (ChatPage) -> Unit = { page ->
             actions.onSetInspectorPages(toggleChatInspector(state.inspectorPages, page))
         }
-        var lastInspectorRoot by rememberSaveable(uiState.session?.id) { mutableStateOf<String?>(null) }
+        var lastInspectorRoot by rememberSaveable(uiState.session?.id) {
+            mutableStateOf(state.initialLastInspectorRoot)
+        }
         SideEffect { activeInspectorRoot?.let { lastInspectorRoot = it.token } }
         var inspectorWidened by rememberSaveable { mutableStateOf(false) }
         // 浏览器页签加宽时铺满会话区，只留左侧一条边距，再按一次恢复。

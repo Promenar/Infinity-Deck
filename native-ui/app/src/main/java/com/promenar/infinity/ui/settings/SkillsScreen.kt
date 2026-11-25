@@ -280,7 +280,7 @@ fun SkillsScreen(
             "http", mcpUrl.trim(),
         )
         androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.clearMcpConfigError() }
-        InfinityModalSheet(onDismissRequest = { if (!mcpSaving) showAddMcp = false }, height = InfinitySheetHeight.Full) {
+        InfinityModalSheet(onDismissRequest = { if (!mcpSaving) showAddMcp = false }, height = InfinitySheetHeight.Large) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -536,7 +536,7 @@ internal fun SearchConfigBottomSheet(
     )
     val searchState by searchViewModel.uiState.collectAsState()
 
-    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Full) {
+    InfinityModalSheet(onDismissRequest = onDismiss, height = InfinitySheetHeight.Large) {
         SearchConfigContent(
             searchState = searchState,
             onSearchEngineChange = searchViewModel::updateSearchEngine,

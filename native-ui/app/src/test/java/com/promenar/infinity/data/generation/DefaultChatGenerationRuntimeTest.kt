@@ -2461,6 +2461,14 @@ class DefaultChatGenerationRuntimeTest {
     }
 
     @Test
+    fun `首发及每个工具续轮各构建一次工具表`() = runTest {
+        val buildsAtSend = mutableListOf<Int>()
+        val (prompts, _, _) = runThreeRoundToolScenario(onToolBuildCountAtSend = buildsAtSend::add)
+        assertThat(prompts).hasSize(3)
+        assertThat(buildsAtSend).containsExactly(1, 2, 3).inOrder()
+    }
+
+    @Test
     fun `CONTINUE强刷assistant后多轮Prompt保留全部工具配对`() = runTest {
         val (prompts, searches, executorPreparedSnapshots) = runThreeRoundToolScenario()
         val advertisedNames = listOf("read_file", "search")
@@ -2851,8 +2859,10 @@ class DefaultChatGenerationRuntimeTest {
         initialReplies: List<Message> = emptyList(),
         replacementIds: Set<String> = emptySet(),
         contextTokens: Int? = null,
+        onToolBuildCountAtSend: (Int) -> Unit = {},
     ): Triple<List<PromptRequest>, Int, List<List<ProtocolTool>>> {
         val settings = mockk<SharedPreferences>()
+        every { settings.all } returns emptyMap()
         every { settings.getInt(any(), any()) } answers { secondArg() }
         contextTokens?.let { every { settings.getInt("model_info_local::model_context", any()) } returns it }
         loopLimit?.let { every { settings.getInt("loop_limit", any()) } returns it }
@@ -2898,12 +2908,14 @@ class DefaultChatGenerationRuntimeTest {
         val messageManager = MessageManager(store, messageRepository, sessionRepository, this)
         val prompts = mutableListOf<PromptRequest>()
         var completedRounds = 0
+        var toolBuilds = 0
         var retryIssued = false
         val protocol = object : LlmProtocol {
             override val protocolType = ProtocolType.Local
             override suspend fun sendPrompt(request: PromptRequest): Flow<StreamChunk> = flow {
                 prompts += request
                 onPrompt(request)
+                onToolBuildCountAtSend(toolBuilds)
                 val round = completedRounds + 1
                 if (prompts.size == 1 && onPartialStream != null) {
                     emit(StreamChunk.TextDelta("部分正文", reasoning = "部分思考"))
@@ -2993,7 +3005,10 @@ class DefaultChatGenerationRuntimeTest {
             ),
         )
         val skillRegistry = mockk<SkillRegistry>()
-        every { skillRegistry.getAllTools(any()) } returns advertisedTools
+        every { skillRegistry.getAllTools(any()) } answers {
+            toolBuilds++
+            advertisedTools
+        }
         val contentStrategy = DefaultChatGenerationContentStrategy(settings, skillRegistry)
         val recordingStrategy = object : ChatGenerationContentStrategy by contentStrategy {
             override fun buildProtocolMessages(session: Session, systemPrompt: String, pinnedUserMessageId: String?,

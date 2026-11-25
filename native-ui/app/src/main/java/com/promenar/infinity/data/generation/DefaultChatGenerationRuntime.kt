@@ -8,6 +8,7 @@ import kotlinx.serialization.encodeToString
 
 import com.promenar.infinity.data.model.TurnMemoryState
 import android.content.SharedPreferences
+import com.promenar.infinity.data.manager.ProviderConfigurationRevision
 import com.promenar.infinity.data.manager.ProviderManager
 import com.promenar.infinity.data.document.ContextBudgetDecision
 import com.promenar.infinity.data.model.ApprovalRequest
@@ -24,6 +25,8 @@ import com.promenar.infinity.data.model.PostProcessType
 import com.promenar.infinity.data.model.RagOptions
 import com.promenar.infinity.data.model.RagPhase
 import com.promenar.infinity.data.model.RagProgress
+import com.promenar.infinity.data.model.ModelInfo
+import com.promenar.infinity.data.model.Session
 import com.promenar.infinity.data.model.TokenUsage
 import com.promenar.infinity.data.model.ToolCall
 import com.promenar.infinity.data.model.UpdateMessageOptions
@@ -47,6 +50,8 @@ import com.promenar.infinity.data.repository.ToolApprovalRequestFactory
 import com.promenar.infinity.data.repository.ToolExecutionLedger
 import com.promenar.infinity.data.repository.ToolInvocationIdentityFactory
 import com.promenar.infinity.data.repository.ToolInvocationIdentityResolution
+import com.promenar.infinity.data.security.SecretMutationRevision
+import com.promenar.infinity.data.workspace.SessionWorkspace
 import com.promenar.infinity.domain.generation.GenerationChunk
 import com.promenar.infinity.domain.generation.GenerationFailure
 import com.promenar.infinity.domain.generation.GenerationFailureCode
@@ -64,7 +69,9 @@ import com.promenar.infinity.domain.generation.DEFAULT_STREAM_RETRY_LIMIT
 import com.promenar.infinity.domain.generation.MAX_STREAM_RETRY_LIMIT
 import com.promenar.infinity.domain.generation.STREAM_RETRY_LIMIT_KEY
 import com.promenar.infinity.domain.generation.GenerationToolDecision
+import com.promenar.infinity.domain.model.Agent
 import com.promenar.infinity.domain.repository.IAgentRepository
+import com.promenar.infinity.domain.storage.ExternalMount
 import com.promenar.infinity.domain.usecase.AgentConfigResolver
 import com.promenar.infinity.ui.chat.ChatStore
 import com.promenar.infinity.ui.chat.manager.ContextBuilder
@@ -240,6 +247,7 @@ internal class DefaultChatGenerationRuntime(
     private var frozenTurnContext: String? = null
     private var replacementTurnContext: Pair<String, String?>? = null
     private var refreshingForSend = false
+    private var preparedSend: PreparedSend? = null
     private val unsentInstructionIds = mutableSetOf<String>()
     private var observedStateRevision = 0L
     private var observedProductionRevision = 0L
@@ -248,6 +256,47 @@ internal class DefaultChatGenerationRuntime(
     private val terminalEdits = Mutex()
     private val providerCancelled = java.util.concurrent.atomic.AtomicBoolean()
     private val activeProviderStream = java.util.concurrent.atomic.AtomicReference<kotlinx.coroutines.Job?>()
+
+    private data class SendConfiguration(
+        private val preferences: Map<String, *>,
+        private val models: List<ModelInfo>,
+        private val activeLocalModel: ModelInfo?,
+        private val providerRevision: Long,
+        private val secretRevision: Long,
+    ) {
+        val stable: Boolean get() = providerRevision % 2L == 0L && secretRevision % 2L == 0L
+    }
+
+    private class PreparedSend(
+        val request: GenerationRequest,
+        val assistantId: String,
+        val session: Session,
+        val stagedUserEdit: Boolean,
+        val agent: Agent?,
+        val model: String,
+        val configuration: SendConfiguration,
+        val skillRevision: Long,
+        val workspace: SessionWorkspace?,
+        val mounts: List<ExternalMount>,
+    )
+
+    private val providerManager by lazy { runCatching { ProviderManager.getInstance() }.getOrNull() }
+
+    private fun sendConfiguration(): SendConfiguration? {
+        val preferences = runCatching { settings.all }.getOrNull() ?: return null
+        return SendConfiguration(
+            preferences,
+            providerManager?.providerModels?.value.orEmpty(),
+            com.promenar.infinity.data.local.inference.LocalSessionModelBridge.currentActiveModelInfo(),
+            ProviderConfigurationRevision.current(),
+            SecretMutationRevision.current(),
+        ).takeIf { it.stable }
+    }
+
+    private fun skillRevision(): Long? {
+        val catalog = skillCatalog ?: return 0L
+        return runCatching { catalog.revision.value }.getOrNull()
+    }
 
     /** 生成运行在主线程作用域；工具表要按会话扫描技能目录，统一放到 IO 上构建。 */
     private suspend fun buildToolsOffMain(session: com.promenar.infinity.data.model.Session, modelId: String? = preparedRoute?.modelId): List<ProtocolTool> =
@@ -479,6 +528,7 @@ internal class DefaultChatGenerationRuntime(
 
     /** 手动压缩只重建系统与现有历史，不触发新的联网或知识库检索。 */
     private suspend fun prepareStoredContext(sessionId: String): StoredContext {
+        preparedSend = null
         val session = requireNotNull(store.getSession(sessionId)) { "压缩会话不存在" }
         val agent = agentRepository.getById(session.agentId)
         val config = configResolver.resolve(agent)
@@ -610,6 +660,7 @@ internal class DefaultChatGenerationRuntime(
     private var latencyPreparationStart = 0L
 
     override suspend fun prepare(request: GenerationRequest) {
+        preparedSend = null
         latencyPreparationStart = System.nanoTime() / 1_000_000
         toolProgressReminder.start()
         interactionMode = request.interactionMode
@@ -660,14 +711,26 @@ internal class DefaultChatGenerationRuntime(
         }
     }
 
-    override suspend fun buildContext(request: GenerationRequest): GenerationPreparationOutcome {
-        if (latencyPreparationStart == 0L) latencyPreparationStart = System.nanoTime() / 1_000_000
-        interactionMode = request.interactionMode
+    private suspend fun deliverSubagentCompletions(request: GenerationRequest) {
         subagentCompletions?.let { bridge ->
             val target = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == assistantMessageId(request) }
             bridge.deliver(request.sessionId, store, messageManager,
                 consumerAssistantId = target?.takeIf { it.isUnstartedCompletionPlaceholder() }?.id)
         }
+    }
+
+    private fun nextRequestInstruction(): String = when {
+        finalAnswerMode -> FINAL_ANSWER_INSTRUCTION.trimStart()
+        emptyReplyReminder -> EMPTY_REPLY_INSTRUCTION
+        toolProgressReminder.shouldRemind() -> PROGRESS_INSTRUCTION
+        else -> ""
+    }
+
+    override suspend fun buildContext(request: GenerationRequest): GenerationPreparationOutcome {
+        preparedSend = null
+        if (latencyPreparationStart == 0L) latencyPreparationStart = System.nanoTime() / 1_000_000
+        interactionMode = request.interactionMode
+        deliverSubagentCompletions(request)
         runModeCheck?.invoke(request.sessionId)?.let { failure ->
             handlePreparationFailure(request, failure, null)
             return GenerationPreparationOutcome.Handled(failure)
@@ -689,6 +752,8 @@ internal class DefaultChatGenerationRuntime(
             com.promenar.infinity.ui.chat.manager.ContextRetrieval("", emptyList(), "", emptyList(), null, "", emptyList())
         }
         if (reusedRetrieval == null) ui.replaceRagPhases(defaultRagPhases())
+        val sendConfiguration = if (refreshingForSend || emptyReplyReminder) null else sendConfiguration()
+        val stagedUserEdit = hasStagedUserEdit(request)
         var session = (store.getSession(request.sessionId) ?: error("生成会话不存在")).forReplacementContext(request)
         val savedConfiguration = com.promenar.infinity.ui.chat.manager.turnContextMetadata(savedTurnContext)?.configuration
         val agent = agentRepository.getById(session.agentId)
@@ -744,6 +809,7 @@ internal class DefaultChatGenerationRuntime(
             KnowledgeCitationScope { id -> turns.citation(session.id, turnId, id) }
         }
         var routeTools: List<ProtocolTool> = emptyList()
+        val initialSkillRevision = if (sendConfiguration == null) null else skillRevision()
         val preparation = try {
             routeGate.prepareWithRoute(model) { route ->
                 // Vertex 的多轮函数调用要求 thought signature 原样回传；夹具闭环前保持能力关闭。
@@ -820,12 +886,7 @@ internal class DefaultChatGenerationRuntime(
         }
         val target = store.getSession(request.sessionId)?.messages?.firstOrNull { it.id == assistantMessageId(request) }
         if (target != null && (target.requestInstruction == null || target.id in unsentInstructionIds)) {
-            val instruction = when {
-                finalAnswerMode -> FINAL_ANSWER_INSTRUCTION.trimStart()
-                emptyReplyReminder -> EMPTY_REPLY_INSTRUCTION
-                toolProgressReminder.shouldRemind() -> PROGRESS_INSTRUCTION
-                else -> ""
-            }
+            val instruction = nextRequestInstruction()
             if (target.requestInstruction != instruction)
                 messageManager.persistModelInputs(request.sessionId, target.id, mapOf("requestInstruction" to instruction))
             unsentInstructionIds += target.id
@@ -909,12 +970,63 @@ internal class DefaultChatGenerationRuntime(
             return GenerationPreparationOutcome.Handled(failure)
         }
         preparedPrompt = budgetedPrompt
+        // MCP 发现结果有独立的更新来源，运行时没有可核对的修订号。
+        if (sendConfiguration != null && initialSkillRevision != null && initialSkillRevision == skillRevision() &&
+            toolSession.activeMcpServerIds.isEmpty() &&
+            params.session.copy(messages = emptyList(), summary = null, stats = null) ==
+            storedSession.copy(messages = emptyList(), summary = null, stats = null)
+        ) {
+            preparedSend = PreparedSend(
+                request, assistantMessageId(request), storedSession, stagedUserEdit, agent, model,
+                sendConfiguration, initialSkillRevision, params.workspace, params.mounts,
+            )
+        }
         return GenerationPreparationOutcome.Ready
     }
 
+    private fun matchesPreparedSession(ready: PreparedSend): Boolean {
+        val current = store.getSession(ready.request.sessionId) ?: return false
+        val previous = ready.session
+        if (current === previous) return true
+        if (current.copy(messages = previous.messages) != previous || current.messages.size != previous.messages.size) return false
+        return previous.messages.indices.all { index ->
+            val before = previous.messages[index]
+            val after = current.messages[index]
+            before == after || (before.id == ready.assistantId &&
+                before.copy(tokens = after.tokens, citations = after.citations, toolCalls = before.toolCalls.orEmpty()) ==
+                after.copy(toolCalls = after.toolCalls.orEmpty()))
+        }
+    }
+
+    private suspend fun reusableSendRoute(request: GenerationRequest, ready: PreparedSend): ChatProviderRoute? {
+        if (ready.request != request || ready.assistantId != assistantMessageId(request) || emptyReplyReminder) return null
+
+        fun matchesSnapshot(): Boolean =
+            matchesPreparedSession(ready) && hasStagedUserEdit(request) == ready.stagedUserEdit &&
+                sendConfiguration() == ready.configuration && skillRevision() == ready.skillRevision
+
+        if (!matchesSnapshot()) return null
+        val previousRoute = preparedRoute ?: return null
+        val checkedRoute = (routeGate.prepare(ready.model) { Unit } as? ChatRoutePreparation.Success)?.route ?: return null
+        deliverSubagentCompletions(request)
+        if (agentRepository.getById(ready.session.agentId) != ready.agent ||
+            sessionWorkspace?.invoke(request.sessionId) != ready.workspace ||
+            visibleMounts(request.sessionId) != ready.mounts ||
+            runModeCheck?.invoke(request.sessionId) != null
+        ) return null
+        if (checkedRoute.copy(client = null) != previousRoute.copy(client = null) || !matchesSnapshot()) return null
+        if (ready.assistantId in unsentInstructionIds &&
+            ready.session.messages.firstOrNull { it.id == ready.assistantId }?.requestInstruction != nextRequestInstruction()
+        ) return null
+        return checkedRoute
+    }
+
     override suspend fun recoverContextLimit(request: GenerationRequest, failure: GenerationFailure,
-        beforeRetry: suspend () -> Unit): Boolean = contextLimitRecovery.attempt(failure, compactionTurnState.historySummaryAttempted) {
-        recoverContextLimit(request, beforeRetry)
+        beforeRetry: suspend () -> Unit): Boolean {
+        preparedSend = null
+        return contextLimitRecovery.attempt(failure, compactionTurnState.historySummaryAttempted) {
+            recoverContextLimit(request, beforeRetry)
+        }
     }
 
     private suspend fun recoverContextLimit(request: GenerationRequest, beforeRetry: suspend () -> Unit): Boolean {
@@ -939,14 +1051,21 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override suspend fun stream(request: GenerationRequest, attempt: Int): Flow<GenerationChunk> {
-        // 每次实际发送前刷新配置；冻结块与已发送的尾部指令仍原文复用。
-        refreshingForSend = true
-        val refreshed = try { buildContext(request) } finally { refreshingForSend = false }
-        if (refreshed is GenerationPreparationOutcome.Handled)
-            return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(refreshed.failure))
+        // 每个新构建的上下文只能用于一次发送。同轮重试沿用 attempt，但标记已经消费。
+        val ready = preparedSend
+        preparedSend = null
+        val reusableRoute = ready?.let { reusableSendRoute(request, it) }
+        if (reusableRoute != null) {
+            preparedRoute = reusableRoute
+        } else {
+            refreshingForSend = true
+            val refreshed = try { buildContext(request) } finally { refreshingForSend = false }
+            if (refreshed is GenerationPreparationOutcome.Handled)
+                return kotlinx.coroutines.flow.flowOf(GenerationChunk.Failure(refreshed.failure))
+        }
         val route = requireNotNull(preparedRoute) { "生成路由尚未准备完成" }
         val prepared = requireNotNull(preparedPrompt) { "生成请求尚未准备完成" }
-        // 网络重试不会重建上下文；每次真正发起请求前都要重新校验工作区媒体。
+        // 每次真正发起请求前都要重新校验工作区媒体。
         val mediaPrompt = if (mediaContextLoader == null) prepared else {
             val currentSession = store.getSession(request.sessionId)
                 ?: com.promenar.infinity.data.model.Session(request.sessionId, "")
@@ -1552,6 +1671,7 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override fun requestReplyAfterEmptyTurn(request: GenerationRequest): Boolean {
+        preparedSend = null
         emptyReplyReminder = true
         // 当前回复的尾部指令已随上一次请求发出；重新标为未发送，下一次发送时改写为提醒。
         unsentInstructionIds += assistantMessageId(request)
@@ -1850,6 +1970,7 @@ internal class DefaultChatGenerationRuntime(
     }
 
     override suspend fun releaseToolResources(request: GenerationRequest, awaitingApproval: Boolean) {
+        preparedSend = null
         stateBoardRepository?.endGeneration(request.sessionId, request.assistantMessageId)
         try {
             if (!awaitingApproval && hasStagedUserEdit(request)) {

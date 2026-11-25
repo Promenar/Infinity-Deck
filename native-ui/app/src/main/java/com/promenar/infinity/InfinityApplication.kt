@@ -798,6 +798,12 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             privateWorkspaceFileRetention.summary(target.physicalRoot)
         }
 
+    val chatInspectorPreferenceStore: com.promenar.infinity.ui.chat.ChatInspectorPreferenceStore by lazy {
+        com.promenar.infinity.ui.chat.ChatInspectorPreferenceStore(
+            getSharedPreferences(com.promenar.infinity.ui.chat.ChatInspectorPreferenceStore.PREFS_NAME, MODE_PRIVATE),
+        )
+    }
+
     private val sessionDeletionCoordinator by lazy {
         val journal = com.promenar.infinity.data.session.RoomSessionWorkspaceMutationJournal(
             database,
@@ -886,6 +892,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 timedApprovalGrants.revokeAll(sessionId)
                 sessionSecretVault.clearSession(sessionId)
                 secretOutputRedactor.clearSession(sessionId)
+                chatInspectorPreferenceStore.deleteSession(sessionId)
                 com.promenar.infinity.data.session.cleanupSessionRuntimeData(
                     // 会话私有工作区只属于该会话，删除会话时一并撤销绑定到它的白名单条目。
                     { toolAllowlistStore.removeScope("session:$sessionId") },
@@ -922,8 +929,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             val result = sessionDeletionCoordinator.delete(sessionId, keepFiles)
             if (result !is com.promenar.infinity.data.session.SessionDeletionResult.Failed) {
                 timedApprovalGrants.revokeAll(sessionId)
-                // 会话删除后，宠物台词记忆里对应的条目一并清掉。
+                // 会话删除后，宠物台词记忆与宽屏检视器持久化状态里对应的条目一并清掉。
                 petMemoryStore.forget(sessionId)
+                chatInspectorPreferenceStore.deleteSession(sessionId)
             }
             database.sessionDao().getAll().filter { it.parentSessionDeleted }.forEach { row ->
                 chatStore.updateSession(row.id) { it.copy(parentSessionId = row.parentSessionId, parentSessionDeleted = true) }

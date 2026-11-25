@@ -943,7 +943,7 @@ private fun SshHostEditorSheet(
         dismissEnabled = !busy,
         dragGesturesEnabled = false,
         title = stringResource(if (existing == null) R.string.ssh_add_host else R.string.ssh_edit_host),
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
         modifier = Modifier.imePadding(),
     ) {
         SshHostEditorForm(

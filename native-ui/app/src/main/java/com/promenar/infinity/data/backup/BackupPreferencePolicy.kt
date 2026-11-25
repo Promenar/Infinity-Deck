@@ -110,8 +110,8 @@ internal object BackupPreferencePolicy {
         "infinity_pet_memory" to setOf("state"),
         // 本机每日会话图谱抽取统计，换设备后重新计数。
         "session_graph_stats" to setOf("day", "turns", "calls"),
-        // 检视器边缘条的拖放位置随本机屏幕尺寸而定，不随备份迁移。
-        "infinity_ui_state" to setOf("chat_inspector_strip_lift"),
+        // 检视器边缘条拖放位置与按会话宽屏展开状态只属于本机屏幕体验，不随备份迁移。
+        "infinity_ui_state" to setOf("chat_inspector_strip_lift", "chat_inspector_session_states"),
     )
 
     // 只为读取旧备份时识别并丢弃；不得继续导出或写回设备。

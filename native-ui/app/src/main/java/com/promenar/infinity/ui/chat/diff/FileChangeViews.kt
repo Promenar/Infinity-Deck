@@ -249,7 +249,7 @@ internal fun FileChangeDiffSheet(change: FileChangeSummary, onDismissRequest: ()
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
     // 面板占满屏幕，差异视口扣除拖动条、标题与路径后的高度；窗口尺寸尚未就绪（为 0）时仍保留可用的最小视口。
     val viewportHeight = (windowHeight * 0.7f).coerceAtLeast(240.dp)
-    InfinityModalSheet(onDismissRequest = onDismissRequest, height = InfinitySheetHeight.Full) {
+    InfinityModalSheet(onDismissRequest = onDismissRequest, height = InfinitySheetHeight.Large) {
         FileChangeDiffSheetContent(change, maxViewportHeight = viewportHeight, modifier = Modifier.navigationBarsPadding())
     }
 }

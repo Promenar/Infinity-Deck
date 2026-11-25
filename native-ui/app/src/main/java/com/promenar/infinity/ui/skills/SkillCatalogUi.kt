@@ -243,7 +243,7 @@ private fun SkillDetailSheet(
         show = true,
         onDismiss = onDismiss,
         title = skill.displayName ?: skill.name,
-        height = InfinitySheetHeight.Full,
+        height = InfinitySheetHeight.Large,
         scrollContent = true,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 24.dp)) {
