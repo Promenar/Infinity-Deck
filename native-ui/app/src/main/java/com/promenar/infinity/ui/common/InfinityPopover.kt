@@ -283,6 +283,10 @@ fun InfinityPopover(
                     ),
                     shadowElevation = 12.dp,
                     modifier = modifier
+                        .infinityDismissOnEscape(enabled = dismissible) {
+                            anchor.markDismissed()
+                            onDismissRequest()
+                        }
                         .width(popoverWidth)
                         .heightIn(max = maxHeight)
                         .then(if (title != null) Modifier.semantics { paneTitle = title } else Modifier)

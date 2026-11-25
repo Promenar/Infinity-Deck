@@ -22,7 +22,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import com.promenar.infinity.ui.common.infinityContextClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1041,10 +1041,11 @@ private fun HubSessionRow(
                 }
                 .infinityMenuHost(menuExpanded)
                 .infinityMenuTouch(menuTouch)
-                .combinedClickable(
+                .infinityContextClickable(
                     onClick = onOpen,
                     onLongClick = { menuExpanded = true },
                     onLongClickLabel = stringResource(R.string.hub_cd_session_actions),
+                    touch = menuTouch,
                 ),
             leadingContent = if (!isBranch) null else {
                 {
@@ -1162,10 +1163,11 @@ private fun HubAgentRow(
                 }
                 .infinityMenuHost(menuExpanded)
                 .infinityMenuTouch(menuTouch)
-                .combinedClickable(
+                .infinityContextClickable(
                     onClick = onToggleExpand,
                     onLongClick = { menuExpanded = true },
                     onLongClickLabel = stringResource(R.string.hub_cd_agent_actions),
+                    touch = menuTouch,
                 ),
             leading = {
                 Box(

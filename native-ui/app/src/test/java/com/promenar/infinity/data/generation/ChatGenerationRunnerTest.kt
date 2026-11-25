@@ -339,7 +339,7 @@ class ChatGenerationRunnerTest {
 
         assertThat(events.phases()).containsExactly(
             GenerationPhase.PREPARING, GenerationPhase.BUILDING_CONTEXT,
-            GenerationPhase.CONNECTING, GenerationPhase.THINKING,
+            GenerationPhase.CONNECTING, GenerationPhase.THINKING, GenerationPhase.STREAMING,
             GenerationPhase.EXECUTING_TOOLS,
             GenerationPhase.BUILDING_CONTEXT,
             GenerationPhase.CONNECTING, GenerationPhase.THINKING, GenerationPhase.STREAMING,
@@ -351,6 +351,36 @@ class ChatGenerationRunnerTest {
         assertThat(runtime.flushCount).isEqualTo(2)
         assertThat(events.filterIsInstance<GenerationEvent.TargetChanged>().map { it.assistantMessageId })
             .containsExactly("assistant-next")
+    }
+
+    @Test
+    fun `流式工具调用参数首个分片即进入STREAMING且每片增量持久化`() = runTest {
+        val runtime = FakeRuntime(listOf(
+            flowOf(
+                GenerationChunk.ToolCall("tool-1", "write_file", "{\"path\":"),
+                GenerationChunk.ToolCall("tool-1", "", "\"a.kt\",\"content\":"),
+                GenerationChunk.ToolCall("tool-1", "", "\"hello\"}"),
+                GenerationChunk.Completed(CompletionReason.TOOL_CALLS, listOf("tool-1")),
+            ),
+            flowOf(GenerationChunk.Text("ok"), GenerationChunk.Completed(CompletionReason.END_TURN)),
+        )).apply { toolDecisions += GenerationToolDecision.CONTINUE }
+        val events = mutableListOf<GenerationEvent>()
+
+        ChatGenerationRunner(runtime).run(request(), events::add)
+
+        val round1Phases = events.phases().takeWhile { it != GenerationPhase.EXECUTING_TOOLS }
+        assertThat(round1Phases).containsExactly(
+            GenerationPhase.PREPARING,
+            GenerationPhase.BUILDING_CONTEXT,
+            GenerationPhase.CONNECTING,
+            GenerationPhase.THINKING,
+            GenerationPhase.STREAMING,
+        ).inOrder()
+        assertThat(runtime.persisted.take(3).map { it.toolCalls.single().arguments }).containsExactly(
+            "{\"path\":",
+            "{\"path\":\"a.kt\",\"content\":",
+            "{\"path\":\"a.kt\",\"content\":\"hello\"}",
+        ).inOrder()
     }
 
     @Test

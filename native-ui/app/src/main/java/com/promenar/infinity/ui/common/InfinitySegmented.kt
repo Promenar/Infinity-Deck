@@ -110,7 +110,7 @@ fun <T> InfinitySegmentedControl(
         }
     }
     val outer = if (fillWidth) modifier.fillMaxWidth().padding(contentPadding)
-        else modifier.padding(contentPadding).horizontalScroll(scrollState)
+        else modifier.padding(contentPadding).infinityHorizontalWheelScroll(scrollState).horizontalScroll(scrollState)
     Box(outer.height(height).alpha(if (enabled) 1f else 0.38f)) {
         Box(
             Modifier
@@ -143,6 +143,7 @@ fun <T> InfinitySegmentedControl(
                 Box(
                     modifier = (if (fillWidth) Modifier.weight(1f) else Modifier)
                         .fillMaxHeight()
+                        .infinityPointerHand(enabled && segment.clickable)
                         .onGloballyPositioned { coordinates ->
                             bounds[index] = coordinates.positionInParent().x to coordinates.size.width.toFloat()
                         }
@@ -235,9 +236,9 @@ fun InfinityChip(
     val on = selected == true
     val shape = SegmentTrackShape
     val clickModifier = if (selected == null) {
-        Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        Modifier.infinityPointerHand(enabled).clickable(enabled = enabled, role = Role.Button, onClick = onClick)
     } else {
-        Modifier.selectable(selected = on, enabled = enabled, role = Role.Checkbox, onClick = { if (haptic) haptics.select(false); onClick() })
+        Modifier.infinityPointerHand(enabled).selectable(selected = on, enabled = enabled, role = Role.Checkbox, onClick = { if (haptic) haptics.select(false); onClick() })
     }
     Box(
         modifier = modifier

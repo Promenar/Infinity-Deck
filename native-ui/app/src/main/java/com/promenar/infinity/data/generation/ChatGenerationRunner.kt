@@ -394,6 +394,10 @@ class ChatGenerationRunner(
                                 }
                                 is GenerationChunk.ToolCall -> {
                                     markFirstOutput()
+                                    if (!streamingPhaseEmitted) {
+                                        streamingPhaseEmitted = true
+                                        phase(GenerationPhase.STREAMING)
+                                    }
                                     val old = roundTools[chunk.id]
                                     roundTools[chunk.id] = GenerationToolCall(
                                         id = chunk.id,

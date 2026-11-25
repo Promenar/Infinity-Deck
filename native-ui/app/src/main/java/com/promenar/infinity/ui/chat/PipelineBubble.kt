@@ -20,7 +20,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.promenar.infinity.ui.common.InlineEditorKeyAction
+import com.promenar.infinity.ui.common.infinityContextClickable
+import com.promenar.infinity.ui.common.resolveInlineEditorKeyAction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -441,11 +450,13 @@ fun PipelineBubble(
         }
         val showLiveTail = isGenerating && !hasPendingApproval &&
             liveStep?.kind != LiveStepKind.APPROVAL && liveStep?.kind != LiveStepKind.QUESTION
+        val immediateLiveTailExit = shouldExitLiveTailImmediately(isGenerating, liveStep)
         val footerOwner = footerContent?.let { pipelineContentOwner(group.messages, it) }
         if (footerOwner == null) {
             LiveTailSlot(
                 visible = showLiveTail,
                 liveStep = liveStep,
+                immediateExit = immediateLiveTailExit,
             )
         }
         if (!isGenerating) CanvasInvocationCards(
@@ -483,7 +494,11 @@ fun PipelineBubble(
             val branchTargetId = group.messages.lastOrNull()?.id ?: lastMsg.id
             val liveTailVisibleInFooter = showLiveTail && resolveLiveTailContent(liveStep) != LiveTailContent.NONE
             val footerSlotVisible = !isGenerating || liveTailVisibleInFooter
-            // 已有正文时将生成中尾部状态位与完成态操作行合入同一 36dp 槽位，结束时原地淡换，消除先收起再延迟展开的二次高度跳变。
+            val footerMinHeight = resolveAssistantFooterMinHeight(
+                isGenerating = isGenerating,
+                lastStepIsContent = allSteps.lastOrNull() is PipelineStep.Content,
+            )
+            // 已有正文时将生成中尾部状态位与完成态操作行合入同一槽位；被新思考/工具行接管时零帧交接，避免缩高动画与新行叠出列表上下晃动。
             val footerVisibility = remember(group.messages.firstOrNull()?.id) {
                 MutableTransitionState(footerSlotVisible)
             }
@@ -491,7 +506,7 @@ fun PipelineBubble(
             AnimatedVisibility(
                 visibleState = footerVisibility,
                 enter = InfinityMotion.expandIn,
-                exit = InfinityMotion.shrinkOut,
+                exit = if (immediateLiveTailExit) ExitTransition.None else InfinityMotion.shrinkOut,
             ) {
                 AnimatedContent(
                     targetState = isGenerating,
@@ -499,7 +514,7 @@ fun PipelineBubble(
                         (fadeIn(tween(InfinityMotion.DurationMedium)) togetherWith fadeOut(tween(InfinityMotion.DurationFadeOut)))
                             .using(SizeTransform(clip = false))
                     },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = LiveTailSlotHeight + 8.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = footerMinHeight),
                     contentAlignment = Alignment.TopStart,
                     label = "assistantFooterSlot",
                 ) { generating ->
@@ -640,9 +655,16 @@ private fun ErrorMessageSegment(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag(UiTags.CHAT_FAILURE_CARD)
-                // 长按只弹菜单，不铺按压涟漪；长按震动由 combinedClickable 自带。菜单从按住的位置长出。
+                // 长按或鼠标右键只弹菜单，不铺按压涟漪；菜单从按住或右键光标位置长出。
                 .infinityMenuTouch(menuTouch)
-                .combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = { showMenu = true }),
+                .infinityContextClickable(
+                    interactionSource = null,
+                    indication = null,
+                    touch = menuTouch,
+                    pointerHand = false,
+                    onClick = {},
+                    onLongClick = { showMenu = true },
+                ),
         ) {
             Column(
                 modifier = Modifier
@@ -2388,7 +2410,16 @@ fun UserMessageBubble(
                 val bubbleMaxWidth = maxWidth * 0.82f
                 Box(modifier = Modifier.align(Alignment.TopEnd).widthIn(max = bubbleMaxWidth)) {
                     Column(
-                        modifier = Modifier.infinityMenuTouch(menuTouch).combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = { showMenu = true }),
+                        modifier = Modifier
+                            .infinityMenuTouch(menuTouch)
+                            .infinityContextClickable(
+                                interactionSource = null,
+                                indication = null,
+                                touch = menuTouch,
+                                pointerHand = false,
+                                onClick = {},
+                                onLongClick = { showMenu = true },
+                            ),
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
@@ -2616,6 +2647,30 @@ private fun UserMessageInlineEditorCard(
                         .fillMaxWidth()
                         .heightIn(min = 68.dp, max = 220.dp)
                         .focusRequester(focusRequester)
+                        .onPreviewKeyEvent { keyEvent ->
+                            when (
+                                resolveInlineEditorKeyAction(
+                                    key = keyEvent.key,
+                                    type = keyEvent.type,
+                                    isShiftPressed = keyEvent.isShiftPressed,
+                                    isCtrlPressed = keyEvent.isCtrlPressed,
+                                    isAltPressed = keyEvent.isAltPressed,
+                                    isMetaPressed = keyEvent.isMetaPressed,
+                                    isComposing = fieldValue.composition != null,
+                                    canSubmit = hasAnyPayload,
+                                )
+                            ) {
+                                InlineEditorKeyAction.CANCEL -> {
+                                    onCancel()
+                                    true
+                                }
+                                InlineEditorKeyAction.SUBMIT -> {
+                                    onSubmit(buildPayload())
+                                    true
+                                }
+                                InlineEditorKeyAction.PASS_THROUGH -> false
+                            }
+                        }
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                         .testTag(UiTags.CHAT_USER_EDIT_INPUT),
                 )
@@ -2948,15 +3003,32 @@ private fun resolveLiveTailContent(liveStep: LiveStep?): LiveTailContent = when 
     else -> LiveTailContent.NONE
 }
 
+/** 思考或工具行直接接管流末尾状态位时零帧交接（不播缩高动画），避免新步骤行与旧尾部槽位重叠把列表顶起再弹回。 */
+internal fun shouldExitLiveTailImmediately(
+    isGenerating: Boolean,
+    liveStep: LiveStep?,
+): Boolean = isGenerating && (liveStep?.kind == LiveStepKind.THINKING || liveStep?.kind == LiveStepKind.TOOL)
+
+/**
+ * 已有正文时的底部槽位最小高度：
+ * - 生成结束态或末步为正文时保留 44dp（8dp 正文段距 + 36dp 行高），结束淡换或正文后接工具行均保持 ΔH = 0；
+ * - 生成期间末步为思考/工具步骤时取 36dp，与下一行思考/工具步骤严格等高交接。
+ */
+internal fun resolveAssistantFooterMinHeight(
+    isGenerating: Boolean,
+    lastStepIsContent: Boolean,
+): androidx.compose.ui.unit.Dp = if (!isGenerating || lastStepIsContent) LiveTailSlotHeight + 8.dp else LiveTailSlotHeight
+
 /**
  * 生成期间流末尾的一行状态位：正文流式时显示生成动画，等待模型或准备工具调用时显示等待行；
- * 思考块或工具行自带运行指示时不占空位，避免在思考块下方留出 36dp 空白造成跳变。
+ * 思考块或工具行自带运行指示时不占空位；由新思考/工具行接管时直接交接（[immediateExit]），消除列表上下晃动。
  */
 @Composable
 private fun LiveTailSlot(
     visible: Boolean,
     liveStep: LiveStep?,
     inlineInFooter: Boolean = false,
+    immediateExit: Boolean = false,
 ) {
     val kind = resolveLiveTailContent(liveStep)
     val active = visible && kind != LiveTailContent.NONE
@@ -2985,7 +3057,11 @@ private fun LiveTailSlot(
     if (inlineInFooter) {
         body()
     } else {
-        AnimatedVisibility(visible = active, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+        AnimatedVisibility(
+            visible = active,
+            enter = InfinityMotion.expandIn,
+            exit = if (immediateExit) ExitTransition.None else InfinityMotion.shrinkOut,
+        ) {
             body()
         }
     }

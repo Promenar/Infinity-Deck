@@ -1,9 +1,12 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
@@ -40,7 +43,9 @@ fun InfinityFullscreenDialog(
             onDispose {}
         }
         CompositionLocalProvider(LocalRowHeightGroup provides null) {
-            content()
+            Box(Modifier.fillMaxSize().infinityDismissOnEscape(onDismiss = onDismissRequest)) {
+                content()
+            }
         }
     }
 }

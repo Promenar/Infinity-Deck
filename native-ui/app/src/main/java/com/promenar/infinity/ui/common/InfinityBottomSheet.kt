@@ -138,7 +138,9 @@ fun InfinityModalSheet(
     }
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        modifier = modifier.then(sheetHeightModifier),
+        modifier = modifier
+            .then(sheetHeightModifier)
+            .infinityDismissOnEscape(enabled = properties.shouldDismissOnBackPress, onDismiss = onDismissRequest),
         sheetState = sheetState,
         sheetGesturesEnabled = sheetGesturesEnabled,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
@@ -214,6 +216,7 @@ private fun InfinityCenteredSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .infinityDismissOnEscape(enabled = properties.shouldDismissOnBackPress, onDismiss = onDismissRequest)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,

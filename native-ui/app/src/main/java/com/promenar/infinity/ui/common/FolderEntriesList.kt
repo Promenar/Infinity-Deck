@@ -4,7 +4,6 @@ import android.text.format.Formatter
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -183,7 +182,7 @@ private fun FolderEntryRows(
                         }) else null,
                         modifier = Modifier
                             .then(if (checked) Modifier.background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)) else Modifier)
-                            .combinedClickable(
+                            .infinityContextClickable(
                                 onClick = { onEntryClick(entry) },
                                 onLongClick = { onEntryLongClick(entry) },
                             )

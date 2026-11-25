@@ -351,6 +351,10 @@ fun InfinityDropdownMenu(
                 border = BorderStroke(0.75.dp, colors.edge),
                 shadowElevation = MenuKeyShadowElevation,
                 modifier = modifier
+                    .infinityDismissOnEscape {
+                        touch?.clear()
+                        onDismissRequest()
+                    }
                     .graphicsLayer {
                         this.alpha = alpha.value
                         scaleX = scale.value
@@ -527,6 +531,7 @@ fun InfinityMenuItem(
                 .sizeIn(minWidth = 112.dp, maxWidth = MenuMaxWidth, minHeight = MenuItemMinHeight)
                 .clip(MenuItemShape)
                 .then(if (selected == true) Modifier.background(menuColors.selectedContainer) else Modifier)
+                .infinityPointerHand(enabled)
                 .then(
                     if (selected != null) {
                         Modifier.selectable(selected = selected, enabled = enabled, role = Role.Button) {

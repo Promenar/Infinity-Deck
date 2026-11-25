@@ -18,7 +18,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import com.promenar.infinity.ui.common.infinityContextClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -433,7 +433,7 @@ internal fun FileRow(
             .padding(horizontal = InfinitySpacing.Small)
             .clip(RowShape)
             .background(background)
-            .combinedClickable(
+            .infinityContextClickable(
                 onClick = { if (selecting) onToggleSelection() else onClick() },
                 onLongClick = if (location == null) onToggleSelection else null,
                 onLongClickLabel = if (location == null) toggleLabel else null,
@@ -600,7 +600,7 @@ internal fun FileTile(
             .clip(TileShape)
             .background(tileBackground)
             .then(if (checked) Modifier.border(2.dp, scheme.primary, TileShape) else Modifier)
-            .combinedClickable(
+            .infinityContextClickable(
                 onClick = { if (selecting) onToggleSelection() else onClick() },
                 onLongClick = onToggleSelection,
                 onLongClickLabel = toggleLabel,

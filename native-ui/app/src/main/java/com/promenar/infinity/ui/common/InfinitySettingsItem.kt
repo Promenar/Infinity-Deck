@@ -2,7 +2,6 @@ package com.promenar.infinity.ui.common
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -64,7 +63,7 @@ fun InfinitySettingsItem(
     // 单选行在选中项变化时轻振；按钮行是导航或打开面板，不振动。
     val radioSelected = selected.takeIf { role == Role.RadioButton }
     val clickModifier = if (onLongClick != null) {
-        Modifier.combinedClickable(
+        Modifier.infinityContextClickable(
             enabled = enabled,
             role = role,
             onClickLabel = onClickLabel,
@@ -76,10 +75,12 @@ fun InfinitySettingsItem(
             },
         )
     } else {
-        Modifier.clickable(enabled = enabled, role = role, onClickLabel = onClickLabel) {
-            radioSelected?.let(haptics::select)
-            onClick()
-        }
+        Modifier
+            .infinityPointerHand(enabled)
+            .clickable(enabled = enabled, role = role, onClickLabel = onClickLabel) {
+                radioSelected?.let(haptics::select)
+                onClick()
+            }
     }
     InfinitySettingsRowLayout(
         title = title,

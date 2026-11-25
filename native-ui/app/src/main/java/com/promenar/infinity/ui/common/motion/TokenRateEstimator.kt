@@ -1,5 +1,7 @@
 package com.promenar.infinity.ui.common.motion
 
+import com.promenar.infinity.data.model.ToolCall
+
 /** 按 UTF-16 单元估算增量；权重可相加，分片边界不会改变结果。 */
 internal fun estimateTokenDelta(text: CharSequence, start: Int = 0): Float {
     var units = 0
@@ -38,20 +40,48 @@ internal object ProcessTokenRateCalibration {
     val value = TokenRateCalibration()
 }
 
-/** 分别累计正文与思考，文本回退时只重新建立基准。 */
+/** 分别累计正文、思考与工具调用参数，文本回退时只重新建立基准。 */
 internal class IncrementalTokenEstimate {
+    private class ToolCallLengths(var nameLength: Int = 0, var argumentsLength: Int = 0)
+
     private var contentLength = 0
     private var reasoningLength = 0
+    private val toolCallLengths = mutableMapOf<String, ToolCallLengths>()
     var total = 0f
         private set
 
-    fun resetTextBaseline() { contentLength = 0; reasoningLength = 0 }
+    fun resetTextBaseline() {
+        contentLength = 0
+        reasoningLength = 0
+        toolCallLengths.clear()
+    }
 
-    fun update(content: String, reasoning: String): Float {
+    fun update(content: String, reasoning: String, toolCalls: List<ToolCall> = emptyList()): Float {
         if (content.length >= contentLength) total += estimateTokenDelta(content, contentLength)
         if (reasoning.length >= reasoningLength) total += estimateTokenDelta(reasoning, reasoningLength)
         contentLength = content.length
         reasoningLength = reasoning.length
+        if (toolCalls.isEmpty()) {
+            toolCallLengths.clear()
+        } else {
+            val activeKeys = HashSet<String>(toolCalls.size)
+            toolCalls.forEachIndexed { index, call ->
+                val key = call.id.ifEmpty { "#$index" }
+                activeKeys += key
+                val prev = toolCallLengths[key]
+                val prevNameLen = prev?.nameLength ?: 0
+                val prevArgsLen = prev?.argumentsLength ?: 0
+                if (call.name.length >= prevNameLen) total += estimateTokenDelta(call.name, prevNameLen)
+                if (call.arguments.length >= prevArgsLen) total += estimateTokenDelta(call.arguments, prevArgsLen)
+                if (prev != null) {
+                    prev.nameLength = call.name.length
+                    prev.argumentsLength = call.arguments.length
+                } else {
+                    toolCallLengths[key] = ToolCallLengths(call.name.length, call.arguments.length)
+                }
+            }
+            toolCallLengths.keys.retainAll(activeKeys)
+        }
         return total
     }
 }
@@ -67,6 +97,7 @@ internal data class TokenMotionInput(
     val endedAt: Long?,
     val actualTokens: Int?,
     val eligibleUsage: Boolean,
+    val toolCalls: List<ToolCall> = emptyList(),
 )
 
 /** 只为身份与时间均匹配、且只有一条助手消息的生成应用真实用量。 */
@@ -93,7 +124,8 @@ internal class TokenMotionTracker(private val calibration: TokenRateCalibration)
         if (running || active || (!calibrated && messageId != null)) {
             if (runStartedAt == null) runStartedAt = input.runStartedAt
             val belongsToRun = runStartedAt != null && input.requestStartedAt != null && input.requestStartedAt >= runStartedAt!!
-            if (belongsToRun && (input.content.isNotEmpty() || input.reasoning.isNotEmpty())) {
+            val hasToolOutput = input.toolCalls.any { it.name.isNotEmpty() || it.arguments.isNotEmpty() }
+            if (belongsToRun && (input.content.isNotEmpty() || input.reasoning.isNotEmpty() || hasToolOutput)) {
                 if (messageId == null) {
                     messageId = input.messageId
                     runModel = input.modelId
@@ -103,7 +135,7 @@ internal class TokenMotionTracker(private val calibration: TokenRateCalibration)
                     messageId = input.messageId
                     estimate.resetTextBaseline()
                 }
-                estimate.update(input.content, input.reasoning)
+                estimate.update(input.content, input.reasoning, input.toolCalls)
             }
             motion.updateCurrentTokens(estimate.total * factor)
         }

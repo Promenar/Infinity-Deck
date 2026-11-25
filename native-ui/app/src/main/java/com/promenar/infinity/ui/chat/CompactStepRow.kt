@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.chat
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +72,7 @@ import com.promenar.infinity.ui.theme.InfinityTypography
 import androidx.compose.ui.res.stringResource
 import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.InfinityMetaSeparator
+import com.promenar.infinity.ui.common.infinityPointerHand
 import com.promenar.infinity.ui.common.rememberStreamAnimationsEnabled
 
 /** 相邻步骤依靠行高分隔，正文边界由消息容器添加间距。 */
@@ -185,14 +187,24 @@ internal fun CompactStepRow(
     val description = (visibleSegments.map(CharSequence::toString) + listOfNotNull(failureText?.takeIf(String::isNotBlank)))
         .joinToString(stringResource(R.string.chat_step_summary_separator))
     val haptics = LocalInfinityHaptics.current
-    // 步骤行没有容器形状，水波纹会画成溢出文字的灰色矩形；按下改为整行轻微变淡，配合触感反馈。
+    // 步骤行没有容器形状，水波纹会画成溢出文字的灰色矩形；按下变淡、悬停轻微提亮并切手型光标。
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val pressAlpha by animateFloatAsState(if (pressed) 0.5f else 1f, tween(if (pressed) 60 else 160), label = "stepPress")
+    val hovered by interaction.collectIsHoveredAsState()
+    val pressAlpha by animateFloatAsState(
+        targetValue = when {
+            pressed -> 0.5f
+            hovered -> 0.85f
+            else -> 1f
+        },
+        animationSpec = tween(if (pressed) 60 else 140),
+        label = "stepPress",
+    )
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = CompactStepRowHeight)
+            .infinityPointerHand()
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClickLabel = clickLabel) {
                 if (expanded != null) haptics.toggle(!expanded) else haptics.perform(InfinityHapticEvent.SELECTION)
                 onClick()

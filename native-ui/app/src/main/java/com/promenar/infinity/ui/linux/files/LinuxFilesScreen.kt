@@ -13,7 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import com.promenar.infinity.ui.common.infinityContextClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -674,7 +674,7 @@ private fun LinuxFileRow(
             .fillMaxWidth()
             .heightIn(min = 60.dp)
             .background(fill)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .infinityContextClickable(onClick = onClick, onLongClick = onLongClick)
             .semantics { if (selecting) selected = checked }
             .padding(horizontal = InfinitySpacing.Large, vertical = 6.dp)
             .testTag(UiTags.linuxFileRow(entry.path)),

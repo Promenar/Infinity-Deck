@@ -58,7 +58,7 @@ class AgentHubScreenContractTest {
         val sessionRow = source.substringAfter("private fun HubSessionRow(").substringBefore("private fun HubAgentRow(")
 
         listOf(agentRow, sessionRow).forEach { row ->
-            assertThat(row).contains("combinedClickable(")
+            assertThat(row).contains("infinityContextClickable(")
             assertThat(row).contains("onLongClick")
             assertThat(row).contains("CustomAccessibilityAction(")
             assertThat(row).contains("InfinityDropdownMenu(")

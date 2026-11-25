@@ -118,7 +118,9 @@ fun InfinityConfirmDialog(
                 isDestructive = isDestructive,
                 confirmButtonModifier = confirmButtonModifier,
                 cancelButtonModifier = cancelButtonModifier,
-                modifier = modifier.graphicsLayer {
+                modifier = modifier
+                    .infinityDismissOnEscape(enabled = properties.dismissOnBackPress, onDismiss = onDismissRequest)
+                    .graphicsLayer {
                     this.alpha = alpha.value
                     scaleX = scale.value
                     scaleY = scale.value
@@ -297,7 +299,7 @@ private fun DialogButtons(
             Button(
                 onClick = onConfirm,
                 enabled = confirmEnabled,
-                modifier = slot.height(DIALOG_BUTTON_HEIGHT).then(confirmButtonModifier),
+                modifier = slot.height(DIALOG_BUTTON_HEIGHT).infinityPointerHand(confirmEnabled).then(confirmButtonModifier),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isDestructive) scheme.error else scheme.primary,
                     contentColor = if (isDestructive) scheme.onError else scheme.onPrimary,
@@ -314,7 +316,7 @@ private fun DialogButtons(
                 Button(
                     onClick = onCancel,
                     enabled = cancelEnabled,
-                    modifier = slot.height(DIALOG_BUTTON_HEIGHT).then(cancelButtonModifier),
+                    modifier = slot.height(DIALOG_BUTTON_HEIGHT).infinityPointerHand(cancelEnabled).then(cancelButtonModifier),
                     border = BorderStroke(
                         0.75.dp,
                         if (dark) InfinityPureWhite.copy(alpha = 0.14f) else scheme.outlineVariant.copy(alpha = 0.65f),

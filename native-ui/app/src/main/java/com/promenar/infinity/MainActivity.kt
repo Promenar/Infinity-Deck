@@ -21,6 +21,8 @@ import com.promenar.infinity.ui.common.InfinityNoticeHost
 import com.promenar.infinity.ui.common.LocalAmbientLightField
 import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.backdropSource
+import androidx.compose.ui.input.key.onKeyEvent
+import com.promenar.infinity.ui.common.isPlainEscapeDown
 import com.promenar.infinity.ui.common.rememberBackdropSource
 import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
 import com.promenar.infinity.ui.theme.LocalInfinityMotionStyles
@@ -207,9 +209,19 @@ open class MainActivity : ComponentActivity() {
                         LocalInfinityNoticeController provides noticeController,
                         LocalAmbientLightField provides ambientLightField,
                     ) {
+                    val rootBackDispatcher = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
                     Box(
                         Modifier
                             .fillMaxSize()
+                            .onKeyEvent { event ->
+                                // 仅在冒泡阶段处理未被终端/输入框/弹层消费的 Esc，且只在存在活跃返回回调时触发，避免在首页误退出应用。
+                                if (event.isPlainEscapeDown() && rootBackDispatcher?.hasEnabledCallbacks() == true) {
+                                    rootBackDispatcher.onBackPressed()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
                             .semantics { testTagsAsResourceId = true }
                     ) {
                         Box(Modifier.fillMaxSize().backdropSource(rootBackdrop)) {

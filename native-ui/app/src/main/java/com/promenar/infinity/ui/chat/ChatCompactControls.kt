@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.ui.common.InfinityDisclosureRow
+import com.promenar.infinity.ui.common.infinityContextClickable
+import com.promenar.infinity.ui.common.infinityPointerHand
 
 /** 紧凑图标按钮的可见与布局尺寸。 */
 internal val ChatCompactIconSize = 40.dp
@@ -41,9 +42,9 @@ internal fun ChatCompactIconButton(
     val base = modifier.size(ChatCompactIconSize).clip(CircleShape).background(containerColor)
     Box(
         modifier = if (onLongClick == null) {
-            base.clickable(enabled = enabled, onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+            base.infinityPointerHand(enabled).clickable(enabled = enabled, onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
         } else {
-            base.combinedClickable(
+            base.infinityContextClickable(
                 enabled = enabled,
                 onClickLabel = onClickLabel,
                 role = Role.Button,
@@ -78,6 +79,7 @@ internal fun ChatCompactApprovalButton(
     Box(
         modifier = modifier.height(40.dp).clip(ButtonDefaults.shape).background(fill)
             .then(if (outlined) Modifier.border(BorderStroke(1.dp, colors.outline), ButtonDefaults.shape) else Modifier)
+            .infinityPointerHand(enabled)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,

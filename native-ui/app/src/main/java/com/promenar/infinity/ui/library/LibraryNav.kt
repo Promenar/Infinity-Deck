@@ -13,7 +13,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import com.promenar.infinity.ui.common.infinityContextClickable
+import com.promenar.infinity.ui.common.infinityPointerHand
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -401,9 +402,9 @@ internal fun LibraryNavRow(
         label = "nav-row-content",
     )
     val clickMod = if (onLongClick != null) {
-        Modifier.combinedClickable(role = Role.Tab, onClick = onClick, onLongClick = onLongClick)
+        Modifier.infinityContextClickable(role = Role.Tab, onClick = onClick, onLongClick = onLongClick)
     } else {
-        Modifier.clickable(role = Role.Tab, onClick = onClick)
+        Modifier.infinityPointerHand().clickable(role = Role.Tab, onClick = onClick)
     }
     Row(
         modifier = modifier

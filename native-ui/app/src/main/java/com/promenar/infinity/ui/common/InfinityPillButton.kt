@@ -259,6 +259,7 @@ private fun InfinityPillSurface(
                 .heightIn(min = minHeight)
                 .clip(shape)
                 .background(fill)
+                .infinityPointerHand(enabled)
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .padding(horizontal = horizontalPadding, vertical = if (minHeight < PillHeight) 4.dp else 6.dp),
             contentAlignment = Alignment.Center,

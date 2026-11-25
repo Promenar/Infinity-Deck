@@ -156,6 +156,7 @@ fun <T> InfinityPanelTabs(
                     end = scrollState.canScrollForward,
                     length = PanelTabFadeWidth,
                 )
+                .infinityHorizontalWheelScroll(scrollState)
                 .horizontalScroll(scrollState),
         ) {
             Row(

@@ -50,6 +50,7 @@ fun InfinitySearchBar(
     modifier: Modifier = Modifier,
     placeholder: String = stringResource(R.string.common_search_placeholder),
     onSearch: (() -> Unit)? = null,
+    onEscape: (() -> Unit)? = null,
     // 作用于输入框本身，供调用方挂接焦点请求等。
     fieldModifier: Modifier = Modifier,
 ) {
@@ -111,6 +112,13 @@ fun InfinitySearchBar(
                     modifier = fieldModifier
                         .fillMaxWidth()
                         .fillMaxHeight()
+                        .infinityDismissOnEscape {
+                            when {
+                                onEscape != null -> onEscape()
+                                value.isNotEmpty() -> onValueChange("")
+                                else -> focusManager.clearFocus()
+                            }
+                        }
                         .onFocusChanged { isFocused = it.isFocused }
                         .semantics { contentDescription = placeholder }
                 )
@@ -127,7 +135,7 @@ fun InfinitySearchBar(
             if (value.isNotEmpty()) {
                 IconButton(
                     onClick = { onValueChange("") },
-                    modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget),
+                    modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).infinityPointerHand(),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Clear,

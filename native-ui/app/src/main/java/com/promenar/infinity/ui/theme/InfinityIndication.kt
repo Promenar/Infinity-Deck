@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.IndicationNodeFactory
 import androidx.compose.foundation.interaction.FocusInteraction
+import androidx.compose.foundation.interaction.HoverInteraction
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.material.ripple.RippleAlpha
@@ -43,9 +44,10 @@ internal val IndicationMaxCorner = 12.dp
  */
 val LocalInfinityPressCorner = staticCompositionLocalOf<Dp> { IndicationMaxCorner }
 
-/** 状态层与水波在按下时的透明度（叠加后中心约 0.12，与 Material 按压状态层接近）。 */
+/** 状态层与水波在按下时的透明度（叠加后中心约 0.12，与 Material 按压状态层接近）；悬停态与按压状态层同档。 */
 private const val PressLayerAlpha = 0.06f
 private const val PressWaveAlpha = 0.06f
+private const val HoverLayerAlpha = PressLayerAlpha
 private const val FocusLayerAlpha = 0.10f
 
 /**
@@ -86,6 +88,7 @@ private class InfinityIndicationNode(
     private val interactionSource: InteractionSource,
 ) : Modifier.Node(), DrawModifierNode, CompositionLocalConsumerModifierNode {
     private val pressed = Animatable(0f)
+    private val hovered = Animatable(0f)
     private val wave = Animatable(0f)
     private var focused by mutableStateOf(false)
     private var origin = Offset.Unspecified
@@ -96,6 +99,7 @@ private class InfinityIndicationNode(
     override fun onAttach() {
         coroutineScope.launch {
             val presses = mutableListOf<PressInteraction.Press>()
+            val hovers = mutableListOf<HoverInteraction.Enter>()
             val focuses = mutableListOf<FocusInteraction.Focus>()
             interactionSource.interactions.collect { interaction ->
                 when (interaction) {
@@ -115,6 +119,14 @@ private class InfinityIndicationNode(
                     is PressInteraction.Cancel -> {
                         presses -= interaction.press
                         if (presses.isEmpty()) launch { fadeOut() }
+                    }
+                    is HoverInteraction.Enter -> {
+                        hovers += interaction
+                        launch { hovered.animateTo(1f, tween(90)) }
+                    }
+                    is HoverInteraction.Exit -> {
+                        hovers -= interaction.enter
+                        if (hovers.isEmpty()) launch { hovered.animateTo(0f, tween(140)) }
                     }
                     is FocusInteraction.Focus -> {
                         focuses += interaction
@@ -138,8 +150,9 @@ private class InfinityIndicationNode(
     override fun ContentDrawScope.draw() {
         drawContent()
         val press = pressed.value
+        val hover = hovered.value
         val focus = if (focused) 1f else 0f
-        if (press <= 0f && focus <= 0f) return
+        if (press <= 0f && hover <= 0f && focus <= 0f) return
         val color = currentValueOf(LocalContentColor)
         val corner = indicationCornerRadius(size, currentValueOf(LocalInfinityPressCorner).toPx())
         if (size != clipSize || corner != clipCorner) {
@@ -149,7 +162,7 @@ private class InfinityIndicationNode(
             clipCorner = corner
         }
         clipPath(clip) {
-            val layer = max(press * PressLayerAlpha, focus * FocusLayerAlpha)
+            val layer = max(press * PressLayerAlpha, max(hover * HoverLayerAlpha, focus * FocusLayerAlpha))
             drawRect(color.copy(alpha = layer))
             if (press > 0f) {
                 val center = if (origin.isSpecified) origin else Offset(size.width / 2f, size.height / 2f)

@@ -91,6 +91,7 @@ fun InfinitySearchTopBar(
                         onValueChange = search.onQueryChange,
                         placeholder = placeholder,
                         onSearch = { focusManager.clearFocus() },
+                        onEscape = exitSearch,
                         modifier = Modifier.padding(end = InfinitySpacing.Small)
                             .then(search.fieldTag?.let { Modifier.testTag(it) } ?: Modifier),
                         fieldModifier = Modifier.focusRequester(focusRequester),
@@ -181,11 +182,12 @@ fun InfinityToolbarSearch(
                     onValueChange = search.onQueryChange,
                     placeholder = placeholder,
                     onSearch = { focusManager.clearFocus() },
+                    onEscape = exitSearch,
                     modifier = Modifier.weight(1f)
                         .then(search.fieldTag?.let { Modifier.testTag(it) } ?: Modifier),
                     fieldModifier = Modifier.focusRequester(focusRequester),
                 )
-                IconButton(onClick = exitSearch, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)) {
+                IconButton(onClick = exitSearch, modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).infinityPointerHand()) {
                     Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_btn_cancel))
                 }
             } else {
@@ -200,6 +202,7 @@ fun InfinityToolbarSearch(
                 IconButton(
                     onClick = { search.onActiveChange(true) },
                     modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget)
+                        .infinityPointerHand()
                         .then(openButtonTag?.let { Modifier.testTag(it) } ?: Modifier),
                 ) {
                     Icon(Icons.Rounded.Search, contentDescription = placeholder)

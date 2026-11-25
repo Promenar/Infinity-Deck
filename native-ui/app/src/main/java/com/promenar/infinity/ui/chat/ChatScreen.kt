@@ -198,9 +198,18 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.combinedClickable
+import com.promenar.infinity.ui.common.ComposerKeyAction
+import com.promenar.infinity.ui.common.infinityContextClickable
+import com.promenar.infinity.ui.common.resolveComposerKeyAction
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.material.icons.rounded.Bolt
@@ -845,7 +854,8 @@ fun ChatScreenContent(
             firstOutputAt = latestAssistantMsg?.tokens?.timing?.firstOutputAt,
             endedAt = latestAssistantMsg?.tokens?.timing?.endedAt,
             actualTokens = latestAssistantMsg?.tokens?.let { (it.output - it.summaryOutput).coerceAtLeast(0) },
-            eligibleUsage = latestAssistantMsg?.tokens?.estimated == false && latestAssistantMsg.toolCalls.isNullOrEmpty(),
+            eligibleUsage = latestAssistantMsg?.tokens?.estimated == false,
+            toolCalls = latestAssistantMsg?.toolCalls.orEmpty(),
         ),
     )
     CompositionLocalProvider(
@@ -3681,12 +3691,62 @@ fun ChatInputBar(
                 .padding(start = ComposerToolbarInset, end = ComposerToolbarInset, top = if (hasAttachments) 12.dp else 0.dp, bottom = ComposerToolbarInset),
         ) {
             Box(Modifier.padding(horizontal = ComposerAttachmentInset - ComposerToolbarInset)) { attachmentContent() }
+            val inputFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
+            var fieldValueState by remember {
+                // 与 BasicTextField(value: String) 默认行为一致：初始聚焦前保持选区在起点，外部改写文本时再将光标移至末尾。
+                mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(text = text))
+            }
+            val fieldValue = if (fieldValueState.text == text) {
+                fieldValueState
+            } else {
+                androidx.compose.ui.text.input.TextFieldValue(
+                    text = text,
+                    selection = androidx.compose.ui.text.TextRange(text.length),
+                )
+            }
+            SideEffect {
+                if (fieldValueState.text != text) {
+                    fieldValueState = fieldValue
+                }
+            }
             BasicTextField(
-                value = text,
-                onValueChange = onTextChange,
+                value = fieldValue,
+                onValueChange = { next ->
+                    fieldValueState = next
+                    if (next.text != text) onTextChange(next.text)
+                },
                 modifier = Modifier.fillMaxWidth()
                     .animateContentSize(InfinityMotion.contentSizeSpec())
                     .heightIn(min = InfinitySpacing.MinimumTouchTarget)
+                    .onPreviewKeyEvent { keyEvent ->
+                        when (
+                            resolveComposerKeyAction(
+                                key = keyEvent.key,
+                                type = keyEvent.type,
+                                isShiftPressed = keyEvent.isShiftPressed,
+                                isCtrlPressed = keyEvent.isCtrlPressed,
+                                isAltPressed = keyEvent.isAltPressed,
+                                isMetaPressed = keyEvent.isMetaPressed,
+                                isComposing = fieldValue.composition != null,
+                                canSubmit = hasDraft && !isImportingDocument,
+                            )
+                        ) {
+                            ComposerKeyAction.SUBMIT -> {
+                                if (isModelSelected) onSend() else onModelHint()
+                                true
+                            }
+                            ComposerKeyAction.CONSUME_NOOP -> true
+                            ComposerKeyAction.DISMISS -> {
+                                when {
+                                    attachmentMenuExpanded -> onAttachmentMenuExpandedChange(false)
+                                    status == GenerationStatus.ERROR -> onDismissError()
+                                    else -> inputFocusManager.clearFocus()
+                                }
+                                true
+                            }
+                            ComposerKeyAction.PASS_THROUGH -> false
+                        }
+                    }
                     .semantics { if (shownPlaceholder.isNotBlank()) contentDescription = shownPlaceholder }
                     .testTag(UiTags.CHAT_INPUT),
                 textStyle = inputStyle.forInput(),
@@ -3932,7 +3992,7 @@ private fun GenerationStatusButton(
     }
     Box(
         modifier = Modifier.size(40.dp).clip(LocalComposerIslandStyle.current.sendShape).background(containerColor)
-            .combinedClickable(
+            .infinityContextClickable(
                 enabled = status == GenerationStatus.IDLE || status == GenerationStatus.RECEIVING ||
                     status == GenerationStatus.THINKING || status == GenerationStatus.UPLOADING ||
                     status == GenerationStatus.ERROR,

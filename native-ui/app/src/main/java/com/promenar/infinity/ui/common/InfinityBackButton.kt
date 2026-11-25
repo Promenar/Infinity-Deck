@@ -19,7 +19,7 @@ fun InfinityBackButton(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = modifier.size(48.dp)
+        modifier = modifier.size(48.dp).infinityPointerHand()
     ) {
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,

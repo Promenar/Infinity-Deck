@@ -23,7 +23,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import com.promenar.infinity.ui.common.infinityContextClickable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.rounded.Edit
@@ -1432,7 +1432,7 @@ private fun RecordingHistoryRow(
         title = item.title,
         subtitleSegments = subtitle,
         modifier = modifier.drawBehind { drawRect(background.value) }
-            .combinedClickable(enabled = enabled, role = if (selecting) Role.Checkbox else Role.Button,
+            .infinityContextClickable(enabled = enabled, role = if (selecting) Role.Checkbox else Role.Button,
                 onClick = onClick, onLongClick = onLongClick, onLongClickLabel = if (onLongClick != null) selectItem else null)
             .semantics { if (selecting) toggleableState = if (checked) ToggleableState.On else ToggleableState.Off },
         leadingContent = {

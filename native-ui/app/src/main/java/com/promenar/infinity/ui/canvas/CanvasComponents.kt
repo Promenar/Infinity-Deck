@@ -3,7 +3,7 @@ package com.promenar.infinity.ui.canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import com.promenar.infinity.ui.common.infinityContextClickable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -113,10 +113,11 @@ fun CanvasCard(
                 .fillMaxWidth()
                 .clip(shape)
                 .infinityMenuTouch(menuTouch)
-                .combinedClickable(
+                .infinityContextClickable(
                     onClickLabel = stringResource(R.string.canvas_open),
                     onLongClickLabel = if (hasMenu) stringResource(R.string.canvas_card_more_actions) else null,
                     onLongClick = if (hasMenu) ({ menuExpanded = true }) else null,
+                    touch = menuTouch,
                     onClick = onOpen,
                 )
                 .testTag(UiTags.CANVAS_CARD),
