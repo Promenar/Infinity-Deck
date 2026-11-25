@@ -100,7 +100,7 @@ fun InfinityTabHeader(
             if (onSearchActiveChange != null && !searchActive) {
                 IconButton(
                     onClick = { onSearchActiveChange(true) },
-                    modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget),
+                    modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).infinityPointerHand(),
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Search,
@@ -124,13 +124,14 @@ fun InfinityTabHeader(
                     onValueChange = onQueryChange,
                     placeholder = searchPlaceholder,
                     onSearch = { focusManager.clearFocus() },
+                    onEscape = if (onSearchActiveChange != null) exitSearch else null,
                     modifier = Modifier
                         .weight(1f)
                         .let { if (searchFieldTag != null) it.testTag(searchFieldTag) else it },
                     fieldModifier = Modifier.focusRequester(focusRequester),
                 )
                 Spacer(Modifier.width(InfinitySpacing.XSmall))
-                TextButton(onClick = exitSearch) {
+                TextButton(onClick = exitSearch, modifier = Modifier.infinityPointerHand()) {
                     Text(stringResource(R.string.common_btn_cancel))
                 }
             }
@@ -153,6 +154,7 @@ fun InfinityTabHeaderCircleAction(
     Box(
         modifier = modifier
             .sizeIn(minWidth = InfinitySpacing.MinimumTouchTarget, minHeight = InfinitySpacing.MinimumTouchTarget)
+            .infinityPointerHand()
             .semantics { this.contentDescription = contentDescription }
             .clickable(
                 interactionSource = interaction,

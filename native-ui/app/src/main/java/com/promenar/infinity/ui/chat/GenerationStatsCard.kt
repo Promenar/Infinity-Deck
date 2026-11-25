@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.chat
 import com.promenar.infinity.ui.common.InfinityAnchorPositionProvider
 import com.promenar.infinity.ui.common.InfinityPopoverAlign
 import com.promenar.infinity.ui.common.InfinityPopoverSide
+import com.promenar.infinity.ui.common.infinityDismissOnEscape
 import com.promenar.infinity.ui.common.rememberInfinityPopoverBounds
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -147,7 +148,10 @@ internal fun GenerationStatsPopup(
     ) {
         GenerationStatsCard(
             model = model,
-            modifier = Modifier.width(maxWidth).heightIn(max = maxHeight),
+            modifier = Modifier
+                .infinityDismissOnEscape(onDismiss = onDismissRequest)
+                .width(maxWidth)
+                .heightIn(max = maxHeight),
             scrollable = true,
         )
     }

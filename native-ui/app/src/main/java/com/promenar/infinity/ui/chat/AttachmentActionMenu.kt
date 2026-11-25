@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.chat
 import com.promenar.infinity.ui.common.InfinityHapticEvent
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.infinityMenuColors
+import com.promenar.infinity.ui.common.infinityPointerHand
 import com.promenar.infinity.ui.common.obsidianTopGlint
 import androidx.compose.ui.draw.shadow
 import androidx.activity.compose.BackHandler
@@ -245,6 +246,7 @@ private fun AttachmentAction(
             .fillMaxWidth()
             .heightIn(min = 56.dp)
             .clip(RoundedCornerShape(12.dp))
+            .infinityPointerHand(enabled)
             .clickable(enabled = enabled, role = Role.Button) {
                 haptics.perform(InfinityHapticEvent.SELECTION)
                 onClick()

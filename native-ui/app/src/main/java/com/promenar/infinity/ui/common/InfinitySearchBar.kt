@@ -112,12 +112,9 @@ fun InfinitySearchBar(
                     modifier = fieldModifier
                         .fillMaxWidth()
                         .fillMaxHeight()
-                        .infinityDismissOnEscape {
-                            when {
-                                onEscape != null -> onEscape()
-                                value.isNotEmpty() -> onValueChange("")
-                                else -> focusManager.clearFocus()
-                            }
+                        // 有显式退出回调或非空查询时消费 Esc；空内联搜索框放行冒泡给外层弹层/工作表关闭。
+                        .infinityDismissOnEscape(enabled = onEscape != null || value.isNotEmpty()) {
+                            if (onEscape != null) onEscape() else onValueChange("")
                         }
                         .onFocusChanged { isFocused = it.isFocused }
                         .semantics { contentDescription = placeholder }

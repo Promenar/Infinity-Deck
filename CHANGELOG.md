@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.77.2-beta] - 2026-11-25
+
+- **补齐真机验证检出的无焦点 `Esc` 返回与主标签页搜索退出边界（[MainActivity.kt](native-ui/app/src/main/java/com/promenar/infinity/MainActivity.kt)、[InfinityTabHeader.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityTabHeader.kt)、[InfinitySearchBar.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinitySearchBar.kt)、[AttachmentActionMenu.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/AttachmentActionMenu.kt)、[GenerationStatsCard.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/GenerationStatsCard.kt)）**：
+  - 在 `MainActivity.onKeyDown` 补充 Android 窗口级未修饰 `Esc` 兜底：聚焦的终端/输入框/弹层已在 `dispatchKeyEvent` 阶段优先消费，仅当无控件聚焦且 `onBackPressedDispatcher.hasEnabledCallbacks() == true` 时触发返回（覆盖未聚焦的 `AttachmentActionMenu` 附件菜单、展开态搜索栏与二级子页），根页依然绝不误退出应用。
+  - `InfinityTabHeader` 为 `InfinitySearchBar` 补齐 `onEscape = exitSearch` 及搜索/取消/主圆形按钮 `infinityPointerHand()`；`InfinitySearchBar` 在无 `onEscape` 且查询为空时不再吞掉 `Esc`，放行冒泡给外层 `InfinityPopover` / 工作表直接关闭；同步为 `GenerationStatsPopup` 与 `AttachmentAction` 补齐 `Esc` 关闭和手型光标。
+
 ## [0.77.1-beta] - 2026-11-25
 
 - **第一批跨平台键鼠交互基础设施与全站快捷键适配（[InfinityPointerInput.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityPointerInput.kt)、[InfinityKeyboard.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityKeyboard.kt)、[InfinityIndication.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/InfinityIndication.kt)、[InfinityPress.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityPress.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)、[MainActivity.kt](native-ui/app/src/main/java/com/promenar/infinity/MainActivity.kt) 等 26 处共享原语与页面）**：

@@ -531,6 +531,22 @@ open class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        // 仅作为 Android 窗口级兜底：聚焦的终端/输入框/弹层已在 dispatchKeyEvent 阶段优先处理；
+        // 当无控件聚焦且存在活跃返回回调（如附件菜单、展开搜索栏或子页面）时，未修饰 Esc 触发返回，根页不误退应用。
+        if (
+            keyCode == android.view.KeyEvent.KEYCODE_ESCAPE &&
+            event != null &&
+            event.repeatCount == 0 &&
+            event.hasNoModifiers() &&
+            onBackPressedDispatcher.hasEnabledCallbacks()
+        ) {
+            onBackPressedDispatcher.onBackPressed()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     private fun showShareFeedback(message: Int) {
         Toast.makeText(this, getString(message), Toast.LENGTH_SHORT).show()
     }
