@@ -59,8 +59,8 @@ private val previewModel = ModelInfo("Seedance 2.5", "seedance", "", true, "vide
     mediaSettings = MediaModelSettings(MediaGroup.VIDEO, previewCaps.copy(promptFormat = PromptFormat.SEEDANCE),
         tariff = MediaTariff("CNY", listOf(MediaRate(BillingUnit.TOKENS, "70", 1_000_000)))))
 private val previewImage = ModelInfo("Image model", "image", "", true, "image", providerName = "OpenAI", providerId = "openai")
-private val previewAudio = ModelInfo("Speech 2.6", "speech", "", true, "audio", providerName = "MiniMax", providerId = "minimax",
-    mediaSettings = MediaModelSettings(MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.SPEECH))))
+private val previewAudio = ModelInfo("Speech 2.6", "speech", "", true, "speech", providerName = "MiniMax", providerId = "minimax",
+    mediaSettings = MediaModelSettings(MediaGroup.SPEECH, MediaCapabilities(setOf(GenerationMode.SPEECH))))
 private val previewSubmitter = ComfySubmitterScript(
     scriptId = "submit_h3",
     hostId = "main",
@@ -88,7 +88,7 @@ private val previewSnapshot = MediaSettingsSnapshot(
     models = listOf(previewImage, previewModel, previewAudio), hosts = listOf(previewHost),
     templates = listOf(previewEntry,
         ComfyTemplateState(previewTemplate.copy(id = "wan", name = "Wan 2.2"), PreflightResult(PreflightStatus.MISSING, listOf("Node A", "Model B"))),
-        ComfyTemplateState(previewTemplate.copy(id = "music", name = "Music 3", group = MediaGroup.AUDIO), PreflightResult(PreflightStatus.REVIEW))),
+        ComfyTemplateState(previewTemplate.copy(id = "music", name = "Music 3", group = MediaGroup.MUSIC), PreflightResult(PreflightStatus.REVIEW))),
     credentialHosts = setOf("main"), preflightTimes = mapOf("h3" to 1_794_480_000_000L),
     submitters = listOf(previewSubmitter),
     workflows = listOf(ComfyWorkflowState(previewWorkflow, PreflightResult(PreflightStatus.PASS))),

@@ -735,7 +735,8 @@ private fun parseDefaultFieldValue(type: FieldValueType, raw: String): JsonEleme
 internal fun comfyMediaCategoryLabel(category: ComfyMediaCategory): String = when (category) {
     ComfyMediaCategory.IMAGE -> stringResource(R.string.media_settings_image)
     ComfyMediaCategory.VIDEO -> stringResource(R.string.media_settings_video)
-    ComfyMediaCategory.AUDIO -> stringResource(R.string.media_settings_audio)
+    ComfyMediaCategory.SPEECH -> stringResource(R.string.media_settings_speech)
+    ComfyMediaCategory.MUSIC -> stringResource(R.string.media_settings_music)
     ComfyMediaCategory.POST_PROCESS -> stringResource(R.string.media_settings_cat_post_process)
     ComfyMediaCategory.MODEL_3D -> stringResource(R.string.media_settings_cat_model_3d)
     ComfyMediaCategory.FILE -> stringResource(R.string.media_settings_cat_file)
@@ -744,7 +745,8 @@ internal fun comfyMediaCategoryLabel(category: ComfyMediaCategory): String = whe
 internal fun comfyMediaCategoryIcon(category: ComfyMediaCategory): ImageVector = when (category) {
     ComfyMediaCategory.IMAGE -> Icons.Rounded.Image
     ComfyMediaCategory.VIDEO -> Icons.Rounded.Movie
-    ComfyMediaCategory.AUDIO -> Icons.Rounded.MusicNote
+    ComfyMediaCategory.SPEECH -> Icons.Rounded.RecordVoiceOver
+    ComfyMediaCategory.MUSIC -> Icons.Rounded.MusicNote
     ComfyMediaCategory.POST_PROCESS -> Icons.Rounded.AutoFixHigh
     ComfyMediaCategory.MODEL_3D -> Icons.Rounded.ViewInAr
     ComfyMediaCategory.FILE -> Icons.Rounded.Description

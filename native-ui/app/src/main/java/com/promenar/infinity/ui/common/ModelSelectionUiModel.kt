@@ -40,7 +40,9 @@ private fun String.toModelWorkload(): ModelWorkload? = when (lowercase()) {
     "embedding" -> ModelWorkload.EMBEDDING
     "rerank" -> ModelWorkload.RERANK
     "image" -> ModelWorkload.IMAGE_GENERATION
-    "audio" -> ModelWorkload.AUDIO
+    "speech", "tts", "audio" -> ModelWorkload.SPEECH
+    "music" -> ModelWorkload.MUSIC
+    "realtime", "live" -> ModelWorkload.REALTIME
     "video" -> ModelWorkload.VIDEO
     else -> null
 }

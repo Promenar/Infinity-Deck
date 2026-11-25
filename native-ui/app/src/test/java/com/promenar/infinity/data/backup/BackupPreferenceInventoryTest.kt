@@ -111,7 +111,9 @@ class BackupPreferenceInventoryTest {
     fun `媒体通道顺序与图像默认值登记在现有设置偏好中`() {
         listOf(
             "media_channel_order_image", "media_channel_order_video", "media_channel_order_audio",
+            "media_channel_order_speech", "media_channel_order_music",
             "preset_image_model", "preset_video_model", "preset_audio_model",
+            "preset_speech_model", "preset_music_model",
         ).forEach { key ->
             assertWithMessage("媒体默认配置应随设置备份: $key")
                 .that(BackupPreferencePolicy.isAllowed("infinity_settings", key)).isTrue()

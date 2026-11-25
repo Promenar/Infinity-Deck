@@ -64,6 +64,15 @@ class WorkspaceCloudMediaInputSource(private val resolver: WorkspaceMediaResolve
 fun interface CloudMediaOutputStore {
     suspend fun save(request: MediaGenerationRequest, remoteId: String, index: Int, output: RemoteOutput): String
     suspend fun saveWithFormat(request: MediaGenerationRequest, remoteId: String, index: Int, output: RemoteOutput, extension: String): String = save(request, remoteId, index, output)
+    suspend fun saveBytes(
+        request: MediaGenerationRequest,
+        remoteId: String,
+        index: Int,
+        kind: InputKind,
+        bytes: ByteArray,
+        mimeType: String,
+        extension: String,
+    ): String = throw UnsupportedOperationException("该存储实现不支持直接写入媒体字节")
 }
 
 /** 下载复用统一 URL 策略、有界流和工作区的新建语义；返回制作清单的相对路径。 */
@@ -95,6 +104,46 @@ class WorkspaceCloudMediaOutputStore(
             return@withContext relative
         }
         val saved = downloader.save(output.location, request.sessionId, store, MediaOrigin.GENERATED, targetPath = target)
+        require(saved.kind == expected) { "远端产物类型与通道不一致" }
+        relative
+    }
+
+    override suspend fun saveBytes(
+        request: MediaGenerationRequest,
+        remoteId: String,
+        index: Int,
+        kind: InputKind,
+        bytes: ByteArray,
+        mimeType: String,
+        extension: String,
+    ): String = withContext(Dispatchers.IO) {
+        require(bytes.isNotEmpty()) { "远端音频数据为空" }
+        val dir = request.outputDir.trimEnd('/')
+        require(dir.isNotBlank() && !dir.startsWith('/') && !dir.contains('\\') && !dir.contains(':') && dir.split('/').none { it in setOf("", ".", "..") }) { "媒体输出目录必须为工作区相对路径" }
+        val suffix = extension.lowercase().also {
+            require(it in when (kind) {
+                InputKind.IMAGE -> setOf("png", "jpg", "webp")
+                InputKind.VIDEO -> setOf("mp4")
+                InputKind.AUDIO -> setOf("mp3", "wav", "flac", "ogg", "m4a")
+            })
+        }
+        val identity = UUID.nameUUIDFromBytes("${request.channelId}:$remoteId".toByteArray()).toString()
+        val relative = "$dir/gen-$identity-$index.$suffix"
+        val target = resolver.productionPath(request.sessionId, relative)
+        val expected = when (kind) { InputKind.IMAGE -> MediaKind.IMAGE; InputKind.VIDEO -> MediaKind.VIDEO; InputKind.AUDIO -> MediaKind.AUDIO }
+        val existing = resolver.resolve(request.sessionId, target)
+        if (existing is MediaResolution.Available) {
+            require(existing.ref.kind == expected && existing.ref.sizeBytes > 0) { "媒体目标已被其它文件占用" }
+            return@withContext relative
+        }
+        val saved = store.save(
+            sessionId = request.sessionId,
+            payload = MediaPayload.Bytes(bytes),
+            origin = MediaOrigin.GENERATED,
+            mimeTypeHint = mimeType,
+            suggestedName = "gen-$index.$suffix",
+            targetPath = target,
+        )
         require(saved.kind == expected) { "远端产物类型与通道不一致" }
         relative
     }

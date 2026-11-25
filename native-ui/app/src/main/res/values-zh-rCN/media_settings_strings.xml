@@ -7,6 +7,7 @@
     <string name="media_settings_audio">音频</string>
     <string name="media_settings_chat">对话</string>
     <string name="media_settings_speech">语音</string>
+    <string name="media_settings_music">音乐</string>
     <string name="media_settings_default">默认</string>
     <string name="media_settings_move_up">上移：%1$s</string>
     <string name="media_settings_composite">合图</string>
@@ -181,10 +182,17 @@
     <string name="settings_ia_comfyui">ComfyUI</string>
     <string name="settings_ia_comfyui_subtitle">主机、工作流与提交器脚本</string>
     <string name="settings_default_media_section">云端媒体默认模型</string>
-    <string name="settings_default_media_footer">每类云端媒体仅单选一个默认模型，或清空留空。</string>
+    <string name="settings_default_media_footer">默认语音模型用于气泡朗读与语音合成；默认音乐模型用于音乐与配乐生成，各项均可清空留空。</string>
     <string name="settings_default_cloud_image">云端默认图像模型</string>
     <string name="settings_default_cloud_video">云端默认视频模型</string>
     <string name="settings_default_cloud_audio">云端默认音频模型</string>
+    <string name="settings_default_cloud_speech">云端默认语音模型（TTS）</string>
+    <string name="settings_default_cloud_music">云端默认音乐模型</string>
+    <string name="media_settings_voice_section">语音合成默认音色</string>
+    <string name="media_settings_voice_footer">会话气泡朗读默认使用此处选定的音色；Agent 调用 generate_speech 时可按角色临时覆写。</string>
+    <string name="media_settings_voice_label">音色名称 / ID</string>
+    <string name="media_settings_voice_tag">音色 %1$s</string>
+    <string name="media_settings_audio_format_label">输出格式</string>
     <string name="settings_default_text_section">文本与检索默认模型</string>
 
     <string name="media_settings_comfy_title">ComfyUI</string>

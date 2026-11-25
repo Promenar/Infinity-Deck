@@ -55,14 +55,18 @@ internal fun validateCloudShotPlan(model: CloudMediaModel, channel: MediaChannel
     require(effective.inputs.none { it.kind == InputKind.VIDEO && !it.location.startsWith("https://") && !it.location.startsWith("http://") && !it.location.startsWith("asset://") }) { "云端视频参考需要已上传的素材" }
     when (val api = model.settings.api) {
         CloudMediaApi.MINIMAX_SPEECH -> miniMaxSpeechBody(model.modelId, effective, model.settings.options)
+        CloudMediaApi.GEMINI_TTS -> geminiTtsBody(effective, model.settings.options)
+        CloudMediaApi.OPENAI_SPEECH -> openAiSpeechBody(model.modelId, effective.prompt, model.settings.options.voiceId.ifBlank { "alloy" }, model.settings.options.audioFormat)
+        CloudMediaApi.GEMINI_LYRIA -> extractLyriaInlineImages(effective)
         CloudMediaApi.MINIMAX_VIDEO_V1, CloudMediaApi.MINIMAX_VIDEO_V2 -> miniMaxVideoBody(model.modelId, effective, api)
         CloudMediaApi.SEEDANCE -> require(effective.specs.durationSeconds != null)
         null -> error("无媒体后端")
     }
     emptyList()
 } catch (_: Exception) {
-    if (model.settings.api == CloudMediaApi.MINIMAX_SPEECH && request.inputs.isNotEmpty()) listOf("语音通道仅接受已配置音色 ID，不能使用角色参考音频")
-    else listOf("通道不支持所选输入或生成规格")
+    if (model.settings.api in setOf(CloudMediaApi.MINIMAX_SPEECH, CloudMediaApi.GEMINI_TTS, CloudMediaApi.OPENAI_SPEECH) && request.inputs.isNotEmpty()) {
+        listOf("云端语音通道使用预置音色，不能传入角色参考音频")
+    } else listOf("通道不支持所选输入或生成规格")
 }
 
 internal fun cloudConfigurationFingerprint(model: CloudMediaModel): String = productionConfigurationHash(buildJsonObject {

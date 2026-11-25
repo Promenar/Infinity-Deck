@@ -10,7 +10,20 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.*
 
 @Serializable
-enum class CloudMediaApi { SEEDANCE, MINIMAX_VIDEO_V1, MINIMAX_VIDEO_V2, MINIMAX_SPEECH }
+enum class CloudMediaApi {
+    SEEDANCE,
+    MINIMAX_VIDEO_V1,
+    MINIMAX_VIDEO_V2,
+    MINIMAX_SPEECH,
+    GEMINI_TTS,
+    GEMINI_LYRIA,
+    OPENAI_SPEECH,
+}
+
+/** Gemini TTS 官方预置声线常用集合；允许用户在设置或工具调用中填写其它官方声线名。 */
+val GEMINI_TTS_PREBUILT_VOICES: List<String> = listOf(
+    "Kore", "Puck", "Zephyr", "Aoede", "Charon", "Fenrir", "Leda", "Orus",
+)
 
 enum class CloudMediaPreset(val group: MediaGroup, val presetRemoteId: String) {
     SEEDANCE_2_5(MediaGroup.VIDEO, "doubao-seedance-2-5-pro"),
@@ -24,8 +37,16 @@ enum class CloudMediaPreset(val group: MediaGroup, val presetRemoteId: String) {
     MINIMAX_H3_MAX(MediaGroup.VIDEO, "minimax-h3-max"),
     MINIMAX_HAILUO_02(MediaGroup.VIDEO, "minimax-hailuo-02"),
     MINIMAX_S2V_01(MediaGroup.VIDEO, "s2v-01"),
-    MINIMAX_SPEECH_2_8_HD(MediaGroup.AUDIO, "speech-2.8-hd"),
-    MINIMAX_SPEECH_2_8_TURBO(MediaGroup.AUDIO, "speech-2.8-turbo"),
+    GEMINI_3_8_FLASH_TTS(MediaGroup.SPEECH, "gemini-3.8-flash-tts"),
+    GEMINI_3_8_FLASH_LITE_TTS(MediaGroup.SPEECH, "gemini-3.8-flash-lite-tts"),
+    GEMINI_2_5_FLASH_TTS(MediaGroup.SPEECH, "gemini-2.5-flash-tts"),
+    GEMINI_2_5_PRO_TTS(MediaGroup.SPEECH, "gemini-2.5-pro-tts"),
+    MINIMAX_SPEECH_2_8_HD(MediaGroup.SPEECH, "speech-2.8-hd"),
+    MINIMAX_SPEECH_2_8_TURBO(MediaGroup.SPEECH, "speech-2.8-turbo"),
+    OPENAI_GPT_4O_MINI_TTS(MediaGroup.SPEECH, "gpt-4o-mini-tts"),
+    GEMINI_LYRIA_3_5(MediaGroup.MUSIC, "lyria-3.5"),
+    GEMINI_LYRIA_3_PRO(MediaGroup.MUSIC, "lyria-3-pro-preview"),
+    GEMINI_LYRIA_3_CLIP(MediaGroup.MUSIC, "lyria-3-clip-preview"),
 }
 
 fun cloudMediaPresetsFor(group: MediaGroup): List<CloudMediaPreset> =
@@ -98,7 +119,13 @@ data class MediaModelSettings(
     init {
         require(capabilities.modes.isNotEmpty())
         require(capabilities.referenceOrder.all { it.isNotBlank() } && capabilities.referenceOrder.distinct().size == capabilities.referenceOrder.size)
-        require(api == null || group == if (api == CloudMediaApi.MINIMAX_SPEECH) MediaGroup.AUDIO else MediaGroup.VIDEO) { "媒体类型与生成接口不一致" }
+        val expectedGroup = when (api) {
+            null -> null
+            CloudMediaApi.MINIMAX_SPEECH, CloudMediaApi.GEMINI_TTS, CloudMediaApi.OPENAI_SPEECH -> MediaGroup.SPEECH
+            CloudMediaApi.GEMINI_LYRIA -> MediaGroup.MUSIC
+            CloudMediaApi.SEEDANCE, CloudMediaApi.MINIMAX_VIDEO_V1, CloudMediaApi.MINIMAX_VIDEO_V2 -> MediaGroup.VIDEO
+        }
+        require(expectedGroup == null || group == expectedGroup) { "媒体类型与生成接口不一致" }
     }
     fun withCharacterReferences(mode: CharacterReferenceMode, order: List<String>): MediaModelSettings {
         require(order.all { it.isNotBlank() } && order.distinct().size == order.size)
@@ -109,15 +136,37 @@ data class MediaModelSettings(
 object MediaModelSettingsCodec {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     fun encode(settings: MediaModelSettings): String = json.encodeToString(MediaModelSettings.serializer(), settings)
-    fun decode(value: String?): MediaModelSettings? = value?.let {
-        runCatching { json.decodeFromString(MediaModelSettings.serializer(), it) }.getOrNull()
+    fun decode(value: String?): MediaModelSettings? = value?.let { raw ->
+        runCatching {
+            val element = json.parseToJsonElement(raw) as? JsonObject ?: return@runCatching null
+            val normalized = migrateLegacyAudioGroup(element)
+            json.decodeFromJsonElement(MediaModelSettings.serializer(), normalized)
+        }.getOrNull()
+    }
+
+    private fun migrateLegacyAudioGroup(root: JsonObject): JsonObject {
+        val group = (root["group"] as? JsonPrimitive)?.contentOrNull ?: return root
+        if (!group.equals("AUDIO", ignoreCase = true)) return root
+        val modes = ((root["capabilities"] as? JsonObject)?.get("modes") as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.uppercase() }
+            .orEmpty()
+        val api = (root["api"] as? JsonPrimitive)?.contentOrNull?.uppercase()
+        val target = when {
+            api == CloudMediaApi.GEMINI_LYRIA.name -> MediaGroup.MUSIC
+            "MUSIC" in modes && "SPEECH" !in modes -> MediaGroup.MUSIC
+            else -> MediaGroup.SPEECH
+        }
+        return JsonObject(root + ("group" to JsonPrimitive(target.name)))
     }
 }
 
 object MediaGroupSerializer : KSerializer<MediaGroup> {
     override val descriptor = kotlinx.serialization.descriptors.PrimitiveSerialDescriptor("MediaGroup", kotlinx.serialization.descriptors.PrimitiveKind.STRING)
     override fun serialize(encoder: Encoder, value: MediaGroup) = encoder.encodeString(value.name)
-    override fun deserialize(decoder: Decoder): MediaGroup = MediaGroup.valueOf(decoder.decodeString())
+    override fun deserialize(decoder: Decoder): MediaGroup {
+        val raw = decoder.decodeString()
+        return if (raw.equals("AUDIO", ignoreCase = true)) MediaGroup.SPEECH else MediaGroup.valueOf(raw)
+    }
 }
 
 /** 领域契约不承担存储格式，序列化集中在数据层。 */
@@ -185,15 +234,38 @@ fun mediaModelPreset(remoteId: String): MediaModelSettings? {
                 minDurationSeconds = 6, maxDurationSeconds = 10), CloudMediaApi.MINIMAX_VIDEO_V1)
         id == "s2v-01" -> MediaModelSettings(MediaGroup.VIDEO,
             MediaCapabilities(setOf(GenerationMode.REFERENCE), maxImages = 1, referenceOrder = defaultReferenceOrder), CloudMediaApi.MINIMAX_VIDEO_V1)
-        id.matches(Regex("speech-(02|2\\.[568])-(hd|turbo)")) -> MediaModelSettings(MediaGroup.AUDIO,
+        id.matches(Regex("speech-(02|2\\.[568])-(hd|turbo)")) -> MediaModelSettings(MediaGroup.SPEECH,
             MediaCapabilities(setOf(GenerationMode.SPEECH)), CloudMediaApi.MINIMAX_SPEECH)
+        id.startsWith("gemini-") && (id.endsWith("-tts") || "-tts-" in id) -> MediaModelSettings(
+            MediaGroup.SPEECH,
+            MediaCapabilities(setOf(GenerationMode.SPEECH)),
+            CloudMediaApi.GEMINI_TTS,
+            options = CloudMediaOptions(voiceId = "Kore", audioFormat = "wav"),
+        )
+        id == "tts-1" || id == "tts-1-hd" || id == "gpt-4o-mini-tts" || id.startsWith("gpt-4o-mini-tts-") -> MediaModelSettings(
+            MediaGroup.SPEECH,
+            MediaCapabilities(setOf(GenerationMode.SPEECH)),
+            CloudMediaApi.OPENAI_SPEECH,
+            options = CloudMediaOptions(voiceId = "alloy", audioFormat = "mp3"),
+        )
+        id.startsWith("lyria-3") && "realtime" !in id -> MediaModelSettings(
+            MediaGroup.MUSIC,
+            MediaCapabilities(
+                modes = setOf(GenerationMode.MUSIC),
+                maxImages = 4,
+                minDurationSeconds = if ("clip" in id) 15 else 15,
+                maxDurationSeconds = if ("clip" in id) 30 else 300,
+            ),
+            CloudMediaApi.GEMINI_LYRIA,
+            options = CloudMediaOptions(audioFormat = "mp3"),
+        )
         else -> return null
     }
     val presetId = CloudMediaPreset.entries.firstOrNull { it.presetRemoteId == id }?.presetRemoteId
     return settings.copy(presetRemoteId = presetId)
 }
 
-fun ModelInfo.effectiveMediaSettings(): MediaModelSettings? = if (mediaSettingsInvalid) null else mediaSettings ?: mediaModelPreset(remoteModelId) ?: when (type) {
+fun ModelInfo.effectiveMediaSettings(): MediaModelSettings? = if (mediaSettingsInvalid) null else mediaSettings ?: mediaModelPreset(remoteModelId) ?: when (type.lowercase()) {
     "image" -> MediaModelSettings(MediaGroup.IMAGE, MediaCapabilities(setOf(GenerationMode.TEXT)))
     else -> null
 }

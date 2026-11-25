@@ -78,11 +78,11 @@ class ComfyDefineTemplateSkill(repository: ComfyRepository) : ComfySkill(
     "comfy_define_template",
     """创建或按同一 id 更新 API Format 工作流（兼容旧模板 schema）。每次变更须经用户审批，保存后保持锁定并重新预检。模型文件由 models 显式声明。
         支持可选 fps（视频输出帧率，如 24），声明后制作规划按镜头秒数自动换算并对齐 frameBase+k*frameStep 帧数；ComfyUI V3 动态组合子选项（如 SaveVideo 的 format.codec）在 API Format 中须使用父键.子键扁平键。
-        生成工作流使用 role=GENERATE，图像或视频按 group 与 capabilities 声明；配乐使用 role=GENERATE、group=AUDIO、MUSIC 模式、DURATION 秒数槽位与 AUDIO 产出。
+        生成工作流使用 role=GENERATE，图像、视频、语音或音乐按 group 与 capabilities 声明；配乐使用 role=GENERATE、group=MUSIC、MUSIC 模式、DURATION 秒数槽位与 AUDIO 产出。
         派生处理使用 role=DERIVE、operation.label 与一个 INPUT_VIDEO 来源槽位，可不声明 PROMPT。媒体连线必须给出 uploadTargets，节点类型和输入名先用 comfy_probe 核验。
         任意工作流可用 params 声明最多 6 个 ENUM/NUMBER/BOOLEAN 参数，每项以唯一 key 对应一个 PARAM 槽位的 param。default 必须满足选项、范围与整数约束，提交请求时可按 key 覆盖 params。
         派生处理最小字段示例（workflow 使用主机探测所得的 API Format 节点字典）：{"id":"upscale","hostId":"host","group":"VIDEO","role":"DERIVE","operation":{"label":"超分"},"slots":[{"nodeId":"1","input":"video","kind":"INPUT_VIDEO"},{"nodeId":"2","input":"videos","kind":"OUTPUT","outputKind":"VIDEO"}],"capabilities":{"modes":["REFERENCE"]}}。
-        配乐最小字段示例（workflow 使用主机探测所得的 API Format 节点字典）：{"id":"music","hostId":"host","group":"AUDIO","role":"GENERATE","slots":[{"nodeId":"1","input":"prompt","kind":"PROMPT"},{"nodeId":"1","input":"seconds","kind":"DURATION"},{"nodeId":"2","input":"audio","kind":"OUTPUT","outputKind":"AUDIO"}],"capabilities":{"modes":["MUSIC"]}}。""".trimIndent(),
+        配乐最小字段示例（workflow 使用主机探测所得的 API Format 节点字典）：{"id":"music","hostId":"host","group":"MUSIC","role":"GENERATE","slots":[{"nodeId":"1","input":"prompt","kind":"PROMPT"},{"nodeId":"1","input":"seconds","kind":"DURATION"},{"nodeId":"2","input":"audio","kind":"OUTPUT","outputKind":"AUDIO"}],"capabilities":{"modes":["MUSIC"]}}。""".trimIndent(),
     COMFY_TEMPLATE_SCHEMA,
 )
 
@@ -112,7 +112,7 @@ class ComfyListWorkflowsSkill(repository: ComfyRepository) : ComfySkill(
     repository,
     "comfy_list_workflows",
     "列出 ComfyUI 工作流。默认列表中仅返回轻量摘要；传入 workflow_id 或 detail=true 时返回全部 CONTENT/FIXED 完整声明、chain_spec 与预检详情。传入 workflow_id 与 recheck=true 可触发重新预检。",
-    """{"type":"object","properties":{"host_id":{"type":"string"},"workflow_id":{"type":"string"},"media_category":{"type":"string","enum":["IMAGE","VIDEO","AUDIO","POST_PROCESS","MODEL_3D","FILE"]},"detail":{"type":"boolean","description":"为 true 或指定 workflow_id 时返回完整字段定义，列表默认返回轻量摘要"},"recheck":{"type":"boolean"}},"additionalProperties":false}""",
+    """{"type":"object","properties":{"host_id":{"type":"string"},"workflow_id":{"type":"string"},"media_category":{"type":"string","enum":["IMAGE","VIDEO","SPEECH","MUSIC","AUDIO","POST_PROCESS","MODEL_3D","FILE"]},"detail":{"type":"boolean","description":"为 true 或指定 workflow_id 时返回完整字段定义，列表默认返回轻量摘要"},"recheck":{"type":"boolean"}},"additionalProperties":false}""",
 )
 
 class ComfyPreflightWorkflowSkill(
@@ -378,9 +378,14 @@ abstract class ComfySkill(
         val hostId = optional(args, "host_id")
         val workflowId = optional(args, "workflow_id")
         val categoryRaw = optional(args, "media_category")
-        val categoryFilter = categoryRaw?.let {
-            ComfyMediaCategory.entries.firstOrNull { c -> c.name == it }
-                ?: throw IllegalArgumentException("media_category 无效：$it")
+        val categoryFilterSet = categoryRaw?.let { raw ->
+            if (raw.equals("AUDIO", ignoreCase = true)) {
+                setOf(ComfyMediaCategory.SPEECH, ComfyMediaCategory.MUSIC)
+            } else {
+                val matched = ComfyMediaCategory.entries.firstOrNull { c -> c.name == raw }
+                    ?: throw IllegalArgumentException("media_category 无效：$raw")
+                setOf(matched)
+            }
         }
         val detail = optionalBoolean(args, "detail", defaultValue = false)
         val recheck = optionalBoolean(args, "recheck", defaultValue = false)
@@ -391,7 +396,7 @@ abstract class ComfySkill(
         val submittersByKey = repo.submitters().associateBy { it.hostId to it.scriptId }
         val filtered = repo.effectiveWorkflowStates(hostId).filter { state ->
             (workflowId == null || state.workflow.workflowId == workflowId) &&
-                (categoryFilter == null || state.workflow.mediaCategory == categoryFilter)
+                (categoryFilterSet == null || state.workflow.mediaCategory in categoryFilterSet)
         }
         require(workflowId == null || filtered.isNotEmpty()) { "工作流不存在：$workflowId" }
         val fullDetail = detail || workflowId != null
@@ -1165,7 +1170,7 @@ private const val COMFY_SAVE_WORKFLOW_SCHEMA = """{
     "hostId":{"type":"string","description":"所属 ComfyUI 主机 id"},
     "name":{"type":"string"},
     "description":{"type":"string"},
-    "mediaCategory":{"type":"string","enum":["IMAGE","VIDEO","AUDIO","POST_PROCESS","MODEL_3D","FILE"]},
+    "mediaCategory":{"type":"string","enum":["IMAGE","VIDEO","SPEECH","MUSIC","AUDIO","POST_PROCESS","MODEL_3D","FILE"]},
     "submitterScriptId":{"type":["string","null"],"description":"绑定的提交器 script_id；与 rawWorkflowJson 二选一或配合使用"},
     "rawWorkflowJson":{"type":["object","null"],"description":"内置通用 API Format 节点字典"},
     "outputNodeIds":{"type":"array","items":{"type":"string"}},
@@ -1299,7 +1304,7 @@ private const val COMFY_TEMPLATE_SCHEMA = """{
   "type":"object","additionalProperties":false,"required":["id","hostId","group","workflow","slots","capabilities"],"properties":{
    "id":{"type":"string","description":"稳定 id，字母数字下划线或连字符"},"name":{"type":"string"},"hostId":{"type":"string"},
    "locked":{"type":"boolean","description":"审批保存后保持锁定"},
-   "group":{"type":"string","enum":["IMAGE","VIDEO","AUDIO"]},"workflow":{"type":"object","description":"ComfyUI API Format 节点字典"},
+   "group":{"type":"string","enum":["IMAGE","VIDEO","SPEECH","MUSIC","AUDIO"]},"workflow":{"type":"object","description":"ComfyUI API Format 节点字典"},
    "role":{"type":"string","enum":["GENERATE","DERIVE"]},
    "operation":{"type":["object","null"],"additionalProperties":false,"required":["label"],"properties":{"label":{"type":"string","description":"DERIVE 操作显示名称，1～20 字符"}}},
    "params":{"type":"array","description":"最多 6 项；提交时可按 key 覆盖，每项需要一个 PARAM 槽位","items":{"type":"object","additionalProperties":false,"required":["key","label","type","default"],"properties":{

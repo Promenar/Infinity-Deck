@@ -146,12 +146,14 @@ private data class BundledCatalogRecord(
     fun toRecord(): ModelMetadataRecord {
         val shortId = canonicalModelId.substringAfter('/', canonicalModelId)
         val outputModalities = modalities?.output.orEmpty()
+        val resolvedWorkload = outputModalities.toWorkload(shortId)
+        val hideTextContext = resolvedWorkload in setOf(ModelWorkload.SPEECH, ModelWorkload.MUSIC, ModelWorkload.REALTIME)
         return ModelMetadataRecord(
             canonicalModelId = canonicalModelId,
             exactAliases = setOf(canonicalModelId, shortId),
             displayName = displayName,
             familyName = family,
-            workload = outputModalities.toWorkload(),
+            workload = resolvedWorkload,
             capabilities = buildMap {
                 put(ModelCapability.REASONING, reasoning.toSupportState())
                 put(ModelCapability.TOOL_CALLING, tool_call.toSupportState())
@@ -159,13 +161,18 @@ private data class BundledCatalogRecord(
                 modalities?.input.orEmpty().forEach { modality ->
                     modality.inputCapability()?.let { put(it, SupportState.SUPPORTED) }
                 }
-                modalities?.output.orEmpty().forEach { modality ->
-                    modality.outputCapability()?.let { put(it, SupportState.SUPPORTED) }
+                if (resolvedWorkload !in setOf(ModelWorkload.SPEECH, ModelWorkload.MUSIC, ModelWorkload.REALTIME)) {
+                    modalities?.output.orEmpty().forEach { modality ->
+                        modality.outputCapability()?.let { put(it, SupportState.SUPPORTED) }
+                    }
+                }
+                if (resolvedWorkload in setOf(ModelWorkload.SPEECH, ModelWorkload.MUSIC, ModelWorkload.REALTIME)) {
+                    put(ModelCapability.CHAT_ENDPOINT, SupportState.UNSUPPORTED)
                 }
             },
-            contextTokens = contextTokens,
-            inputTokens = inputTokens,
-            outputTokens = outputTokens,
+            contextTokens = if (hideTextContext) null else contextTokens,
+            inputTokens = if (hideTextContext) null else inputTokens,
+            outputTokens = if (hideTextContext) null else outputTokens,
             knowledgeCutoff = knowledge,
             source = MetadataSource.MODELS_DEV,
         )
@@ -196,12 +203,16 @@ private fun String.outputCapability(): ModelCapability? = when (lowercase()) {
     else -> null
 }
 
-private fun Collection<String>.toWorkload(): ModelWorkload {
+private fun Collection<String>.toWorkload(modelId: String = ""): ModelWorkload {
     val normalized = map(String::lowercase).toSet()
+    val id = modelId.lowercase()
     return when {
+        "realtime" in id || Regex("""(?:^|[-_])live(?:$|[-_])""").containsMatchIn(id) -> ModelWorkload.REALTIME
+        id.startsWith("lyria") || "music" in id -> ModelWorkload.MUSIC
+        id.endsWith("-tts") || "-tts-" in id || id.startsWith("tts-") || id.startsWith("speech-") -> ModelWorkload.SPEECH
         "text" in normalized -> ModelWorkload.GENERATIVE_TEXT
         normalized == setOf("image") -> ModelWorkload.IMAGE_GENERATION
-        normalized == setOf("audio") -> ModelWorkload.AUDIO
+        normalized == setOf("audio") -> ModelWorkload.SPEECH
         normalized == setOf("video") -> ModelWorkload.VIDEO
         else -> ModelWorkload.UNKNOWN
     }

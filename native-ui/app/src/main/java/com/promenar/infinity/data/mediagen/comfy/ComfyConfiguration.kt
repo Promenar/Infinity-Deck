@@ -197,7 +197,7 @@ object ComfyConfigurationCodec {
             nativeAudio = r.capabilities.nativeAudio, resolutions = r.capabilities.resolutions,
             minDurationSeconds = r.capabilities.minDurationSeconds, maxDurationSeconds = r.capabilities.maxDurationSeconds,
             promptFormat = PromptFormat.valueOf(r.capabilities.promptFormat), referenceOrder = r.capabilities.referenceOrder),
-        r.models.map { ComfyModelSlot(it.nodeId, it.input) }, r.hostId, MediaGroup.valueOf(r.group), r.name, r.maxFrames,
+        r.models.map { ComfyModelSlot(it.nodeId, it.input) }, r.hostId, decodeLegacyMediaGroup(r.group, r.capabilities.modes), r.name, r.maxFrames,
         enumValue<TemplateRole>(r.role, "role"), r.operation?.let { TemplateOperation(it.label) }, r.params.mapIndexed { index, p ->
             try { TemplateParam(p.key, p.label, enumValue<TemplateParamType>(p.type, "params[$index].type"), p.default, p.options, p.min, p.max, p.integer) }
             catch (e: IllegalArgumentException) {
@@ -208,6 +208,11 @@ object ComfyConfigurationCodec {
             }
         }, r.fps)
         .let { it.copy(capabilities = it.channel().capabilities) }
+
+    private fun decodeLegacyMediaGroup(raw: String, modes: List<String>): MediaGroup = when (raw.uppercase()) {
+        "AUDIO" -> if ("MUSIC" in modes && "SPEECH" !in modes) MediaGroup.MUSIC else MediaGroup.SPEECH
+        else -> MediaGroup.valueOf(raw)
+    }
 
     private inline fun <reified T : Enum<T>> enumValue(value: String, field: String): T =
         enumValues<T>().firstOrNull { it.name == value } ?: throw IllegalArgumentException("$field: 枚举值无效")

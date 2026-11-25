@@ -21,9 +21,14 @@ class ProductionMediaRuntime(private val app: InfinityApplication) {
     private val http = KtorCloudMediaHttp(providers)
     private val inputs = WorkspaceCloudMediaInputSource(app.workspaceMediaResolver)
     private val outputs = WorkspaceCloudMediaOutputStore(app.workspaceMediaDownloader, app.workspaceMediaStore, app.workspaceMediaResolver)
+    val geminiAudioBackend = GeminiMediaGenerationBackend(models, http, inputs, outputs, java.io.File(app.cacheDir, "media_audio_staging"))
     val registry = DefaultMediaChannelRegistry(providers.providerModels, providers.providers, app.comfyMedia.channels.asRegistrySource(), providers.mediaChannelOrders, scope)
-    val bindings = productionMediaBindings(models, SeedanceMediaGenerationBackend(models, http, inputs, outputs),
-        MiniMaxMediaGenerationBackend(models, http, inputs, outputs), app.comfyMedia.backend,
+    val bindings = productionMediaBindings(
+        models = models,
+        seedance = SeedanceMediaGenerationBackend(models, http, inputs, outputs),
+        miniMax = MiniMaxMediaGenerationBackend(models, http, inputs, outputs),
+        comfy = app.comfyMedia.backend,
+        gemini = geminiAudioBackend,
         expectedOutputsFor = { channel -> if (channel.id.startsWith("comfy:")) comfyExpectedOutputCount(app.comfyMedia.repository.templateByChannel(channel.id).template) else 1 },
         configurationFor = { channel ->
             if (channel.id.startsWith("comfy:")) {

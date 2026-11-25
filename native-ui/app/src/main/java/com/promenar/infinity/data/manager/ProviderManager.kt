@@ -11,6 +11,7 @@ import com.promenar.infinity.data.model.ProviderSummary
 import com.promenar.infinity.data.model.UnsupportedProviderListItem
 import com.promenar.infinity.data.model.UnsupportedProviderSummary
 import com.promenar.infinity.data.model.ModelInfo
+import com.promenar.infinity.data.model.effectiveMediaSettings
 import com.promenar.infinity.data.model.USER_EDITABLE_MODEL_FIELDS
 import com.promenar.infinity.data.model.mergeResolvedMetadata
 import com.promenar.infinity.data.model.migrateLegacyMetadata
@@ -115,8 +116,11 @@ class ProviderManager private constructor(
     private val _videoModelId = MutableStateFlow("")
     val videoModelId: StateFlow<String> = _videoModelId.asStateFlow()
 
-    private val _audioModelId = MutableStateFlow("")
-    val audioModelId: StateFlow<String> = _audioModelId.asStateFlow()
+    private val _speechModelId = MutableStateFlow("")
+    val speechModelId: StateFlow<String> = _speechModelId.asStateFlow()
+
+    private val _musicModelId = MutableStateFlow("")
+    val musicModelId: StateFlow<String> = _musicModelId.asStateFlow()
 
     private val _embeddingModelId = MutableStateFlow("")
     val embeddingModelId: StateFlow<String> = _embeddingModelId.asStateFlow()
@@ -132,7 +136,9 @@ class ProviderManager private constructor(
         when (key) {
             "preset_image_model" -> _imageModelId.value = settingsPrefs.getString(key, "").orEmpty()
             "preset_video_model" -> _videoModelId.value = settingsPrefs.getString(key, "").orEmpty()
-            "preset_audio_model" -> _audioModelId.value = settingsPrefs.getString(key, "").orEmpty()
+            "preset_speech_model" -> _speechModelId.value = settingsPrefs.getString(key, "").orEmpty()
+            "preset_music_model" -> _musicModelId.value = settingsPrefs.getString(key, "").orEmpty()
+            "preset_audio_model" -> migrateLegacyPresetAudioModel()
         }
     }.also(settingsPrefs::registerOnSharedPreferenceChangeListener)
 
@@ -469,7 +475,8 @@ class ProviderManager private constructor(
         if (_summaryModelId.value in removedModelIds) setPresetModel("summary", "")
         if (_imageModelId.value in removedModelIds) setPresetModel("image", "")
         if (_videoModelId.value in removedModelIds) setPresetModel("video", "")
-        if (_audioModelId.value in removedModelIds) setPresetModel("audio", "")
+        if (_speechModelId.value in removedModelIds) setPresetModel("speech", "")
+        if (_musicModelId.value in removedModelIds) setPresetModel("music", "")
         if (_embeddingModelId.value in removedModelIds) setPresetModel("embedding", "")
         if (_rerankModelId.value in removedModelIds) setPresetModel("rerank", "")
         if (settingsPrefs.getString("default_model", null) in removedModelIds) {
@@ -1296,11 +1303,30 @@ class ProviderManager private constructor(
         _summaryModelId.value = settingsPrefs.getString("preset_summary_model", "") ?: ""
         _imageModelId.value = settingsPrefs.getString("preset_image_model", "") ?: ""
         _videoModelId.value = settingsPrefs.getString("preset_video_model", "") ?: ""
-        _audioModelId.value = settingsPrefs.getString("preset_audio_model", "") ?: ""
+        _speechModelId.value = settingsPrefs.getString("preset_speech_model", "") ?: ""
+        _musicModelId.value = settingsPrefs.getString("preset_music_model", "") ?: ""
+        migrateLegacyPresetAudioModel()
         _embeddingModelId.value = settingsPrefs.getString("preset_embedding_model", "") ?: ""
         _rerankModelId.value = settingsPrefs.getString("preset_rerank_model", "") ?: ""
         _currentModelSummary.value = _summaryModelId.value.ifBlank {
             getProviderSummary("default")?.model.orEmpty()
+        }
+    }
+
+    /** 历史 preset_audio_model 在语音/音乐拆分后按模型类型无损迁移到 preset_speech_model 或 preset_music_model。 */
+    private fun migrateLegacyPresetAudioModel() {
+        val legacyAudio = settingsPrefs.getString("preset_audio_model", "")?.trim().orEmpty()
+        if (legacyAudio.isEmpty()) return
+        if (_speechModelId.value.isNotEmpty() || _musicModelId.value.isNotEmpty()) return
+        val matched = _providerModels.value.firstOrNull { it.id == legacyAudio }
+        val isMusic = matched?.type.equals("music", ignoreCase = true) ||
+            matched?.effectiveMediaSettings()?.group == com.promenar.infinity.domain.mediagen.MediaGroup.MUSIC
+        if (isMusic) {
+            _musicModelId.value = legacyAudio
+            settingsPrefs.edit().putString("preset_music_model", legacyAudio).remove("preset_audio_model").apply()
+        } else {
+            _speechModelId.value = legacyAudio
+            settingsPrefs.edit().putString("preset_speech_model", legacyAudio).remove("preset_audio_model").apply()
         }
     }
 
@@ -1334,15 +1360,25 @@ class ProviderManager private constructor(
                 }
                 "preset_video_model"
             }
-            "audio" -> {
-                _audioModelId.value = modelId
+            "speech", "audio" -> {
+                _speechModelId.value = modelId
                 if (modelId.isNotBlank()) {
-                    val group = com.promenar.infinity.domain.mediagen.MediaGroup.AUDIO
+                    val group = com.promenar.infinity.domain.mediagen.MediaGroup.SPEECH
                     if ("cloud:$modelId" in mediaChannelOrders.orders.value[group].orEmpty()) {
                         mediaChannelOrders.reorder(group, listOf("cloud:$modelId"))
                     }
                 }
-                "preset_audio_model"
+                "preset_speech_model"
+            }
+            "music" -> {
+                _musicModelId.value = modelId
+                if (modelId.isNotBlank()) {
+                    val group = com.promenar.infinity.domain.mediagen.MediaGroup.MUSIC
+                    if ("cloud:$modelId" in mediaChannelOrders.orders.value[group].orEmpty()) {
+                        mediaChannelOrders.reorder(group, listOf("cloud:$modelId"))
+                    }
+                }
+                "preset_music_model"
             }
             "embedding" -> {
                 _embeddingModelId.value = modelId

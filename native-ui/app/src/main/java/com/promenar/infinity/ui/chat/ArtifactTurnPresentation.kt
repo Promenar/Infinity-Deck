@@ -34,7 +34,12 @@ internal fun artifactInvocation(invocation: ToolInvocationPresentation): Artifac
 }
 
 /** 产出新文件的媒体工具；查看类工具只引用已有媒体，不算改动。 */
-private val MEDIA_PRODUCING_TOOLS = setOf("image_generation", "media_fetch")
+private val MEDIA_PRODUCING_TOOLS = setOf(
+    "image_generation", "generate_image",
+    "speech_generation", "generate_speech",
+    "music_generation", "generate_music",
+    "media_fetch",
+)
 
 /**
  * 一条助手消息的工具调用新增或修改的工作区文件，按出现顺序：命令对账的新增、修改与移动目标，

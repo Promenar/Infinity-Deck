@@ -7,7 +7,7 @@ import com.promenar.infinity.data.model.catalog.ResolvedModelMetadata
 import com.promenar.infinity.data.model.catalog.SupportState
 
 enum class ModelType {
-    CHAT, REASONING, IMAGE, EMBEDDING, RERANK, VIDEO, AUDIO
+    CHAT, REASONING, IMAGE, EMBEDDING, RERANK, VIDEO, SPEECH, MUSIC, REALTIME
 }
 
 data class ModelCapabilities(
@@ -86,7 +86,27 @@ val MODEL_SPECS: List<ModelSpec> = listOf(
     ),
     ModelSpec(
         pattern = ModelPattern.RegexPattern(Regex("""^speech-(?:02|2\.[568])-(?:hd|turbo)$""", RegexOption.IGNORE_CASE)),
-        type = ModelType.AUDIO,
+        type = ModelType.SPEECH,
+        contextLength = 0,
+    ),
+    ModelSpec(
+        pattern = ModelPattern.RegexPattern(Regex("""^gemini-[a-z0-9._-]+-tts(?:-[a-z0-9._-]+)?$""", RegexOption.IGNORE_CASE)),
+        type = ModelType.SPEECH,
+        contextLength = 0,
+    ),
+    ModelSpec(
+        pattern = ModelPattern.RegexPattern(Regex("""^(?:tts-1(?:-hd)?|gpt-4o-mini-tts(?:-[a-z0-9._-]+)?)$""", RegexOption.IGNORE_CASE)),
+        type = ModelType.SPEECH,
+        contextLength = 0,
+    ),
+    ModelSpec(
+        pattern = ModelPattern.RegexPattern(Regex("""^lyria-3(?:[._-][a-z0-9._-]+)?$""", RegexOption.IGNORE_CASE)),
+        type = ModelType.MUSIC,
+        contextLength = 0,
+    ),
+    ModelSpec(
+        pattern = ModelPattern.RegexPattern(Regex("""^(?:lyria-realtime.*|gemini-[a-z0-9._-]+-live(?:-[a-z0-9._-]+)?)$""", RegexOption.IGNORE_CASE)),
+        type = ModelType.REALTIME,
         contextLength = 0,
     ),
 
@@ -1778,7 +1798,9 @@ private fun ResolvedModelMetadata.toLegacyModelSpec(): ModelSpec = ModelSpec(
         ModelWorkload.EMBEDDING -> ModelType.EMBEDDING
         ModelWorkload.RERANK -> ModelType.RERANK
         ModelWorkload.IMAGE_GENERATION -> ModelType.IMAGE
-        ModelWorkload.AUDIO -> ModelType.AUDIO
+        ModelWorkload.SPEECH -> ModelType.SPEECH
+        ModelWorkload.MUSIC -> ModelType.MUSIC
+        ModelWorkload.REALTIME -> ModelType.REALTIME
         ModelWorkload.VIDEO -> ModelType.VIDEO
         ModelWorkload.UNKNOWN -> null
     },

@@ -26,11 +26,12 @@ internal data class MediaChannelRow(
     val templateId: String? = null,
     val workflowHostId: String? = null,
     val workflowId: String? = null,
+    val voiceId: String? = null,
 ) {
     val references: ReferenceInputDescription? get() = referenceInputDescription(channel.capabilities)
 }
 
-/** 媒体能力目录：按类型展示全部云端模型与 ComfyUI 工作流；仅对真实生效的云端默认生图模型标注“默认”，视频与音频组不设静态默认。 */
+/** 媒体能力目录：按类型展示全部云端模型与 ComfyUI 工作流；对真实生效的云端默认图像/语音/音乐模型标注“默认”，视频组不设静态默认。 */
 internal fun mediaChannelRows(
     channels: List<MediaChannel>,
     models: List<ModelInfo>,
@@ -38,12 +39,16 @@ internal fun mediaChannelRows(
     hosts: List<ComfyHost>,
     workflows: List<ComfyWorkflowState> = emptyList(),
     defaultImageModelId: String = "",
+    defaultSpeechModelId: String = "",
+    defaultMusicModelId: String = "",
 ): Map<MediaGroup, List<MediaChannelRow>> {
     val cloud = models.associateBy { "cloud:${it.id}" }
     val comfyWorkflows = workflows.associateBy { it.workflow.channelId }
     val comfyTemplates = templates.associateBy { it.template.channelId }
     val hostNames = hosts.associate { it.id to it.name }
     val defaultImageChannelId = defaultImageModelId.trim().takeIf { it.isNotEmpty() }?.let { "cloud:$it" }
+    val defaultSpeechChannelId = defaultSpeechModelId.trim().takeIf { it.isNotEmpty() }?.let { "cloud:$it" }
+    val defaultMusicChannelId = defaultMusicModelId.trim().takeIf { it.isNotEmpty() }?.let { "cloud:$it" }
     return MediaGroup.entries.associateWith { group ->
         channels.filter { it.group == group }.map { channel ->
             val model = cloud[channel.id]
@@ -55,15 +60,25 @@ internal fun mediaChannelRows(
                 template != null -> listOfNotNull("ComfyUI", hostNames[template.hostId])
                 else -> emptyList()
             }
+            val isDefaultChannel = when (group) {
+                MediaGroup.IMAGE -> defaultImageChannelId != null && channel.id == defaultImageChannelId
+                MediaGroup.SPEECH -> defaultSpeechChannelId != null && channel.id == defaultSpeechChannelId
+                MediaGroup.MUSIC -> defaultMusicChannelId != null && channel.id == defaultMusicChannelId
+                MediaGroup.VIDEO -> false
+            }
+            val voice = if (group == MediaGroup.SPEECH) {
+                model?.effectiveMediaSettings()?.options?.voiceId?.trim()?.takeIf { it.isNotEmpty() }
+            } else null
             MediaChannelRow(
                 channel = channel,
                 name = model?.name ?: workflow?.name ?: template?.name ?: channel.id,
                 sourceSegments = source,
-                isDefault = group == MediaGroup.IMAGE && defaultImageChannelId != null && channel.id == defaultImageChannelId,
+                isDefault = isDefaultChannel,
                 modelId = model?.id,
                 templateId = template?.id,
                 workflowHostId = workflow?.hostId,
                 workflowId = workflow?.workflowId,
+                voiceId = voice,
             )
         }
     }
@@ -78,14 +93,23 @@ internal fun <T> moveMediaItemUp(items: List<T>, value: T): List<T> {
 internal fun changeMediaReferences(settings: MediaModelSettings, mode: CharacterReferenceMode): MediaModelSettings =
     settings.withCharacterReferences(mode, settings.capabilities.referenceOrder)
 
-internal data class ProviderMediaCount(val chat: Int = 0, val video: Int = 0, val speech: Int = 0, val image: Int = 0)
+internal data class ProviderMediaCount(val chat: Int = 0, val video: Int = 0, val speech: Int = 0, val music: Int = 0, val image: Int = 0)
 internal fun providerMediaCounts(models: List<ModelInfo>): Map<String, ProviderMediaCount> = models
     .filter { it.providerId != null }.groupBy { it.providerId.orEmpty() }.mapValues { (_, list) ->
-        fun group(m: ModelInfo) = m.effectiveMediaSettings()?.group ?: when (m.type) {
-            "image" -> MediaGroup.IMAGE; "video" -> MediaGroup.VIDEO; "audio" -> MediaGroup.AUDIO; else -> null
+        fun group(m: ModelInfo) = m.effectiveMediaSettings()?.group ?: when (m.type.lowercase()) {
+            "image" -> MediaGroup.IMAGE
+            "video" -> MediaGroup.VIDEO
+            "speech", "audio" -> MediaGroup.SPEECH
+            "music" -> MediaGroup.MUSIC
+            else -> null
         }
-        ProviderMediaCount(list.count { group(it) == null && it.type in setOf("chat", "reasoning") },
-            list.count { group(it) == MediaGroup.VIDEO }, list.count { group(it) == MediaGroup.AUDIO }, list.count { group(it) == MediaGroup.IMAGE })
+        ProviderMediaCount(
+            chat = list.count { group(it) == null && it.type in setOf("chat", "reasoning") },
+            video = list.count { group(it) == MediaGroup.VIDEO },
+            speech = list.count { group(it) == MediaGroup.SPEECH },
+            music = list.count { group(it) == MediaGroup.MUSIC },
+            image = list.count { group(it) == MediaGroup.IMAGE },
+        )
     }
 
 internal fun mediaProviderListSummary(providers: List<ProviderListItem>, unsupportedCount: Int, hostCount: Int): ProviderListSummary {

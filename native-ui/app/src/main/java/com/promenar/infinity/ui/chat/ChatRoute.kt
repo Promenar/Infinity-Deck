@@ -62,10 +62,13 @@ import com.promenar.infinity.domain.repository.ITaskRepository
 import com.promenar.infinity.ui.common.EditorMode
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityNoticeAction
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
 import com.promenar.infinity.ui.common.InfinityPopoverAlign
 import com.promenar.infinity.ui.common.InfinityPopoverSide
 import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.InfinitySnackbarData
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.SnackbarType
 import com.promenar.infinity.ui.common.UnifiedPromptEditor
 import com.promenar.infinity.ui.testing.UiTags
@@ -399,9 +402,46 @@ fun ChatRoute(
         chatReasoningControl(uiState.session?.modelId, providers, providerModels, sessionReasoningEffort, agentReasoningEffort)
     }
 
+    val globalNotice = LocalInfinityNoticeController.current
+    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var snackbarData by remember { mutableStateOf<InfinitySnackbarData?>(null) }
     var snackbarAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val showNotice: (InfinityNoticeSeverity, String, String?, (() -> Unit)?, Long?) -> Unit =
+        { severity, message, actionLabel, actionHandler, durationMs ->
+            if (globalNotice != null) {
+                globalNotice.show(
+                    severity = severity,
+                    message = message,
+                    action = if (actionLabel != null && actionHandler != null) InfinityNoticeAction(actionLabel, actionHandler) else null,
+                    durationMillis = durationMs,
+                )
+            } else {
+                val legacyType = when (severity) {
+                    InfinityNoticeSeverity.SUCCESS -> SnackbarType.SUCCESS
+                    InfinityNoticeSeverity.ERROR -> SnackbarType.ERROR
+                    InfinityNoticeSeverity.INFO, InfinityNoticeSeverity.WARNING -> SnackbarType.INFO
+                }
+                snackbarAction = actionHandler
+                snackbarData = InfinitySnackbarData(message, legacyType, actionLabel)
+                scope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar(
+                        message = message,
+                        actionLabel = actionLabel,
+                        duration = if ((durationMs ?: 0L) >= 4_000L || actionLabel != null) SnackbarDuration.Long else SnackbarDuration.Short,
+                    )
+                }
+            }
+        }
+    val readAloudController = rememberChatReadAloudController(
+        sessionId = sessionId,
+        providerManager = ProviderManager.getInstance(),
+        cloudModels = remember { com.promenar.infinity.data.mediagen.cloud.ProviderCloudMediaModelSource(ProviderManager.getInstance()) },
+        backend = { application.productionMediaRuntime.geminiAudioBackend },
+        noticeController = { globalNotice },
+        onOpenDefaultModels = onOpenDefaultModels,
+    )
     var selectedImageUriStrings by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     val selectedImageUris = selectedImageUriStrings.map(Uri::parse)
     // 画板：打开的对象与完成后替换的输入框图片下标（null 表示追加）。
@@ -480,7 +520,6 @@ fun ChatRoute(
     var permissionInFlightTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val pendingNotificationPermission = permissionExplanationTaskId
         ?.let(::NotificationPermissionRequest)
-    val scope = rememberCoroutineScope()
     val continueTaskPrompt = stringResource(R.string.chat_task_continue_prompt)
     val queueEditBlockedLabel = stringResource(R.string.chat_queue_edit_blocked)
 
@@ -616,7 +655,6 @@ fun ChatRoute(
         }
     }
 
-    val dismissLabel = stringResource(R.string.common_dismiss)
     val copiedLabel = stringResource(R.string.chat_copy_success)
     val branchFailedLabel = stringResource(R.string.chat_branch_failed)
     val branchUnstableLabel = stringResource(R.string.chat_branch_failed_unstable)
@@ -635,6 +673,7 @@ fun ChatRoute(
         permissionDialogVisible,
     ) {
         if (permissionDialogVisible) {
+            globalNotice?.dismiss()
             snackbarHostState.currentSnackbarData?.dismiss()
             return@LaunchedEffect
         }
@@ -643,14 +682,7 @@ fun ChatRoute(
             shouldShowGenerationFailureSnackbar(uiState) -> generationErrorMessage
             else -> null
         } ?: return@LaunchedEffect
-        snackbarAction = chatViewModel::clearError
-        snackbarData = InfinitySnackbarData(message, SnackbarType.ERROR, dismissLabel)
-        snackbarHostState.currentSnackbarData?.dismiss()
-        snackbarHostState.showSnackbar(
-            message = message,
-            actionLabel = dismissLabel,
-            duration = SnackbarDuration.Long,
-        )
+        showNotice(InfinityNoticeSeverity.ERROR, message, null, null, null)
         chatViewModel.clearError()
     }
     LaunchedEffect(
@@ -665,14 +697,8 @@ fun ChatRoute(
             uiState.error != null
         ) return@LaunchedEffect
         val warning = uiState.backgroundWarning ?: return@LaunchedEffect
-        snackbarAction = { chatViewModel.clearBackgroundWarning(warning.taskId) }
-        snackbarData = InfinitySnackbarData(warning.message, SnackbarType.INFO, dismissLabel)
-        snackbarHostState.currentSnackbarData?.dismiss()
-        snackbarHostState.showSnackbar(
-            message = warning.message,
-            actionLabel = dismissLabel,
-            duration = SnackbarDuration.Long,
-        )
+        showNotice(InfinityNoticeSeverity.INFO, warning.message, null, null, 4_500L)
+        chatViewModel.clearBackgroundWarning(warning.taskId)
     }
 
     // 未选择嵌入模型时检索静默跳过；首次遇到时给一次指向“默认模型”的引导，之后不再提醒。
@@ -692,14 +718,7 @@ fun ChatRoute(
             uiState.error != null
         ) return@LaunchedEffect
         application.embeddingSetupHint.markShown()
-        snackbarAction = onOpenDefaultModels
-        snackbarData = InfinitySnackbarData(embeddingSetupMessage, SnackbarType.INFO, embeddingSetupAction)
-        snackbarHostState.currentSnackbarData?.dismiss()
-        snackbarHostState.showSnackbar(
-            message = embeddingSetupMessage,
-            actionLabel = embeddingSetupAction,
-            duration = SnackbarDuration.Long,
-        )
+        showNotice(InfinityNoticeSeverity.INFO, embeddingSetupMessage, embeddingSetupAction, onOpenDefaultModels, 5_500L)
     }
 
     val undoLabel = stringResource(R.string.chat_btn_undo)
@@ -712,37 +731,59 @@ fun ChatRoute(
     }.orEmpty()
     LaunchedEffect(deletionUndo) {
         val undo = deletionUndo ?: return@LaunchedEffect
-        snackbarAction = chatViewModel::undoLastDeletion
-        snackbarData = InfinitySnackbarData(deletedLabel, SnackbarType.INFO, undoLabel)
-        snackbarHostState.currentSnackbarData?.dismiss()
-        val result = snackbarHostState.showSnackbar(
-            message = deletedLabel,
-            actionLabel = undoLabel,
-            duration = SnackbarDuration.Long,
-        )
-        if (result == SnackbarResult.Dismissed) chatViewModel.dismissDeletionUndo(undo.token)
+        if (globalNotice != null) {
+            globalNotice.show(
+                severity = InfinityNoticeSeverity.INFO,
+                message = deletedLabel,
+                action = InfinityNoticeAction(undoLabel, chatViewModel::undoLastDeletion),
+                durationMillis = 6_000L,
+            )
+            kotlinx.coroutines.delay(6_200L)
+            chatViewModel.dismissDeletionUndo(undo.token)
+        } else {
+            snackbarAction = chatViewModel::undoLastDeletion
+            snackbarData = InfinitySnackbarData(deletedLabel, SnackbarType.INFO, undoLabel)
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(
+                message = deletedLabel,
+                actionLabel = undoLabel,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.Dismissed) chatViewModel.dismissDeletionUndo(undo.token)
+        }
     }
     val taskCompletedLabel = stringResource(R.string.chat_task_marked_completed)
     LaunchedEffect(taskCompletionUndo) {
         val undo = taskCompletionUndo ?: return@LaunchedEffect
-        snackbarAction = chatViewModel::undoTaskCompletion
-        snackbarData = InfinitySnackbarData(taskCompletedLabel, SnackbarType.INFO, undoLabel)
-        snackbarHostState.currentSnackbarData?.dismiss()
-        val result = snackbarHostState.showSnackbar(
-            message = taskCompletedLabel,
-            actionLabel = undoLabel,
-            duration = SnackbarDuration.Long,
-        )
-        if (result == SnackbarResult.Dismissed) chatViewModel.dismissTaskCompletionUndo(undo.token)
+        if (globalNotice != null) {
+            globalNotice.show(
+                severity = InfinityNoticeSeverity.INFO,
+                message = taskCompletedLabel,
+                action = InfinityNoticeAction(undoLabel, chatViewModel::undoTaskCompletion),
+                durationMillis = 6_000L,
+            )
+            kotlinx.coroutines.delay(6_200L)
+            chatViewModel.dismissTaskCompletionUndo(undo.token)
+        } else {
+            snackbarAction = chatViewModel::undoTaskCompletion
+            snackbarData = InfinitySnackbarData(taskCompletedLabel, SnackbarType.INFO, undoLabel)
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(
+                message = taskCompletedLabel,
+                actionLabel = undoLabel,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.Dismissed) chatViewModel.dismissTaskCompletionUndo(undo.token)
+        }
     }
 
     val showCommandFeedback: (String, SnackbarType) -> Unit = { message, type ->
-        snackbarAction = null
-        snackbarData = InfinitySnackbarData(message, type)
-        scope.launch {
-            snackbarHostState.currentSnackbarData?.dismiss()
-            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+        val severity = when (type) {
+            SnackbarType.SUCCESS -> InfinityNoticeSeverity.SUCCESS
+            SnackbarType.ERROR -> InfinityNoticeSeverity.ERROR
+            SnackbarType.INFO -> InfinityNoticeSeverity.INFO
         }
+        showNotice(severity, message, null, null, null)
     }
     val sessionExportViewModel = com.promenar.infinity.ui.chat.export.rememberSessionExportViewModel(sessionId)
     val slashCommands = rememberChatSlashCommands(
@@ -929,9 +970,7 @@ fun ChatRoute(
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
-                    snackbarData = InfinitySnackbarData(branchFailedLabel, SnackbarType.ERROR)
-                    snackbarHostState.currentSnackbarData?.dismiss()
-                    snackbarHostState.showSnackbar(branchFailedLabel, duration = SnackbarDuration.Long)
+                    showNotice(InfinityNoticeSeverity.ERROR, branchFailedLabel, null, null, null)
                     return@launch
                 }
                 when (result) {
@@ -941,12 +980,7 @@ fun ChatRoute(
                         val message = if (
                             result.reason == com.promenar.infinity.data.session.BranchSessionRejectReason.TargetNotStable
                         ) branchUnstableLabel else branchFailedLabel
-                        snackbarData = InfinitySnackbarData(message, SnackbarType.ERROR)
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(
-                            message = message,
-                            duration = SnackbarDuration.Long,
-                        )
+                        showNotice(InfinityNoticeSeverity.ERROR, message, null, null, null)
                     }
                 }
             }
@@ -1004,6 +1038,7 @@ fun ChatRoute(
                 browser = browserState,
                 backgroundJobsRequest = backgroundJobsRequest,
                 portraitDrawerSuspended = hasGenerationInteraction,
+                readAloudState = readAloudController.uiState,
             ),
             actions = ChatScreenActions(
                 onOpenStartupIssues = { showStartupIssues = true },
@@ -1050,13 +1085,9 @@ fun ChatRoute(
                 onContentChange = chatViewModel::updateMessageContentOnly,
                 onCopy = { text ->
                     resolvedDependencies.copyToClipboard(context, text)
-                    snackbarAction = null
-                    snackbarData = InfinitySnackbarData(copiedLabel, SnackbarType.SUCCESS)
-                    scope.launch {
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(copiedLabel, duration = SnackbarDuration.Short)
-                    }
+                    showNotice(InfinityNoticeSeverity.SUCCESS, copiedLabel, null, null, null)
                 },
+                onReadAloud = readAloudController::toggle,
                 onDeleteMessage = chatViewModel::deleteMessage,
                 onRegenerateMessage = { messageId ->
                     if (chatViewModel.countSubsequentUserTurns(messageId) > 0) {
@@ -1155,12 +1186,7 @@ fun ChatRoute(
                 loadSecretSaveTargets = chatViewModel::secretSaveTargets,
                 onEditQueued = { id ->
                     if (!chatViewModel.editQueuedMessage(id)) {
-                        snackbarAction = null
-                        snackbarData = InfinitySnackbarData(queueEditBlockedLabel, SnackbarType.INFO)
-                        scope.launch {
-                            snackbarHostState.currentSnackbarData?.dismiss()
-                            snackbarHostState.showSnackbar(queueEditBlockedLabel, duration = SnackbarDuration.Short)
-                        }
+                        showNotice(InfinityNoticeSeverity.INFO, queueEditBlockedLabel, null, null, null)
                     }
                 },
                 onMoveQueuedToFront = chatViewModel::moveQueuedMessageToFront,

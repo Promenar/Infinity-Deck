@@ -405,6 +405,14 @@
     <string name="chat_title_new">New Chat</string>
     <string name="chat_menu_session_settings">Session Settings</string>
     <string name="chat_action_copy">Copy</string>
+    <string name="chat_action_read_aloud">Read aloud</string>
+    <string name="chat_action_stop_read_aloud">Stop reading</string>
+    <string name="chat_action_cancel_read_aloud">Cancel reading</string>
+    <string name="chat_read_aloud_empty_body">No reply text to read aloud</string>
+    <string name="chat_read_aloud_no_model">No default speech model set</string>
+    <string name="chat_read_aloud_go_settings">Settings</string>
+    <string name="chat_read_aloud_failed">Speech synthesis failed: %1$s</string>
+    <string name="chat_read_aloud_playback_failed">Audio playback failed: %1$s</string>
     <string name="chat_action_edit">Edit</string>
     <string name="chat_edit_message_title">Edit message</string>
     <string name="chat_edit_branch_and_generate">Branch &amp; generate</string>
@@ -868,6 +876,9 @@
     <string name="provider_models_type_image">Image</string>
     <string name="provider_models_type_video">Video</string>
     <string name="provider_models_type_audio">Audio</string>
+    <string name="provider_models_type_speech">Speech</string>
+    <string name="provider_models_type_music">Music</string>
+    <string name="provider_models_type_realtime">Realtime</string>
     <string name="provider_models_type_embedding">Embed</string>
     <string name="provider_models_type_rerank">Rerank</string>
     <string name="provider_models_type_unknown">General</string>
@@ -942,6 +953,10 @@
     <string name="skill_create_tool_desc">Create new custom tools via meta-tool</string>
     <string name="skill_image_generation">Image Generation</string>
     <string name="skill_image_generation_desc">Generate images from prompts or edit workspace images</string>
+    <string name="skill_speech_generation">Speech Synthesis</string>
+    <string name="skill_speech_generation_desc">Synthesize natural speech from text (single or multi-speaker TTS)</string>
+    <string name="skill_music_generation">Music Generation</string>
+    <string name="skill_music_generation_desc">Generate stereo music and scores from prompts, lyrics, or reference images</string>
     <string name="skill_file_read">File Read</string>
     <string name="skill_file_read_desc">Read a file</string>
     <string name="skill_file_write">File Write</string>

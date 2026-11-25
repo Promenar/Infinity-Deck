@@ -86,7 +86,7 @@ class ShotGenerationPlannerTest {
     }
     @Test fun `配音提交独立语音任务并排除原生对白`() = runTest {
         edit { it.copy(dialogue = listOf(ShotDialogue("lin", "门开着", "低声", DialogueAudioSource.DUBBED))) }
-        val speech = MediaChannel("speech", MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.SPEECH), maxAudio = 1))
+        val speech = MediaChannel("speech", MediaGroup.SPEECH, MediaCapabilities(setOf(GenerationMode.SPEECH), maxAudio = 1))
         val result = planner(PlanningRegistry(planningChannel(), speech)).generate("s", "S1E01", "SC01-01") as ShotGenerateResult.Submitted
         assertEquals(2, queue.tasks.value.size)
         val audio = queue.tasks.value.last()
@@ -102,12 +102,14 @@ class ShotGenerationPlannerTest {
         val result = planner().preview("s", "S1E01", "SC01-01")
         assertEquals(listOf("ref/pier.png"), result.inputs.map { it.path })
     }
-    @Test fun `无参考语音能力的配音通道在预览阻断`() = runTest {
-        edit { it.copy(dialogue = listOf(ShotDialogue("lin", "门开着", audioSource = DialogueAudioSource.DUBBED))) }
-        val speech = MediaChannel("speech", MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.SPEECH)))
+    @Test fun `云端预置声线配音通道无需参考语音文件即可生成`() = runTest {
+        edit { it.copy(dialogue = listOf(ShotDialogue("lin", "门开着", "低声", DialogueAudioSource.DUBBED))) }
+        val speech = MediaChannel("speech", MediaGroup.SPEECH, MediaCapabilities(setOf(GenerationMode.SPEECH)))
         val preview = planner(PlanningRegistry(planningChannel(), speech)).preview("s", "S1E01", "SC01-01")
-        assertNotNull(preview.blockedReason)
-        assertTrue(queue.tasks.value.isEmpty())
+        assertNull(preview.blockedReason)
+        val submitted = planner(PlanningRegistry(planningChannel(), speech)).generate("s", "S1E01", "SC01-01") as ShotGenerateResult.Submitted
+        assertEquals(1, submitted.audioTaskIds.size)
+        assertTrue(queue.tasks.value.last().request.inputs.isEmpty())
     }
     @Test fun `显式关键帧锚点道具及声音按类型打包`() = runTest {
         files.bytes["ref/prop.png"] = byteArrayOf(7)
@@ -164,7 +166,7 @@ class ShotGenerationPlannerTest {
 
     @Test fun `预览与提交镜头及配音均不调用后端估价`() = runTest {
         edit { it.copy(dialogue = listOf(ShotDialogue("lin", "门开着", audioSource = DialogueAudioSource.DUBBED))) }
-        val speech = MediaChannel("speech", MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.SPEECH), maxAudio = 1))
+        val speech = MediaChannel("speech", MediaGroup.SPEECH, MediaCapabilities(setOf(GenerationMode.SPEECH), maxAudio = 1))
         val estimatedChannels = mutableListOf<String>()
         val backend = object : MediaGenerationBackend {
             override fun handles(channel: MediaChannel) = true

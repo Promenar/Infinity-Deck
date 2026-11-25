@@ -39,7 +39,7 @@ class ComfyBackendTest {
         val graph = Json.parseToJsonElement("""{"1":{"class_type":"Test","inputs":{"prompt":"","seconds":5}},"2":{"class_type":"Save","inputs":{}}}""").jsonObject
         val template = f.template.copy(workflow = graph, slots = listOf(ComfySlot("1", "prompt", SlotKind.PROMPT),
             ComfySlot("1", "seconds", SlotKind.DURATION), ComfySlot("2", "audio", SlotKind.OUTPUT, outputKind = InputKind.AUDIO)),
-            group = MediaGroup.AUDIO, capabilities = MediaCapabilities(setOf(GenerationMode.MUSIC)))
+            group = MediaGroup.MUSIC, capabilities = MediaCapabilities(setOf(GenerationMode.MUSIC)))
         f.http.info = Json.parseToJsonElement("""{"Test":{"input":{"required":{"prompt":["STRING"],"seconds":["FLOAT"]}}},"Save":{"input":{"required":{}},"output_node":true,"output":["AUDIO"]}}""").jsonObject
         f.repository.saveHost(f.host); f.repository.defineTemplateByAgent(template)
         val request = f.request.copy(mode = GenerationMode.MUSIC, inputs = emptyList(), specs = GenerationSpecs(durationSeconds = 12))

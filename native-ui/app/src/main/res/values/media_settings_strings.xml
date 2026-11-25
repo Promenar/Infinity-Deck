@@ -7,6 +7,7 @@
     <string name="media_settings_audio">Audio</string>
     <string name="media_settings_chat">Chat</string>
     <string name="media_settings_speech">Speech</string>
+    <string name="media_settings_music">Music</string>
     <string name="media_settings_default">Default</string>
     <string name="media_settings_move_up">Move up: %1$s</string>
     <string name="media_settings_composite">Composite</string>
@@ -181,10 +182,17 @@
     <string name="settings_ia_comfyui">ComfyUI</string>
     <string name="settings_ia_comfyui_subtitle">Hosts, workflows, and submitters</string>
     <string name="settings_default_media_section">Cloud media defaults</string>
-    <string name="settings_default_media_footer">Pick one cloud model per slot, or clear to leave empty.</string>
+    <string name="settings_default_media_footer">Default speech is used by bubble read-aloud and TTS; default music is used for music generation. Clear any slot to leave empty.</string>
     <string name="settings_default_cloud_image">Default cloud image</string>
     <string name="settings_default_cloud_video">Default cloud video</string>
     <string name="settings_default_cloud_audio">Default cloud audio</string>
+    <string name="settings_default_cloud_speech">Default cloud speech (TTS)</string>
+    <string name="settings_default_cloud_music">Default cloud music</string>
+    <string name="media_settings_voice_section">Default speech voice</string>
+    <string name="media_settings_voice_footer">Used by default when reading replies aloud; Agent calls to generate_speech can override per speaker.</string>
+    <string name="media_settings_voice_label">Voice name / ID</string>
+    <string name="media_settings_voice_tag">Voice %1$s</string>
+    <string name="media_settings_audio_format_label">Output format</string>
     <string name="settings_default_text_section">Text &amp; retrieval defaults</string>
 
     <string name="media_settings_comfy_title">ComfyUI</string>

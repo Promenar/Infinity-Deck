@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -156,10 +157,16 @@ internal fun referenceSlotLabel(name: String): String = when (name) {
 
 @Composable
 internal fun mediaGroupLabel(group: MediaGroup): String = stringResource(when (group) {
-    MediaGroup.IMAGE -> R.string.media_settings_image; MediaGroup.VIDEO -> R.string.media_settings_video; MediaGroup.AUDIO -> R.string.media_settings_audio
+    MediaGroup.IMAGE -> R.string.media_settings_image
+    MediaGroup.VIDEO -> R.string.media_settings_video
+    MediaGroup.SPEECH -> R.string.media_settings_speech
+    MediaGroup.MUSIC -> R.string.media_settings_music
 })
 internal fun mediaGroupIcon(group: MediaGroup): ImageVector = when (group) {
-    MediaGroup.IMAGE -> Icons.Rounded.Image; MediaGroup.VIDEO -> Icons.Rounded.Movie; MediaGroup.AUDIO -> Icons.Rounded.MusicNote
+    MediaGroup.IMAGE -> Icons.Rounded.Image
+    MediaGroup.VIDEO -> Icons.Rounded.Movie
+    MediaGroup.SPEECH -> Icons.Rounded.RecordVoiceOver
+    MediaGroup.MUSIC -> Icons.Rounded.MusicNote
 }
 @Composable
 internal fun generationModeLabel(mode: GenerationMode): String = stringResource(when (mode) {
@@ -175,7 +182,10 @@ internal fun referenceDescription(value: ReferenceInputDescription) = stringReso
 @Composable
 internal fun channelDescriptionSegments(row: MediaChannelRow): List<String> = row.sourceSegments +
     row.channel.capabilities.modes.sortedBy { it.ordinal }.map { generationModeLabel(it) } +
-    listOfNotNull(row.references?.let { referenceDescription(it) })
+    listOfNotNull(
+        row.voiceId?.let { stringResource(R.string.media_settings_voice_tag, it) },
+        row.references?.let { referenceDescription(it) },
+    )
 @Composable
 internal fun preflightLabel(result: PreflightResult): String {
     val label = templateStatusLabel(result)
@@ -213,5 +223,6 @@ internal fun providerMediaCountSegments(count: ProviderMediaCount): List<String>
     "${stringResource(R.string.media_settings_chat)} ${count.chat}",
     "${stringResource(R.string.media_settings_video)} ${count.video}",
     "${stringResource(R.string.media_settings_speech)} ${count.speech}",
+    "${stringResource(R.string.media_settings_music)} ${count.music}",
     "${stringResource(R.string.media_settings_image)} ${count.image}",
 )

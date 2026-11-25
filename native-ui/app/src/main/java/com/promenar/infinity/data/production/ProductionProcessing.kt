@@ -12,7 +12,15 @@ data class ProductionTemplate(val template: ComfyTemplate, val ready: Boolean)
 interface ProductionProcessing {
     suspend fun operations(sessionId: String, episodeId: String, shotCode: String): ShotOperations
     suspend fun derive(sessionId: String, episodeId: String, shotCode: String, takeId: String, operationId: String, params: Map<String, JsonPrimitive> = emptyMap()): MediaTask
-    suspend fun score(sessionId: String, assetId: String, templateId: String? = null, prompt: String? = null, durationSeconds: Double? = null, versions: Int = 4): List<MediaTask>
+    suspend fun score(
+        sessionId: String,
+        assetId: String,
+        templateId: String? = null,
+        prompt: String? = null,
+        durationSeconds: Double? = null,
+        versions: Int = 4,
+        channelId: String? = null,
+    ): List<MediaTask>
 }
 class DefaultProductionProcessing(
     private val store: ProductionWorkStore, private val registry: MediaChannelRegistry, private val queue: MediaGenerationQueue,
@@ -58,30 +66,102 @@ class DefaultProductionProcessing(
             queue.submit(request)
         }
     }
-    override suspend fun score(sessionId: String, assetId: String, templateId: String?, prompt: String?, durationSeconds: Double?, versions: Int): List<MediaTask> = withContext(Dispatchers.IO) {
+    override suspend fun score(
+        sessionId: String,
+        assetId: String,
+        templateId: String?,
+        prompt: String?,
+        durationSeconds: Double?,
+        versions: Int,
+        channelId: String?,
+    ): List<MediaTask> = withContext(Dispatchers.IO) {
         mutex.withLock {
             val snapshot = load(sessionId); val p = snapshot.production
             val asset = requireNotNull(p.assets.firstOrNull { it.id == assetId && it.kind == AssetKind.SOUND }) { "需要存在的声音资产。" }
             require(versions in 1..30) { "versions 需要 1～30。" }
-            val available = templates().filter { it.ready && it.template.role == TemplateRole.GENERATE && it.template.group == MediaGroup.AUDIO && GenerationMode.MUSIC in it.template.channel().capabilities.modes && it.template.slots.any { s -> s.kind == SlotKind.DURATION } && it.template.slots.any { s -> s.kind == SlotKind.SEED } && it.template.slots.filter { s -> s.kind == SlotKind.OUTPUT }.let { outputs -> outputs.size == 1 && outputs.single().capacity == 1 && (outputs.single().outputKind == InputKind.AUDIO || outputs.single().input == "audio") } }
-            val ordered = registry.observeChannels().first().map { it.id }
-            val template = (if (templateId != null) available.firstOrNull { it.template.id == templateId } else available.minByOrNull { ordered.indexOf(it.template.channelId).let { index -> if (index < 0) Int.MAX_VALUE else index } })?.template
-                ?: throw IllegalArgumentException("配乐模板不可用；当前可用：${available.joinToString { it.template.id }.ifEmpty { "无（需要 MUSIC、DURATION 与 SEED 槽位）" }}")
+            val readyTemplates = templates().filter {
+                it.ready && it.template.role == TemplateRole.GENERATE && it.template.group == MediaGroup.MUSIC &&
+                    GenerationMode.MUSIC in it.template.channel().capabilities.modes &&
+                    it.template.slots.any { s -> s.kind == SlotKind.DURATION } &&
+                    it.template.slots.any { s -> s.kind == SlotKind.SEED } &&
+                    it.template.slots.filter { s -> s.kind == SlotKind.OUTPUT }.let { outputs ->
+                        outputs.size == 1 && outputs.single().capacity == 1 && (outputs.single().outputKind == InputKind.AUDIO || outputs.single().input == "audio")
+                    }
+            }
+            val channels = registry.observeChannels().first()
+            val musicChannels = channels.filter { it.group == MediaGroup.MUSIC && GenerationMode.MUSIC in it.capabilities.modes }
+            val readyTemplateByChannel = readyTemplates.associateBy { it.template.channelId }
+            val availableChannels = musicChannels.filter { ch ->
+                if (ch.id.startsWith("comfy:")) ch.id in readyTemplateByChannel else true
+            }
+
+            val requestedTarget = channelId?.takeIf { it.isNotBlank() } ?: templateId?.takeIf { it.isNotBlank() }
+            val selectedTemplate: ComfyTemplate?
+            val selectedChannel: MediaChannel
+            if (requestedTarget != null) {
+                val matchedTemplate = readyTemplates.firstOrNull { it.template.id == requestedTarget || it.template.channelId == requestedTarget }?.template
+                if (matchedTemplate != null) {
+                    selectedTemplate = matchedTemplate
+                    selectedChannel = matchedTemplate.channel()
+                } else {
+                    val matchedChannel = availableChannels.firstOrNull { it.id == requestedTarget }
+                        ?: throw IllegalArgumentException("配乐通道不可用：$requestedTarget；当前可用：${availableChannels.joinToString { it.id }.ifEmpty { "无（请启用 Lyria 等云端音乐模型或预检通过的 MUSIC 配乐模板）" }}")
+                    selectedTemplate = null
+                    selectedChannel = matchedChannel
+                }
+            } else {
+                selectedChannel = availableChannels.firstOrNull()
+                    ?: readyTemplates.firstOrNull()?.template?.channel()
+                    ?: throw IllegalArgumentException("配乐通道不可用；当前可用：无（请启用 Lyria 等云端音乐模型或预检通过的 MUSIC 配乐模板）")
+                selectedTemplate = readyTemplateByChannel[selectedChannel.id]?.template
+            }
+
             val latest = p.cuts.maxByOrNull { it.createdAt }
             val seconds = durationSeconds ?: latest?.let { it.export?.durationSeconds ?: it.clips.sumOf { clip -> clip.seconds } }
-                ?: throw IllegalArgumentException("尚无剪辑版本，请提供 duration_seconds。")
+                ?: if (selectedTemplate == null) 30.0 else throw IllegalArgumentException("尚无剪辑版本，请提供 duration_seconds。")
             require(seconds.isFinite() && seconds > 0 && seconds <= Int.MAX_VALUE) { "配乐时长必须是有限正数。" }
             val pending = queue.observeTasks().first().filter { ProductionAssetSourceRef.parse(it.request.sourceRef) == ProductionAssetSourceRef(p.id, asset.id) && it.state !in setOf(MediaTaskState.FAILED, MediaTaskState.CANCELED) }
                 .sumOf { task -> if (task.state == MediaTaskState.COMPLETED) task.outputPaths.count { path -> asset.versions.none { it.taskId == task.id && it.path == path } } else 1 }
             require(asset.versions.size + pending + versions <= 30) { "声音资产版本容量不足。" }
+            val effectivePrompt = prompt?.takeIf { it.isNotBlank() } ?: asset.description?.takeIf { it.isNotBlank() } ?: asset.name
             val baseSeed = seed().and(Long.MAX_VALUE)
             val requests = List(versions) { index ->
-                val actualSeed = (baseSeed + index).and(Long.MAX_VALUE)
-                MediaGenerationRequest(template.channelId, GenerationMode.MUSIC, prompt?.takeIf { it.isNotBlank() } ?: asset.description?.takeIf { it.isNotBlank() } ?: asset.name,
-                    emptyList(), ProductionAssetSourceRef(p.id, asset.id).encode(), GenerationSpecs(seed = actualSeed, durationSecondsExact = seconds), sessionId,
-                    "${p.rootPath}/assets/${asset.id}", template.resolveParams(emptyMap()), ProductionMediaContext(templateFingerprint = template.fingerprint(), templateId = template.id, assetId = asset.id))
+                if (selectedTemplate != null) {
+                    val actualSeed = (baseSeed + index).and(Long.MAX_VALUE)
+                    MediaGenerationRequest(
+                        selectedTemplate.channelId,
+                        GenerationMode.MUSIC,
+                        effectivePrompt,
+                        emptyList(),
+                        ProductionAssetSourceRef(p.id, asset.id).encode(),
+                        GenerationSpecs(seed = actualSeed, durationSecondsExact = seconds),
+                        sessionId,
+                        "${p.rootPath}/assets/${asset.id}",
+                        selectedTemplate.resolveParams(emptyMap()),
+                        ProductionMediaContext(templateFingerprint = selectedTemplate.fingerprint(), templateId = selectedTemplate.id, assetId = asset.id),
+                    )
+                } else {
+                    val clampedDuration = seconds.toInt().coerceAtLeast(1)
+                    val specs = if (selectedChannel.capabilities.minDurationSeconds != null || selectedChannel.capabilities.maxDurationSeconds != null) {
+                        GenerationSpecs(durationSeconds = clampedDuration)
+                    } else {
+                        GenerationSpecs(durationSecondsExact = seconds)
+                    }
+                    MediaGenerationRequest(
+                        selectedChannel.id,
+                        GenerationMode.MUSIC,
+                        effectivePrompt,
+                        emptyList(),
+                        ProductionAssetSourceRef(p.id, asset.id).encode(),
+                        specs,
+                        sessionId,
+                        "${p.rootPath}/assets/${asset.id}",
+                        emptyMap(),
+                        ProductionMediaContext(assetId = asset.id),
+                    )
+                }
             }
-            requests.forEach { require(validateRequest(template.channel(), it).valid) { "模板不支持请求的配乐时长。" } }
+            requests.forEach { require(validateRequest(selectedChannel, it).valid) { "通道不支持请求的配乐时长或规格。" } }
             require(load(sessionId).let { it.production.id == p.id && it.revision == snapshot.revision }) { "制作项目已变化，请重试。" }
             // 每次 submit 都持久化；中断后可由任务查询和登记器恢复已提交部分。
             val submitted = mutableListOf<MediaTask>()

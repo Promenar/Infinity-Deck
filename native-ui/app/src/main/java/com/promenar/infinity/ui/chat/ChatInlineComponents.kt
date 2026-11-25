@@ -740,7 +740,7 @@ internal fun approvalToolTitle(name: String): String = when {
  * 生图结果总是保存到默认媒体目录（`/media/<日期>/`），与 `media_fetch` 未指定路径时的显示一致。
  */
 internal fun approvalFixedWriteTarget(name: String): String? = when (name) {
-    "generate_image" -> "/media"
+    "generate_image", "generate_speech", "generate_music" -> "/media"
     else -> null
 }
 

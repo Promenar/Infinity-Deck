@@ -7,10 +7,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ShortText
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,7 +50,8 @@ enum class DefaultModelRole(
     RERANK("rerank", "rerank", R.string.settings_model_rerank),
     IMAGE("image", "cloud_image", R.string.settings_default_cloud_image),
     VIDEO("video", "cloud_video", R.string.settings_default_cloud_video),
-    AUDIO("audio", "cloud_audio", R.string.settings_default_cloud_audio),
+    SPEECH("speech", "cloud_speech", R.string.settings_default_cloud_speech),
+    MUSIC("music", "cloud_music", R.string.settings_default_cloud_music),
 }
 
 @Composable
@@ -66,7 +68,8 @@ fun DefaultModelsScreen(
     val rerankModelId by viewModel.rerankModelId.collectAsState()
     val imageModelId by viewModel.imageModelId.collectAsState()
     val videoModelId by viewModel.videoModelId.collectAsState()
-    val audioModelId by viewModel.audioModelId.collectAsState()
+    val speechModelId by viewModel.speechModelId.collectAsState()
+    val musicModelId by viewModel.musicModelId.collectAsState()
     val timeouts by viewModel.modelTimeouts.collectAsState()
 
     var activePickerRole by remember { mutableStateOf<DefaultModelRole?>(null) }
@@ -88,7 +91,8 @@ fun DefaultModelsScreen(
         rerankModelId,
         imageModelId,
         videoModelId,
-        audioModelId,
+        speechModelId,
+        musicModelId,
         timeouts,
     ) {
         val summaryInfo = resolvedModels.firstOrNull { it.selectionId == summaryModelId }
@@ -96,20 +100,23 @@ fun DefaultModelsScreen(
         val rerankInfo = resolvedModels.firstOrNull { it.selectionId == rerankModelId }
         val imageInfo = resolvedModels.firstOrNull { it.selectionId == imageModelId }
         val videoInfo = resolvedModels.firstOrNull { it.selectionId == videoModelId }
-        val audioInfo = resolvedModels.firstOrNull { it.selectionId == audioModelId }
+        val speechInfo = resolvedModels.firstOrNull { it.selectionId == speechModelId }
+        val musicInfo = resolvedModels.firstOrNull { it.selectionId == musicModelId }
         DefaultModelsScreenState(
             summaryModelName = resolveDefaultModelName(resolvedModels, summaryModelId),
             embeddingModelName = resolveDefaultModelName(resolvedModels, embeddingModelId),
             rerankModelName = resolveDefaultModelName(resolvedModels, rerankModelId),
             imageModelName = resolveDefaultModelName(resolvedModels, imageModelId),
             videoModelName = resolveDefaultModelName(resolvedModels, videoModelId),
-            audioModelName = resolveDefaultModelName(resolvedModels, audioModelId),
+            speechModelName = resolveDefaultModelName(resolvedModels, speechModelId),
+            musicModelName = resolveDefaultModelName(resolvedModels, musicModelId),
             summaryProviderName = summaryInfo?.providerName,
             embeddingProviderName = embeddingInfo?.providerName,
             rerankProviderName = rerankInfo?.providerName,
             imageProviderName = imageInfo?.providerName,
             videoProviderName = videoInfo?.providerName,
-            audioProviderName = audioInfo?.providerName,
+            speechProviderName = speechInfo?.providerName,
+            musicProviderName = musicInfo?.providerName,
             timeouts = timeouts,
         )
     }
@@ -138,7 +145,8 @@ fun DefaultModelsScreen(
             DefaultModelRole.RERANK -> rerankModelId
             DefaultModelRole.IMAGE -> imageModelId
             DefaultModelRole.VIDEO -> videoModelId
-            DefaultModelRole.AUDIO -> audioModelId
+            DefaultModelRole.SPEECH -> speechModelId
+            DefaultModelRole.MUSIC -> musicModelId
         }
 
         ModelPicker(
@@ -167,13 +175,15 @@ internal data class DefaultModelsScreenState(
     val rerankModelName: String = "",
     val imageModelName: String = "",
     val videoModelName: String = "",
-    val audioModelName: String = "",
+    val speechModelName: String = "",
+    val musicModelName: String = "",
     val summaryProviderName: String? = null,
     val embeddingProviderName: String? = null,
     val rerankProviderName: String? = null,
     val imageProviderName: String? = null,
     val videoProviderName: String? = null,
-    val audioProviderName: String? = null,
+    val speechProviderName: String? = null,
+    val musicProviderName: String? = null,
     val timeouts: ModelTimeoutSettings = ModelTimeoutSettings(),
 )
 
@@ -223,11 +233,12 @@ internal fun DefaultModelsScreenContent(
                     title = stringResource(R.string.settings_default_media_section),
                     footer = stringResource(R.string.settings_default_media_footer),
                 ) {
-                    listOf(DefaultModelRole.IMAGE, DefaultModelRole.VIDEO, DefaultModelRole.AUDIO).forEach { role ->
+                    listOf(DefaultModelRole.IMAGE, DefaultModelRole.VIDEO, DefaultModelRole.SPEECH, DefaultModelRole.MUSIC).forEach { role ->
                         val (selectedModelName, providerName) = when (role) {
                             DefaultModelRole.IMAGE -> state.imageModelName to state.imageProviderName
                             DefaultModelRole.VIDEO -> state.videoModelName to state.videoProviderName
-                            DefaultModelRole.AUDIO -> state.audioModelName to state.audioProviderName
+                            DefaultModelRole.SPEECH -> state.speechModelName to state.speechProviderName
+                            DefaultModelRole.MUSIC -> state.musicModelName to state.musicProviderName
                             else -> "" to null
                         }
                         DefaultModelSettingItem(
@@ -287,7 +298,8 @@ private fun DefaultModelRole.vectorIcon() = when (this) {
     DefaultModelRole.RERANK -> Icons.AutoMirrored.Rounded.Sort
     DefaultModelRole.IMAGE -> Icons.Rounded.Image
     DefaultModelRole.VIDEO -> Icons.Rounded.Movie
-    DefaultModelRole.AUDIO -> Icons.Rounded.GraphicEq
+    DefaultModelRole.SPEECH -> Icons.Rounded.RecordVoiceOver
+    DefaultModelRole.MUSIC -> Icons.Rounded.MusicNote
 }
 
 @Composable

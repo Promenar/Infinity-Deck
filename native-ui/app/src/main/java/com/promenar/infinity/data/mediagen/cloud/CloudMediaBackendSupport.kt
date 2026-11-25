@@ -13,7 +13,12 @@ internal fun CloudMediaModel.requestWithDefaults(channel: MediaChannel, request:
         resolution = request.specs.resolution ?: options.defaultResolution,
     ))
     require(validateRequest(channel, effective).valid) { "生成请求的模式、素材数量、素材角色或规格不符合通道能力" }
-    if (settings.group == MediaGroup.AUDIO) require(effective.specs == GenerationSpecs()) { "语音接口不接受视频规格参数" }
+    if (settings.group == MediaGroup.SPEECH) require(effective.specs == GenerationSpecs()) { "语音接口不接受视频规格参数" }
+    if (settings.group == MediaGroup.MUSIC) {
+        require(effective.specs.width == null && effective.specs.height == null && effective.specs.frames == null && effective.specs.resolution == null) {
+            "音乐接口不接受视频画面规格参数"
+        }
+    }
     require(effective.specs.width == null && effective.specs.height == null) { "云端接口使用分辨率选项，不接受自定义宽高" }
     if (effective.mode == GenerationMode.REFERENCE) require(effective.inputs.isNotEmpty()) { "参考模式需要素材" }
     if (effective.mode == GenerationMode.REFERENCE && options.requiresVisualReferenceForAudio && effective.inputs.any { it.kind == InputKind.AUDIO }) {

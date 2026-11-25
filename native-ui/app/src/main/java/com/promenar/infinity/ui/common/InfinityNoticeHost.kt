@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -63,7 +62,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -73,7 +71,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.promenar.infinity.R
 import com.promenar.infinity.ui.common.network.rememberAnimationsEnabled
 import com.promenar.infinity.ui.theme.ComposerSurfaceStyle
 import com.promenar.infinity.ui.theme.InfinityMotion
@@ -607,7 +604,12 @@ private fun InfinityNoticeCapsule(
                 Row(
                     modifier = Modifier
                         .heightIn(min = 44.dp)
-                        .padding(start = 10.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
+                        .padding(
+                            start = 10.dp,
+                            end = if (message.action != null) 8.dp else 14.dp,
+                            top = 7.dp,
+                            bottom = 7.dp,
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -671,21 +673,6 @@ private fun InfinityNoticeCapsule(
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                        }
-                    }
-                    Surface(
-                        onClick = onDismiss,
-                        shape = CircleShape,
-                        color = Color.Transparent,
-                        modifier = Modifier.size(36.dp).testTag(InfinityNoticeTags.DISMISS),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.status_strip_dismiss),
-                                tint = scheme.onSurfaceVariant.copy(alpha = 0.85f),
-                                modifier = Modifier.size(16.dp),
-                            )
                         }
                     }
                 }

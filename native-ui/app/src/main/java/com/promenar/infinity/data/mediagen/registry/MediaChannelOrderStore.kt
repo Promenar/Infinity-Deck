@@ -12,7 +12,9 @@ class MediaChannelOrderStore(private val prefs: SharedPreferences) {
     private val lock = Any()
     private fun key(group: MediaGroup) = "media_channel_order_${group.name.lowercase()}"
     private fun read(group: MediaGroup): List<String> = runCatching {
-        Json.parseToJsonElement(prefs.getString(key(group), "[]") ?: "[]").jsonArray
+        val raw = prefs.getString(key(group), null)
+            ?: if (group == MediaGroup.SPEECH || group == MediaGroup.MUSIC) prefs.getString("media_channel_order_audio", "[]") else "[]"
+        Json.parseToJsonElement(raw ?: "[]").jsonArray
             .map { it.jsonPrimitive.content }.filter { it.isNotBlank() }.distinct()
     }.getOrDefault(emptyList())
     private val _orders = MutableStateFlow(MediaGroup.entries.associateWith(::read))

@@ -17,17 +17,22 @@ fun productionMediaBindings(
     seedance: MediaGenerationBackend,
     miniMax: MediaGenerationBackend,
     comfy: MediaGenerationBackend,
+    gemini: MediaGenerationBackend? = null,
     configurationFor: suspend (MediaChannel) -> String? = { null },
     expectedOutputsFor: suspend (MediaChannel) -> Int = { 1 },
     comfyEndpoint: suspend (MediaChannel) -> String,
-): List<MediaBackendBinding> = listOf(
-    MediaBackendBinding("production-seedance", "cloud", { requireNotNull(models.find(it.id)).modelId }, seedance,
-        providerFor = { requireNotNull(models.find(it.id)).providerId }, configurationFor = configurationFor, expectedOutputsFor = expectedOutputsFor),
-    MediaBackendBinding("production-minimax", "cloud", { requireNotNull(models.find(it.id)).modelId }, miniMax,
-        providerFor = { requireNotNull(models.find(it.id)).providerId }, configurationFor = configurationFor, expectedOutputsFor = expectedOutputsFor),
-    MediaBackendBinding("production-comfy", "comfy", { it.id.removePrefix("comfy:") }, comfy,
-        providerFor = { comfyProviderId(comfyEndpoint(it)) }, configurationFor = configurationFor, expectedOutputsFor = expectedOutputsFor),
-)
+): List<MediaBackendBinding> = buildList {
+    add(MediaBackendBinding("production-seedance", "cloud", { requireNotNull(models.find(it.id)).modelId }, seedance,
+        providerFor = { requireNotNull(models.find(it.id)).providerId }, configurationFor = configurationFor, expectedOutputsFor = expectedOutputsFor))
+    add(MediaBackendBinding("production-minimax", "cloud", { requireNotNull(models.find(it.id)).modelId }, miniMax,
+        providerFor = { requireNotNull(models.find(it.id)).providerId }, configurationFor = configurationFor, expectedOutputsFor = expectedOutputsFor))
+    if (gemini != null) {
+        add(MediaBackendBinding("production-gemini-audio", "cloud", { requireNotNull(models.find(it.id)).modelId }, gemini,
+            providerFor = { requireNotNull(models.find(it.id)).providerId }, configurationFor = configurationFor, expectedOutputsFor = expectedOutputsFor))
+    }
+    add(MediaBackendBinding("production-comfy", "comfy", { it.id.removePrefix("comfy:") }, comfy,
+        providerFor = { comfyProviderId(comfyEndpoint(it)) }, configurationFor = configurationFor, expectedOutputsFor = expectedOutputsFor))
+}
 
 /** 同一端点的多个模板或主机别名共用并发上限；标识不包含地址。 */
 internal fun comfyProviderId(endpoint: String): String {

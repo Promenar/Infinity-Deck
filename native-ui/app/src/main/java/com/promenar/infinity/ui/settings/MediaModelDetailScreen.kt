@@ -14,6 +14,8 @@ import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.mediagen.cloud.BillingUnit
 import com.promenar.infinity.data.mediagen.cloud.MediaTariff
+import com.promenar.infinity.data.model.CloudMediaApi
+import com.promenar.infinity.data.model.GEMINI_TTS_PREBUILT_VOICES
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.effectiveMediaSettings
 import com.promenar.infinity.domain.mediagen.*
@@ -31,6 +33,7 @@ internal fun MediaModelDetailScreenContent(
     onBack: () -> Unit = {},
     onMode: (CharacterReferenceMode) -> Unit = {},
     onReferenceUp: (String) -> Unit = {},
+    onSaveVoice: (String, () -> Unit) -> Unit = { _, _ -> },
     onSaveTariff: (MediaTariffDraft, () -> Unit) -> Unit = { _, _ -> },
     onRetry: () -> Unit = {},
 ) {
@@ -38,10 +41,52 @@ internal fun MediaModelDetailScreenContent(
     val caps = settings.capabilities
     var editing by remember(model.id) { mutableStateOf(false) }
     var draft by remember(model.id, settings.tariff) { mutableStateOf(MediaTariffDraft.from(settings.tariff)) }
+    var voiceDraft by remember(model.id, settings.options.voiceId) { mutableStateOf(settings.options.voiceId) }
     MediaSettingsPage(model.name, onBack) {
         MediaOperationState(state, onRetry)
         MediaValue(stringResource(R.string.media_settings_providers), model.providerName)
         MediaCapabilitiesSection(settings.group, caps)
+        if (settings.group == MediaGroup.SPEECH) {
+            InfinitySettingsSection(
+                title = stringResource(R.string.media_settings_voice_section),
+                footer = stringResource(R.string.media_settings_voice_footer),
+            ) {
+                if (settings.api == CloudMediaApi.GEMINI_TTS) {
+                    InfinitySegmentedControl(
+                        segments = GEMINI_TTS_PREBUILT_VOICES.map { InfinitySegment(it, it) },
+                        selected = voiceDraft.trim().takeIf { it in GEMINI_TTS_PREBUILT_VOICES },
+                        onSelect = { selectedVoice ->
+                            voiceDraft = selectedVoice
+                            onSaveVoice(selectedVoice) {}
+                        },
+                        enabled = !state.busy,
+                        compact = true,
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MediaFormField(
+                        label = stringResource(R.string.media_settings_voice_label),
+                        value = voiceDraft,
+                        onChange = { voiceDraft = it },
+                        enabled = !state.busy,
+                    )
+                    if (voiceDraft.trim() != settings.options.voiceId.trim()) {
+                        MediaAction(
+                            text = stringResource(R.string.media_settings_save),
+                            onClick = { onSaveVoice(voiceDraft.trim()) {} },
+                            enabled = !state.busy,
+                            primary = true,
+                        )
+                    }
+                }
+                MediaValue(
+                    stringResource(R.string.media_settings_audio_format_label),
+                    settings.options.audioFormat.uppercase(),
+                )
+            }
+        }
         if (caps.maxImages > 0) {
             InfinitySettingsSection(title = stringResource(R.string.media_settings_reference_input)) {
                 InfinitySegmentedControl(

@@ -20,7 +20,9 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NotInterested
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -148,11 +150,12 @@ internal fun ModelEditorScreen(
     val effectiveMedia = model.effectiveMediaSettings()
     val mediaPresetGroup = when (selectedType.lowercase()) {
         "video" -> MediaGroup.VIDEO
-        "audio" -> MediaGroup.AUDIO
+        "speech", "audio" -> MediaGroup.SPEECH
+        "music" -> MediaGroup.MUSIC
         else -> null
     }
     val matchedCloudPreset = remember(effectiveMedia) { matchCloudMediaPreset(effectiveMedia) }
-    val isMediaModel = selectedType.lowercase() in setOf("video", "audio", "image") || effectiveMedia != null
+    val isMediaModel = selectedType.lowercase() in setOf("video", "audio", "speech", "music", "realtime", "image") || effectiveMedia != null
 
     InfinitySettingsPageLayout(
         title = stringResource(R.string.provider_models_editor_title),
@@ -258,7 +261,8 @@ internal fun ModelEditorScreen(
                                 val existingMediaGroup = model.mediaSettings?.group
                                 val nextMediaGroup = when (type.lowercase()) {
                                     "video" -> MediaGroup.VIDEO
-                                    "audio" -> MediaGroup.AUDIO
+                                    "speech", "audio" -> MediaGroup.SPEECH
+                                    "music" -> MediaGroup.MUSIC
                                     "image" -> MediaGroup.IMAGE
                                     else -> null
                                 }
@@ -283,7 +287,12 @@ internal fun ModelEditorScreen(
                     exit = InfinityMotion.shrinkOut,
                 ) {
                     if (mediaPresetGroup != null) {
-                        val presetIcon = if (mediaPresetGroup == MediaGroup.VIDEO) Icons.Rounded.Movie else Icons.Rounded.GraphicEq
+                        val presetIcon = when (mediaPresetGroup) {
+                            MediaGroup.VIDEO -> Icons.Rounded.Movie
+                            MediaGroup.SPEECH -> Icons.Rounded.RecordVoiceOver
+                            MediaGroup.MUSIC -> Icons.Rounded.MusicNote
+                            MediaGroup.IMAGE -> Icons.Rounded.Image
+                        }
                         val currentPresetLabel = matchedCloudPreset?.let { stringResource(cloudMediaPresetLabelRes(it)) }
                             ?: stringResource(R.string.model_editor_media_preset_none)
                         InfinitySettingsSection(
@@ -303,10 +312,11 @@ internal fun ModelEditorScreen(
                                 InfinitySettingsItem(
                                     title = stringResource(R.string.model_editor_media_settings_item),
                                     subtitle = stringResource(
-                                        if (mediaPresetGroup == MediaGroup.VIDEO) {
-                                            R.string.model_editor_media_settings_video_subtitle
-                                        } else {
-                                            R.string.model_editor_media_settings_audio_subtitle
+                                        when (mediaPresetGroup) {
+                                            MediaGroup.VIDEO -> R.string.model_editor_media_settings_video_subtitle
+                                            MediaGroup.SPEECH -> R.string.model_editor_media_settings_speech_subtitle
+                                            MediaGroup.MUSIC -> R.string.model_editor_media_settings_music_subtitle
+                                            MediaGroup.IMAGE -> R.string.model_editor_media_settings_image_subtitle
                                         },
                                     ),
                                     icon = Icons.Rounded.Tune,
@@ -419,7 +429,12 @@ internal fun ModelEditorScreen(
     )
 
     if (mediaPresetGroup != null && onSetMediaSettings != null) {
-        val groupIcon = if (mediaPresetGroup == MediaGroup.VIDEO) Icons.Rounded.Movie else Icons.Rounded.GraphicEq
+        val groupIcon = when (mediaPresetGroup) {
+            MediaGroup.VIDEO -> Icons.Rounded.Movie
+            MediaGroup.SPEECH -> Icons.Rounded.RecordVoiceOver
+            MediaGroup.MUSIC -> Icons.Rounded.MusicNote
+            MediaGroup.IMAGE -> Icons.Rounded.Image
+        }
         val presetChoices = listOf(
             InfinityChoice<CloudMediaPreset?>(
                 value = null,
@@ -500,8 +515,16 @@ internal fun cloudMediaPresetLabelRes(preset: CloudMediaPreset): Int = when (pre
     CloudMediaPreset.MINIMAX_H3_MAX -> R.string.media_preset_minimax_h3_max
     CloudMediaPreset.MINIMAX_HAILUO_02 -> R.string.media_preset_minimax_hailuo_02
     CloudMediaPreset.MINIMAX_S2V_01 -> R.string.media_preset_minimax_s2v_01
+    CloudMediaPreset.GEMINI_3_8_FLASH_TTS -> R.string.media_preset_gemini_3_8_flash_tts
+    CloudMediaPreset.GEMINI_3_8_FLASH_LITE_TTS -> R.string.media_preset_gemini_3_8_flash_lite_tts
+    CloudMediaPreset.GEMINI_2_5_FLASH_TTS -> R.string.media_preset_gemini_2_5_flash_tts
+    CloudMediaPreset.GEMINI_2_5_PRO_TTS -> R.string.media_preset_gemini_2_5_pro_tts
     CloudMediaPreset.MINIMAX_SPEECH_2_8_HD -> R.string.media_preset_minimax_speech_2_8_hd
     CloudMediaPreset.MINIMAX_SPEECH_2_8_TURBO -> R.string.media_preset_minimax_speech_2_8_turbo
+    CloudMediaPreset.OPENAI_GPT_4O_MINI_TTS -> R.string.media_preset_openai_gpt_4o_mini_tts
+    CloudMediaPreset.GEMINI_LYRIA_3_5 -> R.string.media_preset_gemini_lyria_3_5
+    CloudMediaPreset.GEMINI_LYRIA_3_PRO -> R.string.media_preset_gemini_lyria_3_pro
+    CloudMediaPreset.GEMINI_LYRIA_3_CLIP -> R.string.media_preset_gemini_lyria_3_clip
 }
 
 @Composable

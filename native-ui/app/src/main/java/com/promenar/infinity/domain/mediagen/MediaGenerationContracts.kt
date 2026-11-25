@@ -9,7 +9,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
 /** 生成层使用的不透明标识由上游维护，不解析其内部结构。 */
-enum class MediaGroup { IMAGE, VIDEO, AUDIO }
+enum class MediaGroup { IMAGE, VIDEO, SPEECH, MUSIC }
 enum class GenerationMode { TEXT, REFERENCE, FIRST_FRAME, LAST_FRAME, FIRST_LAST_FRAME, SPEECH, MUSIC }
 enum class InputKind { IMAGE, VIDEO, AUDIO }
 enum class InputRole { REFERENCE, FIRST_FRAME, LAST_FRAME, REFERENCE_VOICE }

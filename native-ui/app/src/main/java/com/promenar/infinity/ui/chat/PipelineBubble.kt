@@ -35,7 +35,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -224,6 +226,8 @@ fun PipelineBubble(
     providerDisplayNames: Map<String, String> = emptyMap(),
     onContentChange: ((String) -> Unit)? = null,
     onCopy: ((String) -> Unit)? = null,
+    onReadAloud: ((String, String) -> Unit)? = null,
+    readAloudPhase: ReadAloudPhase = ReadAloudPhase.IDLE,
     onRegenerate: ((String) -> Unit)? = null,
     onDelete: ((String) -> Unit)? = null,
     onBranch: ((String) -> Unit)? = null,
@@ -539,6 +543,8 @@ fun PipelineBubble(
                             onOpenMemory = memoryOwner?.let { owner -> onOpenTurnMemory?.let { open -> { open(owner.id) } } },
                             stats = statsFactory,
                             onCopy = { onCopy?.invoke(replyCopyText) ?: copyToClipboard(context, replyCopyText) },
+                            onReadAloud = onReadAloud?.let { handler -> { handler(lastMsg.id, replyCopyText) } },
+                            readAloudPhase = readAloudPhase,
                             onCopyAllProcess = allProcessCopyText?.let { text ->
                                 { onCopy?.invoke(text) ?: copyToClipboard(context, text) }
                             },
@@ -1459,6 +1465,8 @@ internal fun AssistantActionRow(
     timestamp: String,
     isGenerating: Boolean,
     onCopy: () -> Unit,
+    onReadAloud: (() -> Unit)? = null,
+    readAloudPhase: ReadAloudPhase = ReadAloudPhase.IDLE,
     onRegenerate: (() -> Unit)? = null,
     onBranch: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
@@ -1494,6 +1502,49 @@ internal fun AssistantActionRow(
                 ) {
                     IconButton(onClick = { haptics.perform(InfinityHapticEvent.CONFIRM); onCopy() }, modifier = Modifier.size(48.dp).testTag("CHAT_ASSISTANT_COPY")) {
                         Icon(Icons.Rounded.ContentCopy, stringResource(R.string.chat_action_copy), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
+                    if (onReadAloud != null) {
+                        val readAloudDesc = stringResource(
+                            when (readAloudPhase) {
+                                ReadAloudPhase.IDLE -> R.string.chat_action_read_aloud
+                                ReadAloudPhase.LOADING -> R.string.chat_action_cancel_read_aloud
+                                ReadAloudPhase.PLAYING -> R.string.chat_action_stop_read_aloud
+                            },
+                        )
+                        IconButton(
+                            onClick = { haptics.perform(InfinityHapticEvent.CONFIRM); onReadAloud() },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("CHAT_ASSISTANT_READ_ALOUD")
+                                .semantics { contentDescription = readAloudDesc },
+                        ) {
+                            AnimatedContent(
+                                targetState = readAloudPhase,
+                                transitionSpec = { InfinityMotion.fadeThrough() },
+                                contentAlignment = Alignment.Center,
+                                label = "assistant_read_aloud_icon",
+                            ) { phase ->
+                                when (phase) {
+                                    ReadAloudPhase.IDLE -> Icon(
+                                        Icons.AutoMirrored.Rounded.VolumeUp,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    ReadAloudPhase.LOADING -> CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                    ReadAloudPhase.PLAYING -> Icon(
+                                        Icons.Rounded.StopCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(19.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
                     if (onRegenerate != null) {
                         IconButton(onClick = { haptics.perform(InfinityHapticEvent.CONFIRM); onRegenerate() }, modifier = Modifier.size(48.dp).testTag("CHAT_ASSISTANT_REGENERATE")) {

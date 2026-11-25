@@ -17,7 +17,7 @@ class MediaModelSettingsTest {
         assertEquals(m.toMediaChannel()!!.id, m.copy(name = "新名称").toMediaChannel()!!.id)
         assertNull(m.copy(enabled = false).toMediaChannel())
         assertNull(model("minimax-m3").toMediaChannel())
-        assertEquals(MediaGroup.AUDIO, model("speech-2.8-hd").toMediaChannel()!!.group)
+        assertEquals(MediaGroup.SPEECH, model("speech-2.8-hd").toMediaChannel()!!.group)
         assertEquals(1, model("S2V-01").effectiveMediaSettings()!!.capabilities.maxImages)
     }
     @Test fun settingsRoundTripAndReferenceEdits() {

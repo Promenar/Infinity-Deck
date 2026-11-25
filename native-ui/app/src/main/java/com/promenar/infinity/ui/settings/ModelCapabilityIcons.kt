@@ -13,7 +13,9 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Laptop
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.ScatterPlot
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.rounded.Videocam
@@ -60,15 +62,20 @@ internal val ModelTypeSpecs = listOf(
     ModelCapabilitySpec("reasoning", R.string.provider_models_type_reasoning, Icons.Rounded.Psychology),
     ModelCapabilitySpec("image", R.string.provider_models_type_image, Icons.Rounded.Image),
     ModelCapabilitySpec("video", R.string.provider_models_type_video, Icons.Rounded.Movie),
-    ModelCapabilitySpec("audio", R.string.provider_models_type_audio, Icons.Rounded.GraphicEq),
+    ModelCapabilitySpec("speech", R.string.provider_models_type_speech, Icons.Rounded.RecordVoiceOver),
+    ModelCapabilitySpec("music", R.string.provider_models_type_music, Icons.Rounded.MusicNote),
+    ModelCapabilitySpec("realtime", R.string.provider_models_type_realtime, Icons.Rounded.GraphicEq),
     ModelCapabilitySpec("embedding", R.string.provider_models_type_embedding, Icons.Rounded.ScatterPlot),
     ModelCapabilitySpec("rerank", R.string.provider_models_type_rerank, Icons.AutoMirrored.Rounded.Sort),
 )
 
 @StringRes
 internal fun modelTypeLabelRes(type: String): Int =
-    ModelTypeSpecs.firstOrNull { it.key.equals(type, ignoreCase = true) }?.labelRes
-        ?: R.string.provider_models_type_unknown
+    when (type.lowercase()) {
+        "audio" -> R.string.provider_models_type_speech
+        else -> ModelTypeSpecs.firstOrNull { it.key.equals(type, ignoreCase = true) }?.labelRes
+            ?: R.string.provider_models_type_unknown
+    }
 
 /** 列表行能力图标组：按单一映射的顺序列出模型具备的能力，未知能力不显示。 */
 @Composable

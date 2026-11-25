@@ -227,7 +227,8 @@ private fun ProtoWorkflowRefModeEditorContent() {
                         listOf(
                             ComfyMediaCategory.IMAGE to "图像",
                             ComfyMediaCategory.VIDEO to "视频",
-                            ComfyMediaCategory.AUDIO to "音频",
+                            ComfyMediaCategory.SPEECH to "语音",
+                            ComfyMediaCategory.MUSIC to "音乐",
                             ComfyMediaCategory.POST_PROCESS to "后处理",
                         ).forEach { (cat, label) ->
                             InfinityChip(label = label, selected = cat == ComfyMediaCategory.VIDEO, onClick = {})

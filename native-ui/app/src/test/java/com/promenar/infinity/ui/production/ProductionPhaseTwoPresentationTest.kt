@@ -136,7 +136,7 @@ class ProductionPhaseTwoPresentationTest {
         val first = channel.copy(id = "first")
         val second = channel.copy(id = "second", capabilities = channel.capabilities.copy(characterReferenceMode = CharacterReferenceMode.COMPOSITE))
         val textOnly = channel.copy(id = "text", capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)))
-        val audio = channel.copy(id = "audio", group = MediaGroup.AUDIO)
+        val audio = channel.copy(id = "audio", group = MediaGroup.SPEECH)
         assertThat(channelChoices(listOf(first, second, textOnly, audio), listOf("missing", "second", "second", "first", "text"), ShotMode.REFERENCE).map { it.id }).containsExactly("second", "first").inOrder()
         assertThat(channelChoices(listOf(first, second), listOf("second"), ShotMode.TEXT).map { it.id }).containsExactly("second", "first").inOrder()
         assertThat(channelChoices(listOf(textOnly), emptyList(), ShotMode.FIRST_LAST)).isEmpty()

@@ -772,7 +772,7 @@ class ComfyWorkflowExecutionEngine(
                 MediaKind.AUDIO -> InputKind.AUDIO
                 MediaKind.IMAGE -> InputKind.IMAGE
                 else -> when (workflow.mediaCategory) {
-                    ComfyMediaCategory.AUDIO -> InputKind.AUDIO
+                    ComfyMediaCategory.SPEECH, ComfyMediaCategory.MUSIC -> InputKind.AUDIO
                     else -> InputKind.IMAGE
                 }
             }
@@ -978,12 +978,12 @@ class ComfyWorkflowExecutionEngine(
 
         val outputSlots = workflow.outputNodeIds.map { outId ->
             val defaultField = when (workflow.mediaCategory) {
-                ComfyMediaCategory.AUDIO -> "audio"
+                ComfyMediaCategory.SPEECH, ComfyMediaCategory.MUSIC -> "audio"
                 ComfyMediaCategory.VIDEO, ComfyMediaCategory.POST_PROCESS -> "videos"
                 else -> "images"
             }
             val outputKind = when (workflow.mediaCategory) {
-                ComfyMediaCategory.AUDIO -> InputKind.AUDIO
+                ComfyMediaCategory.SPEECH, ComfyMediaCategory.MUSIC -> InputKind.AUDIO
                 ComfyMediaCategory.VIDEO, ComfyMediaCategory.POST_PROCESS -> InputKind.VIDEO
                 else -> InputKind.IMAGE
             }

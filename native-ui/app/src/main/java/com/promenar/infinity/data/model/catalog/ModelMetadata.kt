@@ -5,7 +5,9 @@ enum class ModelWorkload {
     EMBEDDING,
     RERANK,
     IMAGE_GENERATION,
-    AUDIO,
+    SPEECH,
+    MUSIC,
+    REALTIME,
     VIDEO,
     UNKNOWN,
 }

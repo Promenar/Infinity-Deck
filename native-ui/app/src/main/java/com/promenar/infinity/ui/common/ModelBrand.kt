@@ -37,6 +37,8 @@ object ModelBrandResolver {
         "anthropic" to "anthropic",
         "gemini" to "google",
         "gemma" to "google",
+        "lyria" to "google",
+        "veo" to "google",
         "google" to "google",
         "gpt" to "openai",
         "codex" to "openai",

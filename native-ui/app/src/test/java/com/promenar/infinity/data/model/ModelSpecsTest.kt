@@ -47,7 +47,10 @@ class ModelSpecsTest {
         assertThat(builtInMediaModelIds("https://api.minimax.cn/v1")).contains("MiniMax-H3")
         assertThat(builtInMediaModelIds("https://api.minimax.cn.example.test")).isEmpty()
         assertThat(findRemoteModelSpec("MiniMax-H3")?.type).isEqualTo(ModelType.VIDEO)
-        assertThat(findRemoteModelSpec("speech-2.8-hd")?.type).isEqualTo(ModelType.AUDIO)
+        assertThat(findRemoteModelSpec("speech-2.8-hd")?.type).isEqualTo(ModelType.SPEECH)
+        assertThat(findRemoteModelSpec("gemini-3.8-flash-tts")?.type).isEqualTo(ModelType.SPEECH)
+        assertThat(findRemoteModelSpec("lyria-3.5")?.type).isEqualTo(ModelType.MUSIC)
+        assertThat(findRemoteModelSpec("gemini-3.8-live")?.type).isEqualTo(ModelType.REALTIME)
     }
 
     @Test
@@ -244,9 +247,13 @@ class ModelSpecsTest {
     @Test
     fun `旧 ModelSpecs 保留给尚未迁移调用点`() {
         assertThat(MODEL_SPECS).isNotEmpty()
-        val (mediaSpecs, textSpecs) = MODEL_SPECS.partition { it.type in setOf(ModelType.VIDEO, ModelType.AUDIO) }
+        val (mediaSpecs, textSpecs) = MODEL_SPECS.partition {
+            it.type in setOf(ModelType.VIDEO, ModelType.SPEECH, ModelType.MUSIC, ModelType.REALTIME)
+        }
         assertThat(textSpecs.all { it.contextLength > 0 }).isTrue()
-        assertThat(mediaSpecs.map { it.type }).containsExactly(ModelType.VIDEO, ModelType.AUDIO)
+        assertThat(mediaSpecs.map { it.type }.toSet()).containsExactly(
+            ModelType.VIDEO, ModelType.SPEECH, ModelType.MUSIC, ModelType.REALTIME,
+        )
         assertThat(mediaSpecs.all { it.contextLength == 0 }).isTrue()
         assertThat(MODEL_SPECS.size).isAtLeast(100)
         assertThat(MODEL_SPECS.size).isAtMost(500)

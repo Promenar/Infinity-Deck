@@ -92,10 +92,19 @@ internal object GenericModelsEnvelopeParser {
         }
         val generationMethods = if (isGemini) model.optionalStringArray("supportedGenerationMethods") else null
         val declaredWorkload = model.optionalString("workload")?.let(::workloadFor)
-        val workload = declaredWorkload ?: if (
+        val isGeminiBidiOnly = isGemini && generationMethods != null && generationMethods.isNotEmpty() &&
+            "bidiGenerateContent" in generationMethods &&
+            "generateContent" !in generationMethods &&
+            "streamGenerateContent" !in generationMethods
+        if (isGeminiBidiOnly) {
+            capabilities[ModelCapability.CHAT_ENDPOINT] = SupportState.UNSUPPORTED
+        }
+        val workload = declaredWorkload ?: when {
             isGemini && generationMethods != null && generationMethods.isNotEmpty() &&
-            generationMethods.all { it == "embedContent" || it == "batchEmbedContents" }
-        ) ModelWorkload.EMBEDDING else null
+                generationMethods.all { it == "embedContent" || it == "batchEmbedContents" } -> ModelWorkload.EMBEDDING
+            isGeminiBidiOnly -> ModelWorkload.REALTIME
+            else -> null
+        }
         return ModelMetadataOverride(
             displayName = model.optionalString("display_name")
                 ?: model.optionalString("displayName")
@@ -165,7 +174,9 @@ internal object GenericModelsEnvelopeParser {
         "EMBEDDING" -> ModelWorkload.EMBEDDING
         "RERANK" -> ModelWorkload.RERANK
         "IMAGE_GENERATION", "IMAGE" -> ModelWorkload.IMAGE_GENERATION
-        "AUDIO" -> ModelWorkload.AUDIO
+        "SPEECH", "TTS", "AUDIO" -> ModelWorkload.SPEECH
+        "MUSIC" -> ModelWorkload.MUSIC
+        "REALTIME", "LIVE" -> ModelWorkload.REALTIME
         "VIDEO" -> ModelWorkload.VIDEO
         "UNKNOWN" -> ModelWorkload.UNKNOWN
         else -> null

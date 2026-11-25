@@ -59,7 +59,7 @@ class MediaGenerationContractsTest {
     @Test fun `默认通道遵守组与模式顺序`() {
         val image = channel.copy(id = "image", group = MediaGroup.IMAGE)
         assertEquals(channel, resolveDefaultChannel(MediaGroup.VIDEO, GenerationMode.TEXT, listOf(image, channel)))
-        assertNull(resolveDefaultChannel(MediaGroup.AUDIO, GenerationMode.TEXT, listOf(channel)))
+        assertNull(resolveDefaultChannel(MediaGroup.SPEECH, GenerationMode.TEXT, listOf(channel)))
     }
     @Test fun `多项计费支持每百万token秒字符和固定附加费`() {
         val pricing = MediaPricing(listOf(

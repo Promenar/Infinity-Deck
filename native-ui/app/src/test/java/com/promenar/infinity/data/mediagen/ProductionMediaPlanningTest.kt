@@ -24,7 +24,7 @@ class ProductionMediaPlanningTest {
         val speechSettings = mediaModelPreset("speech-02-hd")!!
         val speech = CloudMediaModel("p", "speech-02-hd", "https://example.invalid", speechSettings)
         val request = MediaGenerationRequest("speech", GenerationMode.SPEECH, "你好", listOf(MediaInput("voice.wav", InputKind.AUDIO, InputRole.REFERENCE_VOICE)), "source", sessionId = "s", outputDir = "audio")
-        assertFalse(validateCloudShotPlan(speech, MediaChannel("speech", MediaGroup.AUDIO, speechSettings.capabilities), request).isEmpty())
+        assertFalse(validateCloudShotPlan(speech, MediaChannel("speech", MediaGroup.SPEECH, speechSettings.capabilities), request).isEmpty())
         val videoSettings = mediaModelPreset("doubao-seedance-2-0")!!
         val video = CloudMediaModel("p", "doubao-seedance-2-0", "https://example.invalid", videoSettings)
         val videoRequest = request.copy(channelId = "video", mode = GenerationMode.REFERENCE, inputs = listOf(MediaInput("local.mp4", InputKind.VIDEO, InputRole.REFERENCE)), specs = GenerationSpecs(durationSeconds = 5))

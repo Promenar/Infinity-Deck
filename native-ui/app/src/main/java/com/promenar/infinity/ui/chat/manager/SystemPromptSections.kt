@@ -125,7 +125,10 @@ object SystemPromptSections {
     private val PLAN_TOOLS = setOf("initialize_plan", "update_plan", "get_plan", "drop_plan")
     private val WORKSPACE_PROCESS_TOOLS = setOf("shell_exec", "python_exec", "git_exec", "run_script", "exec_js", "python_sandbox")
     private val MEDIA_TOOLS = setOf(
-        "image_generation", "generate_image", "media_fetch", "view_media",
+        "image_generation", "generate_image",
+        "speech_generation", "generate_speech",
+        "music_generation", "generate_music",
+        "media_fetch", "view_media",
         "termux_exec", "ssh_exec", "ssh_session_open", "ssh_session_send",
         "comfy_list_hosts", "comfy_probe", "comfy_list_submitters", "comfy_list_workflows",
         "comfy_preflight_workflow", "comfy_get_chain_state", "comfy_save_submitter",
@@ -199,6 +202,12 @@ object SystemPromptSections {
             appendLine("- 云端生图使用默认图像模型，ComfyUI 独立可用。编辑输入与输出使用工作区路径，按返回路径用 ![说明](路径) 展示" +
                 if ("view_media" in toolNames) "，用 view_media 查看。" else "。")
             appendLine("- 图像标注与编辑细则见内置 infinity-deck 的云端生图一节。")
+        }
+        if ("generate_speech" in toolNames || "speech_generation" in toolNames) {
+            appendLine("- 云端语音合成用 generate_speech（支持默认语音模型或 model_id、音色 voice 与多角色 speakers），按返回路径用 [说明](路径) 引用供用户播放。")
+        }
+        if ("generate_music" in toolNames || "music_generation" in toolNames) {
+            appendLine("- 云端音乐生成用 generate_music（支持 Lyria 3 / 3.5 及可选参考图 images），按返回路径用 [说明](路径) 引用供用户播放。")
         }
         if (toolNames.any { it.startsWith("comfy_") }) {
             appendLine("- 用 ComfyUI 工具直接管理主机、提交器与工作流并提交，fixed_overrides 会弹 Diff 审批。")

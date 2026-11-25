@@ -193,9 +193,10 @@ internal fun ModelSelectionUiModel.matchesModelPickerFilter(filterTag: String): 
     "image", "cloud_image" -> workload == ModelWorkload.IMAGE_GENERATION
     "embedding" -> workload == ModelWorkload.EMBEDDING
     "rerank" -> workload == ModelWorkload.RERANK
-    "cloud_audio" -> workload == ModelWorkload.AUDIO ||
-        capabilityStates[ModelCapability.AUDIO_OUTPUT] == SupportState.SUPPORTED
-    "audio" -> workload == ModelWorkload.AUDIO ||
+    "cloud_speech", "speech" -> workload == ModelWorkload.SPEECH
+    "cloud_music", "music" -> workload == ModelWorkload.MUSIC
+    "cloud_audio" -> workload == ModelWorkload.SPEECH || workload == ModelWorkload.MUSIC
+    "audio" -> workload == ModelWorkload.SPEECH || workload == ModelWorkload.MUSIC ||
         capabilityStates[ModelCapability.AUDIO_INPUT] == SupportState.SUPPORTED ||
         capabilityStates[ModelCapability.AUDIO_OUTPUT] == SupportState.SUPPORTED
     "cloud_video" -> workload == ModelWorkload.VIDEO

@@ -13,7 +13,7 @@ class MediaGenerationContractTest {
 
     @Test fun defaultUsesFirstCompatibleChannelInGroupOrder() {
         val first = channel.copy(id = "first", capabilities = capabilities.copy(modes = setOf(GenerationMode.TEXT)))
-        val audio = channel.copy(id = "audio", group = MediaGroup.AUDIO)
+        val audio = channel.copy(id = "audio", group = MediaGroup.SPEECH)
         assertEquals("a", resolveDefaultChannel(MediaGroup.VIDEO, GenerationMode.REFERENCE, listOf(audio, first, channel))?.id)
         assertNull(resolveDefaultChannel(MediaGroup.IMAGE, GenerationMode.TEXT, listOf(channel)))
     }

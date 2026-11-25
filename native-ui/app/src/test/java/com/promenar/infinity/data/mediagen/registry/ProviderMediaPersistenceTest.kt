@@ -67,7 +67,7 @@ class ProviderMediaPersistenceTest {
     @Test fun catalogIdentifiesGenerationAndLeavesDialogueIntact() {
         val resolver = ModelMetadataResolver()
         assertEquals(ModelWorkload.VIDEO, resolver.resolve("MiniMax-H3").workload)
-        assertEquals(ModelWorkload.AUDIO, resolver.resolve("speech-2.8-hd").workload)
+        assertEquals(ModelWorkload.SPEECH, resolver.resolve("speech-2.8-hd").workload)
         assertEquals(ModelWorkload.GENERATIVE_TEXT, resolver.resolve("minimax-m3").workload)
         assertEquals(SupportState.UNSUPPORTED, resolver.resolve("doubao-seedance-2-0-user-snapshot").capabilities[ModelCapability.CHAT_ENDPOINT])
         assertNull(mediaModelPreset("ep-user-endpoint"))

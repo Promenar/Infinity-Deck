@@ -41,14 +41,14 @@ class MediaChannelRegistryTest {
         val p = prefs(); p.edit().putString("preset_image_model", "p::image-b").commit()
         val store = MediaChannelOrderStore(p)
         val caps = MediaCapabilities(setOf(GenerationMode.TEXT))
-        val channels = listOf(MediaChannel("cloud:p::image-a", MediaGroup.IMAGE, caps), MediaChannel("cloud:p::image-b", MediaGroup.IMAGE, caps), MediaChannel("v", MediaGroup.VIDEO, caps), MediaChannel("a", MediaGroup.AUDIO, caps))
+        val channels = listOf(MediaChannel("cloud:p::image-a", MediaGroup.IMAGE, caps), MediaChannel("cloud:p::image-b", MediaGroup.IMAGE, caps), MediaChannel("v", MediaGroup.VIDEO, caps), MediaChannel("a", MediaGroup.SPEECH, caps))
         store.reconcile(channels)
         assertEquals(listOf("cloud:p::image-b", "cloud:p::image-a"), store.orders.value[MediaGroup.IMAGE])
         store.reorder(MediaGroup.IMAGE, listOf("cloud:p::image-a", "cloud:p::image-b"))
         val restored = MediaChannelOrderStore(p)
         assertEquals(store.orders.value, restored.orders.value)
         assertEquals(listOf("v"), restored.orders.value[MediaGroup.VIDEO])
-        assertEquals(listOf("a"), restored.orders.value[MediaGroup.AUDIO])
+        assertEquals(listOf("a"), restored.orders.value[MediaGroup.SPEECH])
         assertThrows(IllegalArgumentException::class.java) { restored.reorder(MediaGroup.VIDEO, listOf("a")) }
     }
     @Test fun channelOrderDoesNotOverwriteCloudDefaultImageModel() {

@@ -23,7 +23,18 @@ internal data class MediaSettingsUiState(
     val connections: Map<String, ComfyConnection> = emptyMap(),
 ) {
     val groups: Map<MediaGroup, List<MediaChannelRow>>
-        get() = with(snapshot) { mediaChannelRows(channels, models, templates, hosts, workflows, defaultImageModelId) }
+        get() = with(snapshot) {
+            mediaChannelRows(
+                channels = channels,
+                models = models,
+                templates = templates,
+                hosts = hosts,
+                workflows = workflows,
+                defaultImageModelId = defaultImageModelId,
+                defaultSpeechModelId = defaultSpeechModelId,
+                defaultMusicModelId = defaultMusicModelId,
+            )
+        }
 }
 
 internal class MediaSettingsViewModel(
@@ -103,6 +114,10 @@ internal class MediaSettingsViewModel(
     fun saveTariff(id: String, draft: MediaTariffDraft, onSaved: () -> Unit) {
         if (draft.validationError() != null) return
         perform(onSaved) { store.saveTariff(id, draft) }
+    }
+
+    fun saveVoiceId(id: String, voiceId: String, onSaved: () -> Unit = {}) = perform(onSaved) {
+        store.saveVoiceId(id, voiceId)
     }
 
     fun saveHost(host: ComfyHost, credential: ComfyCredentialInput, onSaved: () -> Unit) =

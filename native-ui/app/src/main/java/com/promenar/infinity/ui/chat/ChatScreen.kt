@@ -370,6 +370,8 @@ data class ChatScreenState(
     val backgroundJobsRequest: Int = 0,
     /** 竖屏上滑抽屉在阻断式生成确认弹窗期间暂时让出，弹窗结束后自动恢复。 */
     val portraitDrawerSuspended: Boolean = false,
+    /** 当前会话气泡朗读状态（活跃消息 ID 与阶段）。 */
+    val readAloudState: ChatReadAloudUiState = ChatReadAloudUiState(),
 )
 
 data class ChatScreenActions(
@@ -410,6 +412,7 @@ data class ChatScreenActions(
     val onOpenDeleteDialog: () -> Unit = {},
     val onContentChange: (String, String) -> Unit = { _, _ -> },
     val onCopy: (String) -> Unit = {},
+    val onReadAloud: ((String, String) -> Unit)? = null,
     val onDeleteMessage: (String) -> Unit = {},
     val onRegenerateMessage: (String) -> Unit = {},
     /** 最新一轮失败后直接重发（tailnet 失败的“重试”）。 */
@@ -1217,15 +1220,17 @@ fun ChatScreenContent(
               }
             },
             snackbarHost = {
-                Box(modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) {
-                    InfinitySnackbarHost(
-                        hostState = snackbarHostState,
-                        snackbarData = snackbarData,
-                        onAction = {
-                            actions.onSnackbarAction()
-                        }
-                    )
-                    com.promenar.infinity.ui.media.MediaSnackbarHost(hostState = mediaSnackbarHostState)
+                if (com.promenar.infinity.ui.common.LocalInfinityNoticeController.current == null) {
+                    Box(modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) {
+                        InfinitySnackbarHost(
+                            hostState = snackbarHostState,
+                            snackbarData = snackbarData,
+                            onAction = {
+                                actions.onSnackbarAction()
+                            }
+                        )
+                        com.promenar.infinity.ui.media.MediaSnackbarHost(hostState = mediaSnackbarHostState)
+                    }
                 }
             }
         ) { padding ->
@@ -1418,6 +1423,9 @@ fun ChatScreenContent(
                             onCopy = { text ->
                                 actions.onCopy(text)
                             },
+                            onReadAloud = actions.onReadAloud,
+                            readAloudPhase = group.assistantMessages.lastOrNull()?.id?.let { state.readAloudState.phaseFor(it) }
+                                ?: ReadAloudPhase.IDLE,
                             onDelete = actions.onDeleteMessage,
                             onRegenerate = actions.onRegenerateMessage,
                             onBranch = actions.onBranchMessage,

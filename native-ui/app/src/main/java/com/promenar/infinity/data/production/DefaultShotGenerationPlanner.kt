@@ -259,17 +259,33 @@ class DefaultShotGenerationPlanner(
             if (!validation.valid && overflow.isEmpty()) issues += text("invalid_plan", (validation.specErrors + validation.invalidInputs.map { it.location }).joinToString())
         }
         val audioPlans = mutableListOf<PlannedDialogueAudio>()
-        val speech = resolveDefaultChannel(MediaGroup.AUDIO, GenerationMode.SPEECH, ordered)
+        val speech = resolveDefaultChannel(MediaGroup.SPEECH, GenerationMode.SPEECH, ordered)
         shot.dialogue.forEachIndexed { index, dialogue ->
             if (dialogue.audioSource != DialogueAudioSource.DUBBED) return@forEachIndexed
             val character = p.assets.find { it.id == dialogue.characterAssetId }
             val voice = character?.referenceVoice?.path
             if (speech == null) { issues += text("no_channel", "SPEECH"); return@forEachIndexed }
-            if (voice == null) { issues += text("missing_voice", character?.name ?: dialogue.characterAssetId); return@forEachIndexed }
-            if (kindOf(sessionId, voice) != InputKind.AUDIO || !files.isImageOrVideo(sessionId, voice)) issues += text("missing_input", voice)
-            val audioRequest = MediaGenerationRequest(speech.id, GenerationMode.SPEECH, dialogue.text,
-                listOf(MediaInput(voice, InputKind.AUDIO, MediaRole.REFERENCE_VOICE)), ProductionSourceRef(p.id, episodeId, shot.code, index).encode(),
-                sessionId = sessionId, outputDir = "${p.rootPath}/$episodeId/audio")
+            val needsReferenceVoice = speech.capabilities.maxAudio > 0
+            if (needsReferenceVoice) {
+                if (voice == null) { issues += text("missing_voice", character?.name ?: dialogue.characterAssetId); return@forEachIndexed }
+                if (kindOf(sessionId, voice) != InputKind.AUDIO || !files.isImageOrVideo(sessionId, voice)) issues += text("missing_input", voice)
+            }
+            val audioInputs = if (needsReferenceVoice && voice != null) {
+                listOf(MediaInput(voice, InputKind.AUDIO, MediaRole.REFERENCE_VOICE))
+            } else emptyList()
+            val audioParams = buildMap<String, kotlinx.serialization.json.JsonPrimitive> {
+                dialogue.tone?.takeIf { it.isNotBlank() }?.let { put("style", kotlinx.serialization.json.JsonPrimitive(it)) }
+            }
+            val audioRequest = MediaGenerationRequest(
+                speech.id,
+                GenerationMode.SPEECH,
+                dialogue.text,
+                audioInputs,
+                ProductionSourceRef(p.id, episodeId, shot.code, index).encode(),
+                sessionId = sessionId,
+                outputDir = "${p.rootPath}/$episodeId/audio",
+                params = audioParams,
+            )
             val valid = validateRequest(speech, audioRequest)
             if (valid.excessInputs.isNotEmpty()) issues += text("overflow", "${character?.name} ($voice)")
             else if (!valid.valid) issues += text("invalid_plan", "SPEECH ${valid.specErrors.joinToString()}")

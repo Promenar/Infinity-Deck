@@ -13,7 +13,9 @@ class ModelMetadataResolverTest {
             ModelWorkload.EMBEDDING,
             ModelWorkload.RERANK,
             ModelWorkload.IMAGE_GENERATION,
-            ModelWorkload.AUDIO,
+            ModelWorkload.SPEECH,
+            ModelWorkload.MUSIC,
+            ModelWorkload.REALTIME,
             ModelWorkload.VIDEO,
             ModelWorkload.UNKNOWN,
         )

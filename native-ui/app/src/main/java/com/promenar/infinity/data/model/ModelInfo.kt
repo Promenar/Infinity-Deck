@@ -59,7 +59,9 @@ internal fun ResolvedModelMetadata.toLegacyType(): String = mediaModelPreset(rem
     ModelWorkload.EMBEDDING -> "embedding"
     ModelWorkload.RERANK -> "rerank"
     ModelWorkload.IMAGE_GENERATION -> "image"
-    ModelWorkload.AUDIO -> "audio"
+    ModelWorkload.SPEECH -> "speech"
+    ModelWorkload.MUSIC -> "music"
+    ModelWorkload.REALTIME -> "realtime"
     ModelWorkload.VIDEO -> "video"
     ModelWorkload.UNKNOWN -> "unknown"
 }
@@ -71,7 +73,9 @@ internal fun ResolvedModelMetadata.toLegacySupportedCapabilities(): List<String>
         "image" -> add("image")
         "embedding" -> add("embedding")
         "rerank" -> add("rerank")
-        "audio" -> add("audio")
+        "speech" -> add("speech")
+        "music" -> add("music")
+        "realtime" -> add("realtime")
         "video" -> add("video")
     }
     val supportedCapabilities = mapOf(
@@ -93,7 +97,7 @@ internal fun ResolvedModelMetadata.toLegacySupportedCapabilities(): List<String>
 }
 
 internal fun ResolvedModelMetadata.autoFingerprint(): String = listOf(
-    "v1",
+    "v2",
     displayName,
     toLegacyType(),
     toLegacySupportedCapabilities().joinToString(","),
@@ -139,22 +143,47 @@ internal fun ResolvedModelMetadata.toModelInfo(
     providerMetadata = providerMetadata,
 )
 
-private val nonChatModelTypes = setOf("video", "audio", "image", "embedding", "rerank")
+private val nonChatModelTypes = setOf("video", "audio", "speech", "music", "realtime", "image", "embedding", "rerank")
+
+private val nonChatWorkloads = setOf(
+    ModelWorkload.VIDEO,
+    ModelWorkload.SPEECH,
+    ModelWorkload.MUSIC,
+    ModelWorkload.REALTIME,
+    ModelWorkload.IMAGE_GENERATION,
+    ModelWorkload.EMBEDDING,
+    ModelWorkload.RERANK,
+)
 
 private fun ModelInfo.disablesChatEndpoint(userFields: Set<String>): Boolean =
-    mediaSettings != null || ("type" in userFields && type in nonChatModelTypes)
+    mediaSettings != null || ("type" in userFields && type.lowercase() in nonChatModelTypes)
 
 internal fun ModelInfo.mergeResolvedMetadata(resolved: ResolvedModelMetadata): ModelInfo {
     val userFields = userEditedFields.intersect(USER_EDITABLE_MODEL_FIELDS)
-    val resolvedChatEndpoint = if (disablesChatEndpoint(userFields) || mediaModelPreset(remoteModelId) != null) {
+    val resolvedChatEndpoint = if (
+        disablesChatEndpoint(userFields) ||
+        mediaModelPreset(remoteModelId) != null ||
+        ("type" !in userFields && resolved.workload in nonChatWorkloads)
+    ) {
         SupportState.UNSUPPORTED
     } else {
         resolved.capabilities[ModelCapability.CHAT_ENDPOINT] ?: SupportState.UNKNOWN
     }
+    val migratedUserType = if ("type" in userFields && type.equals("audio", ignoreCase = true)) {
+        if (resolved.workload == ModelWorkload.MUSIC || mediaModelPreset(remoteModelId)?.group == com.promenar.infinity.domain.mediagen.MediaGroup.MUSIC) {
+            "music"
+        } else {
+            "speech"
+        }
+    } else if ("type" in userFields) {
+        type
+    } else {
+        resolved.toLegacyType()
+    }
     return copy(
         name = if ("name" in userFields) name else resolved.displayName,
         description = resolved.familyName ?: resolved.remoteModelId,
-        type = if ("type" in userFields) type else resolved.toLegacyType(),
+        type = migratedUserType,
         contextLength = if ("contextLength" in userFields) contextLength else resolved.contextTokens ?: 0,
         capabilities = if ("capabilities" in userFields) capabilities.toList() else resolved.toLegacySupportedCapabilities(),
         maxOutputTokens = if ("maxOutputTokens" in userFields) {

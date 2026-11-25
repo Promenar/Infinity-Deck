@@ -151,10 +151,11 @@ internal fun ProductionManagementTab(
         item("models") {
             ProductionSection(null) {
                 val counts = MediaGroup.entries.associateWith { group -> channels.count { it.group == group } }
+                val audioCount = counts.getValue(MediaGroup.SPEECH) + counts.getValue(MediaGroup.MUSIC)
                 ProductionRow(
                     stringResource(R.string.p2_media_models),
                     icon = Icons.Rounded.Hub,
-                    value = if (channels.isEmpty()) null else stringResource(R.string.p2_media_counts, counts.getValue(MediaGroup.IMAGE), counts.getValue(MediaGroup.VIDEO), counts.getValue(MediaGroup.AUDIO)),
+                    value = if (channels.isEmpty()) null else stringResource(R.string.p2_media_counts, counts.getValue(MediaGroup.IMAGE), counts.getValue(MediaGroup.VIDEO), audioCount),
                     enabled = services.onOpenMediaModels != null,
                     onClick = services.onOpenMediaModels ?: {},
                 )
@@ -582,7 +583,8 @@ private fun MediaTask.kindLabel(channels: List<MediaChannel>): String = stringRe
         GenerationMode.MUSIC -> R.string.p2_task_kind_music
         else -> when (channels.firstOrNull { it.id == request.channelId }?.group) {
             MediaGroup.IMAGE -> R.string.p2_task_kind_image
-            MediaGroup.AUDIO -> R.string.p2_task_kind_audio
+            MediaGroup.SPEECH -> R.string.p2_task_kind_speech
+            MediaGroup.MUSIC -> R.string.p2_task_kind_music
             else -> R.string.p2_task_kind_video
         }
     },

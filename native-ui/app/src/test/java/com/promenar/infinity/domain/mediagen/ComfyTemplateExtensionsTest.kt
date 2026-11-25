@@ -23,9 +23,9 @@ class ComfyTemplateExtensionsTest {
         val generate = ComfyTemplate("image", graph, emptyList(), capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)))
         assertEquals(TemplateRole.GENERATE, generate.role)
         assertEquals(0, generate.channel().capabilities.maxVideos)
-        val music = generate.copy(group = MediaGroup.AUDIO, capabilities = MediaCapabilities(setOf(GenerationMode.MUSIC)),
+        val music = generate.copy(group = MediaGroup.MUSIC, capabilities = MediaCapabilities(setOf(GenerationMode.MUSIC)),
             slots = listOf(ComfySlot("1", "seconds", SlotKind.DURATION), ComfySlot("2", "audio", SlotKind.OUTPUT, outputKind = InputKind.AUDIO)))
-        assertEquals(MediaGroup.AUDIO, music.channel().group)
+        assertEquals(MediaGroup.MUSIC, music.channel().group)
     }
 
     @Test fun rejectsInvalidRoleOperationAndParameterBindingsWithFieldNames() {

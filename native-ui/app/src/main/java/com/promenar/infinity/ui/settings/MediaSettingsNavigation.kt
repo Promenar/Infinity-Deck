@@ -96,6 +96,7 @@ internal fun NavGraphBuilder.mediaSettingsDestinations(navigator: SettingsNaviga
                     onBack = { navigator.back() },
                     onMode = { vm.setReferenceMode(id, it) },
                     onReferenceUp = { vm.moveReferenceUp(id, it) },
+                    onSaveVoice = { voice, saved -> vm.saveVoiceId(id, voice, saved) },
                     onSaveTariff = { draft, saved -> vm.saveTariff(id, draft, saved) },
                     onRetry = vm::reload,
                 )

@@ -14,8 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.promenar.infinity.R
 import com.promenar.infinity.domain.media.MediaResolution
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
 import com.promenar.infinity.ui.common.InfinitySnackbar
 import com.promenar.infinity.ui.common.InfinitySnackbarData
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.SnackbarType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,15 +40,23 @@ private class MediaSnackbarVisuals(
     override val duration: SnackbarDuration = SnackbarDuration.Short
 }
 
-/** 记住一个把提示投递到 [hostState] 的通道。 */
+/** 记住一个把提示投递到全站顶部通知胶囊的通道；无根宿主时回落到 [hostState]。 */
 @Composable
 fun rememberSnackbarMediaMessenger(hostState: SnackbarHostState): MediaMessenger {
+    val globalNotice = LocalInfinityNoticeController.current
     val scope = rememberCoroutineScope()
-    return remember(hostState, scope) {
+    return remember(globalNotice, hostState, scope) {
         MediaMessenger { message, isError ->
-            scope.launch {
-                hostState.currentSnackbarData?.dismiss()
-                hostState.showSnackbar(MediaSnackbarVisuals(message, isError))
+            if (globalNotice != null) {
+                globalNotice.show(
+                    severity = if (isError) InfinityNoticeSeverity.ERROR else InfinityNoticeSeverity.SUCCESS,
+                    message = message,
+                )
+            } else {
+                scope.launch {
+                    hostState.currentSnackbarData?.dismiss()
+                    hostState.showSnackbar(MediaSnackbarVisuals(message, isError))
+                }
             }
         }
     }

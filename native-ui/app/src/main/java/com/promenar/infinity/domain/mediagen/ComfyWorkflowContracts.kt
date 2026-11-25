@@ -12,27 +12,50 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import java.math.BigDecimal
 
-@Serializable
+@Serializable(with = ComfyMediaCategorySerializer::class)
 enum class ComfyMediaCategory {
     IMAGE,
     VIDEO,
-    AUDIO,
+    SPEECH,
+    MUSIC,
     POST_PROCESS,
     MODEL_3D,
     FILE;
 
-    fun toMediaGroup(): MediaGroup = when (this) {
+    fun toMediaGroup(modes: Set<GenerationMode> = emptySet()): MediaGroup = when (this) {
         IMAGE, MODEL_3D, FILE -> MediaGroup.IMAGE
         VIDEO, POST_PROCESS -> MediaGroup.VIDEO
-        AUDIO -> MediaGroup.AUDIO
+        SPEECH -> MediaGroup.SPEECH
+        MUSIC -> if (GenerationMode.SPEECH in modes && GenerationMode.MUSIC !in modes) MediaGroup.SPEECH else MediaGroup.MUSIC
     }
 
     companion object {
         fun fromMediaGroup(group: MediaGroup, isPostProcess: Boolean = false): ComfyMediaCategory = when {
             isPostProcess -> POST_PROCESS
             group == MediaGroup.IMAGE -> IMAGE
-            group == MediaGroup.AUDIO -> AUDIO
+            group == MediaGroup.SPEECH -> SPEECH
+            group == MediaGroup.MUSIC -> MUSIC
             else -> VIDEO
+        }
+    }
+}
+
+/** 兼容历史已持久化的 "AUDIO" 类别；读回时默认归入 MUSIC，并由工作流 modes 在投影时细分。 */
+object ComfyMediaCategorySerializer : kotlinx.serialization.KSerializer<ComfyMediaCategory> {
+    override val descriptor = kotlinx.serialization.descriptors.PrimitiveSerialDescriptor(
+        "ComfyMediaCategory",
+        kotlinx.serialization.descriptors.PrimitiveKind.STRING,
+    )
+
+    override fun serialize(encoder: kotlinx.serialization.encoding.Encoder, value: ComfyMediaCategory) {
+        encoder.encodeString(value.name)
+    }
+
+    override fun deserialize(decoder: kotlinx.serialization.encoding.Decoder): ComfyMediaCategory {
+        val raw = decoder.decodeString()
+        return when (raw.uppercase()) {
+            "AUDIO" -> ComfyMediaCategory.MUSIC
+            else -> ComfyMediaCategory.valueOf(raw)
         }
     }
 }
@@ -529,7 +552,7 @@ data class ComfyWorkflow(
 
     fun toMediaChannel(): MediaChannel = MediaChannel(
         id = channelId,
-        group = mediaCategory.toMediaGroup(),
+        group = mediaCategory.toMediaGroup(capabilities.modes),
         capabilities = capabilities,
     )
 

@@ -54,7 +54,7 @@ class ComfySkillsTest {
         f.http.info = Json.parseToJsonElement("""{"Test":{"input":{"required":{"prompt":["STRING"],"seconds":["FLOAT"]}}},"Save":{"input":{"required":{}},"output_node":true,"output":["AUDIO"]}}""").jsonObject
         val result = ComfyDefineTemplateSkill(f.repository).execute(buildJsonObject { put("template", raw) }, context)
         assertNotEquals(result.content, "error", result.status)
-        assertEquals(MediaGroup.AUDIO, f.repository.templates().single().template.group)
+        assertEquals(MediaGroup.MUSIC, f.repository.templates().single().template.group)
         assertEquals(PreflightStatus.PASS, f.repository.templates().single().preflight.status)
     }
 

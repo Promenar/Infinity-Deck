@@ -41,7 +41,7 @@ internal fun progressTemplate(id: String = "up", role: TemplateRole = TemplateRo
         if (music) listOf(ComfySlot("1", "prompt", SlotKind.PROMPT), ComfySlot("1", "seconds", SlotKind.DURATION), ComfySlot("1", "seed", SlotKind.SEED), ComfySlot("1", "out", SlotKind.OUTPUT, outputKind = InputKind.AUDIO))
         else listOf(ComfySlot("1", "video", SlotKind.INPUT_VIDEO), ComfySlot("1", "scale", SlotKind.PARAM, param = "scale"), ComfySlot("1", "out", SlotKind.OUTPUT, outputKind = InputKind.VIDEO)),
         locked = true, capabilities = MediaCapabilities(setOf(if (music) GenerationMode.MUSIC else GenerationMode.REFERENCE)), hostId = host,
-        group = if (music) MediaGroup.AUDIO else MediaGroup.VIDEO, role = role, operation = if (music) null else TemplateOperation("超分"),
+        group = if (music) MediaGroup.MUSIC else MediaGroup.VIDEO, role = role, operation = if (music) null else TemplateOperation("超分"),
         params = if (music) emptyList() else listOf(TemplateParam("scale", "倍率", TemplateParamType.NUMBER, JsonPrimitive(2), min = 1.0, max = 4.0, integer = true)))
 }
 
@@ -134,7 +134,7 @@ class ProductionTemplatePlanningRegressionTest {
         assertThat(com.promenar.infinity.data.mediagen.validateComfyShotPlan(template, request.copy(params = mapOf("unknown" to JsonPrimitive(1))))).isNotEmpty()
     }
     @Test fun `小数秒数遵守通道时长范围且不接受非有限值`() {
-        val channel = MediaChannel("music", MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.MUSIC), minDurationSeconds = 2, maxDurationSeconds = 10))
+        val channel = MediaChannel("music", MediaGroup.MUSIC, MediaCapabilities(setOf(GenerationMode.MUSIC), minDurationSeconds = 2, maxDurationSeconds = 10))
         val request = MediaGenerationRequest("music", GenerationMode.MUSIC, "雨夜", emptyList(), "source", specs = GenerationSpecs(durationSecondsExact = 3.5))
         assertThat(validateRequest(channel, request).valid).isTrue()
         listOf(Double.NaN, Double.POSITIVE_INFINITY, 0.0, 1.5, 10.5).forEach { seconds ->

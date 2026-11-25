@@ -36,7 +36,13 @@ class SettingsViewModelModelClassificationTest {
         assertThat(classifyFetchedModelType("MiniMax-H3", null))
             .isEqualTo("video")
         assertThat(classifyFetchedModelType("speech-2.8-hd", null))
-            .isEqualTo("audio")
+            .isEqualTo("speech")
+        assertThat(classifyFetchedModelType("gemini-3.8-flash-tts", null))
+            .isEqualTo("speech")
+        assertThat(classifyFetchedModelType("lyria-3.5", null))
+            .isEqualTo("music")
+        assertThat(classifyFetchedModelType("gemini-3.8-live", null))
+            .isEqualTo("realtime")
         val embedding = ModelInfo(
             name = "foo-embedding",
             id = "provider::foo-embedding",

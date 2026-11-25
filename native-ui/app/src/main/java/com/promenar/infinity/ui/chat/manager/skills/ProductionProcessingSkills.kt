@@ -58,12 +58,20 @@ class ProductionDeriveSkill(private val processing: () -> ProductionProcessing) 
     }
 }
 class ProductionScoreSkill(private val processing: () -> ProductionProcessing) : ProductionGenerationTool("production_score",
-    "用已通过预检的 AUDIO/GENERATE 配乐模板生成声音资产版本。默认4版、种子互异；默认时长为最新剪辑版本成片时长；直接入队。",
-    """{"type":"object","properties":{"asset_id":{"type":"string"},"template_id":{"type":"string"},"prompt":{"type":"string"},"duration_seconds":{"type":"number"},"versions":{"type":"integer"}},"required":["asset_id"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
+    "用已就绪的 MUSIC 音乐通道（如 Lyria 3 / 3.5 云端模型或已通过预检的 ComfyUI 配乐模板）生成声音资产版本。默认4版，默认时长取最新剪辑版本成片时长，直接入队。",
+    """{"type":"object","properties":{"asset_id":{"type":"string"},"channel_id":{"type":"string"},"template_id":{"type":"string"},"prompt":{"type":"string"},"duration_seconds":{"type":"number"},"versions":{"type":"integer"}},"required":["asset_id"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
-        args.keys(setOf("asset_id"), setOf("asset_id", "template_id", "prompt", "duration_seconds", "versions"))
+        args.keys(setOf("asset_id"), setOf("asset_id", "channel_id", "template_id", "prompt", "duration_seconds", "versions"))
         val versions = requireNotNull(args.integer("versions", 4)) { "versions 必须是 1～30 的整数。" }.also { require(it in 1..30) { "versions 需要 1～30。" } }
-        val tasks = processing().score(context.sessionId, args.text("asset_id"), args.optionalText("template_id"), args.optionalText("prompt"), args.number("duration_seconds"), versions)
+        val tasks = processing().score(
+            sessionId = context.sessionId,
+            assetId = args.text("asset_id"),
+            templateId = args.optionalText("template_id"),
+            prompt = args.optionalText("prompt"),
+            durationSeconds = args.number("duration_seconds"),
+            versions = versions,
+            channelId = args.optionalText("channel_id"),
+        )
         return buildJsonObject { put("status", if (tasks.size == versions) "submitted" else "partially_submitted"); put("task_ids", JsonArray(tasks.map { JsonPrimitive(it.id) })); if (tasks.size != versions) put("warning", "部分配乐任务已入队，请先查询已有任务，再补交剩余版本。") }
     }
 }

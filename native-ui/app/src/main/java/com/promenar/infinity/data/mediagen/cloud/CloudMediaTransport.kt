@@ -7,12 +7,16 @@ import com.promenar.infinity.data.remote.ModelTimeoutKind
 import com.promenar.infinity.data.remote.applyModelTimeout
 import com.promenar.infinity.data.remote.routeViaBuiltInProxy
 import com.promenar.infinity.data.remote.withModelTimeoutSupport
+import com.promenar.infinity.data.remote.protocol.GeminiProtocol
+import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.remote.protocol.readBoundedModelListBody
 import io.ktor.client.HttpClient
 import io.ktor.client.request.*
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.*
 import io.ktor.utils.io.cancel
+import io.ktor.utils.io.readAvailable
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlinx.coroutines.job
 import kotlinx.coroutines.Dispatchers
@@ -32,8 +36,13 @@ class ProviderCloudMediaModelSource(private val providers: ProviderManager) : Cl
     }
 }
 
+data class CloudBinaryResponse(val bytes: ByteArray, val contentType: String?)
+
 fun interface CloudMediaHttp {
     suspend fun request(providerId: String, url: String, body: JsonObject?): JsonObject
+    suspend fun requestLarge(providerId: String, url: String, body: JsonObject?): JsonObject = request(providerId, url, body)
+    suspend fun requestBinary(providerId: String, url: String, body: JsonObject): CloudBinaryResponse =
+        throw UnsupportedOperationException("该传输实现不支持二进制响应")
 }
 
 class CloudHttpException(val status: Int) : IOException("媒体接口返回 HTTP $status")
@@ -44,7 +53,11 @@ class KtorCloudMediaHttp private constructor(
     private val credentials: CredentialsSource,
     client: HttpClient,
 ) : CloudMediaHttp {
-    private class Credentials(val apiKey: String, val useBuiltInProxy: Boolean)
+    private class Credentials(
+        val apiKey: String,
+        val useBuiltInProxy: Boolean,
+        val useGeminiApiKeyHeader: Boolean = false,
+    )
 
     private fun interface CredentialsSource {
         fun resolve(providerId: String): Credentials?
@@ -61,30 +74,66 @@ class KtorCloudMediaHttp private constructor(
 
     constructor(providers: ProviderManager) : this(
         CredentialsSource { providerId ->
-            providers.getProviderConfig(providerId)?.let { Credentials(it.apiKey, it.useBuiltInProxy) }
+            providers.getProviderConfig(providerId)?.let {
+                Credentials(
+                    apiKey = it.apiKey,
+                    useBuiltInProxy = it.useBuiltInProxy,
+                    useGeminiApiKeyHeader = it.protocolType == ProtocolType.Google_Gemini,
+                )
+            }
         },
         ModelHttp.client(),
     )
 
-    override suspend fun request(providerId: String, url: String, body: JsonObject?): JsonObject = withContext(Dispatchers.IO) {
-        val endpoint = java.net.URI(url)
-        require(endpoint.scheme in setOf("http", "https") && endpoint.host != null && endpoint.rawUserInfo == null && endpoint.rawFragment == null)
+    override suspend fun request(providerId: String, url: String, body: JsonObject?): JsonObject =
+        executeJson(providerId, url, body, maxBytes = null)
+
+    override suspend fun requestLarge(providerId: String, url: String, body: JsonObject?): JsonObject =
+        executeJson(providerId, url, body, maxBytes = MAX_MEDIA_JSON_BYTES)
+
+    override suspend fun requestBinary(providerId: String, url: String, body: JsonObject): CloudBinaryResponse = withContext(Dispatchers.IO) {
+        validateUrl(url)
         val config = credentials.resolve(providerId)
         val key = config?.apiKey.orEmpty()
         require(key.isNotBlank()) { "提供商尚未配置密钥" }
-        // 不跟随带鉴权请求的重定向；错误正文不进入日志或异常。
         client.prepareRequest(url) {
-            routeViaBuiltInProxy(config?.useBuiltInProxy == true, providerId)
-            method = if (body == null) HttpMethod.Get else HttpMethod.Post
-            header(HttpHeaders.Authorization, "Bearer $key")
-            if (body != null) { contentType(ContentType.Application.Json); setBody(body.toString()) }
+            applyAuthAndHeaders(config, key, providerId, body)
             applyModelTimeout(ModelTimeoutKind.IMAGE)
         }.execute { response ->
             if (response.status.value !in 200..299) {
                 response.bodyAsChannel().cancel(null)
                 throw CloudHttpException(response.status.value)
             }
-            val text = response.readBoundedModelListBody() ?: throw IOException("媒体接口响应过大或无效")
+            val bytes = readBoundedBytes(response.bodyAsChannel(), MAX_MEDIA_BINARY_BYTES)
+                ?: throw IOException("媒体接口二进制响应超过大小上限")
+            CloudBinaryResponse(bytes, response.contentType()?.withoutParameters()?.toString())
+        }
+    }
+
+    private suspend fun executeJson(
+        providerId: String,
+        url: String,
+        body: JsonObject?,
+        maxBytes: Int?,
+    ): JsonObject = withContext(Dispatchers.IO) {
+        validateUrl(url)
+        val config = credentials.resolve(providerId)
+        val key = config?.apiKey.orEmpty()
+        require(key.isNotBlank()) { "提供商尚未配置密钥" }
+        // 不跟随带鉴权请求的重定向；错误正文不进入日志或异常。
+        client.prepareRequest(url) {
+            applyAuthAndHeaders(config, key, providerId, body)
+            applyModelTimeout(ModelTimeoutKind.IMAGE)
+        }.execute { response ->
+            if (response.status.value !in 200..299) {
+                response.bodyAsChannel().cancel(null)
+                throw CloudHttpException(response.status.value)
+            }
+            val text = if (maxBytes == null) {
+                response.readBoundedModelListBody()
+            } else {
+                readBoundedBytes(response.bodyAsChannel(), maxBytes)?.toString(Charsets.UTF_8)
+            } ?: throw IOException("媒体接口响应过大或无效")
             val result = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
                 ?: throw IOException("媒体接口响应格式无效")
             (result["base_resp"] as? JsonObject)?.get("status_code")?.jsonPrimitive?.intOrNull?.let {
@@ -92,6 +141,51 @@ class KtorCloudMediaHttp private constructor(
             }
             result
         }
+    }
+
+    private fun validateUrl(url: String) {
+        val endpoint = java.net.URI(url)
+        require(endpoint.scheme in setOf("http", "https") && endpoint.host != null && endpoint.rawUserInfo == null && endpoint.rawFragment == null)
+    }
+
+    private fun HttpRequestBuilder.applyAuthAndHeaders(
+        config: Credentials?,
+        key: String,
+        providerId: String,
+        body: JsonObject?,
+    ) {
+        routeViaBuiltInProxy(config?.useBuiltInProxy == true, providerId)
+        method = if (body == null) HttpMethod.Get else HttpMethod.Post
+        if (config?.useGeminiApiKeyHeader == true) {
+            header(GeminiProtocol.API_KEY_HEADER, key)
+        } else {
+            header(HttpHeaders.Authorization, "Bearer $key")
+        }
+        if (body != null) {
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }
+    }
+
+    private suspend fun readBoundedBytes(channel: io.ktor.utils.io.ByteReadChannel, maxBytes: Int): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        while (!channel.isClosedForRead) {
+            val read = channel.readAvailable(buf, 0, buf.size)
+            if (read < 0) break
+            if (read == 0) continue
+            if (out.size() + read > maxBytes) {
+                channel.cancel(null)
+                return null
+            }
+            out.write(buf, 0, read)
+        }
+        return out.toByteArray()
+    }
+
+    companion object {
+        private const val MAX_MEDIA_JSON_BYTES = 32 * 1024 * 1024
+        private const val MAX_MEDIA_BINARY_BYTES = 24 * 1024 * 1024
     }
 }
 
@@ -103,7 +197,7 @@ internal fun cloudApiUrl(base: String, path: String): String {
     var basePath = uri.rawPath.orEmpty().trimEnd('/')
     if (path.startsWith("/v") || path.startsWith("/api/v")) {
         basePath = basePath.removeSuffix("/chat/completions").removeSuffix("/responses")
-        if (path.startsWith("/v")) basePath = basePath.replace(Regex("/v[0-9]+$"), "")
+        if (path.startsWith("/v")) basePath = basePath.replace(Regex("/v[0-9]+(?:beta|alpha)?$"), "")
     }
     val pathOnly = path.substringBefore('?')
     val parts = pathOnly.split('/').filter(String::isNotEmpty)

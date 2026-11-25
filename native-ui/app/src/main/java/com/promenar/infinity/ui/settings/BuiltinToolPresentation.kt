@@ -27,10 +27,12 @@ import androidx.compose.material.icons.rounded.Javascript
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.PlaylistRemove
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Pets
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Terminal
@@ -56,7 +58,7 @@ internal fun builtinToolCategory(id: String): BuiltinToolCategory = when (id) {
     "file_read", "file_list", "file_search", "file_diff", "file_write", "file_patch",
     "create_file", "create_directory", "move_file", "delete_file", "copy_knowledge_to_linux" -> BuiltinToolCategory.FILES
     "exec_js", "run_script", "shell_exec", "git_exec", "python_exec", "python_sandbox" -> BuiltinToolCategory.EXECUTION
-    "image_generation", "view_media", "media_fetch",
+    "image_generation", "speech_generation", "music_generation", "view_media", "media_fetch",
     "comfy_probe", "comfy_templates", "comfy_define_template",
     "comfy_list_hosts", "comfy_list_submitters", "comfy_list_workflows",
     "comfy_preflight_workflow", "comfy_get_chain_state",
@@ -85,6 +87,8 @@ internal fun builtinToolIcon(id: String): ImageVector = when (id) {
     "calculator" -> Icons.Rounded.Calculate
     "pet" -> Icons.Rounded.Pets
     "image_generation" -> Icons.Rounded.Image
+    "speech_generation" -> Icons.Rounded.RecordVoiceOver
+    "music_generation" -> Icons.Rounded.MusicNote
     "view_media" -> Icons.Rounded.ImageSearch
     "media_fetch" -> Icons.Rounded.Download
     "comfy_list_hosts", "comfy_probe" -> Icons.Rounded.Hub

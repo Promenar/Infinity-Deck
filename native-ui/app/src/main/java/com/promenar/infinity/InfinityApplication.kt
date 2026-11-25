@@ -2176,6 +2176,23 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             register(ImageGenerationSkill(this@InfinityApplication, ProviderManager.getInstance(), workspaceMediaStore, workspaceMediaDownloader,
                 providerRequestRouter = providerRequestRouter, mediaResolver = workspaceMediaResolver, jobs = backgroundJobs,
                 productionPanelNudge = productionPanelNudge))
+            val cloudAudioModelSource = com.promenar.infinity.data.mediagen.cloud.ProviderCloudMediaModelSource(ProviderManager.getInstance())
+            val cloudAudioInputSource = com.promenar.infinity.data.mediagen.cloud.WorkspaceCloudMediaInputSource(workspaceMediaResolver)
+            register(com.promenar.infinity.ui.chat.manager.skills.SpeechGenerationSkill(
+                providerManager = ProviderManager.getInstance(),
+                cloudModels = cloudAudioModelSource,
+                backend = { productionMediaRuntime.geminiAudioBackend },
+                mediaStore = workspaceMediaStore,
+                jobs = backgroundJobs,
+            ))
+            register(com.promenar.infinity.ui.chat.manager.skills.MusicGenerationSkill(
+                providerManager = ProviderManager.getInstance(),
+                cloudModels = cloudAudioModelSource,
+                inputSource = cloudAudioInputSource,
+                backend = { productionMediaRuntime.geminiAudioBackend },
+                mediaStore = workspaceMediaStore,
+                jobs = backgroundJobs,
+            ))
             register(com.promenar.infinity.ui.chat.manager.skills.MediaFetchSkill(workspaceMediaStore, workspaceMediaDownloader,
                 mounts = externalFolderManager, sessionWorkspace = sessionWorkspaceResolver::resolve, jobs = backgroundJobs))
             register(mounted(FileReadSkill(fileOperationRepository, workspaceRepository)))

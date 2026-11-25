@@ -24,6 +24,8 @@ internal data class MediaSettingsSnapshot(
     val workflows: List<ComfyWorkflowState> = emptyList(),
     val pythonAvailable: Boolean = false,
     val defaultImageModelId: String = "",
+    val defaultSpeechModelId: String = "",
+    val defaultMusicModelId: String = "",
 )
 
 internal interface MediaSettingsStore {
@@ -31,6 +33,7 @@ internal interface MediaSettingsStore {
     suspend fun reorder(group: MediaGroup, ids: List<String>)
     suspend fun changeReferences(modelId: String, mode: CharacterReferenceMode, order: List<String>)
     suspend fun saveTariff(modelId: String, draft: MediaTariffDraft)
+    suspend fun saveVoiceId(modelId: String, voiceId: String) {}
     suspend fun saveHost(host: ComfyHost, credential: ComfyCredentialInput)
     suspend fun removeHost(id: String)
     suspend fun probe(id: String)
@@ -76,8 +79,9 @@ internal class ApplicationMediaSettingsStore(
                 mediaPreflightTime(state, uiPreferences.getString(timeKey(state.template.id), null))?.let { state.template.id to it }
             }.toMap()
         }
-        val modelStates = combine(pm.providerModels, pm.imageModelId) { models, defaultImage ->
-            models to defaultImage
+        val modelDefaults = combine(pm.imageModelId, pm.speechModelId, pm.musicModelId) { img, sp, mu -> Triple(img, sp, mu) }
+        val modelStates = combine(pm.providerModels, modelDefaults) { models, defaults ->
+            models to defaults
         }
         val layerStates = combine(repository.observeSubmitters(), repository.observeEffectiveWorkflows()) { subs, wfs ->
             subs to wfs
@@ -94,7 +98,9 @@ internal class ApplicationMediaSettingsStore(
                 submitters = layer.first,
                 workflows = layer.second,
                 pythonAvailable = submitterRunner?.isPythonAvailable == true,
-                defaultImageModelId = modelState.second,
+                defaultImageModelId = modelState.second.first,
+                defaultSpeechModelId = modelState.second.second,
+                defaultMusicModelId = modelState.second.third,
             )
         }.flowOn(Dispatchers.IO)
     }
@@ -112,6 +118,11 @@ internal class ApplicationMediaSettingsStore(
 
     override suspend fun saveTariff(modelId: String, draft: MediaTariffDraft) = withContext(Dispatchers.IO) {
         pm.setMediaModelSettings(modelId, settings(modelId).copy(tariff = draft.toTariff()))
+    }
+
+    override suspend fun saveVoiceId(modelId: String, voiceId: String) = withContext(Dispatchers.IO) {
+        val current = settings(modelId)
+        pm.setMediaModelSettings(modelId, current.copy(options = current.options.copy(voiceId = voiceId.trim())))
     }
 
     override suspend fun saveHost(host: ComfyHost, credential: ComfyCredentialInput) = withContext(Dispatchers.IO) {

@@ -20,7 +20,7 @@ class MediaSettingsPresentationTest {
         val imageComfy = MediaChannel("comfy:qwen_edit", MediaGroup.IMAGE, capabilities)
         val imageCloud = MediaChannel("cloud:gemini::nano", MediaGroup.IMAGE, MediaCapabilities(setOf(GenerationMode.TEXT)))
         val videoChannels = listOf(MediaChannel("comfy:h3", MediaGroup.VIDEO, capabilities), MediaChannel("cloud:sd", MediaGroup.VIDEO, capabilities))
-        val audioChannels = listOf(MediaChannel("comfy:music3", MediaGroup.AUDIO, MediaCapabilities(setOf(GenerationMode.MUSIC))))
+        val audioChannels = listOf(MediaChannel("comfy:music3", MediaGroup.MUSIC, MediaCapabilities(setOf(GenerationMode.MUSIC))))
         val cloudModel = ModelInfo("gemini::nano", "Nano Banana 2.1", "", true, "image", providerName = "Gemini")
         val workflow = ComfyWorkflow(
             workflowId = "qwen_edit",
@@ -41,7 +41,7 @@ class MediaSettingsPresentationTest {
         )
         assertEquals(listOf(false, true), groups.getValue(MediaGroup.IMAGE).map { it.isDefault })
         assertTrue(groups.getValue(MediaGroup.VIDEO).none { it.isDefault })
-        assertTrue(groups.getValue(MediaGroup.AUDIO).none { it.isDefault })
+        assertTrue(groups.getValue(MediaGroup.MUSIC).none { it.isDefault })
 
         val comfyRow = groups.getValue(MediaGroup.IMAGE).first()
         assertEquals("Qwen2.1_Edit_3Ref", comfyRow.name)
@@ -160,8 +160,15 @@ class MediaSettingsPresentationTest {
 
     @Test fun providerCountsClassifyMediaBeforeChatAndIncludeDisabledModels() {
         fun model(id: String, type: String, enabled: Boolean = true) = ModelInfo(id, id, "", enabled, type, providerId = "p")
-        val counts = providerMediaCounts(listOf(model("chat", "reasoning"), model("image", "image"),
-            model("video", "video", false), model("audio", "audio"), model("embed", "embedding"))).getValue("p")
-        assertEquals(ProviderMediaCount(1, 1, 1, 1), counts)
+        val counts = providerMediaCounts(listOf(
+            model("chat", "reasoning"),
+            model("image", "image"),
+            model("video", "video", false),
+            model("speech", "speech"),
+            model("audio", "audio"),
+            model("music", "music"),
+            model("embed", "embedding"),
+        )).getValue("p")
+        assertEquals(ProviderMediaCount(chat = 1, video = 1, speech = 2, music = 1, image = 1), counts)
     }
 }

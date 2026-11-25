@@ -41,7 +41,7 @@ class CloudBackendTest {
     }
     @Test fun minimaxSpeechResumesUsingPersistedUsageAndRetrievesFile() = runTest {
         val settings = mediaModelPreset("speech-2.8-hd")!!.copy(options = CloudMediaOptions(voiceId = "voice"), tariff = MediaTariff("USD", listOf(MediaRate(BillingUnit.CHARACTERS, "0.001"))))
-        val channel = MediaChannel("tts", MediaGroup.AUDIO, settings.capabilities)
+        val channel = MediaChannel("tts", MediaGroup.SPEECH, settings.capabilities)
         val source = CloudMediaModelSource { CloudMediaModel("p", "speech-2.8-hd", "https://api.test", settings) }
         val calls = mutableListOf<String>()
         val http = CloudMediaHttp { _, url, body ->
