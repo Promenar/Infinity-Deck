@@ -272,7 +272,7 @@ class ChatRenderStateContractTest {
         ).readText()
         val postProcessChipSource = inlineComponentsSource
             .substringAfter("fun PostProcessChip(")
-            .substringBefore("\n@Composable\nfun SummaryCard(")
+            .substringBefore("data class ApprovalDisplayCall(")
 
         assertThat(postProcessChipSource).doesNotContain("InfinityGlassCard")
         assertThat(postProcessChipSource).doesNotContain("GlassSurface")
@@ -293,26 +293,13 @@ class ChatRenderStateContractTest {
         val source = moduleRoot.resolve(
             "src/main/java/com/promenar/infinity/ui/chat/ChatInlineComponents.kt",
         ).readText()
-        val cardSources = listOf(
-            source
-                .substringAfter("fun SummaryCard(")
-                .substringBefore("\n@Composable\nfun ApprovalCard("),
-            source.substringAfter("fun ApprovalCard("),
-        )
+        val approvalCardSource = source.substringAfter("fun ApprovalCard(")
 
-        cardSources.forEach { cardSource ->
-            assertThat(cardSource).contains("Surface(")
-            assertThat(cardSource).doesNotContain("InfinityGlassCard")
-            assertThat(cardSource).doesNotContain("GlassSurface")
-            assertThat(cardSource).doesNotContain("GlassBorder")
-        }
-        assertThat(cardSources[0]).contains("MaterialTheme.colorScheme.surfaceContainerLow")
-        assertThat(cardSources[0]).contains("shape = MaterialTheme.shapes.large")
-        assertThat(cardSources[0]).doesNotContain("shape = MaterialTheme.shapes.extraLarge")
-        assertThat(cardSources[0]).contains(
-            "heightIn(min = InfinitySpacing.MinimumTouchTarget)",
-        )
-        assertThat(cardSources[1]).contains("MaterialTheme.colorScheme.surfaceContainer")
-        assertThat(cardSources[1]).contains("MaterialTheme.colorScheme.outlineVariant")
+        assertThat(approvalCardSource).contains("Surface(")
+        assertThat(approvalCardSource).doesNotContain("InfinityGlassCard")
+        assertThat(approvalCardSource).doesNotContain("GlassSurface")
+        assertThat(approvalCardSource).doesNotContain("GlassBorder")
+        assertThat(approvalCardSource).contains("MaterialTheme.colorScheme.surfaceContainer")
+        assertThat(approvalCardSource).contains("MaterialTheme.colorScheme.outlineVariant")
     }
 }

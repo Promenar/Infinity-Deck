@@ -773,6 +773,8 @@ class ChatViewModel(
         val detail: String = "",
         val result: String? = null,
         val failureReason: ContextCompactionFailureReason? = null,
+        val startedAtMs: Long? = null,
+        val isNoOp: Boolean = false,
     )
 
     private val _compressionState = MutableStateFlow(CompressionState())
@@ -3059,10 +3061,11 @@ class ChatViewModel(
                     failureReason = ContextCompactionFailureReason.GENERATION_ACTIVE,
                 )
             } catch (_: Exception) {
+                val reason = contextCompactionService.observe(sessionId).value.failureReason
+                    ?: ContextCompactionFailureReason.UNKNOWN
                 if (_currentSessionId.value == sessionId) _compressionState.value = CompressionState(
-                    detail = stringResourceResolver(R.string.chat_context_compaction_failed),
-                    failureReason = contextCompactionService.observe(sessionId).value.failureReason
-                        ?: ContextCompactionFailureReason.UNKNOWN,
+                    detail = stringResourceResolver(compactionFailureReasonRes(reason)),
+                    failureReason = reason,
                 )
             }
         }
@@ -3073,17 +3076,18 @@ class ChatViewModel(
         progress: com.promenar.infinity.data.generation.ContextCompactionProgress,
     ): CompressionState {
         if (progress.isRunning) {
-            val (fraction, resource) = when (progress.stage) {
-                com.promenar.infinity.data.generation.ContextCompactionStage.FOLDING -> 0.3f to R.string.chat_context_folding
-                com.promenar.infinity.data.generation.ContextCompactionStage.SUMMARIZING -> 0.7f to R.string.chat_context_summarizing
-                else -> 0.1f to R.string.chat_summary_card_progress_preparing
-            }
-            return CompressionState(true, fraction, stringResourceResolver(resource))
+            return CompressionState(
+                isCompressing = true,
+                detail = stringResourceResolver(R.string.chat_context_compacting),
+                startedAtMs = progress.startedAtMs,
+            )
         }
         if (progress.failed) {
-            val resource = if (progress.failureReason == ContextCompactionFailureReason.GENERATION_ACTIVE)
-                R.string.chat_context_compress_unavailable_generating else R.string.chat_context_compaction_failed
-            return CompressionState(detail = stringResourceResolver(resource), failureReason = progress.failureReason)
+            val reason = progress.failureReason ?: ContextCompactionFailureReason.UNKNOWN
+            return CompressionState(
+                detail = stringResourceResolver(compactionFailureReasonRes(reason)),
+                failureReason = reason,
+            )
         }
         val result = progress.result ?: return CompressionState()
         val session = store.getSession(sessionId)
@@ -3091,17 +3095,46 @@ class ChatViewModel(
             session?.inferenceParams?.keepRecentTurns, session?.inferenceParams?.activeContextWindow,
         )
         return if (result.newlyFoldedToolResults == 0 && result.summarizedTurns == 0) {
-            CompressionState(progress = 1f, detail = String.format(
-                java.util.Locale.getDefault(), stringResourceResolver(R.string.chat_context_nothing_to_compress), keep,
-            ))
+            CompressionState(
+                progress = 1f,
+                detail = String.format(
+                    java.util.Locale.getDefault(),
+                    stringResourceResolver(R.string.chat_context_nothing_to_compress),
+                    keep,
+                ),
+                isNoOp = true,
+            )
         } else CompressionState(
             progress = 1f,
             result = String.format(
-                java.util.Locale.getDefault(), stringResourceResolver(R.string.chat_context_compaction_result),
-                result.newlyFoldedToolResults, result.summarizedTurns, result.beforeTokens, result.afterTokens,
-            ) + session?.summary?.takeIf { result.summarizedTurns > 0 }?.let { "\n\n$it" }.orEmpty(),
+                java.util.Locale.getDefault(),
+                stringResourceResolver(R.string.chat_context_compacted_delta),
+                formatCompactTokenCount(result.beforeTokens),
+                formatCompactTokenCount(result.afterTokens),
+            ),
             failureReason = progress.failureReason,
         )
+    }
+
+    private fun compactionFailureReasonRes(reason: ContextCompactionFailureReason): Int = when (reason) {
+        ContextCompactionFailureReason.GENERATION_ACTIVE -> R.string.chat_context_compress_unavailable_generating
+        ContextCompactionFailureReason.OUTPUT_LIMIT -> R.string.chat_context_compaction_reason_output_limit
+        ContextCompactionFailureReason.CONTEXT_LIMIT -> R.string.chat_context_compaction_reason_context_limit
+        ContextCompactionFailureReason.TIMEOUT -> R.string.chat_context_compaction_reason_timeout
+        ContextCompactionFailureReason.NETWORK -> R.string.chat_context_compaction_reason_network
+        ContextCompactionFailureReason.RATE_LIMITED -> R.string.chat_context_compaction_reason_rate_limited
+        ContextCompactionFailureReason.AUTH -> R.string.chat_context_compaction_reason_auth
+        ContextCompactionFailureReason.ROUTE_UNAVAILABLE -> R.string.chat_context_compaction_reason_route_unavailable
+        ContextCompactionFailureReason.BUDGET_EXHAUSTED -> R.string.chat_context_compaction_reason_budget_exhausted
+        ContextCompactionFailureReason.EMPTY_OUTPUT -> R.string.chat_context_compaction_reason_empty_output
+        ContextCompactionFailureReason.PROVIDER_ERROR -> R.string.chat_context_compaction_reason_provider_error
+        ContextCompactionFailureReason.UNKNOWN -> R.string.chat_context_compaction_reason_unknown
+    }
+
+    private fun formatCompactTokenCount(tokens: Int): String = when {
+        tokens >= 1_000_000 -> String.format(java.util.Locale.ROOT, "%.1fM", tokens / 1_000_000.0)
+        tokens >= 1_000 -> String.format(java.util.Locale.ROOT, "%.1fk", tokens / 1_000.0)
+        else -> tokens.toString()
     }
 
     fun dismissCompressionResult() {

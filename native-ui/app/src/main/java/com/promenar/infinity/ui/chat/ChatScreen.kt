@@ -119,11 +119,19 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.ui.text.font.FontWeight
+import com.promenar.infinity.data.generation.ContextCompactionFailureReason
+import com.promenar.infinity.ui.common.InfinityPillButton
+import com.promenar.infinity.ui.common.InfinityPillTone
+import com.promenar.infinity.ui.common.motion.GenerationMotionPhase
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -1405,6 +1413,7 @@ fun ChatScreenContent(
                             ContextCompactionFeedback(
                                 state = compressionState,
                                 onDismiss = actions.onDismissCompressionResult,
+                                onRetry = actions.onManualSummary,
                             )
                         }
                     }
@@ -2636,48 +2645,167 @@ private fun ContextCompositionBar(segments: List<ContextSegment>, max: Int) {
 internal fun ContextCompactionFeedback(
     state: ChatViewModel.CompressionState,
     onDismiss: () -> Unit,
+    onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    val phaseKey = when {
+        state.isCompressing -> 0
+        state.result != null -> 1
+        state.isNoOp -> 2
+        else -> 3
+    }
+    AnimatedContent(
+        targetState = phaseKey,
+        transitionSpec = { InfinityMotion.fadeThrough() },
+        label = "context_compaction_feedback_morph",
         modifier = modifier
             .fillMaxWidth()
-            .animateContentSize(InfinityMotion.contentSizeSpec())
             .testTag("context_compaction_feedback")
             .semantics { liveRegion = LiveRegionMode.Polite },
-    ) {
-        if (state.isCompressing || state.result != null) {
-            SummaryCard(
-                isCompressing = state.isCompressing,
-                progress = state.progress,
-                detail = state.detail,
-                result = state.result,
-                onDismiss = onDismiss,
-            )
-        } else if (state.detail.isNotBlank()) {
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = InfinitySpacing.Large, end = 4.dp, top = 8.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+    ) { phase ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 36.dp)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when (phase) {
+                0 -> {
+                    LiveStepDots(
+                        phase = GenerationMotionPhase.WAIT,
+                        dotSize = 4.dp,
+                    )
                     Text(
-                        text = state.detail,
-                        style = InfinityTypography.bodyMedium,
-                        color = if (state.progress < 1f) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                        text = state.detail.ifBlank { stringResource(R.string.chat_context_compacting) },
+                        style = InfinityTypography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    state.startedAtMs?.let { startedAt ->
+                        LiveElapsedText(
+                            startedAt = startedAt,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                        )
+                    }
+                }
+
+                1 -> {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircleOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    com.promenar.infinity.ui.common.InfinityMetaLine(
+                        segments = listOfNotNull(
+                            stringResource(R.string.chat_context_compacted_title),
+                            state.result?.takeIf(String::isNotBlank),
+                        ),
+                        style = InfinityTypography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            fontFeatureSettings = "tnum",
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
                     )
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(InfinitySpacing.MinimumTouchTarget).testTag("context_compaction_dismiss"),
+                        modifier = Modifier.size(36.dp).testTag("context_compaction_dismiss"),
                     ) {
                         Icon(
-                            Icons.Rounded.Close,
+                            imageVector = Icons.Rounded.Close,
                             contentDescription = stringResource(R.string.common_dismiss),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+                }
+
+                2 -> {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = state.detail,
+                        style = InfinityTypography.bodySmall.copy(fontSize = 13.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(36.dp).testTag("context_compaction_dismiss"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = stringResource(R.string.common_dismiss),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                            modifier = Modifier.size(15.dp),
+                        )
+                    }
+                }
+
+                else -> {
+                    Icon(
+                        imageVector = Icons.Rounded.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.chat_context_compaction_failed_title),
+                            style = InfinityTypography.bodySmall.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (state.detail.isNotBlank()) {
+                            Text(
+                                text = state.detail,
+                                style = InfinityTypography.labelSmall.copy(fontSize = 12.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    if (state.failureReason != ContextCompactionFailureReason.GENERATION_ACTIVE) {
+                        InfinityPillButton(
+                            text = stringResource(R.string.chat_context_compaction_retry),
+                            onClick = onRetry,
+                            tone = InfinityPillTone.NEUTRAL,
+                            icon = Icons.Rounded.Refresh,
+                            compact = true,
+                            modifier = Modifier.testTag("context_compaction_retry"),
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(36.dp).testTag("context_compaction_dismiss"),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = stringResource(R.string.common_dismiss),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                            modifier = Modifier.size(15.dp),
                         )
                     }
                 }

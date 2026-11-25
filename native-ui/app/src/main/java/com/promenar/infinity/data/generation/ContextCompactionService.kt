@@ -18,6 +18,7 @@ data class ContextCompactionProgress(
     val result: ContextCompactionResult? = null,
     val failed: Boolean = false,
     val failureReason: ContextCompactionFailureReason? = null,
+    val startedAtMs: Long? = null,
 )
 
 /** 自动与手动压缩共享会话锁；生成准入也使用该锁，关闭手动检查与生成启动之间的竞态。 */
@@ -60,10 +61,11 @@ class ContextCompactionService(
             lock(sessionId).withLock {
                 checkGenerationInactive(sessionId)
                 val state = state(sessionId)
-                state.value = ContextCompactionProgress(isRunning = true)
+                val startedAtMs = System.currentTimeMillis()
+                state.value = ContextCompactionProgress(isRunning = true, startedAtMs = startedAtMs)
                 try {
                     val result = manualCompaction(sessionId) { stage ->
-                        state.value = ContextCompactionProgress(isRunning = true, stage = stage)
+                        state.value = ContextCompactionProgress(isRunning = true, stage = stage, startedAtMs = startedAtMs)
                     }
                     state.value = ContextCompactionProgress(
                         stage = ContextCompactionStage.COMPLETE,
