@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.79.2-beta] - 2026-11-26
+
+- **修复 ComfyUI 主机设置页签边距、审批批准后执行态停顿与连续多文件编辑流式行交互（[ComfySettingsScreens.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfySettingsScreens.kt)、[ChatViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatViewModel.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[FileEditLivePresentation.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/FileEditLivePresentation.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)）**：
+  - 修复 ComfyUI 主机详情「主机设置」页签内容容器缺少顶部与水平标准边距（`16.dp`）导致分组卡片紧贴顶部分割线与屏幕边缘的问题，与「工作流」「提交器脚本」页签保持一致。
+  - 修复审批卡授权批准后、已批准工具尚未执行完成前界面仍停留在黄色审批停顿动效及灰色发送按钮的问题：批准执行期间即时切换为 `EXECUTING_TOOLS` 生成态，浮岛流光、环境光、运行坞、宠物与底部「停止」按钮同步进入活跃态且支持随时点按停止中止已批准命令。
+  - 重构连续多文件编辑的流式展示：移除「正在修改文件…」冗余文案，改为直接以生成动画衔接真实文件名（含 `uuid` 自动反查与未闭合路径防抖），新增异向纵向滚动行数计数（绿色 `+N` 向上滚动、红色 `−M` 向下滚动，遵循系统减少动态效果设置）；同批次先后修改多个文件时逐行常驻列出且支持同文件原行累加，全部编辑结束后自动平滑折叠为单行变更汇总并保留点击展开差异详情。
+
 ## [0.79.1-beta] - 2026-11-26
 
 - **补齐提供商列表音乐计数分段与 Gemini Native Audio 实时分类（[ProviderListScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderListScreen.kt)、[MediaModelCatalogRecord.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/MediaModelCatalogRecord.kt)、[BundledModelCatalog.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/BundledModelCatalog.kt)、[SettingsViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/SettingsViewModel.kt)）**：

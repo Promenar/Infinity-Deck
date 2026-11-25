@@ -232,6 +232,44 @@ data class ChatUiState(
     val isApprovalSubmitting: Boolean = false,
 )
 
+internal data class EffectiveApprovalExecutionState(
+    val isGenerating: Boolean,
+    val phase: com.promenar.infinity.domain.generation.GenerationPhase?,
+    val status: GenerationStatus,
+)
+
+/**
+ * 审批批准后、已批准工具尚未执行完成且下一轮生成任务尚未接棒前，协调器仍停在 WAITING_APPROVAL。
+ * 批准执行期间将界面状态覆盖为工具执行态，避免输入框停止按钮、浮岛流光、运行坞与宠物停留在黄色审批等待态。
+ */
+internal fun resolveEffectiveApprovalExecutionState(
+    coordinatorGenerating: Boolean,
+    rawPhase: com.promenar.infinity.domain.generation.GenerationPhase?,
+    rawStatus: GenerationStatus,
+    isApprovalExecuting: Boolean,
+): EffectiveApprovalExecutionState {
+    if (!isApprovalExecuting) {
+        return EffectiveApprovalExecutionState(
+            isGenerating = coordinatorGenerating,
+            phase = rawPhase,
+            status = rawStatus,
+        )
+    }
+    val phaseNeedsOverride = rawPhase == null ||
+        rawPhase == com.promenar.infinity.domain.generation.GenerationPhase.WAITING_APPROVAL ||
+        rawPhase in setOf(
+            com.promenar.infinity.domain.generation.GenerationPhase.COMPLETED,
+            com.promenar.infinity.domain.generation.GenerationPhase.FAILED,
+            com.promenar.infinity.domain.generation.GenerationPhase.CANCELLED,
+            com.promenar.infinity.domain.generation.GenerationPhase.PERSISTENCE_FAILED,
+        )
+    return EffectiveApprovalExecutionState(
+        isGenerating = true,
+        phase = if (phaseNeedsOverride) com.promenar.infinity.domain.generation.GenerationPhase.EXECUTING_TOOLS else rawPhase,
+        status = if (phaseNeedsOverride) GenerationStatus.THINKING else rawStatus,
+    )
+}
+
 enum class BackgroundWarningKind { FGS_UNAVAILABLE, NOTIFICATIONS_UNAVAILABLE }
 /**
  * 删除后的撤销提示：[count] 为被删除的气泡数（用户消息与整轮回复各计一条），
@@ -745,6 +783,8 @@ class ChatViewModel(
     internal val generationOutcomes: SharedFlow<ChatGenerationOutcome> = _generationOutcomes.asSharedFlow()
     private var lastOutcomeTaskId: String? = null
     private val _isApprovalSubmitting = MutableStateFlow(false)
+    private val _isApprovalExecuting = MutableStateFlow(false)
+    private val approvalExecutingSessions = ConcurrentHashMap.newKeySet<String>()
 
     data class TokenIndicatorState(
         val used: Int = 0,
@@ -788,8 +828,18 @@ class ChatViewModel(
     /** 当前正在等待的自动重试；为 null 时不显示重试提示。 */
     val generationRetry: StateFlow<com.promenar.infinity.domain.generation.GenerationRetry?> = _generationRetry
     private val _generationPhase = MutableStateFlow<com.promenar.infinity.domain.generation.GenerationPhase?>(null)
-    /** 当前会话进行中生成任务的阶段，驱动生成动效；没有任务时为 null。 */
-    val generationPhase: StateFlow<com.promenar.infinity.domain.generation.GenerationPhase?> = _generationPhase
+    /** 当前会话进行中生成任务的阶段，驱动生成动效；审批通过执行工具期间覆盖为工具执行态，没有任务时为 null。 */
+    val generationPhase: StateFlow<com.promenar.infinity.domain.generation.GenerationPhase?> = combine(
+        _generationPhase,
+        _isApprovalExecuting,
+    ) { phase, approvalExecuting ->
+        resolveEffectiveApprovalExecutionState(
+            coordinatorGenerating = false,
+            rawPhase = phase,
+            rawStatus = GenerationStatus.IDLE,
+            isApprovalExecuting = approvalExecuting,
+        ).phase
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _tailnetWait = MutableStateFlow<com.promenar.infinity.data.generation.TailnetWaitState?>(null)
     /** 发送到 tailnet 内的模型时，等待内置 Tailscale 接入的进度；为 null 时不显示连接浮窗。 */
     val tailnetWait: StateFlow<com.promenar.infinity.data.generation.TailnetWaitState?> = _tailnetWait
@@ -891,13 +941,15 @@ class ChatViewModel(
         _isApprovalSubmitting,
         _replacingMessageIds,
         workspaceErrors,
+        _generationPhase,
+        _isApprovalExecuting,
     ) { args: Array<Any?> ->
         val state = args[0] as com.promenar.infinity.ui.chat.ChatState
         val sessionId = args[1] as String?
         val agentName = args[2] as String
-        val isGenerating = args[3] as Boolean
+        val rawIsGenerating = args[3] as Boolean
         val isLoading = args[4] as Boolean
-        val status = args[5] as GenerationStatus
+        val rawStatus = args[5] as GenerationStatus
         val overlay = args[6] as StreamingOverlay
         val error = (args[7] as String?) ?: (args[14] as Map<String, String>)[sessionId]
         val generationNotice = args[8] as UiStatusNotice?
@@ -906,6 +958,16 @@ class ChatViewModel(
         val backgroundWarning = args[11] as BackgroundGenerationWarning?
         val isApprovalSubmitting = args[12] as Boolean
         val replacingMessageIds = args[13] as Set<String>
+        val rawPhase = args[15] as com.promenar.infinity.domain.generation.GenerationPhase?
+        val isApprovalExecuting = args[16] as Boolean
+        val effectiveApprovalState = resolveEffectiveApprovalExecutionState(
+            coordinatorGenerating = rawIsGenerating,
+            rawPhase = rawPhase,
+            rawStatus = rawStatus,
+            isApprovalExecuting = isApprovalExecuting,
+        )
+        val isGenerating = effectiveApprovalState.isGenerating
+        val status = effectiveApprovalState.status
 
         val session = state.sessions.find { it.id == sessionId }
         if (session != null) {
@@ -1044,6 +1106,7 @@ class ChatViewModel(
                 if (sessionId == null) return@collectLatest
                 resetSessionTransientState()
                 _isApprovalSubmitting.value = approvalJobs[sessionId]?.isActive == true
+                _isApprovalExecuting.value = sessionId in approvalExecutingSessions && approvalJobs[sessionId]?.isActive == true
                 submittedDraft = generationPresentationStore.submittedDraft(sessionId)
                 pendingDraftClearTaskId = submittedDraft?.taskId
                 restoreFailedComposerDraft(sessionId)
@@ -2780,6 +2843,7 @@ class ChatViewModel(
         _providerResolutionFailure.value = null
         _generationStatus.value = GenerationStatus.IDLE
         _isGenerating.value = false
+        _isApprovalExecuting.value = false
     }
 
     private fun restoreHistoricalRagProjection(sessionId: String) {
@@ -2893,6 +2957,9 @@ class ChatViewModel(
         queueDispatchJobs[sessionId]?.cancel()
         generationJobs.remove(sessionId)?.cancel()
         approvalJobs.remove(sessionId)?.cancel()
+        if (approvalExecutingSessions.remove(sessionId) && _currentSessionId.value == sessionId) {
+            _isApprovalExecuting.value = false
+        }
         if (pendingPermissionTurn?.sessionId == sessionId) {
             val pendingSession = pendingPermissionTurn?.sessionId
             pendingPermissionTurn = null
@@ -2948,6 +3015,8 @@ class ChatViewModel(
         val approvalLock = approvalSubmissionMutex(sessionId)
         if (!approvalLock.tryLock()) return
         _isApprovalSubmitting.value = true
+        approvalExecutingSessions.add(sessionId)
+        _isApprovalExecuting.value = true
         val expectedTaskId = generationCoordinator.observe(sessionId).value?.taskId
         approvalJobs[sessionId] = viewModelScope.launch {
             try {
@@ -2959,7 +3028,11 @@ class ChatViewModel(
                         settleApprovalSshOwner(sessionId, expectedTaskId)
                     }
                 } finally {
-                    if (_currentSessionId.value == sessionId) _isApprovalSubmitting.value = false
+                    approvalExecutingSessions.remove(sessionId)
+                    if (_currentSessionId.value == sessionId) {
+                        _isApprovalSubmitting.value = false
+                        _isApprovalExecuting.value = false
+                    }
                     approvalLock.unlock()
                 }
             }
@@ -2980,6 +3053,10 @@ class ChatViewModel(
         val approvalLock = approvalSubmissionMutex(sessionId)
         if (!approvalLock.tryLock()) return
         _isApprovalSubmitting.value = true
+        if (approved) {
+            approvalExecutingSessions.add(sessionId)
+            _isApprovalExecuting.value = true
+        }
         val expectedTaskId = generationCoordinator.observe(sessionId).value?.taskId
         approvalJobs[sessionId] = viewModelScope.launch {
             try {
@@ -2995,7 +3072,11 @@ class ChatViewModel(
                         settleApprovalSshOwner(sessionId, expectedTaskId)
                     }
                 } finally {
-                    if (_currentSessionId.value == sessionId) _isApprovalSubmitting.value = false
+                    if (approved) approvalExecutingSessions.remove(sessionId)
+                    if (_currentSessionId.value == sessionId) {
+                        _isApprovalSubmitting.value = false
+                        if (approved) _isApprovalExecuting.value = false
+                    }
                     approvalLock.unlock()
                 }
             }

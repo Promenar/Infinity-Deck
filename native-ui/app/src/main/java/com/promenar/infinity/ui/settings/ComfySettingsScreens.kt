@@ -694,7 +694,11 @@ internal fun ComfyHostScreenContent(
                 }
 
                 ComfyHostDetailTab.HOST_CONFIG -> {
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = 16.dp),
+                    ) {
                         InfinitySettingsSection(title = stringResource(R.string.media_settings_connection)) {
                             MediaValue(stringResource(R.string.media_settings_host_address), host.endpoint)
                             MediaValue(

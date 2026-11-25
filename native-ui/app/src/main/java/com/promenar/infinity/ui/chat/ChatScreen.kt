@@ -275,7 +275,7 @@ internal fun selectRagActiveMessage(messages: List<Message>): Message? =
 internal fun chatRenderStateTag(uiState: ChatUiState): String = when {
     uiState.error != null || uiState.generationNotice != null ||
         uiState.status == GenerationStatus.ERROR -> UiTags.CHAT_STATE_ERROR
-    uiState.approvalRequest != null -> UiTags.CHAT_STATE_APPROVAL
+    uiState.approvalRequest != null && !uiState.isApprovalSubmitting -> UiTags.CHAT_STATE_APPROVAL
     uiState.isGenerating -> UiTags.CHAT_STATE_GENERATING
     uiState.isLoading -> UiTags.CHAT_STATE_LOADING
     uiState.messages.isEmpty() -> UiTags.CHAT_STATE_EMPTY
@@ -840,11 +840,11 @@ fun ChatScreenContent(
         sessionId = uiState.session?.id,
         onLocate = actions.onLocateWorkspacePath,
     )
-    // 浮岛光效与生成状态指示共用的生成阶段：有待批准的调用或待回答的提问时为等待审批。
+    // 浮岛光效与生成状态指示共用的生成阶段：有待批准的调用或待回答的提问时为等待审批；审批已批准执行中立即切回工具执行态。
     val generationMotion = com.promenar.infinity.ui.common.motion.rememberGenerationMotion(
         phase = com.promenar.infinity.ui.common.motion.generationMotionPhase(
             phase = state.generationPhase,
-            awaitingUser = uiState.approvalRequest != null || state.subagentApprovals.isNotEmpty() ||
+            awaitingUser = visibleApproval != null || state.subagentApprovals.isNotEmpty() ||
                 state.pendingQuestion != null || state.pendingSecretInput != null,
         ),
         retry = state.generationRetry,
@@ -1340,7 +1340,7 @@ fun ChatScreenContent(
                     val isGeneratingGroup = idx == pipelineGroups.lastIndex && uiState.isGenerating
                     val hasPendingApproval = groupHasPendingApproval(
                         group = group,
-                        request = uiState.approvalRequest,
+                        request = visibleApproval,
                         isLastGroup = idx == pipelineGroups.lastIndex,
                     )
 
@@ -1933,7 +1933,7 @@ fun ChatScreenContent(
             com.promenar.infinity.ui.pet.PetOverlay(
                 islandBounds = petIslandBounds,
                 phase = state.generationPhase,
-                awaitingApproval = uiState.approvalRequest != null || state.subagentApprovals.isNotEmpty() ||
+                awaitingApproval = visibleApproval != null || state.subagentApprovals.isNotEmpty() ||
                     state.pendingSecretInput != null,
                 awaitingAnswer = state.pendingQuestion != null,
                 contentLength = uiState.streamingContent.length,

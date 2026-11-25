@@ -313,6 +313,45 @@ fun PipelineBubble(
     }
     val allSteps = renderPlan.steps
     val finalAssistantId = group.messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id
+    val knownUuidPaths = remember(group.messages) { extractKnownUuidPaths(group.messages) }
+    val unrecordedStreamingCalls = remember(group.messages) { unrecordedStreamingToolCalls(group.messages) }
+    val lastStepIsToolExec = allSteps.lastOrNull() is PipelineStep.ToolExec
+    // 首轮尚未落库成 ToolExec 时的流式文件编辑行：直接替代流末尾“正在准备工具调用”，与落库后的 ToolExec 等高接棒。
+    val standaloneStreamingFileBatch = remember(
+        lastStepIsToolExec, unrecordedStreamingCalls, knownUuidPaths, isGenerating, hasPendingApproval, liveStep,
+    ) {
+        if (lastStepIsToolExec || !isGenerating || hasPendingApproval) null
+        else buildLiveFileEditBatch(
+            invocations = emptyList(),
+            streamingCalls = unrecordedStreamingCalls,
+            knownUuidPaths = knownUuidPaths,
+            isTurnGenerating = isGenerating,
+            isLastStepInTurn = true,
+            hasPendingApproval = hasPendingApproval,
+            liveStep = liveStep,
+        )?.takeIf { it.isLiveBatch && it.hasActiveRow }
+    }
+    val tailToolExecFileBatch = remember(
+        allSteps, unrecordedStreamingCalls, knownUuidPaths, isGenerating, hasPendingApproval, liveStep,
+    ) {
+        val lastToolStep = allSteps.lastOrNull() as? PipelineStep.ToolExec ?: return@remember null
+        val asks = askUserSteps(lastToolStep.steps)
+        val branches = branchPlanSteps(lastToolStep.steps)
+        val hidden = asks.hidden + branches.hidden + sessionSendHiddenSteps(lastToolStep.steps)
+        val toolSteps = if (hidden.isEmpty()) lastToolStep.steps else lastToolStep.steps.filterNot { it.id in hidden }
+        if (toolSteps.isEmpty()) return@remember null
+        buildLiveFileEditBatch(
+            invocations = toolInvocations(toolSteps),
+            streamingCalls = unrecordedStreamingCalls,
+            knownUuidPaths = knownUuidPaths,
+            isTurnGenerating = isGenerating,
+            isLastStepInTurn = true,
+            hasPendingApproval = hasPendingApproval,
+            liveStep = liveStep,
+        )
+    }
+    val liveFileEditOwnsTail = standaloneStreamingFileBatch != null ||
+        (tailToolExecFileBatch?.let { it.isLiveBatch && it.hasActiveRow } == true)
     val collapsePlan = remember(allSteps, group.messages, isGenerating, hasPendingApproval, interruptedByError, collapseFinishedTurn) {
         buildCollapsedTurnPlan(
             messages = group.messages,
@@ -406,6 +445,7 @@ fun PipelineBubble(
                             steps = toolSteps, isExecuting = step.isExecuting, fontSize = fontSize, turnActive = step.isTurnActive,
                             commandOutputTarget = { callStepId -> commandOutputTarget(group.messages, callStepId) },
                             live = liveStep?.takeIf { live -> live.kind == LiveStepKind.TOOL && toolSteps.any { it.id == live.targetId } },
+                            liveFileEditBatch = if (collapsePlan == null && index == steps.lastIndex) tailToolExecFileBatch else null,
                         )
                         asks.answered.forEach { AskUserAnsweredCard(it) }
                         branches.resolved.forEach { BranchPlanResolvedView(it) }
@@ -452,9 +492,18 @@ fun PipelineBubble(
             }
             renderStep(expandedSteps.lastIndex, collapsePlan.finalContent, expandedSteps)
         }
-        val showLiveTail = isGenerating && !hasPendingApproval &&
+        if (collapsePlan == null && standaloneStreamingFileBatch != null) {
+            if (allSteps.lastOrNull() is PipelineStep.Content) {
+                Spacer(Modifier.height(8.dp))
+            }
+            LiveFileEditBatchRows(
+                rows = standaloneStreamingFileBatch.rows,
+                onOpenChange = {},
+            )
+        }
+        val showLiveTail = isGenerating && !hasPendingApproval && !liveFileEditOwnsTail &&
             liveStep?.kind != LiveStepKind.APPROVAL && liveStep?.kind != LiveStepKind.QUESTION
-        val immediateLiveTailExit = shouldExitLiveTailImmediately(isGenerating, liveStep)
+        val immediateLiveTailExit = shouldExitLiveTailImmediately(isGenerating, liveStep, liveFileEditOwnsTail)
         val footerOwner = footerContent?.let { pipelineContentOwner(group.messages, it) }
         if (footerOwner == null) {
             LiveTailSlot(
@@ -1830,6 +1879,8 @@ internal fun InlineToolRow(
     turnActive: Boolean = true,
     /** 本行持有本轮唯一的进行中元素时非 null：标题前显示工具阶段的生成动画，标题后显示从调用起算的计时。 */
     live: LiveStep? = null,
+    /** 连续文件编辑的实时批次视图；活跃期间逐行列出文件名与滚动增删行数，全部完成后平滑折叠回单行汇总。 */
+    liveFileEditBatch: LiveFileEditBatchState? = null,
 ) {
     var isExpanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
     val invocations = remember(steps) { toolInvocations(steps) }
@@ -1838,8 +1889,18 @@ internal fun InlineToolRow(
     val liveInvocations = activeToolOutputs(invocations, liveKeys)
     val liveRunning = liveInvocations.isNotEmpty()
     val executing = isExecuting || liveRunning
-    val summary = remember(invocations, executing, turnActive) { toolGroupDisplaySummary(invocations, executing, turnActive) }
-    val fileChanges = remember(invocations) { toolGroupFileChanges(invocations) }
+    val liveEditActive = liveFileEditBatch?.isLiveBatch == true
+    val pureLiveEditMode = liveEditActive && liveFileEditBatch?.isPureFileEditStep == true
+    val mixedLiveEditMode = liveEditActive && liveFileEditBatch?.isPureFileEditStep == false
+    // 混合工具组尾部存在活跃文件编辑批次时，上方汇总行仅保留前置非编辑工具，避免被“正在修改文件…”覆盖。
+    val summaryInvocations = remember(invocations, mixedLiveEditMode, liveFileEditBatch?.trailingInvocationCount) {
+        if (mixedLiveEditMode) invocations.dropLast((liveFileEditBatch?.trailingInvocationCount ?: 0).coerceAtMost(invocations.size))
+        else invocations
+    }
+    val summary = remember(summaryInvocations, executing, turnActive, mixedLiveEditMode) {
+        toolGroupDisplaySummary(summaryInvocations, executing && !mixedLiveEditMode, turnActive)
+    }
+    val fileChanges = remember(summaryInvocations) { toolGroupFileChanges(summaryInvocations) }
     val runtimeChanges = remember(invocations) { toolGroupRuntimeChanges(invocations) }
     var openedChange by remember { mutableStateOf<com.promenar.infinity.data.model.FileChangeSummary?>(null) }
     val showFileTitle = fileChanges.isNotEmpty() && summary.runningAction == null &&
@@ -1858,11 +1919,11 @@ internal fun InlineToolRow(
     val jobLabels = LocalBackgroundJobLabels.current
     // 只有一条命令在跑时，摘要直接说它在做什么或在等哪个后台任务。
     val runningCommand = if (summary.runningAction == ToolSummaryAction.COMMAND) {
-        invocations.singleOrNull { !it.complete }?.let { commandStepLabel(it.name, it.call?.toolArgs, jobLabels) }
+        summaryInvocations.singleOrNull { !it.complete }?.let { commandStepLabel(it.name, it.call?.toolArgs, jobLabels) }
     } else null
     val runningCommandText = runningCommand?.let { runningCommandText(it) }
     // 单个计划或任务查看调用：摘要直接说明这次改了什么、任务处于什么状态。
-    val cardSummaryText = toolCardSummaryText(invocations, jobLabels)
+    val cardSummaryText = toolCardSummaryText(summaryInvocations, jobLabels)
     val segments = buildList<CharSequence> {
         if (stateSummaries.isNotEmpty()) add(stateSummaries.joinToString("，"))
         // 文件改动只来自成功的文件工具：全是文件编辑时标题直接给出文件与行数，混合工具时作为补充段。
@@ -1874,10 +1935,17 @@ internal fun InlineToolRow(
     openedChange?.let { change ->
         com.promenar.infinity.ui.chat.diff.FileChangeDiffSheet(change, onDismissRequest = { openedChange = null })
     }
-    val liveStartedAt = live?.startedAt
+    val rowLive = live?.takeUnless { liveEditActive }
+    val liveStartedAt = rowLive?.startedAt
+    val lastLiveEditRows = remember { arrayOfNulls<List<LiveFileEditRowState>>(1) }
+    if (liveFileEditBatch != null && liveFileEditBatch.rows.isNotEmpty()) {
+        lastLiveEditRows[0] = liveFileEditBatch.rows
+    }
+    val animateEditCollapse = com.promenar.infinity.ui.common.rememberStreamAnimationsEnabled() == true &&
+        !androidx.compose.ui.platform.LocalInspectionMode.current
     Column(modifier = Modifier.fillMaxWidth()) {
         // 逐条显示的工具没有标题行，进行中时在上方单独显示动画与计时。
-        val tickerLive = live?.takeIf { memoryOnly || browserOnly || knowledgeOnly }
+        val tickerLive = rowLive?.takeIf { memoryOnly || browserOnly || knowledgeOnly }
         // 收起时仍需绘制最后一帧计时，用普通引用保留上一次的进行中步骤，不触发重组。
         val lastTicker = remember { arrayOfNulls<LiveStep>(1) }
         if (tickerLive != null) lastTicker[0] = tickerLive
@@ -1885,20 +1953,62 @@ internal fun InlineToolRow(
             (tickerLive ?: lastTicker[0])?.let { LiveToolTicker(it) }
         }
         if (memoryOnly) MemoryChangeRows(memoryChanges) else if (browserOnly) BrowserStepRows(browserSteps, fontSize)
-        else if (knowledgeOnly) KnowledgeSearchStepRows(knowledgeSteps, fontSize) else CompactStepRow(
-            segments = segments,
-            icon = Icons.Rounded.CheckCircle,
-            active = summary.status == ToolSummaryStatus.RUNNING,
-            fontSize = fontSize,
-            expanded = isExpanded,
-            state = stringResource(if (isExpanded) R.string.common_state_expanded else R.string.common_state_collapsed),
-            clickLabel = stringResource(if (isExpanded) R.string.common_cd_collapse else R.string.common_cd_expand),
-            tag = if (stateOnly) com.promenar.infinity.ui.testing.UiTags.CHAT_STATE_SUMMARY else "CHAT_TOOL_TOGGLE",
-            failureText = if (summary.failedCount > 0) pluralStringResource(R.plurals.chat_step_failed_count, summary.failedCount, summary.failedCount) else null,
-            onClick = { isExpanded = !isExpanded },
-            leading = if (live != null) {{ LiveStepLeading(live.motionPhase) }} else null,
-            trailing = if (liveStartedAt != null) {{ LiveStepTrailing(liveStartedAt) }} else null,
-        )
+        else if (knowledgeOnly) KnowledgeSearchStepRows(knowledgeSteps, fontSize) else {
+            // 纯文件编辑批次在活跃态逐行呈现文件名与异向滚动计数，全部改完后平滑折叠成单行汇总。
+            AnimatedContent(
+                targetState = pureLiveEditMode,
+                transitionSpec = {
+                    if (!animateEditCollapse) {
+                        (EnterTransition.None togetherWith ExitTransition.None)
+                            .using(SizeTransform(clip = false))
+                    } else {
+                        (fadeIn(tween(InfinityMotion.DurationMedium)) togetherWith
+                            fadeOut(tween(InfinityMotion.DurationFadeOut)))
+                            .using(
+                                SizeTransform(clip = true) { _, _ ->
+                                    tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)
+                                },
+                            )
+                    }
+                },
+                contentAlignment = Alignment.TopStart,
+                label = "inlineFileEditBatchCollapse",
+            ) { showLiveRows ->
+                if (showLiveRows) {
+                    val rows = liveFileEditBatch?.rows ?: lastLiveEditRows[0].orEmpty()
+                    LiveFileEditBatchRows(
+                        rows = rows,
+                        onOpenChange = { openedChange = it },
+                    )
+                } else {
+                    CompactStepRow(
+                        segments = segments,
+                        icon = Icons.Rounded.CheckCircle,
+                        active = summary.status == ToolSummaryStatus.RUNNING,
+                        fontSize = fontSize,
+                        expanded = isExpanded,
+                        state = stringResource(if (isExpanded) R.string.common_state_expanded else R.string.common_state_collapsed),
+                        clickLabel = stringResource(if (isExpanded) R.string.common_cd_collapse else R.string.common_cd_expand),
+                        tag = if (stateOnly) com.promenar.infinity.ui.testing.UiTags.CHAT_STATE_SUMMARY else "CHAT_TOOL_TOGGLE",
+                        failureText = if (summary.failedCount > 0) pluralStringResource(R.plurals.chat_step_failed_count, summary.failedCount, summary.failedCount) else null,
+                        onClick = { isExpanded = !isExpanded },
+                        leading = if (rowLive != null) {{ LiveStepLeading(rowLive.motionPhase) }} else null,
+                        trailing = if (liveStartedAt != null) {{ LiveStepTrailing(liveStartedAt) }} else null,
+                    )
+                }
+            }
+            AnimatedVisibility(
+                visible = mixedLiveEditMode,
+                enter = if (animateEditCollapse) InfinityMotion.expandIn else EnterTransition.None,
+                exit = if (animateEditCollapse) InfinityMotion.shrinkOut else ExitTransition.None,
+            ) {
+                val rows = liveFileEditBatch?.rows ?: lastLiveEditRows[0].orEmpty()
+                LiveFileEditBatchRows(
+                    rows = rows,
+                    onOpenChange = { openedChange = it },
+                )
+            }
+        }
         // 关键数据变化不随详情折叠，避免用户错过。
         if (runtimeChanges.isNotEmpty()) RuntimeChangesNotice(runtimeChanges)
         if (!memoryOnly && memoryChanges.isNotEmpty()) MemoryChangeRows(memoryChanges)
@@ -3055,11 +3165,12 @@ private fun resolveLiveTailContent(liveStep: LiveStep?): LiveTailContent = when 
     else -> LiveTailContent.NONE
 }
 
-/** 思考或工具行直接接管流末尾状态位时零帧交接（不播缩高动画），避免新步骤行与旧尾部槽位重叠把列表顶起再弹回。 */
+/** 思考、工具行或实时文件编辑批次直接接管流末尾状态位时零帧交接（不播缩高动画），避免新步骤行与旧尾部槽位重叠把列表顶起再弹回。 */
 internal fun shouldExitLiveTailImmediately(
     isGenerating: Boolean,
     liveStep: LiveStep?,
-): Boolean = isGenerating && (liveStep?.kind == LiveStepKind.THINKING || liveStep?.kind == LiveStepKind.TOOL)
+    liveFileEditOwnsTail: Boolean = false,
+): Boolean = isGenerating && (liveFileEditOwnsTail || liveStep?.kind == LiveStepKind.THINKING || liveStep?.kind == LiveStepKind.TOOL)
 
 /**
  * 已有正文时的底部槽位最小高度：
