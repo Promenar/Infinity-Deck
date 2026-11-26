@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.80.2-beta] - 2026-11-26
+
+- **修复片场 Prompt 预检覆盖、通用 ComfyUI 派生操作发现执行与 `comfy_run_workflow(shot_ref)` 自动登记闭环（[DefaultShotGenerationPlanner.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/DefaultShotGenerationPlanner.kt)、[ShotOperations.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ShotOperations.kt)、[ProductionProcessing.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionProcessing.kt)、[ProductionProcessingSkills.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/ProductionProcessingSkills.kt)、[ProductionMediaRuntime.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/ProductionMediaRuntime.kt)、[ComfyProductionRunBridge.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/ComfyProductionRunBridge.kt)、[ComfySkills.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/ComfySkills.kt)、[production.md](native-ui/app/src/main/assets/builtin_skills/infinity-deck/references/production.md)）**：
+  - **保留镜头显式写入的非空 `shot.prompt`**：`production_plan` 与 `production_generate` 仅在 `shot.prompt` 为空或显式重编（`compile = true`）时调用 `ShotPromptCompiler`，不再把智能体经 `upsert_shot(prompt=...)` 写入的精写提示词覆盖为结构化占位句；同时保持 `promptUserEdited` 对用户手改稿的只读保护不变。
+  - **打通通用 `ComfyWorkflow` 与 `production_operations` / `production_derive`**：`production_operations` 同时暴露预检通过的旧 `DERIVE` 模板（`source: template`）与通用 ComfyUI 后处理/视频输入工作流（`source: comfy_workflow`，缺单来源视频槽时标明 `unavailable_reason`）；`production_derive` 支持直接执行通用工作流派生，自动填入来源视频与非视频 `CONTENT` 参数、校验候选容量与锁场规则、同步总览任务进度并登记带直接来源的派生候选以自动激活「后处理」。
+  - **补齐 `comfy_run_workflow(shot_ref)` 默认落盘与自动登记契约**：关联制作镜头且未传 `output_dir` 时默认保存至 `<项目根>/<集 ID>/takes/`，确保项目目录内视频产物可靠自动登记为候选（视频输入匹配已有候选时挂接来源并激活后处理），按实际输入精准匹配来源候选并与 `production_derive` 共享候选容量预留；同步补全工具描述与内置指南，明确收到 `registered_take_id` 后跳过 `add_take`。
+
 ## [0.80.1-beta] - 2026-11-26
 
 - **重构分镜「镜头规格」为面板原位内联展开并修复窄检视器分组头挤压（[ProductionShotPlanning.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionShotPlanning.kt)、[ProductionDesign.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionDesign.kt)、[production_panel_phase2_strings.xml](native-ui/app/src/main/res/values-zh-rCN/production_panel_phase2_strings.xml)）**：
