@@ -229,63 +229,145 @@ fun parseGeminiTtsResponse(response: JsonObject): SynthesizedAudioResult {
 
 /**
  * 解析 Google AI Studio Lyria 3 / 3.5 响应：
- * 同时兼容 Interactions API (`outputs` / `output_audio` + `output_text`) 与 `:generateContent` (`candidates[].content.parts[]`)。
+ * 兼容 Interactions API 的全部已知载荷形态（`steps[].content.parts[]`、`steps[].content[]`、`outputs[]` 扁平或嵌套 `content`/`parts`、
+ * 顶层 `output_audio` + `output_text`）与 `:generateContent`（`candidates[].content.parts[]`）。
  */
 fun parseGeminiLyriaResponse(response: JsonObject): SynthesizedAudioResult {
+    // 若服务端返回显式失败状态或错误对象，优先透出脱敏原因而非误报“未返回音频数据”。
+    val errorObj = response["error"] as? JsonObject
+    val errorMsg = errorObj?.string("message")
+    if (errorMsg != null) {
+        throw IOException("Lyria 接口返回错误：${errorMsg.take(200)}")
+    }
+    val status = response.string("status")?.lowercase()
+    if (status == "failed" || status == "cancelled" || status == "canceled") {
+        throw IOException("Lyria 任务状态异常：$status")
+    }
+
     val textParts = mutableListOf<String>()
     var audioBytes: ByteArray? = null
     var audioMime = "audio/mpeg"
 
-    // 1. Interactions API: outputs[]
-    (response["outputs"] as? JsonArray)?.forEach { itemEl ->
-        val item = itemEl as? JsonObject ?: return@forEach
-        val type = item.string("type")?.lowercase()
-        when (type) {
-            "text" -> item.string("text")?.let(textParts::add)
-            "audio" -> {
-                val data = item.string("data") ?: ((item["audio"] as? JsonObject)?.string("data"))
-                if (data != null) {
-                    audioBytes = decodeBase64Audio(data)
-                    audioMime = item.string("mime_type") ?: item.string("mimeType") ?: "audio/mpeg"
+    fun recordAudio(rawBase64: String?, mimeHint: String?) {
+        if (audioBytes != null || rawBase64.isNullOrBlank()) return
+        val decoded = decodeBase64Audio(rawBase64)
+        if (decoded.isNotEmpty()) {
+            audioBytes = decoded
+            audioMime = mimeHint?.takeIf { it.isNotBlank() } ?: "audio/mpeg"
+        }
+    }
+
+    fun inspectInlineBlob(blob: JsonObject?) {
+        if (blob == null) return
+        val mime = blob.string("mime_type") ?: blob.string("mimeType")
+        val data = blob.string("data")
+        if (data != null && (mime == null || mime.startsWith("audio/", ignoreCase = true) || mime.equals("application/octet-stream", ignoreCase = true))) {
+            recordAudio(data, mime)
+        }
+    }
+
+    fun inspectContentBlock(block: JsonObject) {
+        val type = block.string("type")?.lowercase()
+        val mime = block.string("mime_type") ?: block.string("mimeType")
+        when {
+            type == "text" -> block.string("text")?.let(textParts::add)
+            type == "audio" -> {
+                val nestedAudio = block["audio"] as? JsonObject
+                val nestedInline = (block["inline_data"] ?: block["inlineData"]) as? JsonObject
+                val data = block.string("data") ?: nestedAudio?.string("data") ?: nestedInline?.string("data")
+                val resolvedMime = mime
+                    ?: nestedAudio?.string("mime_type") ?: nestedAudio?.string("mimeType")
+                    ?: nestedInline?.string("mime_type") ?: nestedInline?.string("mimeType")
+                recordAudio(data, resolvedMime)
+            }
+            else -> {
+                block.string("text")?.let(textParts::add)
+                if (mime?.startsWith("audio/", ignoreCase = true) == true) {
+                    recordAudio(block.string("data"), mime)
                 }
+                inspectInlineBlob((block["inline_data"] ?: block["inlineData"]) as? JsonObject)
+                inspectInlineBlob(block["audio"] as? JsonObject)
             }
         }
-    }
-
-    // 2. Interactions API shorthand: output_audio / output_text
-    if (audioBytes == null) {
-        val outputAudio = (response["output_audio"] ?: response["outputAudio"]) as? JsonObject
-        val data = outputAudio?.string("data")
-        if (data != null) {
-            audioBytes = decodeBase64Audio(data)
-            audioMime = outputAudio.string("mime_type") ?: outputAudio.string("mimeType") ?: "audio/mpeg"
+        // 兼容嵌套 content 数组、content.parts[]、outputs[] 或 parts[]。
+        when (val nested = block["content"]) {
+            is JsonArray -> nested.forEach { (it as? JsonObject)?.let(::inspectContentBlock) }
+            is JsonObject -> {
+                (nested["parts"] as? JsonArray)?.forEach { (it as? JsonObject)?.let(::inspectContentBlock) }
+                inspectContentBlock(nested)
+            }
+            else -> Unit
         }
+        (block["parts"] as? JsonArray)?.forEach { (it as? JsonObject)?.let(::inspectContentBlock) }
+        (block["outputs"] as? JsonArray)?.forEach { (it as? JsonObject)?.let(::inspectContentBlock) }
     }
-    (response["output_text"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let(textParts::add)
 
-    // 3. generateContent fallback: candidates[].content.parts[]
+    // 1. Interactions API: outputs[]（含扁平 audio 块或嵌套 model_output.content[] / parts[]）
+    (response["outputs"] as? JsonArray)?.forEach { (it as? JsonObject)?.let(::inspectContentBlock) }
+
+    // 2. Interactions API: steps[]（steps[].content.parts[].inline_data 或 steps[].content[]）
+    (response["steps"] as? JsonArray)?.forEach { (it as? JsonObject)?.let(::inspectContentBlock) }
+
+    // 3. Interactions API 顶层简写：output_audio / outputAudio / audio + output_text / outputText
+    if (audioBytes == null) {
+        inspectInlineBlob((response["output_audio"] ?: response["outputAudio"] ?: response["audio"]) as? JsonObject)
+    }
+    (response["output_text"] ?: response["outputText"])?.let { el ->
+        (el as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }?.let(textParts::add)
+    }
+
+    // 4. :generateContent 回退格式：candidates[].content.parts[]
     if (audioBytes == null) {
         (response["candidates"] as? JsonArray)?.forEach { candEl ->
-            val parts = ((candEl as? JsonObject)?.get("content") as? JsonObject)?.get("parts") as? JsonArray ?: return@forEach
-            parts.forEach { partEl ->
-                val part = partEl as? JsonObject ?: return@forEach
-                part.string("text")?.let(textParts::add)
-                val inline = (part["inlineData"] ?: part["inline_data"]) as? JsonObject ?: return@forEach
-                val data = inline.string("data") ?: return@forEach
-                val mime = inline.string("mimeType") ?: inline.string("mime_type") ?: "audio/mpeg"
-                val decoded = decodeBase64Audio(data)
-                if (decoded.isNotEmpty()) {
-                    audioBytes = decoded
-                    audioMime = mime
-                }
-            }
+            val cand = candEl as? JsonObject ?: return@forEach
+            val content = cand["content"] as? JsonObject
+            (content?.get("parts") as? JsonArray)?.forEach { (it as? JsonObject)?.let(::inspectContentBlock) }
         }
     }
 
-    val bytes = audioBytes?.takeIf { it.isNotEmpty() } ?: throw IOException("Lyria 响应未返回音频数据")
-    val transcript = textParts.joinToString("\n\n").trim().takeIf { it.isNotEmpty() }
+    // 5. 兜底有界递归扫描（深度 ≤ 8）：捕捉未来 preview 版本新增包装层中的 audio/* base64 块。
+    if (audioBytes == null) {
+        fun scanElement(el: kotlinx.serialization.json.JsonElement, depth: Int) {
+            if (audioBytes != null || depth > 8) return
+            when (el) {
+                is JsonObject -> {
+                    val mime = el.string("mime_type") ?: el.string("mimeType")
+                    val type = el.string("type")?.lowercase()
+                    val data = el.string("data")
+                    if (data != null && (mime?.startsWith("audio/", ignoreCase = true) == true || type == "audio")) {
+                        recordAudio(data, mime)
+                        return
+                    }
+                    el.values.forEach { child -> scanElement(child, depth + 1) }
+                }
+                is JsonArray -> el.forEach { child -> scanElement(child, depth + 1) }
+                else -> Unit
+            }
+        }
+        scanElement(response, 0)
+    }
+
+    val bytes = audioBytes?.takeIf { it.isNotEmpty() }
+        ?: throw IOException("Lyria 响应未返回音频数据（${summarizeLyriaResponseShape(response)}）")
+    val transcript = textParts.distinct().joinToString("\n\n").trim().takeIf { it.isNotEmpty() }
     val usage = parseGeminiUsage(response)
     return normalizeAudioPayload(bytes, audioMime, transcriptText = transcript, usage = usage)
+}
+
+/** 构造脱敏响应结构摘要（仅输出键名、状态与块类型，绝不输出正文或 Base64 数据），便于线上排障。 */
+private fun summarizeLyriaResponseShape(response: JsonObject): String {
+    val parts = mutableListOf<String>()
+    val keys = response.keys.take(8).joinToString(",")
+    parts += "keys=[$keys]"
+    response.string("status")?.let { parts += "status=$it" }
+    (response["outputs"] as? JsonArray)?.let { arr ->
+        val types = arr.take(5).mapNotNull { (it as? JsonObject)?.string("type") ?: (it as? JsonObject)?.keys?.take(3)?.joinToString("+") }
+        parts += "outputs=${arr.size}(${types.joinToString(",")})"
+    }
+    (response["steps"] as? JsonArray)?.let { arr ->
+        parts += "steps=${arr.size}"
+    }
+    return parts.joinToString(" ").take(160)
 }
 
 /**

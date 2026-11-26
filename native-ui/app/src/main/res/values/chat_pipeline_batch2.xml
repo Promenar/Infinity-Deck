@@ -19,6 +19,8 @@
     <plurals name="chat_step_knowledge_done"><item quantity="one">Searched knowledge base</item><item quantity="other">Searched knowledge base %1$d times</item></plurals>
     <plurals name="chat_step_memory_done"><item quantity="one">Searched memory</item><item quantity="other">Searched memory %1$d times</item></plurals>
     <plurals name="chat_step_image_done"><item quantity="one">Generated %1$d image</item><item quantity="other">Generated %1$d images</item></plurals>
+    <plurals name="chat_step_speech_done"><item quantity="one">Generated %1$d voice clip</item><item quantity="other">Generated %1$d voice clips</item></plurals>
+    <plurals name="chat_step_music_done"><item quantity="one">Generated %1$d music track</item><item quantity="other">Generated %1$d music tracks</item></plurals>
     <plurals name="chat_step_plan_done"><item quantity="one">Updated the plan</item><item quantity="other">Updated the plan %1$d times</item></plurals>
     <plurals name="chat_step_time_done"><item quantity="one">Checked the time</item><item quantity="other">Checked the time %1$d times</item></plurals>
     <plurals name="chat_step_calculate_done"><item quantity="one">Calculated</item><item quantity="other">Calculated %1$d times</item></plurals>
@@ -32,6 +34,8 @@
     <string name="chat_step_knowledge_running">Searching knowledge base…</string>
     <string name="chat_step_memory_running">Searching memory…</string>
     <string name="chat_step_image_running">Generating an image…</string>
+    <string name="chat_step_speech_running">Synthesizing speech…</string>
+    <string name="chat_step_music_running">Generating music…</string>
     <string name="chat_step_plan_running">Updating the plan…</string>
     <string name="chat_step_time_running">Checking the time…</string>
     <string name="chat_step_calculate_running">Calculating…</string>
@@ -45,6 +49,8 @@
     <string name="chat_step_knowledge_name">Knowledge base search</string>
     <string name="chat_step_memory_name">Memory search</string>
     <string name="chat_step_image_name">Image generation</string>
+    <string name="chat_step_speech_name">Speech synthesis</string>
+    <string name="chat_step_music_name">Music generation</string>
     <string name="chat_step_plan_name">Task plan</string>
     <string name="chat_step_time_name">Current time</string>
     <string name="chat_step_calculate_name">Calculation</string>

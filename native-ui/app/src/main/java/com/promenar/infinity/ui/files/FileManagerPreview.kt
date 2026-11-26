@@ -405,11 +405,34 @@ private fun PreviewBody(item: FileItem, preview: FilePreview?, loading: Boolean,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        is FilePreview.Audio -> PreviewPlaceholder(
-            icon = Icons.Rounded.AudioFile,
-            title = formatMediaDuration(preview.durationMs) ?: stringResource(R.string.fm_preview_audio),
-            onOpenWith = onOpenWith,
-        )
+        is FilePreview.Audio -> {
+            val available = remember(item.ref.path, preview.uri, preview.durationMs, item.sizeBytes) {
+                com.promenar.infinity.domain.media.MediaResolution.Available(
+                    ref = com.promenar.infinity.domain.media.MediaRef(
+                        path = item.name,
+                        mimeType = item.mimeType?.takeIf(String::isNotBlank) ?: "audio/*",
+                        kind = com.promenar.infinity.domain.media.MediaKind.AUDIO,
+                        sizeBytes = item.sizeBytes ?: 0L,
+                        durationMs = preview.durationMs,
+                    ),
+                    source = com.promenar.infinity.domain.media.MediaSource.ContentUri(preview.uri),
+                )
+            }
+            com.promenar.infinity.ui.media.InlineAudioPlayerCard(
+                available = available,
+                title = item.name,
+                trailingActions = {
+                    IconButton(onClick = onOpenWith, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                            contentDescription = stringResource(R.string.media_action_open_with),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                },
+            )
+        }
         is FilePreview.Video -> PreviewPlaceholder(
             icon = Icons.Rounded.Movie,
             title = formatMediaDuration(preview.durationMs) ?: stringResource(R.string.fm_preview_video),

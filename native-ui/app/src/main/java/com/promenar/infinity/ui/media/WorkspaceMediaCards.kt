@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.InsertDriveFile
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.Share
@@ -46,6 +48,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -67,6 +70,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -153,8 +157,9 @@ internal fun MediaCardSurface(modifier: Modifier = Modifier, content: @Composabl
 }
 
 /**
- * 工作区媒体引用：解析一次后按类别渲染卡片。[asLink] 为 Markdown 链接，总以文件卡片呈现，
- * 媒体类别可点开查看器。[hint] 为工具结果携带的元数据，解析完成前据此预留尺寸。
+ * 工作区媒体引用：解析一次后按类别渲染卡片。[asLink] 为 Markdown 链接，通常以文件卡片呈现，
+ * 但音频链接直出可内联播放的 [WorkspaceAudioCard]（同时保留保存/分享/外部打开能力）。
+ * [hint] 为工具结果携带的元数据，解析完成前据此预留尺寸。
  */
 @Composable
 fun WorkspaceMediaReference(
@@ -183,7 +188,7 @@ fun WorkspaceMediaReference(
         )
         is MediaResolution.Available -> {
             val model = WorkspaceMediaModel(environment.sessionId, path, resolved.identity)
-            if (asLink) {
+            if (asLink && resolution.ref.kind != MediaKind.AUDIO) {
                 WorkspaceFileCard(available = resolution, model = model, title = alt, modifier = modifier)
             } else {
                 AvailableMediaCard(available = resolution, model = model, alt = alt, style = style, modifier = modifier)
@@ -203,7 +208,7 @@ private fun AvailableMediaCard(
     when (available.ref.kind) {
         MediaKind.IMAGE -> WorkspaceImageCard(available = available, model = model, alt = alt, style = style, modifier = modifier)
         MediaKind.VIDEO -> WorkspaceVideoCard(available = available, model = model, alt = alt, modifier = modifier)
-        MediaKind.AUDIO -> WorkspaceAudioCard(available = available, modifier = modifier)
+        MediaKind.AUDIO -> WorkspaceAudioCard(available = available, title = alt, modifier = modifier)
         MediaKind.FILE -> WorkspaceFileCard(available = available, model = model, title = alt, modifier = modifier)
     }
 }
@@ -412,13 +417,45 @@ private fun MediaBadge(text: String, modifier: Modifier = Modifier) {
 fun WorkspaceAudioCard(
     available: MediaResolution.Available,
     modifier: Modifier = Modifier,
+    title: String? = null,
     autoPlay: Boolean = false,
+    showActions: Boolean = true,
+) {
+    val environment = LocalWorkspaceMedia.current
+    val runner = environment?.let { rememberMediaActionRunner(it) }
+    InlineAudioPlayerCard(
+        available = available,
+        title = title,
+        autoPlay = autoPlay,
+        modifier = modifier,
+        trailingActions = if (showActions && runner != null) {
+            {
+                AudioCardActionButtons(available = available, runner = runner)
+            }
+        } else {
+            null
+        },
+    )
+}
+
+/**
+ * 统一内联音频播放器卡片：供对话正文气泡、工具详情、产物查看器与工作区文件预览共用。
+ * 左侧固定 40dp 圆形播放/暂停按钮（切换零高度跳变），中间标题与格式/大小/实时进度，右侧/底右自适应操作按钮。
+ */
+@Composable
+fun InlineAudioPlayerCard(
+    available: MediaResolution.Available,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    autoPlay: Boolean = false,
+    trailingActions: (@Composable () -> Unit)? = null,
 ) {
     val ref = available.ref
-    val name = mediaDisplayName(ref.path)
+    val displayTitle = title?.takeIf(String::isNotBlank) ?: mediaDisplayName(ref.path)
     val session = rememberMediaPlayerSession(available)
     var resumePositionMs by rememberSaveable(ref.path) { mutableLongStateOf(0L) }
     val player = session.player
+    val playing = rememberPlayerIsPlaying(player)
     LaunchedEffect(player) {
         val current = player ?: return@LaunchedEffect
         while (true) {
@@ -427,109 +464,182 @@ fun WorkspaceAudioCard(
         }
     }
     LaunchedEffect(session, autoPlay) { if (autoPlay && session.player == null) session.play(resumePositionMs) }
-    val audioDescription = stringResource(R.string.media_cd_audio, name)
+    val audioDescription = stringResource(R.string.media_cd_audio, displayTitle)
     val lastError = rememberLastNonNull(session.error, ref.path)
     val progressLabel = stringResource(R.string.media_playback_progress)
-    MediaCardSurface(modifier = modifier.widthIn(max = 560.dp)) {
-        Column(
-            modifier = Modifier
-                .animateContentSize(InfinityMotion.contentSizeSpec())
-                .padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                    AnimatedContent(
-                        targetState = player != null,
-                        transitionSpec = { InfinityMotion.fadeThrough() },
-                        label = "audio_play_slot",
-                    ) { active ->
-                        val activePlayer = player
-                        if (active && activePlayer != null) {
-                            MediaPlayPauseButton(activePlayer)
-                        } else {
-                            IconButton(onClick = { session.play(resumePositionMs) }) {
-                                Icon(Icons.Rounded.PlayArrow, contentDescription = stringResource(R.string.media_action_play))
+    val scheme = MaterialTheme.colorScheme
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    val typeLabel = mediaTypeLabel(ref) ?: stringResource(R.string.media_kind_audio)
+    val sizeLabel = ref.sizeBytes.takeIf { it > 0 }?.let(::formatMediaSize)
+    val idleMetaSegments = listOfNotNull(
+        typeLabel,
+        sizeLabel,
+        formatMediaDuration(ref.durationMs),
+    )
+    val activePrefix = listOfNotNull(typeLabel, sizeLabel).joinToString(" · ")  // wrap-check: allow 单行显示
+    Surface(
+        modifier = modifier.widthIn(max = 560.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = scheme.surfaceContainerLow,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (playing) scheme.primary.copy(alpha = 0.45f) else scheme.outlineVariant.copy(alpha = 0.6f),
+        ),
+    ) {
+        BoxWithConstraints {
+            val compactActions = maxWidth < 340.dp * fontScale
+            Column(
+                modifier = Modifier
+                    .animateContentSize(InfinityMotion.contentSizeSpec())
+                    .padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 6.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    FilledTonalIconButton(
+                        onClick = {
+                            if (playing) {
+                                session.pause()
+                            } else {
+                                session.play(resumePositionMs)
                             }
+                        },
+                        modifier = Modifier.size(40.dp),
+                        shape = CircleShape,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = if (playing) scheme.primary else scheme.primaryContainer,
+                            contentColor = if (playing) scheme.onPrimary else scheme.onPrimaryContainer,
+                        ),
+                    ) {
+                        AnimatedContent(
+                            targetState = playing,
+                            transitionSpec = { InfinityMotion.fadeThrough() },
+                            label = "audio_play_slot",
+                        ) { isPlaying ->
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = stringResource(if (isPlaying) R.string.media_action_pause else R.string.media_action_play),
+                                modifier = Modifier.size(22.dp),
+                            )
                         }
                     }
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .semantics { contentDescription = audioDescription },
-                ) {
-                    Text(
-                        text = name,
-                        style = InfinityTypography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (player != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.media_kind_audio),
-                                style = InfinityTypography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                            )
-                            Text(
-                                text = "·",
-                                style = InfinityTypography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurfaceVariant) {
-                                ProvideTextStyle(InfinityTypography.labelSmall) {
-                                    MediaPositionText(player)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = audioDescription },
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = displayTitle,
+                            style = InfinityTypography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            color = scheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (player != null) {
+                            val metaColor = if (playing) scheme.primary else scheme.onSurfaceVariant
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = activePrefix,
+                                    style = InfinityTypography.labelSmall,
+                                    color = metaColor,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = "·",
+                                    style = InfinityTypography.labelSmall,
+                                    color = metaColor,
+                                )
+                                CompositionLocalProvider(LocalContentColor provides metaColor) {
+                                    ProvideTextStyle(InfinityTypography.labelSmall) {
+                                        MediaPositionText(player)
+                                    }
                                 }
                             }
+                        } else {
+                            InfinityMetaLine(
+                                segments = idleMetaSegments,
+                                style = InfinityTypography.labelSmall,
+                                color = scheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
                         }
-                    } else {
-                        Text(
-                            text = listOfNotNull(
-                                stringResource(R.string.media_kind_audio),
-                                formatMediaDuration(ref.durationMs) ?: stringResource(R.string.media_duration_unknown),
-                            ).joinToString(" · "),  // wrap-check: allow 单行显示
-                            style = InfinityTypography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
+                    }
+                    if (!compactActions && trailingActions != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            trailingActions()
+                        }
                     }
                 }
-            }
-            if (player != null) {
-                MediaProgressSlider(
-                    player = player,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp)
-                        .semantics { contentDescription = progressLabel },
-                )
-            } else {
-                val duration = ref.durationMs?.takeIf { it > 0 }
-                Slider(
-                    value = duration?.let { (resumePositionMs.toFloat() / it).coerceIn(0f, 1f) } ?: 0f,
-                    onValueChange = { fraction -> duration?.let { resumePositionMs = (fraction * it).toLong() } },
-                    enabled = duration != null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp)
-                        .semantics { contentDescription = progressLabel },
-                )
-            }
-            AnimatedVisibility(
-                visible = session.error != null,
-                enter = InfinityMotion.expandIn,
-                exit = InfinityMotion.shrinkOut,
-            ) {
-                if (lastError != null) {
-                    MediaPlaybackError(onRetry = session::retry, modifier = Modifier.fillMaxWidth())
+                if (player != null) {
+                    MediaProgressSlider(
+                        player = player,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(34.dp)
+                            .padding(horizontal = 2.dp)
+                            .semantics { contentDescription = progressLabel },
+                    )
+                } else {
+                    val duration = ref.durationMs?.takeIf { it > 0 }
+                    Slider(
+                        value = duration?.let { (resumePositionMs.toFloat() / it).coerceIn(0f, 1f) } ?: 0f,
+                        onValueChange = { fraction -> duration?.let { resumePositionMs = (fraction * it).toLong() } },
+                        enabled = duration != null,
+                        colors = SliderDefaults.colors(
+                            thumbColor = scheme.primary,
+                            activeTrackColor = scheme.primary,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(34.dp)
+                            .padding(horizontal = 2.dp)
+                            .semantics { contentDescription = progressLabel },
+                    )
+                }
+                if (compactActions && trailingActions != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        trailingActions()
+                    }
+                }
+                AnimatedVisibility(
+                    visible = session.error != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    if (lastError != null) {
+                        MediaPlaybackError(onRetry = session::retry, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AudioCardActionButtons(
+    available: MediaResolution.Available,
+    runner: MediaActionRunner,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
+    IconButton(onClick = { runner.save(available) }, modifier = Modifier.size(36.dp)) {
+        Icon(Icons.Rounded.SaveAlt, contentDescription = stringResource(R.string.media_action_save), tint = tint, modifier = Modifier.size(19.dp))
+    }
+    IconButton(onClick = { runner.share(available) }, modifier = Modifier.size(36.dp)) {
+        Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.media_action_share), tint = tint, modifier = Modifier.size(19.dp))
+    }
+    IconButton(onClick = { runner.openWith(available) }, modifier = Modifier.size(36.dp)) {
+        Icon(Icons.Rounded.OpenInNew, contentDescription = stringResource(R.string.media_action_open_with), tint = tint, modifier = Modifier.size(19.dp))
     }
 }
 

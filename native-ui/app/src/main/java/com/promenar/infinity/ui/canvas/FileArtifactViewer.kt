@@ -6,11 +6,18 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,17 +31,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.promenar.infinity.R
 import com.promenar.infinity.data.artifact.ArtifactFileSnapshot
 import com.promenar.infinity.data.artifact.ArtifactKind
 import com.promenar.infinity.data.document.DocumentTextDecoding
 import com.promenar.infinity.data.document.MarkdownChunks
+import com.promenar.infinity.domain.media.MediaKind
+import com.promenar.infinity.domain.media.MediaRef
+import com.promenar.infinity.domain.media.MediaResolution
+import com.promenar.infinity.domain.media.MediaSource
+import com.promenar.infinity.ui.common.InfinityModalSheet
+import com.promenar.infinity.ui.common.InfinitySheetHeight
 import com.promenar.infinity.ui.document.DocumentBody
 import com.promenar.infinity.ui.document.DocumentBodyState
 import com.promenar.infinity.ui.document.DocumentViewerAction
 import com.promenar.infinity.ui.document.DocumentViewerScaffold
 import com.promenar.infinity.ui.document.external.excludingOwnViewer
+import com.promenar.infinity.ui.media.InlineAudioPlayerCard
 import com.promenar.infinity.ui.media.MediaFileActions
 import com.promenar.infinity.ui.renderer.ImageLightbox
 import com.promenar.infinity.ui.testing.UiTags
@@ -49,14 +64,18 @@ import kotlinx.coroutines.withContext
 /** 应用内预览的文本上限；更大的文本只提供用其它应用打开。 */
 private const val MAX_TEXT_PREVIEW_BYTES = 512L * 1024L
 
+/** 支持应用内直接播放的音频产物扩展名。 */
+private val AUDIO_ARTIFACT_EXTENSIONS = setOf("wav", "mp3", "m4a", "aac", "ogg", "opus", "flac")
+
 /** 文件产物在应用内的呈现方式。 */
-internal enum class FileArtifactPreview { IMAGE, MARKDOWN, TEXT, PAGE, EXTERNAL }
+internal enum class FileArtifactPreview { IMAGE, AUDIO, MARKDOWN, TEXT, PAGE, EXTERNAL }
 
 internal fun fileArtifactPreview(kind: ArtifactKind, fileName: String, sizeBytes: Long): FileArtifactPreview {
     val extension = fileName.substringAfterLast('.', "").lowercase()
     val smallText = sizeBytes <= MAX_TEXT_PREVIEW_BYTES
     return when {
         kind == ArtifactKind.IMAGE && extension != "svg" -> FileArtifactPreview.IMAGE
+        extension in AUDIO_ARTIFACT_EXTENSIONS -> FileArtifactPreview.AUDIO
         extension in setOf("md", "markdown") && smallText -> FileArtifactPreview.MARKDOWN
         extension in setOf("txt", "csv", "tsv", "json", "log", "yaml", "yml", "xml") && smallText -> FileArtifactPreview.TEXT
         extension in setOf("html", "htm", "svg") && sizeBytes <= 1_048_576L -> FileArtifactPreview.PAGE
@@ -65,9 +84,10 @@ internal fun fileArtifactPreview(kind: ArtifactKind, fileName: String, sizeBytes
 }
 
 /**
- * 文件产物查看：图片进图片查看器，Markdown 与纯文本用共用的文档查看器外壳显示（大 Markdown 分块渲染），
+ * 文件产物查看：图片进图片查看器，音频进应用内播放器面板，Markdown 与纯文本用共用的文档查看器外壳显示（大 Markdown 分块渲染），
  * HTML 与 SVG 用画布网页只读显示，其它类型（PDF、Office、压缩包等）直接交给其它应用打开。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FileArtifactViewer(
     snapshot: ArtifactFileSnapshot?,
@@ -89,6 +109,46 @@ internal fun FileArtifactViewer(
                 }
             },
         )
+        return
+    }
+    if (snapshot != null && preview == FileArtifactPreview.AUDIO) {
+        val displayName = snapshot.summary.fileName?.takeIf(String::isNotBlank) ?: snapshot.file.name
+        val available = remember(snapshot.file.absolutePath, displayName) {
+            MediaResolution.Available(
+                ref = MediaRef(
+                    path = displayName,
+                    mimeType = snapshot.summary.mimeType?.takeIf(String::isNotBlank) ?: "audio/*",
+                    kind = MediaKind.AUDIO,
+                    sizeBytes = snapshot.file.length(),
+                ),
+                source = MediaSource.LocalFile(snapshot.file),
+            )
+        }
+        InfinityModalSheet(onDismissRequest = onClose, height = InfinitySheetHeight.Content) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = InfinitySpacing.Large)
+                    .padding(bottom = InfinitySpacing.Large)
+                    .navigationBarsPadding(),
+            ) {
+                InlineAudioPlayerCard(
+                    available = available,
+                    title = snapshot.summary.title.takeIf(String::isNotBlank) ?: displayName,
+                    autoPlay = true,
+                    trailingActions = {
+                        IconButton(onClick = openWith, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.OpenInNew,
+                                contentDescription = stringResource(R.string.artifact_open_with),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(19.dp),
+                            )
+                        }
+                    },
+                )
+            }
+        }
         return
     }
     if (snapshot != null && preview == FileArtifactPreview.EXTERNAL) {

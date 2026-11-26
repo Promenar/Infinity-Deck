@@ -351,4 +351,78 @@ class GeminiAudioAndReadAloudTest {
         assertTrue(readAloudFailureMessage(CloudHttpException(401)).contains("密钥"))
         assertTrue(readAloudFailureMessage(CloudHttpException(429)).contains("配额"))
     }
+
+    @Test
+    fun `Lyria 响应解析覆盖 steps inline_data、nested outputs、shorthand 与脱敏错误摘要`() {
+        val mp3Bytes = byteArrayOf('I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(), 3, 0, 0, 0, 0, 0, 0, 1, 2)
+        val mp3B64 = Base64.getEncoder().encodeToString(mp3Bytes)
+
+        // 1. Interactions API steps[].content.parts[].inline_data 形态
+        val stepsPayload = buildJsonObject {
+            put("steps", buildJsonArray {
+                add(buildJsonObject {
+                    put("step_number", 1)
+                    put("role", "model")
+                    put("content", buildJsonObject {
+                        put("parts", buildJsonArray {
+                            add(buildJsonObject { put("text", "[Verse]\nCalm piano") })
+                        })
+                    })
+                })
+                add(buildJsonObject {
+                    put("step_number", 2)
+                    put("role", "model")
+                    put("content", buildJsonObject {
+                        put("parts", buildJsonArray {
+                            add(buildJsonObject {
+                                put("inline_data", buildJsonObject {
+                                    put("mime_type", "audio/mp3")
+                                    put("data", mp3B64)
+                                })
+                            })
+                        })
+                    })
+                })
+            })
+        }
+        val fromSteps = parseGeminiLyriaResponse(stepsPayload)
+        assertArrayEquals(mp3Bytes, fromSteps.bytes)
+        assertEquals("mp3", fromSteps.extension)
+        assertTrue(fromSteps.transcriptText!!.contains("Calm piano"))
+
+        // 2. Interactions API outputs[].content[] 嵌套形态
+        val nestedOutputsPayload = buildJsonObject {
+            put("outputs", buildJsonArray {
+                add(buildJsonObject {
+                    put("type", "model_output")
+                    put("content", buildJsonArray {
+                        add(buildJsonObject { put("type", "text"); put("text", "Solo acoustic") })
+                        add(buildJsonObject {
+                            put("type", "audio")
+                            put("mime_type", "audio/mpeg")
+                            put("data", mp3B64)
+                        })
+                    })
+                })
+            })
+        }
+        val fromNested = parseGeminiLyriaResponse(nestedOutputsPayload)
+        assertArrayEquals(mp3Bytes, fromNested.bytes)
+        assertEquals("Solo acoustic", fromNested.transcriptText)
+
+        // 3. 无音频时抛出含脱敏结构摘要的异常（不泄露敏感字段值）
+        val missingPayload = buildJsonObject {
+            put("status", "completed")
+            put("outputs", buildJsonArray {
+                add(buildJsonObject { put("type", "text"); put("text", "only text no audio") })
+            })
+        }
+        val err = org.junit.jupiter.api.Assertions.assertThrows(java.io.IOException::class.java) {
+            parseGeminiLyriaResponse(missingPayload)
+        }
+        assertTrue(err.message!!.contains("Lyria 响应未返回音频数据"))
+        assertTrue(err.message!!.contains("status=completed"))
+        assertTrue(err.message!!.contains("outputs=1(text)"))
+        assertFalse(err.message!!.contains("only text no audio"))
+    }
 }

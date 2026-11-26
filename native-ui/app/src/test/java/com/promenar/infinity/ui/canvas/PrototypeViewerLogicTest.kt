@@ -41,6 +41,10 @@ class PrototypeViewerLogicTest {
     @Test fun `文件产物按类型与大小选择预览方式`() {
         assertThat(fileArtifactPreview(ArtifactKind.IMAGE, "a.png", 10)).isEqualTo(FileArtifactPreview.IMAGE)
         assertThat(fileArtifactPreview(ArtifactKind.IMAGE, "a.svg", 10)).isEqualTo(FileArtifactPreview.PAGE)
+        assertThat(fileArtifactPreview(ArtifactKind.OTHER, "speech.wav", 68_900)).isEqualTo(FileArtifactPreview.AUDIO)
+        assertThat(fileArtifactPreview(ArtifactKind.OTHER, "score.mp3", 2_400_000)).isEqualTo(FileArtifactPreview.AUDIO)
+        assertThat(fileArtifactPreview(ArtifactKind.OTHER, "voice.m4a", 120_000)).isEqualTo(FileArtifactPreview.AUDIO)
+        assertThat(fileArtifactPreview(ArtifactKind.OTHER, "bgm.flac", 8_000_000)).isEqualTo(FileArtifactPreview.AUDIO)
         assertThat(fileArtifactPreview(ArtifactKind.DOCUMENT, "a.md", 10)).isEqualTo(FileArtifactPreview.MARKDOWN)
         assertThat(fileArtifactPreview(ArtifactKind.DOCUMENT, "a.md", 600_000)).isEqualTo(FileArtifactPreview.EXTERNAL)
         assertThat(fileArtifactPreview(ArtifactKind.OTHER, "a.csv", 10)).isEqualTo(FileArtifactPreview.TEXT)

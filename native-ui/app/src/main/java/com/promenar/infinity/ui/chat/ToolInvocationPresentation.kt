@@ -149,6 +149,8 @@ internal enum class ToolSummaryAction(val category: ToolSummaryCategory) {
     MEMORY_SEARCH(ToolSummaryCategory.RETRIEVAL),
     MEMORY_WRITE(ToolSummaryCategory.UTILITY),
     IMAGE(ToolSummaryCategory.MEDIA),
+    SPEECH(ToolSummaryCategory.MEDIA),
+    MUSIC(ToolSummaryCategory.MEDIA),
     MEDIA_VIEW(ToolSummaryCategory.MEDIA),
     MEDIA_FETCH(ToolSummaryCategory.MEDIA),
     PLAN(ToolSummaryCategory.PLAN),
@@ -202,6 +204,8 @@ internal fun toolSummaryAction(name: String?): ToolSummaryAction = when (name) {
     "memory_search", "memory_read" -> ToolSummaryAction.MEMORY_SEARCH
     "memory_save", "memory_forget" -> ToolSummaryAction.MEMORY_WRITE
     "generate_image", "image_generation" -> ToolSummaryAction.IMAGE
+    "generate_speech", "speech_generation" -> ToolSummaryAction.SPEECH
+    "generate_music", "music_generation" -> ToolSummaryAction.MUSIC
     "view_media" -> ToolSummaryAction.MEDIA_VIEW
     "media_fetch" -> ToolSummaryAction.MEDIA_FETCH
     "initialize_plan", "update_plan", "get_plan", "drop_plan" -> ToolSummaryAction.PLAN
@@ -217,22 +221,26 @@ internal fun toolSummaryAction(name: String?): ToolSummaryAction = when (name) {
 }
 
 /**
- * 摘要中一次调用计入的数量：生图按成功结果中的图片张数，查看与下载按媒体个数；
+ * 摘要中一次调用计入的数量：生图按图片张数，语音与音乐按音频段数，查看与下载按媒体个数；
  * 没有结构化媒体的旧结果按一次调用计，失败的调用没有产出，计 0，只计入失败数。
  */
 internal fun toolSummaryWeight(action: ToolSummaryAction, invocation: ToolInvocationPresentation): Int {
     if (action == ToolSummaryAction.SUBAGENT) return subagentTaskCount(invocation.call?.toolArgs)
-    if (action != ToolSummaryAction.IMAGE && action != ToolSummaryAction.MEDIA_VIEW && action != ToolSummaryAction.MEDIA_FETCH) return 1
+    if (action !in MEDIA_COUNTED_ACTIONS) return 1
     if (invocation.failed || backgroundedJobId(invocation) != null) return 0
     val media = invocation.results.filter { it.type == "tool_result" }.flatMap { it.media.orEmpty() }
-    val counted = if (action == ToolSummaryAction.IMAGE) media.count { it.kind == com.promenar.infinity.domain.media.MediaKind.IMAGE } else media.size
+    val counted = when (action) {
+        ToolSummaryAction.IMAGE -> media.count { it.kind == com.promenar.infinity.domain.media.MediaKind.IMAGE }
+        ToolSummaryAction.SPEECH, ToolSummaryAction.MUSIC -> media.count { it.kind == com.promenar.infinity.domain.media.MediaKind.AUDIO }
+        else -> media.size
+    }
     return counted.takeIf { it > 0 } ?: 1
 }
 
-/** 超时转入后台的生图与媒体下载：成功结果是任务开始 JSON、没有媒体时返回任务号，产出由任务结束后的结果给出。 */
+/** 超时转入后台的生图、语音、音乐与媒体下载：成功结果是任务开始 JSON、没有媒体时返回任务号，产出由任务结束后的结果给出。 */
 internal fun backgroundedJobId(invocation: ToolInvocationPresentation): String? {
     val action = toolSummaryAction(invocation.name)
-    if (action != ToolSummaryAction.IMAGE && action != ToolSummaryAction.MEDIA_FETCH) return null
+    if (action !in MEDIA_BACKGROUNDABLE_ACTIONS) return null
     if (!invocation.complete || invocation.failed) return null
     val success = invocation.results.filter { it.type == "tool_result" }
     if (success.any { !it.media.isNullOrEmpty() }) return null
@@ -241,6 +249,21 @@ internal fun backgroundedJobId(invocation: ToolInvocationPresentation): String? 
         root?.takeIf { "state" in it }?.let { (it["job_id"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank) }
     }
 }
+
+private val MEDIA_COUNTED_ACTIONS = setOf(
+    ToolSummaryAction.IMAGE,
+    ToolSummaryAction.SPEECH,
+    ToolSummaryAction.MUSIC,
+    ToolSummaryAction.MEDIA_VIEW,
+    ToolSummaryAction.MEDIA_FETCH,
+)
+
+private val MEDIA_BACKGROUNDABLE_ACTIONS = setOf(
+    ToolSummaryAction.IMAGE,
+    ToolSummaryAction.SPEECH,
+    ToolSummaryAction.MUSIC,
+    ToolSummaryAction.MEDIA_FETCH,
+)
 
 /** 摘要保留类别首次出现顺序；同一类别中的检索、实用与媒体动作分别计数。 */
 internal fun toolGroupSummary(invocations: List<ToolInvocationPresentation>): ToolGroupSummary {

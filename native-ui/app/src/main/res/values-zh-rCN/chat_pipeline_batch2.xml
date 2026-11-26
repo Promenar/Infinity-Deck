@@ -19,6 +19,8 @@
     <plurals name="chat_step_knowledge_done"><item quantity="other">检索了知识库</item></plurals>
     <plurals name="chat_step_memory_done"><item quantity="other">检索了记忆</item></plurals>
     <plurals name="chat_step_image_done"><item quantity="other">生成了 %1$d 张图片</item></plurals>
+    <plurals name="chat_step_speech_done"><item quantity="other">合成了 %1$d 段语音</item></plurals>
+    <plurals name="chat_step_music_done"><item quantity="other">生成了 %1$d 段音乐</item></plurals>
     <plurals name="chat_step_plan_done"><item quantity="other">更新了任务计划</item></plurals>
     <plurals name="chat_step_time_done"><item quantity="other">查询了时间</item></plurals>
     <plurals name="chat_step_calculate_done"><item quantity="other">进行了计算</item></plurals>
@@ -32,6 +34,8 @@
     <string name="chat_step_knowledge_running">正在检索知识库…</string>
     <string name="chat_step_memory_running">正在检索记忆…</string>
     <string name="chat_step_image_running">正在生成图片…</string>
+    <string name="chat_step_speech_running">正在合成语音…</string>
+    <string name="chat_step_music_running">正在生成音乐…</string>
     <string name="chat_step_plan_running">正在更新任务计划…</string>
     <string name="chat_step_time_running">正在查询时间…</string>
     <string name="chat_step_calculate_running">正在计算…</string>
@@ -45,6 +49,8 @@
     <string name="chat_step_knowledge_name">知识库检索</string>
     <string name="chat_step_memory_name">记忆检索</string>
     <string name="chat_step_image_name">生成图片</string>
+    <string name="chat_step_speech_name">合成语音</string>
+    <string name="chat_step_music_name">生成音乐</string>
     <string name="chat_step_plan_name">任务计划</string>
     <string name="chat_step_time_name">查询时间</string>
     <string name="chat_step_calculate_name">计算</string>

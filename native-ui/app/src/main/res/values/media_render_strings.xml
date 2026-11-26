@@ -5,6 +5,7 @@
     <string name="media_cd_audio">Audio: %1$s</string>
     <string name="media_cd_file">File: %1$s</string>
     <string name="media_action_play">Play</string>
+    <string name="media_action_pause">Pause</string>
     <string name="media_action_fullscreen">Full screen</string>
     <string name="media_action_exit_fullscreen">Exit full screen</string>
     <string name="media_action_retry">Retry</string>

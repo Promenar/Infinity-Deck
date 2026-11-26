@@ -14,6 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.79.3-beta] - 2026-11-26
+
+- **修复折叠外屏 93% 底部工作表顶置留缝、补齐全入口直连音频播放、修复 Lyria 3 / 3.5 响应解析并细分语音/音乐工具徽章（[InfinityBottomSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityBottomSheet.kt)、[WorkspaceMediaCards.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/media/WorkspaceMediaCards.kt)、[WorkspaceMediaPlayers.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/media/WorkspaceMediaPlayers.kt)、[WorkspaceMediaViewer.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/media/WorkspaceMediaViewer.kt)、[FileArtifactViewer.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/canvas/FileArtifactViewer.kt)、[FileManagerPreview.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/files/FileManagerPreview.kt)、[GeminiMediaProtocol.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/cloud/GeminiMediaProtocol.kt)、[ToolInvocationPresentation.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ToolInvocationPresentation.kt)、[ToolStepSummary.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ToolStepSummary.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)）**：
+  - 修复窄屏与折叠外屏（`< 600dp`）下 `InfinityModalSheet(Large / Content)` 因直接向 Material 3 `ModalBottomSheet` 传入 `fillMaxHeight(0.93f)` / `heightIn` 导致贴顶悬浮并在底部露出约 7% 聊天输入栏的问题：将 93% 高度约束下移至弹层内容容器内部（扣减系统底部插槽与拖动手柄高度），使上滑卡片稳固贴底并仅在顶部保留 7% 半透明遮罩。
+  - 补齐聊天正文、产物面板与工作区文件管理器的应用内直接音频播放能力：正文 Markdown 音频链接（含 `[说明](...wav)`）不再退化为普通文件卡，统一渲染共享可播放卡片 `InlineAudioPlayerCard` / `WorkspaceAudioCard`（40dp 圆形播放/暂停主按钮、进度拖动条、窄屏大字双行自适应操作栏、保存/分享/外部打开）；修复 `MediaPlayerSession` 在短语音播放至 `STATE_ENDED` 后再次点击无法从头重播的问题；产物面板新增 `FileArtifactPreview.AUDIO` 应用内播放弹层，文件管理器音频预览接入内联播放器替换旧占位卡片。
+  - 扩展 Google AI Studio Lyria 3 / 3.5 Interactions API 响应解析器 `parseGeminiLyriaResponse`，兼容 `steps[].content.parts[].inline_data`、`steps[].content[]`、`outputs[].content[]`、顶层 `output_audio`、`candidates[]` 及有界递归 `audio/*` 扫描，并识别显式错误与输出脱敏结构诊断。
+  - 在工具调用步骤与徽章展示中新增独立的 `SPEECH`（合成语音、`GraphicEq`）与 `MUSIC`（生成音乐、`LibraryMusic`）分类，补齐中英文进行中/完成态文案、参数预览与音频计数权重，不再笼统归入「其它工具」。
+
 ## [0.79.2-beta] - 2026-11-26
 
 - **修复 ComfyUI 主机设置页签边距、审批批准后执行态停顿与连续多文件编辑流式行交互（[ComfySettingsScreens.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ComfySettingsScreens.kt)、[ChatViewModel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatViewModel.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[FileEditLivePresentation.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/FileEditLivePresentation.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)）**：

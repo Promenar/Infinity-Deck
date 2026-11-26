@@ -82,6 +82,8 @@ class ToolInvocationPresentationTest {
             listOf("knowledge_search") to ToolSummaryAction.KNOWLEDGE_SEARCH,
             listOf("memory_search") to ToolSummaryAction.MEMORY_SEARCH,
             listOf("generate_image", "image_generation") to ToolSummaryAction.IMAGE,
+            listOf("generate_speech", "speech_generation") to ToolSummaryAction.SPEECH,
+            listOf("generate_music", "music_generation") to ToolSummaryAction.MUSIC,
             listOf("view_media") to ToolSummaryAction.MEDIA_VIEW,
             listOf("media_fetch") to ToolSummaryAction.MEDIA_FETCH,
             listOf("initialize_plan", "update_plan", "get_plan", "drop_plan") to ToolSummaryAction.PLAN,
@@ -244,6 +246,24 @@ class ToolInvocationPresentationTest {
         ))
         assertThat(done.map(::backgroundedJobId)).containsExactly(null, null, null).inOrder()
         assertThat(toolGroupSummary(done).backgroundedCount).isEqualTo(0)
+
+        // 语音与音乐工具按音频段数计权重，失败与转后台计 0。
+        val audioSteps = listOf(
+            call("s1", "sp1", "generate_speech", 1000),
+            result("s1-r", "sp1", 1500).copy(media = listOf(MediaRef("/media/a.wav", "audio/wav", MediaKind.AUDIO, 100))),
+            call("m1", "mu1", "generate_music", 2000),
+            ExecutionStep("m1-r", "error", toolCallId = "mu1", content = "Lyria 失败", timestamp = 2500),
+            call("m2", "mu2", "generate_music", 3000),
+            result("m2-r", "mu2", 3500).copy(content = started),
+        )
+        val audioSummary = toolGroupSummary(toolInvocations(audioSteps))
+        assertThat(audioSummary.categories).containsExactly(ToolSummaryCategory.MEDIA)
+        assertThat(audioSummary.parts).containsExactly(
+            ToolSummaryPart(ToolSummaryAction.SPEECH, 1),
+            ToolSummaryPart(ToolSummaryAction.MUSIC, 0),
+        ).inOrder()
+        assertThat(audioSummary.failedCount).isEqualTo(1)
+        assertThat(audioSummary.backgroundedCount).isEqualTo(1)
     }
 
     private fun completedInvocations(vararg names: String) = toolInvocations(names.flatMapIndexed { index, name ->

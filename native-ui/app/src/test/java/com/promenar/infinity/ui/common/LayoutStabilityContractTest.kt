@@ -56,7 +56,8 @@ class LayoutStabilityContractTest {
     fun `媒体卡片与文件列表保持槽位常驻不重排`() {
         val mediaCards = source("ui/media/WorkspaceMediaCards.kt")
         assertThat(mediaCards).contains("compactOverlay = true")
-        assertThat(mediaCards).contains("MediaPlayPauseButton(")
+        assertThat(mediaCards).contains("rememberPlayerIsPlaying(")
+        assertThat(mediaCards).contains("label = \"audio_play_slot\"")
         assertThat(mediaCards).contains("MediaProgressSlider(")
 
         val fileItems = source("ui/files/FileManagerItems.kt")

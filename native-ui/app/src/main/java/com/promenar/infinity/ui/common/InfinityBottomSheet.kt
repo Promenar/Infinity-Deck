@@ -7,10 +7,14 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.SheetState
@@ -69,6 +73,19 @@ enum class InfinitySheetHeight { Large, Content }
 
 internal const val INFINITY_LARGE_SHEET_HEIGHT_FRACTION = 0.93f
 internal const val INFINITY_CENTERED_SHEET_HEIGHT_FRACTION = 0.88f
+internal val INFINITY_SHEET_DRAG_HANDLE_HEIGHT = 32.dp
+
+/**
+ * 计算窄屏/外屏底部面板在内容槽中应占用的高度：
+ * 保持 `ModalBottomSheet` 外层接收真实全屏高度约束，避免 `draggableAnchors` 把 `Expanded` 锚点算成 0（顶对齐悬空），
+ * 再由内容槽扣减底部系统栏与拖动条高度，使整个面板表面精准占窗口高度的 [INFINITY_LARGE_SHEET_HEIGHT_FRACTION] 且严丝合缝贴底。
+ */
+internal fun infinityNarrowSheetContentHeight(
+    windowHeightDp: Dp,
+    bottomInsetDp: Dp,
+    dragHandleHeightDp: Dp = INFINITY_SHEET_DRAG_HANDLE_HEIGHT,
+): Dp = (windowHeightDp * INFINITY_LARGE_SHEET_HEIGHT_FRACTION - bottomInsetDp - dragHandleHeightDp)
+    .coerceAtLeast(160.dp)
 
 /**
  * 全站统一的上滑面板外壳：同一形状、底色与拖动条，始终直接完全展开（不停在半屏）。
@@ -131,15 +148,18 @@ fun InfinityModalSheet(
         }
         InfinitySheetPresentation.BottomSheet -> Unit
     }
-    val narrowMaxHeight = (LocalConfiguration.current.screenHeightDp * INFINITY_LARGE_SHEET_HEIGHT_FRACTION).dp
-    val sheetHeightModifier = when (height) {
-        InfinitySheetHeight.Large -> Modifier.fillMaxHeight(INFINITY_LARGE_SHEET_HEIGHT_FRACTION)
-        InfinitySheetHeight.Content -> Modifier.heightIn(max = narrowMaxHeight)
+    val density = LocalDensity.current
+    val windowHeightPx = LocalWindowInfo.current.containerSize.height
+    val windowHeightDp = if (windowHeightPx > 0) {
+        with(density) { windowHeightPx.toDp() }
+    } else {
+        LocalConfiguration.current.screenHeightDp.dp
     }
+    val bottomInsetDp = with(density) { BottomSheetDefaults.windowInsets.getBottom(this).toDp() }
+    val narrowContentMaxHeight = infinityNarrowSheetContentHeight(windowHeightDp, bottomInsetDp)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         modifier = modifier
-            .then(sheetHeightModifier)
             .infinityDismissOnEscape(enabled = properties.shouldDismissOnBackPress, onDismiss = onDismissRequest),
         sheetState = sheetState,
         sheetGesturesEnabled = sheetGesturesEnabled,
@@ -170,8 +190,20 @@ fun InfinityModalSheet(
             InfinityWindowBackScope {
                 val handoff = if (contentDragsSheet) Modifier else Modifier.nestedScroll(NoSheetHandoff)
                 when (height) {
-                    InfinitySheetHeight.Large -> Column(Modifier.fillMaxWidth().weight(1f).then(handoff), content = content)
-                    InfinitySheetHeight.Content -> if (contentDragsSheet) content() else Column(Modifier.fillMaxWidth().then(handoff), content = content)
+                    InfinitySheetHeight.Large -> Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(narrowContentMaxHeight)
+                            .then(handoff),
+                        content = content,
+                    )
+                    InfinitySheetHeight.Content -> Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = narrowContentMaxHeight)
+                            .then(handoff),
+                        content = content,
+                    )
                 }
             }
         }

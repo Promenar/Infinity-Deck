@@ -130,7 +130,14 @@ class MediaPlayerSession internal constructor(
 
     fun play(startPositionMs: Long = 0) {
         val current = ensurePlayer(startPositionMs)
-        if (error != null) retry() else current.play()
+        if (error != null) {
+            retry()
+        } else {
+            if (current.playbackState == Player.STATE_ENDED) {
+                current.seekTo(0L)
+            }
+            current.play()
+        }
     }
 
     fun pause() {
@@ -190,6 +197,33 @@ internal fun VideoSurface(player: Player, modifier: Modifier = Modifier) {
 @Composable
 internal fun MediaPlayPauseButton(player: Player, modifier: Modifier = Modifier) {
     PlayPauseButton(player = player, modifier = modifier)
+}
+
+/** 响应式观察播放器是否处于播放态，供内联圆形播放/暂停按钮做无跳变图标切换。 */
+@Composable
+internal fun rememberPlayerIsPlaying(player: Player?): Boolean {
+    var playing by remember(player) { mutableStateOf(player?.isPlaying == true) }
+    DisposableEffect(player) {
+        if (player == null) {
+            playing = false
+            return@DisposableEffect onDispose {}
+        }
+        playing = player.isPlaying
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing = isPlaying
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
+                    playing = false
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
+    return playing
 }
 
 @OptIn(UnstableApi::class, ExperimentalApi::class)

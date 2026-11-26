@@ -1765,6 +1765,8 @@ private fun toolSummaryCompletedText(part: ToolSummaryPart): String {
         ToolSummaryAction.MEMORY_SEARCH -> R.plurals.chat_step_memory_done
         ToolSummaryAction.MEMORY_WRITE -> R.plurals.chat_step_memory_write_done
         ToolSummaryAction.IMAGE -> R.plurals.chat_step_image_done
+        ToolSummaryAction.SPEECH -> R.plurals.chat_step_speech_done
+        ToolSummaryAction.MUSIC -> R.plurals.chat_step_music_done
         ToolSummaryAction.MEDIA_VIEW -> R.plurals.chat_step_media_view_done
         ToolSummaryAction.MEDIA_FETCH -> R.plurals.chat_step_media_fetch_done
         ToolSummaryAction.PLAN -> R.plurals.chat_step_plan_done
@@ -1795,6 +1797,8 @@ private fun toolActionNameRes(action: ToolSummaryAction): Int = when (action) {
     ToolSummaryAction.MEMORY_SEARCH -> R.string.chat_step_memory_name
     ToolSummaryAction.MEMORY_WRITE -> R.string.chat_step_memory_write_name
     ToolSummaryAction.IMAGE -> R.string.chat_step_image_name
+    ToolSummaryAction.SPEECH -> R.string.chat_step_speech_name
+    ToolSummaryAction.MUSIC -> R.string.chat_step_music_name
     ToolSummaryAction.MEDIA_VIEW -> R.string.chat_step_media_view_name
     ToolSummaryAction.MEDIA_FETCH -> R.string.chat_step_media_fetch_name
     ToolSummaryAction.PLAN -> R.string.chat_step_plan_name
@@ -1829,6 +1833,8 @@ internal fun toolGroupSummaryText(summary: ToolGroupSummary): String {
             ToolSummaryAction.MEMORY_SEARCH -> R.string.chat_step_memory_running
             ToolSummaryAction.MEMORY_WRITE -> R.string.chat_step_memory_write_running
             ToolSummaryAction.IMAGE -> R.string.chat_step_image_running
+            ToolSummaryAction.SPEECH -> R.string.chat_step_speech_running
+            ToolSummaryAction.MUSIC -> R.string.chat_step_music_running
             ToolSummaryAction.MEDIA_VIEW -> R.string.chat_step_media_view_running
             ToolSummaryAction.MEDIA_FETCH -> R.string.chat_step_media_fetch_running
             ToolSummaryAction.PLAN -> R.string.chat_step_plan_running
@@ -2157,6 +2163,12 @@ private fun ToolInvocationCard(
         when {
             !argumentsShown || arguments.isNullOrBlank() -> Unit
             action == ToolSummaryAction.IMAGE -> toolArgumentText(arguments, "prompt")?.let {
+                ExpandableToolText(text = it, collapsedLines = 2, arguments = true, code = false)
+            }
+            action == ToolSummaryAction.SPEECH -> toolArgumentText(arguments, "text")?.let {
+                ExpandableToolText(text = it, collapsedLines = 2, arguments = true, code = false)
+            }
+            action == ToolSummaryAction.MUSIC -> toolArgumentText(arguments, "prompt")?.let {
                 ExpandableToolText(text = it, collapsedLines = 2, arguments = true, code = false)
             }
             action == ToolSummaryAction.MEDIA_VIEW -> toolArgumentText(arguments, "question")?.let {

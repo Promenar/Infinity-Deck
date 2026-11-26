@@ -174,8 +174,7 @@ fun WorkspaceMediaViewerFor(
             FullscreenVideoDialog(session = session, onDismiss = onDismiss)
         }
         MediaKind.AUDIO -> MediaPanelSheet(onDismiss = onDismiss) {
-            WorkspaceAudioCard(available = available, autoPlay = true)
-            MediaPanelActions(available)
+            WorkspaceAudioCard(available = available, autoPlay = true, showActions = true)
         }
         MediaKind.FILE -> MediaPanelSheet(onDismiss = onDismiss) {
             WorkspaceFileCard(available = available, model = model)
@@ -203,15 +202,6 @@ fun WorkspaceMediaViewer(path: String, onDismiss: () -> Unit) {
                     ?.let { locate -> mediaParentPath(path)?.let { parent -> { onDismiss(); locate(parent) } } },
             )
         }
-    }
-}
-
-@Composable
-private fun MediaPanelActions(available: MediaResolution.Available) {
-    val environment = LocalWorkspaceMedia.current ?: return
-    val runner = rememberMediaActionRunner(environment)
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        MediaActionButtons(available = available, runner = runner)
     }
 }
 

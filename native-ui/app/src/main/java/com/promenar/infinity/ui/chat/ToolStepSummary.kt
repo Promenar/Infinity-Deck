@@ -8,7 +8,9 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.Search
@@ -143,6 +145,8 @@ internal fun toolStepIcon(name: String?): ImageVector = when (toolSummaryAction(
     ToolSummaryAction.FILE_EDIT -> Icons.Rounded.EditNote
     ToolSummaryAction.FILE_TRANSFER -> Icons.Rounded.SwapVert
     ToolSummaryAction.IMAGE -> Icons.Rounded.AutoAwesome
+    ToolSummaryAction.SPEECH -> Icons.Rounded.GraphicEq
+    ToolSummaryAction.MUSIC -> Icons.Rounded.LibraryMusic
     ToolSummaryAction.MEDIA_VIEW -> Icons.Rounded.Visibility
     ToolSummaryAction.MEDIA_FETCH -> Icons.Rounded.CloudDownload
     ToolSummaryAction.PLAN -> Icons.AutoMirrored.Rounded.Article
