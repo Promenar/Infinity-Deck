@@ -252,4 +252,25 @@ class ProductionEngineTest {
         assertThat(withoutPrompt.warnings).isEmpty()
     }
 
+    @Test fun `add_asset_version 支持可选正数 duration_seconds 并落库到 AssetVersion`() {
+        val base = update(fixture(), """[{"op":"upsert_asset","id":"voice-a","kind":"sound","name":"角色配音"}]""")
+        val withDuration = update(base, """[{"op":"add_asset_version","asset_id":"voice-a","path":"audio/voice.wav","duration_seconds":13.55,"note":"云端配音"}]""")
+        val v1 = withDuration.production.assets.first { it.id == "voice-a" }.versions.single()
+        assertThat(v1.durationSeconds).isEqualTo(13.55)
+        assertThat(v1.note).isEqualTo("云端配音")
+
+        val withoutDuration = update(withDuration, """[{"op":"add_asset_version","asset_id":"voice-a","path":"audio/voice2.wav"}]""")
+        val v2 = withoutDuration.production.assets.first { it.id == "voice-a" }.versions.last()
+        assertThat(v2.durationSeconds).isNull()
+
+        listOf(
+            """[{"op":"add_asset_version","asset_id":"voice-a","path":"audio/voice3.wav","duration_seconds":0}]""",
+            """[{"op":"add_asset_version","asset_id":"voice-a","path":"audio/voice3.wav","duration_seconds":-2.5}]""",
+            """[{"op":"add_asset_version","asset_id":"voice-a","path":"audio/voice3.wav","duration_seconds":"13.55"}]""",
+        ).forEach { invalid ->
+            val err = assertThrows(IllegalArgumentException::class.java) { update(base, invalid) }
+            assertThat(err.message).contains("有限正数")
+        }
+    }
+
 }

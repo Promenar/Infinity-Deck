@@ -49,16 +49,22 @@ class ProductionMediaPlanningTest {
         assertTrue(validateComfyShotPlan(valid, request.copy(specs = GenerationSpecs(frames = 121))).isEmpty())
     }
 
-    @Test fun `对齐后的分辨率必须在真实后端白名单内`() {
+    @Test fun `带多档推荐预设的宽高槽位模板也允许自定义32对齐尺寸并拒绝越界宽高`() {
         val template = template(listOf(ComfySlot("1", "prompt", SlotKind.PROMPT), ComfySlot("1", "width", SlotKind.WIDTH), ComfySlot("1", "height", SlotKind.HEIGHT))).copy(
             workflow = Json.parseToJsonElement("""{"1":{"class_type":"Generator","inputs":{"width":1050,"height":1050,"prompt":"文字"}}}""").jsonObject,
             capabilities = MediaCapabilities(setOf(GenerationMode.TEXT), resolutions = listOf("768x768", "1024x1024")))
         val specs = comfyPlanningSpecs(template)
         assertEquals(1056, specs.width)
         val request = MediaGenerationRequest("comfy:h3", GenerationMode.TEXT, "镜头", emptyList(), "source", specs, "s", "takes")
-        val errors = validateComfyShotPlan(template, request)
+        assertTrue(validateComfyShotPlan(template, request).isEmpty())
+
+        val custom864 = MediaGenerationRequest("comfy:h3", GenerationMode.TEXT, "镜头", emptyList(), "source", GenerationSpecs(width = 864, height = 480), "s", "takes")
+        assertTrue(validateComfyShotPlan(template, custom864).isEmpty())
+
+        val tooLarge = MediaGenerationRequest("comfy:h3", GenerationMode.TEXT, "镜头", emptyList(), "source", GenerationSpecs(width = 4128, height = 480), "s", "takes")
+        val errors = validateComfyShotPlan(template, tooLarge)
         assertFalse(errors.isEmpty())
-        assertTrue(errors.single().contains("对齐后的宽高不在模板允许的分辨率内"))
+        assertTrue(errors.single().contains("64～4096"))
     }
 
     @Test fun `单默认分辨率的宽高槽位模板允许自定义32对齐尺寸且失败时透出真实原因`() {

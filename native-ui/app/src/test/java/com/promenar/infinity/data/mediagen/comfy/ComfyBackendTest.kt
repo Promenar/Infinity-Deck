@@ -269,16 +269,20 @@ class ComfyBackendTest {
             assertTrue(e.message.orEmpty().contains("64～4096"))
         }
 
-        val multiWhitelist = singleDefault.copy(
+        val multiPreset = singleDefault.copy(
             id = "multi",
             capabilities = MediaCapabilities(setOf(GenerationMode.TEXT), resolutions = listOf("768x768", "1344x768")),
         )
-        f.repository.defineTemplateByAgent(multiWhitelist)
+        f.repository.defineTemplateByAgent(multiPreset)
+        f.backend.submit(multiPreset.channel(), f.request.copy(channelId = multiPreset.channelId, mode = GenerationMode.TEXT, inputs = emptyList(), specs = GenerationSpecs(width = 864, height = 480)))
+        val multiInputs = f.http.calls.last { it.first == "/prompt" }.second!!["prompt"]!!.jsonObject["1"]!!.jsonObject["inputs"]!!.jsonObject
+        assertEquals(864, multiInputs["width"]!!.jsonPrimitive.int)
+        assertEquals(480, multiInputs["height"]!!.jsonPrimitive.int)
         try {
-            f.backend.submit(multiWhitelist.channel(), f.request.copy(channelId = multiWhitelist.channelId, mode = GenerationMode.TEXT, inputs = emptyList(), specs = GenerationSpecs(width = 864, height = 480)))
-            fail("多预设白名单应拒绝名单外尺寸")
+            f.backend.submit(multiPreset.channel(), f.request.copy(channelId = multiPreset.channelId, mode = GenerationMode.TEXT, inputs = emptyList(), specs = GenerationSpecs(width = 4128, height = 480)))
+            fail("超出 64～4096 范围应拒绝")
         } catch (e: IllegalArgumentException) {
-            assertTrue(e.message.orEmpty().contains("对齐后的宽高不在模板允许的分辨率内"))
+            assertTrue(e.message.orEmpty().contains("64～4096"))
         }
     }
 

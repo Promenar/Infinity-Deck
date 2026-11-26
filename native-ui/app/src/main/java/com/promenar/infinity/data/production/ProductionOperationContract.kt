@@ -24,7 +24,7 @@ internal val productionOperationFields = linkedMapOf(
     "set_shot_status" to fields("episode_id shot_code status"),
     "add_take" to fields("episode_id shot_code path service", "model mode task_id usage_ref plan_snapshot note"),
     "upsert_asset" to fields("id kind name", "description looks reference_voice reference_views"),
-    "add_asset_version" to fields("asset_id path", "note task_id"),
+    "add_asset_version" to fields("asset_id path", "note task_id duration_seconds"),
     "upsert_look" to fields("asset_id look_id name", "note sheet_path sheet_note slots"),
     "set_look_slot" to fields("asset_id look_id slot_id", "name path note"),
     "set_asset_view" to fields("asset_id view_id", "name path note remove"),

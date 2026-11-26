@@ -287,8 +287,9 @@ internal fun validateFilledComfySpecs(template: ComfyTemplate, workflow: JsonObj
     fun dimension(kind: SlotKind): Int? = template.slots.firstOrNull { it.kind == kind }?.let { slot ->
         (((workflow[slot.nodeId] as? JsonObject)?.get("inputs") as? JsonObject)?.get(slot.input) as? JsonPrimitive)?.intOrNull
     }
-    // 同时暴露 WIDTH/HEIGHT 槽位且未声明多档预设白名单时，允许 64～4096 范围内任意 32 对齐自定义宽高。
-    if (hasWidthSlot && hasHeightSlot && sizes.size <= 1) {
+    // 暴露 WIDTH/HEIGHT 自由像素槽位的工作流支持 64～4096 范围内任意 32 对齐自定义宽高（与 ShotSpecsInlineEditor 契约一致）；
+    // capabilities.resolutions 在此类工作流上作为推荐预设展示，不再硬阻塞自定义分辨率。
+    if (hasWidthSlot && hasHeightSlot) {
         val width = dimension(SlotKind.WIDTH)
         val height = dimension(SlotKind.HEIGHT)
         require(width != null && height != null && width in 64..4096 && height in 64..4096 && width % 32 == 0 && height % 32 == 0) {

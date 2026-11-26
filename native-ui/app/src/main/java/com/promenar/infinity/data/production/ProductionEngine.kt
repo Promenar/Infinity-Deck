@@ -297,7 +297,8 @@ object ProductionEngine {
                     "add_asset_version" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old); val path = text(op, "path"); media(path)
                         val number = (old.versions.maxOfOrNull { it.number } ?: 0) + 1
-                        setAsset(old.copy(versions = old.versions + AssetVersion(number, path, now, optional(op, "note", null), taskId = optional(op, "task_id", null)), currentVersion = if (old.status == AssetStatus.LOCKED) old.currentVersion else number, status = if (old.status == AssetStatus.LOCKED) old.status else AssetStatus.REVIEW, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
+                        val durationSeconds = (op["duration_seconds"] as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.doubleOrNull
+                        setAsset(old.copy(versions = old.versions + AssetVersion(number, path, now, optional(op, "note", null), taskId = optional(op, "task_id", null), durationSeconds = durationSeconds), currentVersion = if (old.status == AssetStatus.LOCKED) old.currentVersion else number, status = if (old.status == AssetStatus.LOCKED) old.status else AssetStatus.REVIEW, changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev))
                     }
                     "upsert_look" -> {
                         val old = asset(text(op, "asset_id")); checkAsset(old)

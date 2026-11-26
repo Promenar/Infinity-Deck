@@ -330,7 +330,7 @@ private val productionUpdateDescription = """
     set_shot_status 必填 episode_id、shot_code、status（todo、generating、review）。
     add_take 必填 episode_id、shot_code、path、service，可选 model、mode、task_id、usage_ref、plan_snapshot、note。提供 task_id 时须提供实际 plan_snapshot。
     upsert_asset 必填 id、kind（character、location、prop、style、sound）、name，可选 description、looks、reference_voice、reference_views。looks 与 reference_voice 仅用于 character；reference_views 仅用于 location、prop、style。
-    add_asset_version 必填 asset_id、path，可选 note、task_id。仅用于定妆概念迭代版本（v1→v2 互斥替换）或单图多视图整卡主图；严禁用 v1–v3 版本代替多视角三视图。
+    add_asset_version 必填 asset_id、path，可选 note、task_id、duration_seconds（声音资产建议填实际秒数）。仅用于定妆概念迭代版本（v1→v2 互斥替换）、声音资产音频版本或单图多视图整卡主图；严禁用 v1–v3 版本代替多视角三视图。
     upsert_look 必填 asset_id、look_id、name，可选 note、sheet_path、sheet_note、slots。用于为角色增量新增或更新造型，支持单图多视图整卡（sheet_path）与分张单视图组（slots）二选一或同时登记；省略 slots 时保留既有或填默认三项（front/side/back）。
     set_look_slot 必填 asset_id、look_id、slot_id，可选 name、path、note（path 为 null 可清空）。用于单视角槽位增量更新，新增自定义槽位须提供 name。
     set_asset_view 必填 asset_id、view_id，可选 name、path、note、remove（布尔）。用于为 location、prop、style 资产增量增删或更新自由命名单视图组。
@@ -413,7 +413,7 @@ private val productionFieldDescriptions = mapOf(
     "code" to "场或镜头的编号。", "number" to "从 1 起算的序号。", "title" to "季、集或镜头标题。",
     "heading" to "场标题，通常包含内外景、地点与时间。", "script_path" to "剧本文档的工作区路径。",
     "previs_path" to "3D 白模预演 DSL 文件的工作区路径；null 可清空。",
-    "duration_seconds" to "镜头时长，单位秒。", "size" to "镜头景别。", "camera" to "机位或拍摄角度。",
+    "duration_seconds" to "时长，单位秒（用于镜头时长或声音资产版本时长）。", "size" to "镜头景别。", "camera" to "机位或拍摄角度。",
     "camera_movement" to "摄影机运动。", "visual" to "画面内容。", "performance" to "表演说明。",
     "sound" to "声音设计。", "transition" to "镜头之间的转场。", "continuity" to "连续性要求。",
     "location_asset_id" to "地点资产的标识。", "channel_id" to "生成通道标识。",
