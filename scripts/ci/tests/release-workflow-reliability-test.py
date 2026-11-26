@@ -794,6 +794,18 @@ is_expected_resumed_activity "$2"
             ),
         )
 
+    def test_buildsrc_tasks_never_call_get_project_at_execution_time(self) -> None:
+        buildsrc_java_dir = ROOT / "native-ui/buildSrc/src/main/java"
+        java_files = sorted(buildsrc_java_dir.rglob("*.java"))
+        self.assertTrue(java_files, "native-ui/buildSrc/src/main/java 下必须存在任务源码")
+        for path in java_files:
+            content = path.read_text(encoding="utf-8")
+            self.assertNotIn(
+                "getProject(",
+                content,
+                f"{path.relative_to(ROOT)} 禁止调用 getProject()，请改用 @Inject ArchiveOperations/FileSystemOperations/ExecOperations 以兼容配置缓存",
+            )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

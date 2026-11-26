@@ -2,6 +2,7 @@ package com.promenar.infinity.buildlogic;
 
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
+import org.gradle.api.file.ArchiveOperations;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileSystemOperations;
 import org.gradle.api.file.RegularFileProperty;
@@ -28,6 +29,7 @@ public abstract class BuildLinuxRuntime extends DefaultTask {
     public abstract DirectoryProperty getNdkDirectory();
     @Input public abstract Property<String> getProotVersion();
     @OutputDirectory public abstract DirectoryProperty getOutputDirectory();
+    @Inject protected abstract ArchiveOperations getArchiveOperations();
     @Inject protected abstract ExecOperations getExecOperations();
     @Inject protected abstract FileSystemOperations getFileSystemOperations();
 
@@ -61,7 +63,7 @@ public abstract class BuildLinuxRuntime extends DefaultTask {
 
     private File unpack(File archive, File target) {
         getFileSystemOperations().copy(spec -> {
-            spec.from(getProject().tarTree(getProject().getResources().gzip(archive)));
+            spec.from(getArchiveOperations().tarTree(getArchiveOperations().gzip(archive)));
             spec.into(target);
         });
         File[] roots = target.listFiles(File::isDirectory);

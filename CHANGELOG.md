@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.79.4-beta] - 2026-11-26
+## [0.79.5-beta] - 2026-11-26
 
 自上一公开版 `v0.76.3-beta` 以来的主要更新：
 
@@ -24,6 +24,10 @@ All notable changes to this project will be documented in this file.
 - **视频制作面板体验重构、主动装载闭环与媒体能力目录去排序化（`v0.78.0-beta`、`v0.79.0-beta`）**：将项目/全剧进度卡提至总览顶部、修复无剧本文档误报「待审」并根治宽屏检视器打开「媒体模型」毛玻璃透底重叠；底部「制作」标签常驻开放，支持空面板自动扫描工作区 `production.json` 一键挂载或让智能体建项；媒体模型目录移除排序箭头与虚假默认标并直达 ComfyUI 工作流编辑器，将资产参考入参模式（分张单视图 / 多视图整卡）与参考图上限收敛至逐工作流/逐模型配置（支持单次 Diff 实验覆写与同项目混排），制作面板解锁云端 Lyria 配乐与预置音色配音，右上角 `⋮` 收敛为轻量黑曜石下拉菜单；全站顶部熏黑悬浮通知胶囊统一移除右侧 `X` 按钮并接管会话页全部提示。
 - **黑曜石错误诊断卡片、MiniMax / 智谱 Z.AI 双区预设与重排模型目录补齐（`v0.77.0-beta`）**：全协议透传脱敏 HTTP 状态、错误码与原始错误负载，明确识别 HTTP 402 / MiniMax `1008` 等余额不足为不可重试 `QUOTA`；重构 MiniMax / MiniMax Token Plan 与智谱 / 智谱 Coding Plan 为中性「中国 / 国际」四变体预设；新增 13 项 Seedance / MiniMax 云端媒体预设与零计费连通性验证，并补齐 13 款主流重排模型与 `Pro/`、`Free/` 前缀识别。
 - **流式首轮零重复准备、内屏侧边栏按会话持久化、外屏 93% 工作表贴底修复与 B 档文件页头（`v0.76.4-beta`、`v0.77.0-beta`、`v0.79.3-beta`）**：消除非 MCP 稳定配置会话首轮与工具续轮的双重上下文构建，静默断流/EOF 传输异常自动归一化重试；宽屏/展开内屏检视器按会话持久化展开态与停靠页签，并修复放大检视器浏览器页签切换残留偏移；资源管理器「文件」页头统一收口为 `56dp` B 档双行轻页头；全站大内容上滑卡片统一 `93%` 上限并根治窄屏/折叠外屏贴顶悬浮露出底部输入框的问题。
+- **修复干净环境下 `BuildLinuxRuntime` 与 Gradle 配置缓存冲突（[BuildLinuxRuntime.java](native-ui/buildSrc/src/main/java/com/promenar/infinity/buildlogic/BuildLinuxRuntime.java)、[release-workflow-reliability-test.py](scripts/ci/tests/release-workflow-reliability-test.py)）**：将 `BuildLinuxRuntime.unpack` 中执行期调用的 `getProject().tarTree(getProject().getResources().gzip(archive))` 替换为 `@Inject ArchiveOperations`（与 `PreparePackagedPython` 对齐），修复开启配置缓存后干净 CI 构建 `:app:buildLinuxRuntime` 报错的问题，并补充 `buildSrc` 静态契约守卫（零应用源码或产物行为改动）。
+
+## [0.79.4-beta] - 2026-11-26
+
 - **修复多进程截图校验单元测试在 Python 3.10+/3.14 下的模块注册缺失（[validate-screenshots-parallel-test.py](scripts/ci/tests/validate-screenshots-parallel-test.py)）**：在 `SPEC.loader.exec_module(MODULE)` 之前注册 `sys.modules[SPEC.name] = MODULE`，修复加载含 `@dataclass` 与 `from __future__ import annotations` 的 `validate-screenshots-parallel.py` 时在 CI Python 3.14 触发 `AttributeError` 的静态检查红灯（零应用源码或构建产物改动）。
 
 ## [0.79.3-beta] - 2026-11-26
