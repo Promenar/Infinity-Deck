@@ -8,7 +8,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -154,9 +158,8 @@ fun FormalPostProcessTabDarkPreview() = FormalFrame(dark = true) {
     )
 }
 
-@Preview(name = "正式镜头规格设置 浅中400", widthDp = 400, heightDp = 760, locale = "zh-rCN")
 @Composable
-fun FormalShotSpecsSheetLightPreview() = FormalFrame(dark = false) {
+private fun FormalShotSpecsInlineShowcase() {
     val comfyChannel = MediaChannel(
         id = "comfy:wf-video",
         group = MediaGroup.VIDEO,
@@ -203,28 +206,80 @@ fun FormalShotSpecsSheetLightPreview() = FormalFrame(dark = false) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("本地工作流规格（自定义像素宽高）", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-            ShotSpecsSheetContent(
+        Text("本地工作流规格（面板原位内联）", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        ProductionSection("通道与模式") {
+            ProductionRow("模式", value = "参考")
+            ProductionRow("通道", value = "H3 Ref2VA 参考图 768p Pika...")
+            ProductionRow(
+                title = "规格",
+                subtitle = "默认 1344×768",
+                valueSegments = listOf("1920×1088", "5秒"),
+                chip = ProductionChipSpec("自定", ProductionTone.NEUTRAL),
+                chevron = false,
+                trailing = {
+                    Icon(
+                        imageVector = Icons.Rounded.ExpandLess,
+                        contentDescription = "镜头规格",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+            )
+            ShotSpecsInlineEditor(
                 shot = Shot("SC01-03", "低身旋斩", durationSeconds = 5.0, specWidth = 1920, specHeight = 1088),
                 channel = comfyChannel,
                 workflow = comfyWorkflow,
                 previewSpecs = GenerationSpecs(width = 1920, height = 1088),
                 onSave = { _, _, _ -> },
             )
+            ProductionRow("预演素材", value = "无")
         }
-        Text("云端通道规格（动态能力枚举）", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-            ShotSpecsSheetContent(
+        Text("云端通道规格（面板原位内联）", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        ProductionSection("通道与模式") {
+            ProductionRow("模式", value = "参考")
+            ProductionRow("通道", value = "Seedance 2.5")
+            ProductionRow(
+                title = "规格",
+                subtitle = "默认 720p",
+                valueSegments = listOf("1080p", "4.5秒"),
+                chip = ProductionChipSpec("自定", ProductionTone.NEUTRAL),
+                chevron = false,
+                trailing = {
+                    Icon(
+                        imageVector = Icons.Rounded.ExpandLess,
+                        contentDescription = "镜头规格",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+            )
+            ShotSpecsInlineEditor(
                 shot = Shot("SC01-02", "林晚回头", durationSeconds = 4.5, specResolution = "1080p"),
                 channel = cloudChannel,
                 workflow = null,
                 previewSpecs = GenerationSpecs(resolution = "1080p"),
                 onSave = { _, _, _ -> },
             )
+            ProductionRow("预演素材", value = "无")
+        }
+        Text("窄检视器节头防挤压（真实组件）", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        ProductionSection(
+            title = "输入",
+            titleSegments = listOf("输入", "分张", "6 张"),
+            trailing = "按 H3 Ref2VA 参考图 768p Pika4+Veda 传入",
+        ) {
+            ProductionMutedRow("P1 正面全身")
         }
     }
 }
+
+@Preview(name = "正式镜头规格内联 浅中400", widthDp = 400, heightDp = 1140, locale = "zh-rCN")
+@Composable
+fun FormalShotSpecsSheetLightPreview() = FormalFrame(dark = false) { FormalShotSpecsInlineShowcase() }
+
+@Preview(name = "正式镜头规格内联 深窄360", widthDp = 360, heightDp = 1140, locale = "zh-rCN")
+@Composable
+fun FormalShotSpecsInlineDarkPreview() = FormalFrame(dark = true) { FormalShotSpecsInlineShowcase() }
 
 @Preview(name = "正式锁帧素材与只读链 深中400", widthDp = 400, heightDp = 820, locale = "zh-rCN")
 @Composable

@@ -15,19 +15,25 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.rounded.Refresh
@@ -43,16 +49,18 @@ import com.promenar.infinity.R
 import com.promenar.infinity.data.production.*
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.*
+import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.forInput
-import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.rememberLastNonNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
-private enum class PlanningSheet { MODE, CHANNEL, SPECS, LOOK }
+private enum class PlanningSheet { MODE, CHANNEL, LOOK }
 private enum class PlanningDialog { PROMPT, RECOMPILE, SCENE_REVIEW, CONTENT }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -79,6 +87,7 @@ internal fun ProductionShotDetail(
     val now = rememberProductionNow(placeholders.any { it is ShotPlaceholder.Run })
     var dialog by rememberSaveable(episodeId, shot.code) { mutableStateOf<PlanningDialog?>(null) }
     var sheet by remember { mutableStateOf<PlanningSheet?>(null) }
+    var specsExpanded by rememberSaveable(episodeId, shot.code) { mutableStateOf(false) }
     var lookCharacter by remember { mutableStateOf<String?>(null) }
     var localBusy by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -328,10 +337,37 @@ internal fun ProductionShotDetail(
                                 subtitle = defaultSpecsHint,
                                 valueSegments = planSpecsSegments(preview, production, shot),
                                 chip = if (shot.hasCustomSpecs()) ProductionChipSpec(stringResource(R.string.p2_specs_custom), ProductionTone.NEUTRAL) else null,
-                                chevron = canConfigureSpecs,
+                                chevron = false,
+                                trailing = if (canConfigureSpecs) ({
+                                    Icon(
+                                        imageVector = if (specsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                        contentDescription = stringResource(R.string.p2_specs_sheet_title),
+                                        tint = if (specsExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }) else null,
                                 enabled = !working && canConfigureSpecs,
-                                onClick = if (canConfigureSpecs) ({ sheet = PlanningSheet.SPECS }) else null,
+                                onClick = if (canConfigureSpecs) ({ specsExpanded = !specsExpanded }) else null,
                             )
+                            AnimatedVisibility(
+                                visible = specsExpanded && canConfigureSpecs && resolvedChannel != null,
+                                enter = InfinityMotion.expandIn,
+                                exit = InfinityMotion.shrinkOut,
+                            ) {
+                                resolvedChannel?.let { activeChannel ->
+                                    ShotSpecsInlineEditor(
+                                        shot = shot,
+                                        channel = activeChannel,
+                                        workflow = activeWfForSpecs,
+                                        previewSpecs = preview?.specs,
+                                        enabled = !working,
+                                        onSave = { resolution, width, height ->
+                                            specsExpanded = false
+                                            onRun(ProductionUserAction.SetShotSpecs(episodeId, shot.code, resolution, width, height))
+                                        },
+                                    )
+                                }
+                            }
                             ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))
                             shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp), asLink = shot.preview == PreviewKind.TEXT_CARD) }
                         }
@@ -538,25 +574,6 @@ internal fun ProductionShotDetail(
                 onDismiss = { sheet = null },
                 emptyText = stringResource(R.string.p2_no_channels),
             ) { onRun(ProductionUserAction.SetShotPlan(episodeId, shot.code, it, shot.mode)) }
-        }
-        PlanningSheet.SPECS -> {
-            val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)
-            val activeWf = resolvedChannel?.id?.let { id -> comfyWorkflows.firstOrNull { it.workflow.channelId == id }?.workflow }
-            if (resolvedChannel != null) {
-                ShotSpecsSheet(
-                    shot = shot,
-                    channel = resolvedChannel,
-                    workflow = activeWf,
-                    previewSpecs = preview?.specs,
-                    onDismiss = { sheet = null },
-                    onSave = { resolution, width, height ->
-                        sheet = null
-                        onRun(ProductionUserAction.SetShotSpecs(episodeId, shot.code, resolution, width, height))
-                    },
-                )
-            } else {
-                sheet = null
-            }
         }
         PlanningSheet.LOOK -> {
             val character = production.findAsset(lookCharacter.orEmpty())
@@ -830,52 +847,33 @@ private fun remainingBlockedReasons(
     }.toList()
 }
 
-/** 单镜头规格选择面板（正常生成参数，不改动工作流或模型默认配置）。 */
+/** 单镜头规格面板原位内联编辑区（方向 C 已确认原型，不遮挡左侧对话，不改动工作流或模型默认设置）。 */
 @Composable
-private fun ShotSpecsSheet(
+internal fun ShotSpecsInlineEditor(
     shot: Shot,
     channel: MediaChannel,
     workflow: ComfyWorkflow?,
     previewSpecs: GenerationSpecs?,
-    onDismiss: () -> Unit,
-    onSave: (resolution: String?, width: Int?, height: Int?) -> Unit,
-) {
-    InfinityBottomSheet(
-        show = true,
-        onDismiss = onDismiss,
-        title = stringResource(R.string.p2_specs_sheet_title),
-    ) {
-        ShotSpecsSheetContent(
-            shot = shot,
-            channel = channel,
-            workflow = workflow,
-            previewSpecs = previewSpecs,
-            onSave = onSave,
-        )
-    }
-}
-
-@Composable
-internal fun ShotSpecsSheetContent(
-    shot: Shot,
-    channel: MediaChannel,
-    workflow: ComfyWorkflow?,
-    previewSpecs: GenerationSpecs?,
+    enabled: Boolean = true,
     onSave: (resolution: String?, width: Int?, height: Int?) -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val dark = scheme.surface.luminance() < 0.5f
     val isComfy = channel.id.startsWith("comfy:")
-    Column(
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (dark) scheme.surfaceContainerHigh.copy(alpha = 0.72f) else scheme.surfaceContainer,
+        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.35f)),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = InfinitySpacing.Large, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
     ) {
-            Text(
-                text = stringResource(R.string.p2_specs_sheet_hint),
-                style = MaterialTheme.typography.bodySmall.forReading(),
-                color = scheme.onSurfaceVariant,
-            )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             if (isComfy) {
                 val defaultW = workflow?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.WIDTH }?.defaultValue
                     ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
@@ -883,72 +881,103 @@ internal fun ShotSpecsSheetContent(
                 val defaultH = workflow?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.HEIGHT }?.defaultValue
                     ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
                     ?: previewSpecs?.height?.takeIf { shot.specHeight == null }
-                val defaultPair = if (defaultW != null && defaultH != null) "${defaultW}×${defaultH}" else null
-                var customMode by remember(shot.code) { mutableStateOf(shot.specWidth != null && shot.specHeight != null) }
-                var widthText by remember(shot.code) { mutableStateOf((shot.specWidth ?: defaultW)?.toString().orEmpty()) }
-                var heightText by remember(shot.code) { mutableStateOf((shot.specHeight ?: defaultH)?.toString().orEmpty()) }
+                var customMode by remember(shot.code, shot.specWidth, shot.specHeight) {
+                    mutableStateOf(shot.specWidth != null && shot.specHeight != null)
+                }
+                var widthText by remember(shot.code, shot.specWidth, defaultW) {
+                    mutableStateOf((shot.specWidth ?: defaultW)?.toString().orEmpty())
+                }
+                var heightText by remember(shot.code, shot.specHeight, defaultH) {
+                    mutableStateOf((shot.specHeight ?: defaultH)?.toString().orEmpty())
+                }
                 var validationError by remember { mutableStateOf<String?>(null) }
                 val invalidDimensionsMsg = stringResource(R.string.p2_specs_invalid_dimensions)
 
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    InfinityChip(
-                        label = defaultPair?.let { stringResource(R.string.p2_specs_follow_default_value, it) }
-                            ?: stringResource(R.string.p2_specs_follow_default),
-                        selected = !customMode,
-                        onClick = { customMode = false; validationError = null },
-                    )
-                    InfinityChip(
-                        label = stringResource(R.string.p2_specs_custom_dimensions),
-                        selected = customMode,
-                        onClick = { customMode = true; validationError = null },
-                    )
-                }
+                InfinitySegmentedControl(
+                    segments = listOf(
+                        InfinitySegment(false, stringResource(R.string.p2_specs_workflow_default)),
+                        InfinitySegment(true, stringResource(R.string.p2_specs_custom_short)),
+                    ),
+                    selected = customMode,
+                    enabled = enabled,
+                    onSelect = { wantCustom ->
+                        customMode = wantCustom
+                        validationError = null
+                        if (!wantCustom && shot.hasCustomSpecs()) {
+                            onSave(null, null, null)
+                        }
+                    },
+                    fillWidth = true,
+                    compact = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 if (customMode) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        InlinePixelSlot(
+                            label = stringResource(R.string.p2_specs_width_short),
                             value = widthText,
+                            enabled = enabled,
                             onValueChange = { widthText = it.filter(Char::isDigit).take(4); validationError = null },
-                            label = { Text(stringResource(R.string.p2_specs_width_px)) },
-                            singleLine = true,
-                            textStyle = LocalTextStyle.current.forInput(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f),
                         )
-                        OutlinedTextField(
+                        Text("×", style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant)
+                        InlinePixelSlot(
+                            label = stringResource(R.string.p2_specs_height_short),
                             value = heightText,
+                            enabled = enabled,
                             onValueChange = { heightText = it.filter(Char::isDigit).take(4); validationError = null },
-                            label = { Text(stringResource(R.string.p2_specs_height_px)) },
-                            singleLine = true,
-                            textStyle = LocalTextStyle.current.forInput(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f),
                         )
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = scheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    val oldW = widthText
+                                    widthText = heightText
+                                    heightText = oldW
+                                    validationError = null
+                                },
+                                enabled = enabled,
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SwapHoriz,
+                                    contentDescription = stringResource(R.string.p2_specs_swap),
+                                    tint = scheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
                     }
                     validationError?.let { err ->
                         Text(err, style = MaterialTheme.typography.bodySmall, color = scheme.error)
                     }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    InfinityPillButton(
-                        text = stringResource(R.string.p2_specs_reset_default),
-                        onClick = { onSave(null, null, null) },
-                        tone = InfinityPillTone.NEUTRAL,
-                        compact = true,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    InfinityPillButton(
-                        text = stringResource(R.string.p2_specs_apply),
-                        onClick = {
-                            if (!customMode) {
-                                onSave(null, null, null)
-                            } else {
+                    val parsedW = widthText.toIntOrNull()
+                    val parsedH = heightText.toIntOrNull()
+                    val ratioLabel = if (parsedW != null && parsedH != null && parsedW > 0 && parsedH > 0) {
+                        formatGenericRatioLabel(parsedW, parsedH)
+                    } else null
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = ratioLabel?.let { stringResource(R.string.p2_specs_ratio_hint, it) }
+                                ?: stringResource(R.string.p2_specs_range_hint),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        InfinityPillButton(
+                            text = stringResource(R.string.p2_specs_apply),
+                            onClick = {
                                 val w = widthText.toIntOrNull()
                                 val h = heightText.toIntOrNull()
                                 if (w == null || h == null || w !in 64..8192 || h !in 64..8192) {
@@ -956,35 +985,173 @@ internal fun ShotSpecsSheetContent(
                                 } else {
                                     onSave(null, w, h)
                                 }
-                            }
-                        },
-                        tone = InfinityPillTone.PRIMARY,
-                        icon = Icons.Rounded.Check,
-                        compact = true,
+                            },
+                            enabled = enabled,
+                            tone = InfinityPillTone.PRIMARY,
+                            icon = Icons.Rounded.Check,
+                            compact = true,
+                        )
+                    }
+                } else {
+                    val defaultSegments = buildList {
+                        if (defaultW != null && defaultH != null) {
+                            add("${defaultW}×${defaultH}")
+                            add(formatGenericRatioLabel(defaultW, defaultH))
+                        }
+                        add(stringResource(R.string.p2_specs_follow_workflow_hint))
+                    }
+                    InfinityMetaLine(
+                        segments = defaultSegments,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
                     )
                 }
             } else {
                 val resolutions = channel.capabilities.resolutions.distinct()
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    InfinityChip(
-                        label = stringResource(R.string.p2_specs_follow_default),
-                        selected = shot.specResolution.isNullOrBlank(),
-                        onClick = { onSave(null, null, null) },
-                    )
-                    resolutions.forEach { res ->
-                        InfinityChip(
-                            label = res,
-                            selected = shot.specResolution == res,
-                            onClick = { onSave(res, null, null) },
-                        )
+                val options: List<Pair<String?, String>> = listOf(null to stringResource(R.string.p2_specs_default_short)) +
+                    resolutions.map { it to it }
+                val useEqualRow = options.size <= 4
+                if (useEqualRow) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        options.forEach { (value, label) ->
+                            val selected = if (value == null) shot.specResolution.isNullOrBlank() else shot.specResolution == value
+                            InlineResolutionOptionButton(
+                                label = label,
+                                selected = selected,
+                                enabled = enabled,
+                                onClick = { onSave(value, null, null) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        options.forEach { (value, label) ->
+                            val selected = if (value == null) shot.specResolution.isNullOrBlank() else shot.specResolution == value
+                            InlineResolutionOptionButton(
+                                label = label,
+                                selected = selected,
+                                enabled = enabled,
+                                onClick = { onSave(value, null, null) },
+                            )
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+        }
     }
+}
+
+@Composable
+private fun InlinePixelSlot(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = scheme.surfaceContainerHighest.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.45f)),
+        modifier = modifier,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                enabled = enabled,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                textStyle = MaterialTheme.typography.titleMedium.forInput().copy(
+                    fontFamily = InfinityMonospace,
+                    fontWeight = FontWeight.SemiBold,
+                    color = scheme.onSurface,
+                ),
+                cursorBrush = SolidColor(scheme.primary),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun InlineResolutionOptionButton(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) scheme.primaryContainer else scheme.surfaceContainerHighest.copy(alpha = 0.65f),
+        border = if (selected) BorderStroke(1.dp, scheme.primary.copy(alpha = 0.5f)) else null,
+        modifier = modifier
+            .heightIn(min = 38.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = scheme.onPrimaryContainer,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (selected) scheme.onPrimaryContainer else scheme.onSurface,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun formatGenericRatioLabel(width: Int, height: Int): String {
+    val ratio = width.toDouble() / height.toDouble()
+    val known = listOf(
+        16.0 / 9.0 to "16:9",
+        9.0 / 16.0 to "9:16",
+        4.0 / 3.0 to "4:3",
+        3.0 / 4.0 to "3:4",
+        21.0 / 9.0 to "21:9",
+        3.0 / 2.0 to "3:2",
+        2.0 / 3.0 to "2:3",
+        1.0 to "1:1",
+    )
+    val base = known.firstOrNull { abs(ratio - it.first) < 0.04 }?.second
+        ?: "${((ratio * 100.0).roundToInt() / 100.0)}:1"
+    val orientRes = when {
+        width > height -> R.string.p2_specs_orient_landscape
+        height > width -> R.string.p2_specs_orient_portrait
+        else -> R.string.p2_specs_orient_square
+    }
+    return "$base ${stringResource(orientRes)}"
 }
 
 /** 输入素材行（纯检视，匹配已确认 v1.3 原型）：缩略图严格左对齐，锁帧锚点用徽章与帧号清晰区分于普通参考图。 */

@@ -27,12 +27,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinityBackButton
 import com.promenar.infinity.ui.common.InfinityBottomSheet
@@ -78,23 +81,65 @@ internal fun ProductionSectionHeader(
     action: (@Composable RowScope.() -> Unit)? = null,
     titleSegments: List<String>? = null,
 ) {
+    val gap = InfinitySpacing.Small
     Row(
         modifier.fillMaxWidth().heightIn(min = 28.dp).padding(start = InfinitySpacing.RowHorizontal, end = if (action != null) 4.dp else InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.SectionHeaderBottom),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
-        Column(Modifier.weight(1f)) {
-            val titleStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
-            val heading = Modifier.semantics { heading() }
-            val titleColor = MaterialTheme.colorScheme.primary
-            if (titleSegments != null) {
-                InfinityMetaLine(titleSegments, style = titleStyle, color = titleColor, modifier = heading)
-            } else {
-                Text(title, style = titleStyle, color = titleColor, modifier = heading)
+        val titleBlock: @Composable () -> Unit = {
+            Column {
+                val titleStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                val heading = Modifier.semantics { heading() }
+                val titleColor = MaterialTheme.colorScheme.primary
+                if (titleSegments != null) {
+                    InfinityMetaLine(titleSegments, style = titleStyle, color = titleColor, modifier = heading)
+                } else {
+                    Text(title, style = titleStyle, color = titleColor, modifier = heading)
+                }
+                subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        trailing?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+        if (trailing == null) {
+            Box(Modifier.weight(1f)) { titleBlock() }
+        } else {
+            // 左侧主标题优先保底 56% 宽度避免窄检视器被长通道名挤成多行竖排，右侧说明占余量并单行省略。
+            Layout(
+                modifier = Modifier.weight(1f),
+                content = {
+                    titleBlock()
+                    Text(
+                        text = trailing,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+            ) { measurables, constraints ->
+                val maxW = constraints.maxWidth
+                val gapPx = gap.roundToPx()
+                val available = (maxW - gapPx).coerceAtLeast(0)
+                val titleMeasurable = measurables[0]
+                val trailingMeasurable = measurables[1]
+                val titleIntrinsic = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+                val trailingIntrinsic = trailingMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+                val minTitleBudget = (available * 0.56f).roundToInt()
+                val titleMaxW = when {
+                    titleIntrinsic + trailingIntrinsic <= available -> titleIntrinsic
+                    titleIntrinsic <= minTitleBudget -> titleIntrinsic
+                    else -> minTitleBudget
+                }.coerceIn(0, available)
+                val titlePlaceable = titleMeasurable.measure(Constraints(minWidth = 0, maxWidth = titleMaxW))
+                val trailingMaxW = (available - titlePlaceable.width).coerceAtLeast(0)
+                val trailingPlaceable = trailingMeasurable.measure(Constraints(minWidth = 0, maxWidth = trailingMaxW))
+                val height = maxOf(titlePlaceable.height, trailingPlaceable.height)
+                layout(maxW, height) {
+                    titlePlaceable.placeRelative(0, (height - titlePlaceable.height) / 2)
+                    trailingPlaceable.placeRelative(maxW - trailingPlaceable.width, (height - trailingPlaceable.height) / 2)
+                }
+            }
+        }
         action?.invoke(this)
     }
 }
