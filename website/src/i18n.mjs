@@ -34,7 +34,7 @@ export const strings = {
       lede: '普通聊天软件无法真正动手处理文件和工具；而远程桌面控制又要求家里或办公室的电脑必须一直开机在线。',
       points: [
         ['手机本机就能直接干活', '内置免 Root 的 Alpine Linux、10 项原生加速工具链（git、rg、fd、jq、sqlite3、zstd、bsdtar、rsync、ffmpeg）与硬件资源治理，文档转换、代码检索、Git 管理与音视频处理都在手机上高速直跑，不依赖任何电脑后台挂机。'],
-        ['办公、创作与开发兼顾', '集成端侧离线录音转写、多格式个人知识库、可交互画布原型、AI 生图与短片分镜制作面板，不是只有写代码才能用上的极客玩具。'],
+        ['办公、创作与开发兼顾', '集成端侧离线录音转写、多格式个人知识库、可交互画布原型、AI 生图、云端语音（Gemini TTS）与音乐（Lyria 3 / 3.5）直连试听，以及短片分镜制作面板，不是只有写代码才能用上的极客玩具。'],
         ['云端与本地模型自由切换', '支持用自己的 API Key 接入主流大模型与各家 Coding Plan 预设，也支持在手机上按需加载 GGUF 模型离线使用（默认不占冷启内存），聊到一半可随时切换。'],
         ['免公网直连内网，并内置多协议代理', '应用内置独立 Tailscale 节点与用户态多协议代理，两者均不占系统 VPN 槽位：内网与 Tailscale P2P 始终直连，同时可按提供商按需勾选代理，内置浏览器、公网工具与 GitHub HTTPS 自动生效、Alpine Linux 按需调用。'],
         ['专为移动与折叠屏场景设计', '命令人工审批卡、后台任务托管、消息排队、防误触口袋锁与折叠屏内外屏无缝接续，通勤单手操作或展开大屏办公都顺手。'],
@@ -50,9 +50,9 @@ export const strings = {
         { kicker: '模型自由切换', title: '端侧模型、内网算力与云端模型同台调度', body: '在会话中随时切换手机本地加载的 GGUF 模型、家里的 Tailscale 内网算力或各大云端服务商，网络灯一眼分辨直连与内网连通状态。' },
         { kicker: '离线录音整理', title: '说话人自动区分，边录边出结构化纪要', body: '离线完成中英实时听写，可选 SenseVoice 二遍校准与本机说话人分段。大屏左栏听打带时间戳的逐字稿，右栏实时生成含表格、流程图和图表的富格式整理稿，支持双模式预览编辑与高清长图、PDF 导出。' },
         { kicker: '混合知识库检索', title: '每条回答都带着编号指向原文', body: '导入文档或以只读/读写权限分级挂载手机目录后，结合向量、关键词、长期记忆与知识图谱综合问答，点按回答中的数字编号直接跳到文档高亮出处。' },
-        { kicker: '音视频制作面板', title: '从剧本、3D 预演到视频候选一站管理', body: '围绕同一份故事管理双模参考资产、分镜规划与离线 3D 白模预演（支持相机/自由机位与深度图抽帧），串联多通道视频生成（Seedance、MiniMax、ComfyUI），并按单入口审片及导出成片。' },
-        { kicker: '折叠屏大屏模式', title: '展开就是三栏熏黑玻璃工作台', body: '内屏自动展开为导航、会话列表与主对话三列布局（可收折为极简电路分支窄栏），搭配全站厚玻璃光效浸润与精简右侧检视器（360dp 零模糊熏黑固定分栏 / 560dp 实时毛玻璃抽屉，常驻任务、文件、Git、浏览器），大页签支持左右滑切与吸顶定位。' },
-        { kicker: '折叠屏外屏接续', title: '合上屏幕，单手继续跟进', body: '合上手机后，当前对话自动切换到外屏。在路上单手浏览长篇报告、点按命令或锁审批卡片、查看顶部悬浮通知胶囊，回到桌前展开屏幕即可继续深加工。' },
+        { kicker: '音视频制作面板', title: '从剧本、3D 预演到视频与配乐一站管理', body: '常驻开放的制作面板可自动扫描并挂载工作区项目，统一管理逐工作流参考资产、分镜规划与离线 3D 白模预演（支持相机/自由机位与深度图抽帧），串联多通道视频生成（Seedance、MiniMax、ComfyUI）及云端 Lyria 配乐与预置音色配音，并按单入口审片及导出成片。' },
+        { kicker: '折叠屏大屏模式', title: '展开就是三栏熏黑玻璃工作台', body: '内屏自动展开为导航、会话列表与主对话三列布局（可收折为极简电路分支窄栏），搭配全站厚玻璃光效浸润、按会话持久化的精简右侧检视器（360dp 零模糊熏黑固定分栏 / 560dp 实时毛玻璃抽屉，常驻任务、文件、Git、浏览器）以及外接键鼠悬停、右键菜单与中文输入法友好快捷键。' },
+        { kicker: '折叠屏外屏接续', title: '合上屏幕，单手继续跟进', body: '合上手机后，当前对话自动切换到外屏。在路上单手浏览长篇报告、试听应用内音频卡片或一键朗读回复、点按稳固贴底的 93% 抽屉与命令审批卡、查看顶部悬浮通知胶囊，回到桌前展开屏幕即可继续深加工。' },
       ],
       alts: {
         subagents: '两个子代理并行：定位改动点与审查测试覆盖',
@@ -101,10 +101,11 @@ export const strings = {
       more: '各项功能的详细用法与边界说明见功能详解',
       groups: [
         ['对话与模型接入', [
-          '自带 API Key 接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi、百炼、OpenRouter、SiliconFlow、xAI 及任意兼容接口，内置主流 Coding Plan 预设',
+          '自带 API Key 接入 OpenAI、Anthropic、Gemini、Vertex AI、DeepSeek、GLM、Kimi、百炼、OpenRouter、SiliconFlow、xAI 及任意兼容接口，内置主流 Coding Plan 及 MiniMax / 智谱中性中国与国际双区预设，细分语音 / 音乐 / 实时 / 视频类型、13 款重排模型与黑曜石错误诊断卡片',
           '端侧本地推理：支持在手机上加载 GGUF 模型（对话、向量嵌入、重排三槽位独立管理，内置默认关闭的「启动时自动加载模型」开关以保持极低冷启内存），已加载的本地主模型可直接选入会话离线使用',
-          '对话中途随时切换模型，支持最多 16 个会话同时在后台生成；纯聊天与智能体提示词严格分层瘦身，已发送消息支持就地编辑重生成或派生分支会话',
-          '模型回复过程中可继续发送消息，自由选择排队等待或立即插队；全站提供窗口级厚玻璃光效浸润（「界面特效」独立开关）、4 级黑曜石浮层、无模糊省电「环境光」、柔和/标准/明亮三档配色风格、5 阶段同色生成动效与无跳变收发过渡',
+          '对话中途随时切换模型，支持最多 16 个会话同时在后台生成；纯聊天与智能体提示词严格分层瘦身，已发送消息支持就地编辑重生成或派生分支会话，助手回复气泡支持一键「朗读」正文（跳过思考与工具日志）',
+          '模型回复过程中可继续发送消息，自由选择排队等待或立即插队；全站提供窗口级厚玻璃光效浸润（「界面特效」独立开关）、4 级黑曜石浮层、无模糊省电「环境光」、柔和/标准/明亮三档配色风格、5 阶段同色生成动效、批准即刻活跃执行态、连续多文件编辑异向滚动流式行与无跳变收发过渡',
+          '支持跨平台键鼠交互（全站悬停高亮、手型光标、横向标签滚轮滚动、鼠标右键就地菜单与兼容微信输入法组词态的 Enter / Shift+Enter / Ctrl+Enter / 逐层 Esc 快捷键）与顶部统一熏黑悬浮通知胶囊',
           '遇到需要你决策的节点弹出结构化提问卡；锁屏、切后台或开启防误触「触摸锁」放进口袋均不中断',
           '支持导入 .idpet 会话宠物包，宠物常驻输入栏上方，随任务状态与早、中、晚、深夜四个时段切换姿态与台词',
           '支持加载自定义技能（Skills）与 MCP 服务，内置技能商店可一键安装官方校验技能，并内置分片滚动诊断包导出',
@@ -136,8 +137,9 @@ export const strings = {
           '内置多标签浏览器，支持手机版与桌面端视图切换；智能体操作网页时可随时旁观、手动接管登录再交回执行',
           '支持直接打开内置 Linux 本地端口服务，或通过内置 Tailscale 访问私有内网中的网页应用；公网站点在开启内置代理后自动生效',
           '在会话中直接生成可交互的多屏原型、可视化画布与带版本记录的文档产物',
+          '原生接入 Google AI Studio Gemini TTS（30 种预置音色）、Lyria 3 / 3.5 音乐生成（音频与结构化歌词同步取回）与 OpenAI Speech 独立内置工具，聊天正文音频链接、产物面板与文件管理器均支持应用内直连播放与播完重播',
           '接入云端或独立零硬编码 ComfyUI 全能提交器框架（14 个 comfy_* 工具、Linux / 内置 Python 双环境自动切换与分叉链隔离），内置画板支持圈注与局部重绘蒙版；全站采用支持 1×–5× 缩放与 90° 旋转的多图滑切查看器',
-          '内置短片制作面板：串联剧本、双模视觉参考资产、已锁定项 AI 改写审批、离线 3D 白模分镜预演（支持相机/自由机位与白模/深度抽帧及 MP4 导出）、多通道生视频（Seedance、MiniMax、ComfyUI）与配乐，支持单入口审片、尾帧续接镜头及导出粗剪与 SRT 字幕',
+          '常驻开放短片制作面板（自动扫描挂载工作区项目）：串联剧本、逐工作流配置参考入参模式的双模视觉资产、已锁定项 AI 改写审批、离线 3D 白模分镜预演（支持相机/自由机位与白模/深度抽帧及 MP4 导出）、多通道生视频（Seedance、MiniMax、ComfyUI）及云端 Lyria 配乐与预置音色配音，支持单入口审片、尾帧续接镜头及导出粗剪与 SRT 字幕',
           '支持将任意会话记录与报告一键导出为独立网页、A4 PDF 或高清长图',
         ]],
         ['内置 Linux 与代码工具', [
@@ -263,7 +265,7 @@ export const strings = {
       lede: 'Standard chat apps cannot touch real files or tools, while desktop remote control forces your computer at home or work to stay powered on 24/7.',
       points: [
         ['Work happens directly on your phone', 'One-tap rootless Alpine Linux, a 10-tool native accelerated runtime (git, rg, fd, jq, sqlite3, zstd, bsdtar, rsync, ffmpeg), and hardware resource governance run document conversion, code search, Git workflows, and media processing fast on-device without keeping a PC online.'],
-        ['Built for work, writing, and creation — not only coding', 'Combines offline speech transcription, a multi-format personal knowledge base, interactive web prototypes, AI image editing, and a storyboard-to-video production panel.'],
+        ['Built for work, writing, and creation — not only coding', 'Combines offline speech transcription, a multi-format personal knowledge base, interactive web prototypes, AI image editing, cloud Gemini TTS & Lyria 3/3.5 music with direct in-app playback, and a storyboard-to-video production panel.'],
         ['Switch freely between cloud and on-device models', 'Plug in your own API keys for major models and Coding Plan presets, or load GGUF models on demand right on your phone offline (with zero cold-start preload overhead) — even mid-conversation.'],
         ['Reach home devices over Tailnet alongside a built-in proxy', 'An embedded Tailscale node and an independent userspace multi-protocol proxy coexist with zero system VPN conflicts — Tailnet and Tailscale P2P stay direct while you opt in per AI provider, auto-route the browser, public tools, and public Git/GitHub HTTPS, or inject proxy env vars inside Linux on demand.'],
         ['Designed for mobile & foldable days', 'Per-command approval cards, background tasks, message queuing, pocket touch lock, and fold/unfold continuity work equally well one-handed or wide open.'],
@@ -279,9 +281,9 @@ export const strings = {
         { kicker: 'Model routing', title: 'On-device GGUF, home GPUs, and cloud APIs side by side', body: 'Switch seamlessly between local GGUF models, private Tailscale endpoints, and cloud providers in one picker — with live network status lights.' },
         { kicker: 'Offline voice cleanup', title: 'Speaker labels and live structured notes', body: 'Transcribe speech on-device with X-ASR and optional SenseVoice refinement, separate speakers automatically, and write rich-format summaries with tables, Mermaid diagrams, ECharts, and LaTeX math alongside Edit/Preview switching and crisp PNG/PDF exports.' },
         { kicker: 'Hybrid knowledge base', title: 'Cited answers linked straight back to sources', body: 'Import documents or mount local folders with read-only / read-write tiers, search across embeddings, active memory, and knowledge graphs together, and tap any numbered badge to inspect the highlight.' },
-        { kicker: 'Production panel', title: 'Scripts, 3D previs, and video takes in one place', body: 'Track dual-mode character looks, storyboard frames, and offline 3D clay-model previs (camera/orbit views and Depth snapshots), then coordinate multi-channel renders (Seedance, MiniMax, ComfyUI) and export rough cuts.' },
-        { kicker: 'Foldable workbench', title: 'Unfold into a multi-pane frosted workbench', body: 'Wide and foldable inner screens expand into navigation, chat list (or a 40dp circuit branch rail), conversation, window-wide thick-glass light infiltration, and a streamlined inspector (360dp obsidian docked pane / 560dp frosted overlay drawer across Tasks, Files, Git, and Browser) with swipeable sticky tabs.' },
-        { kicker: 'Cover screen handoff', title: 'Fold it shut and continue one-handed', body: 'Close the phone and the active chat continues smoothly on the cover screen with scroll position and drafts intact — review reports, tap command or lock approvals, and check floating notice capsules on the go.' },
+        { kicker: 'Production panel', title: 'Scripts, 3D previs, video takes, and cloud scoring in one place', body: 'An always-open production panel auto-scans workspace projects to coordinate per-workflow character reference modes, storyboard frames, offline 3D clay-model previs (camera/orbit views and Depth snapshots), multi-channel video renders (Seedance, MiniMax, ComfyUI), and cloud Lyria scoring + prebuilt-voice dialogue.' },
+        { kicker: 'Foldable workbench', title: 'Unfold into a multi-pane frosted workbench', body: 'Wide and foldable inner screens expand into navigation, chat list (or a 40dp circuit branch rail), conversation, window-wide thick-glass light infiltration, a per-session persistent streamlined inspector (360dp obsidian docked pane / 560dp frosted drawer across Tasks, Files, Git, and Browser), plus full mouse hover, right-click menus, and Chinese-IME-safe keyboard shortcuts.' },
+        { kicker: 'Cover screen handoff', title: 'Fold it shut and continue one-handed', body: 'Close the phone and the active chat continues smoothly on the cover screen with scroll position and drafts intact — play generated audio inline, tap Read Aloud, open bottom-anchored 93% sheets or command approvals, and check floating notice capsules on the go.' },
       ],
       alts: {
         subagents: 'Two parallel sub-agents locating changes and reviewing test coverage',
@@ -330,10 +332,11 @@ export const strings = {
       more: 'See the feature guide for detailed limits and behavior (in Chinese)',
       groups: [
         ['Chat & model routing', [
-          'Connect OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi, Bailian, OpenRouter, SiliconFlow, xAI, compatible endpoints, and Coding Plan presets with your own API keys',
+          'Connect OpenAI, Anthropic, Gemini, Vertex AI, DeepSeek, GLM, Kimi, Bailian, OpenRouter, SiliconFlow, xAI, compatible endpoints, Coding Plan & neutral CN / International MiniMax and Zhipu/Z.AI presets — with dedicated Speech / Music / Realtime / Video model types, 13 bundled rerankers, and an obsidian error diagnostics card',
           'On-device GGUF inference (llama.cpp) with independent 3-slot management (MAIN, EMBEDDING, RERANK) and an optional Auto-load on startup toggle (off by default to keep cold-start RAM lean), exposing the loaded local chat model right in the session picker',
-          'Switch models mid-conversation and run up to 16 chats generating concurrently in the background; strict Chat vs. Agent prompt stratification and in-place editing of sent user messages to regenerate or fork a branch chat',
-          'Queue follow-up messages or tap to steer/interrupt while streaming; window-wide global thick-glass light infiltration (with an independent Interface effects toggle), 4-step obsidian frosted overlays, unblurred ambient solid styling, Soft / Standard / Bright hue-preserving color styles, 5-phase synchronized motion, and jump-free send-to-idle transitions',
+          'Switch models mid-conversation and run up to 16 chats generating concurrently in the background; strict Chat vs. Agent prompt stratification, in-place editing of sent user messages to regenerate or fork a branch chat, and one-tap Read Aloud under assistant replies (reads cleaned reply text only)',
+          'Queue follow-up messages or tap to steer/interrupt while streaming; window-wide global thick-glass light infiltration (with an independent Interface effects toggle), 4-step obsidian frosted overlays, unblurred ambient solid styling, Soft / Standard / Bright hue-preserving color styles, 5-phase synchronized motion, instant post-approval execution motion, live streaming per-file edit rows with opposite-direction rolling +N / −M counters, and zero-yoyo transitions',
+          'Cross-platform keyboard & mouse support (hover highlights, pointer cursor, horizontal wheel tab scroll, right-click = long-click menus at cursor, Chinese-IME-safe Enter / Shift+Enter / Ctrl+Enter and layered Esc) plus unified top floating notice capsules',
           'Structured question cards when choices matter; pocket touch lock and background keep-alive keep runs moving when locked',
           'Import `.idpet` chat pet packs that sit above the composer and react to agent states and four dayparts',
           'Extend workflows with custom Skills and MCP servers via the vetted catalog installer, plus shareable 2 MiB rolling diagnostics and single-session trace exports',
@@ -364,8 +367,9 @@ export const strings = {
         ['Browser, prototypes & film panel', [
           'Multi-tab built-in browser with mobile/desktop UA switching, agent narration, manual login takeover, direct `localhost` / `tailnet` access, and automatic built-in proxy routing for public sites',
           'Generate interactive multi-screen web prototypes, canvas pages, and versioned document artifacts',
+          'Built-in `generate_speech` (Google AI Studio Gemini TTS with 30 prebuilt voices & OpenAI Speech) and `generate_music` (Google AI Studio Lyria 3 / 3.5 returning audio + structured lyrics) tools with dedicated tool badges and direct in-app inline audio playback across chat links, Artifacts, and the Workspace File Manager',
           'Create or edit images with cloud APIs or the standalone zero-hardcoding ComfyUI universal submitter framework (14 `comfy_*` tools, Linux / built-in Python dual-runtime auto-switching, and isolated branch chains) alongside drawing/inpainting masks and a 1×–5× / 90° swipeable lightbox gallery',
-          'Short-film production panel unifying scripts, dual-mode visual assets (`sheet` / `separate`), per-change locked-item approval cards, offline `three.js` 3D storyboard previs (camera/orbit views, 180-degree zone, Beauty/Depth PNG & hardware MP4 export), multi-channel video takes (Seedance, MiniMax, ComfyUI), score versions, single-entry reviews, last-frame extensions, and MP4 + SRT export',
+          'Always-open short-film production panel (auto-scans & attaches workspace `production.json`) unifying scripts, per-workflow asset reference modes (`sheet` / `separate`) & image limits, per-change locked-item approval cards, offline `three.js` 3D storyboard previs (camera/orbit views, 180-degree zone, Beauty/Depth PNG & hardware MP4 export), multi-channel video takes (Seedance, MiniMax, ComfyUI), cloud Lyria / ComfyUI score versions, prebuilt-voice dialogue, single-entry reviews, last-frame extensions, and MP4 + SRT export',
           'Export any conversation as standalone HTML, A4 PDF, or a long scrolling PNG',
         ]],
         ['Built-in Linux & code tooling', [
