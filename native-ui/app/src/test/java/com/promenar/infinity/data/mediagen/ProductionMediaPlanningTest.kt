@@ -91,4 +91,27 @@ class ProductionMediaPlanningTest {
         assertThrows(IllegalArgumentException::class.java) { comfyPlanningSpecs(h3, shot, framesOverride = 125) }
     }
 
+    @Test fun `单镜自定义宽高与云端分辨率作为正常生成参数生效且旧模板迁移宽高度默认为CONTENT`() {
+        val wfTemplate = template(listOf(
+            ComfySlot("1", "prompt", SlotKind.PROMPT),
+            ComfySlot("1", "width", SlotKind.WIDTH),
+            ComfySlot("1", "height", SlotKind.HEIGHT),
+        )).copy(
+            workflow = Json.parseToJsonElement("""{"1":{"class_type":"Generator","inputs":{"width":1344,"height":768,"prompt":"文字"}}}""").jsonObject,
+        )
+        val shot = com.promenar.infinity.data.production.Shot("SC01-01", "镜头", durationSeconds = 5.0, specWidth = 1920, specHeight = 1088, specResolution = "1080p")
+        val comfySpecs = comfyPlanningSpecs(wfTemplate, shot)
+        assertEquals(1920, comfySpecs.width)
+        assertEquals(1088, comfySpecs.height)
+
+        val migrated = ComfyWorkflow.fromLegacyTemplate(wfTemplate)
+        assertEquals(FieldMutability.CONTENT, migrated.field("width")?.mutability)
+        assertEquals(FieldMutability.CONTENT, migrated.field("height")?.mutability)
+
+        val videoSettings = mediaModelPreset("doubao-seedance-2-0")!!
+        val cloudModel = CloudMediaModel("p", "doubao-seedance-2-0", "https://example.invalid", videoSettings)
+        val cloudSpecs = cloudPlanningSpecs(cloudModel, shot)
+        assertEquals("1080p", cloudSpecs.resolution)
+    }
+
 }

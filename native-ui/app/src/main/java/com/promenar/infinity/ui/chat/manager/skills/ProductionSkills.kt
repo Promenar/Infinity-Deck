@@ -333,7 +333,7 @@ private fun schemaStrings(values: Collection<String>) = JsonArray(values.map(::J
 
 private fun productionFieldSchema(key: String): JsonObject = buildJsonObject {
     val type = when (key) {
-        "number", "position" -> "integer"
+        "number", "position", "spec_width", "spec_height" -> "integer"
         "duration_seconds" -> "number"
         "enabled", "remove" -> "boolean"
         "plan_snapshot", "reference_voice" -> "object"
@@ -372,6 +372,9 @@ private val productionFieldDescriptions = mapOf(
     "camera_movement" to "摄影机运动。", "visual" to "画面内容。", "performance" to "表演说明。",
     "sound" to "声音设计。", "transition" to "镜头之间的转场。", "continuity" to "连续性要求。",
     "location_asset_id" to "地点资产的标识。", "channel_id" to "生成通道标识。",
+    "spec_resolution" to "单镜头输出分辨率规格（如 1080p、720p）；null 跟随通道默认。",
+    "spec_width" to "单镜头自定义像素宽度（ComfyUI 工作流生效）；null 跟随工作流默认。",
+    "spec_height" to "单镜头自定义像素高度（ComfyUI 工作流生效）；null 跟随工作流默认。",
     "default_video_channel_id" to "项目默认视频通道标识；null 表示跟随全局默认。",
     "reference_input_mode" to "参考资产入参模式：sheet（多视图资产卡整图）或 separate（分张单视图组）；null 跟随通道推荐。",
     "mode" to "镜头生成模式。", "prompt" to "镜头生成提示词，最多 7000 字。",

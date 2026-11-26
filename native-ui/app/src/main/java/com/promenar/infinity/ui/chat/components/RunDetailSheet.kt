@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.Dp
 import com.promenar.infinity.ui.common.LocalInfinityHaptics
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +37,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -83,6 +87,7 @@ import com.promenar.infinity.ui.common.inspectorTopGap
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.forReading
 import kotlinx.coroutines.delay
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
@@ -583,38 +588,55 @@ private fun RunPlanTab(
     val groups = remember(plan.steps) { runPlanGroups(plan.steps) }
     // 与状态卡“第 N / M 步”同一来源，避免清单的“当前”与卡片步数各说各话。
     val currentStepId = runPlanCurrentStepId(plan)
-    val progress = plan.takeIf { it.totalCount > 0 }?.let { it.doneCount.toFloat() / it.totalCount }
     Column(Modifier.fillMaxSize()) {
-        if (progress != null) {
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = 10.dp)
-                    .height(4.dp)
-                    .clip(CircleShape),
-                strokeCap = StrokeCap.Round,
-                gapSize = 0.dp,
-                drawStopIndicator = {},
-                trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-            )
-        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f).testTag(UiTags.CHAT_TASK_STEP_LIST),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            contentPadding = PaddingValues(
                 start = InfinitySpacing.ScreenHorizontal,
                 end = InfinitySpacing.ScreenHorizontal,
-                top = if (progress != null) 2.dp else 8.dp,
-                bottom = 12.dp,
+                top = 14.dp,
+                bottom = 18.dp,
             ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             groups.forEachIndexed { index, group ->
-                group.title?.let { title ->
-                    item(key = "group:$index") { RunPlanGroupHeader(title, group) }
-                }
-                if (!group.collapsed) {
-                    items(group.steps.filter { !(it.isGroup && it.depth == 0) }, key = { it.id }) { step ->
-                        RunPlanStepRow(step, current = step.id == currentStepId, pulsing = plan.shouldPulse)
+                val visibleSteps = group.steps.filter { !(it.isGroup && it.depth == 0) }
+                if (group.collapsed && group.title != null) {
+                    item(key = "group-collapsed:$index") {
+                        RunPlanCollapsedGroupCard(group.title, group)
+                    }
+                } else {
+                    item(key = "group-card:$index") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            group.title?.let { title ->
+                                RunPlanGroupHeader(title, group)
+                            }
+                            if (visibleSteps.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        visibleSteps.forEachIndexed { stepIndex, step ->
+                                            if (stepIndex > 0) {
+                                                HorizontalDivider(
+                                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                                                    modifier = Modifier.padding(start = 42.dp, end = 14.dp),
+                                                )
+                                            }
+                                            key(step.id) {
+                                                RunPlanStepRow(
+                                                    step = step,
+                                                    current = step.id == currentStepId,
+                                                    pulsing = plan.shouldPulse,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -624,9 +646,42 @@ private fun RunPlanTab(
 }
 
 @Composable
+private fun RunPlanCollapsedGroupCard(title: String, group: RunPlanGroup) {
+    val domain = MaterialTheme.infinityDomainColors
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = domain.success, modifier = Modifier.size(16.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = stringResource(R.string.run_detail_group_done, group.doneCount, group.leafCount),
+                style = MaterialTheme.typography.labelMedium,
+                color = domain.success,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+    }
+}
+
+@Composable
 private fun RunPlanGroupHeader(title: String, group: RunPlanGroup) {
     Row(
-        Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -637,11 +692,13 @@ private fun RunPlanGroupHeader(title: String, group: RunPlanGroup) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f, fill = false),
         )
-        if (group.collapsed) {
+        if (group.leafCount > 0) {
             Text(
-                stringResource(R.string.run_detail_group_done, group.doneCount, group.leafCount),
+                text = "${group.doneCount}/${group.leafCount}",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.infinityDomainColors.success,
+                color = if (group.doneCount == group.leafCount) MaterialTheme.infinityDomainColors.success else MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                softWrap = false,
             )
         }
     }
@@ -649,6 +706,7 @@ private fun RunPlanGroupHeader(title: String, group: RunPlanGroup) {
 
 @Composable
 private fun RunPlanStepRow(step: TaskPanelStep, current: Boolean, pulsing: Boolean) {
+    val scheme = MaterialTheme.colorScheme
     val statusLabel = stringResource(
         when (step.status) {
             TaskPanelStepStatus.TODO -> R.string.chat_task_step_todo
@@ -658,38 +716,122 @@ private fun RunPlanStepRow(step: TaskPanelStep, current: Boolean, pulsing: Boole
         },
     )
     val finished = step.status == TaskPanelStepStatus.DONE || step.status == TaskPanelStepStatus.DROPPED
-    Row(
+    var expanded by remember(step.id) { mutableStateOf(false) }
+    var hasOverflow by remember(step.id, step.title) { mutableStateOf(false) }
+    val canToggleExpand = !step.isGroup && (hasOverflow || expanded)
+    val indentStart = 14.dp + InfinitySpacing.Medium * (step.depth - 1).coerceAtLeast(0)
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 40.dp)
+            .height(IntrinsicSize.Min)
+            .animateContentSize(InfinityMotion.contentSizeSpec())
             .then(
-                if (current) Modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                if (current) Modifier.background(scheme.primaryContainer.copy(alpha = 0.36f))
                 else Modifier,
             )
-            .padding(start = 10.dp + InfinitySpacing.Medium * (step.depth - 1).coerceAtLeast(0), end = 10.dp)
+            .then(
+                if (canToggleExpand) Modifier.clickable(role = Role.Button, onClick = { expanded = !expanded })
+                else Modifier,
+            )
             .semantics(mergeDescendants = true) { if (!step.isGroup) stateDescription = statusLabel },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
-            when {
-                step.isGroup -> Unit
-                step.status == TaskPanelStepStatus.DONE -> Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                step.status == TaskPanelStepStatus.DROPPED -> Icon(Icons.Rounded.Block, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                step.status == TaskPanelStepStatus.DOING || current -> TaskStatusDot(pulsing = pulsing, color = MaterialTheme.colorScheme.primary)
-                else -> TaskStatusDot(pulsing = false, color = MaterialTheme.colorScheme.outline)
-            }
-        }
-        Text(
-            step.title,
-            modifier = Modifier.weight(1f).padding(vertical = 8.dp),
-            style = if (step.isGroup) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
-            fontWeight = if (current) FontWeight.Medium else null,
-            color = if (finished) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-            textDecoration = if (step.status == TaskPanelStepStatus.DROPPED && !step.isGroup) TextDecoration.LineThrough else null,
-        )
         if (current) {
-            Text(stringResource(R.string.run_detail_current), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .padding(vertical = 10.dp)
+                    .width(3.dp)
+                    .clip(RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp))
+                    .background(scheme.primary),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = indentStart, end = 14.dp, top = 11.dp, bottom = 11.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .size(18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    step.isGroup -> Unit
+                    step.status == TaskPanelStepStatus.DONE -> Icon(
+                        Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = scheme.primary.copy(alpha = 0.85f),
+                        modifier = Modifier.size(16.dp),
+                    )
+                    step.status == TaskPanelStepStatus.DROPPED -> Icon(
+                        Icons.Rounded.Block,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    step.status == TaskPanelStepStatus.DOING || current -> TaskStatusDot(
+                        pulsing = pulsing,
+                        color = scheme.primary,
+                    )
+                    else -> Icon(
+                        Icons.Rounded.RadioButtonUnchecked,
+                        contentDescription = null,
+                        tint = scheme.outline,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = step.title,
+                    style = if (step.isGroup) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium.forReading(),
+                    fontWeight = if (current) FontWeight.Medium else null,
+                    color = when {
+                        finished -> scheme.onSurfaceVariant.copy(alpha = 0.78f)
+                        current -> scheme.onSurface
+                        else -> scheme.onSurface.copy(alpha = 0.9f)
+                    },
+                    textDecoration = if (step.status == TaskPanelStepStatus.DROPPED && !step.isGroup) TextDecoration.LineThrough else null,
+                    maxLines = if (expanded || step.isGroup) Int.MAX_VALUE else 3,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { layout ->
+                        if (!expanded) hasOverflow = layout.hasVisualOverflow
+                    },
+                )
+                if (current) {
+                    Text(
+                        text = stringResource(R.string.run_detail_status_running),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = scheme.primary,
+                    )
+                }
+                if (canToggleExpand) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(if (expanded) R.string.run_detail_step_collapse else R.string.run_detail_step_expand),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                        Icon(
+                            imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                            contentDescription = null,
+                            tint = scheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

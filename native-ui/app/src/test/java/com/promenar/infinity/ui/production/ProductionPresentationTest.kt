@@ -93,9 +93,28 @@ class ProductionPresentationTest {
     }
 
     @Test
-    fun `阶段菜单只有分镜预演可跳过`() {
+    fun `阶段菜单分镜预演与后处理可跳过且总览不含声音行`() {
         assertThat(stageChoices(ProductionStage.ANIMATIC)).contains(StageStatus.SKIPPED)
+        assertThat(stageChoices(ProductionStage.POST_PROCESS)).contains(StageStatus.SKIPPED)
         assertThat(stageChoices(ProductionStage.GENERATION)).doesNotContain(StageStatus.SKIPPED)
+
+        assertThat(production.visibleStages().map { it.stage }).doesNotContain(ProductionStage.SOUND)
+        assertThat(production.visibleStages().map { it.stage }).contains(ProductionStage.POST_PROCESS)
+        assertThat(visibleProductionTabs(production)).doesNotContain(ProductionTab.POST_PROCESS)
+
+        val unskipped = production.copy(stages = production.stages.map {
+            if (it.stage == ProductionStage.POST_PROCESS) it.copy(status = StageStatus.NOT_STARTED) else it
+        })
+        assertThat(visibleProductionTabs(unskipped)).containsExactly(
+            ProductionTab.OVERVIEW,
+            ProductionTab.SCRIPT,
+            ProductionTab.ASSETS,
+            ProductionTab.STORYBOARD,
+            ProductionTab.OUTPUT,
+            ProductionTab.POST_PROCESS,
+            ProductionTab.CUT,
+        ).inOrder()
+        assertThat(workflowStageTarget(ProductionStage.POST_PROCESS)).isEqualTo(ProductionTab.POST_PROCESS)
     }
 
     @Test

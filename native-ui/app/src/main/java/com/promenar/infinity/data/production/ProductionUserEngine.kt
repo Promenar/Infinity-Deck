@@ -147,7 +147,23 @@ object ProductionUserEngine {
                 })
                 require(found) { "资产不存在。" }
             }
-            is ProductionUserAction.SetShotPlan -> updateShot(action.episodeId, action.shotCode) { it.copy(channelId = action.channelId, mode = action.mode) }
+            is ProductionUserAction.SetShotPlan -> updateShot(action.episodeId, action.shotCode) {
+                val channelChanged = it.channelId != action.channelId
+                it.copy(
+                    channelId = action.channelId,
+                    mode = action.mode,
+                    specResolution = if (channelChanged) null else it.specResolution,
+                    specWidth = if (channelChanged) null else it.specWidth,
+                    specHeight = if (channelChanged) null else it.specHeight,
+                )
+            }
+            is ProductionUserAction.SetShotSpecs -> updateShot(action.episodeId, action.shotCode) {
+                it.copy(
+                    specResolution = action.resolution?.trim()?.takeIf(String::isNotBlank),
+                    specWidth = action.width,
+                    specHeight = action.height,
+                )
+            }
             is ProductionUserAction.ClearPromptEdited -> updateShot(action.episodeId, action.shotCode) { it.copy(promptUserEdited = false) }
             is ProductionUserAction.SetCharacterLook -> updateContent(action.episodeId, action.shotCode) { shot ->
                 val character = p.assets.firstOrNull { it.id == action.characterAssetId && it.kind == AssetKind.CHARACTER }

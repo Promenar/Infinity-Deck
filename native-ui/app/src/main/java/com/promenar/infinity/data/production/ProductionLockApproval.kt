@@ -798,6 +798,7 @@ object ProductionLockApprovalPlanner {
         ProductionStage.STORYBOARD -> "分镜"
         ProductionStage.ANIMATIC -> "分镜预演"
         ProductionStage.GENERATION -> "出片"
+        ProductionStage.POST_PROCESS -> "后处理"
         ProductionStage.SOUND -> "声音"
         ProductionStage.EDIT -> "剪辑"
     }

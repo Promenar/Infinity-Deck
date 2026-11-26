@@ -84,6 +84,7 @@ internal object ProductionSamples {
             StageState(ProductionStage.STORYBOARD, StageStatus.IN_PROGRESS),
             StageState(ProductionStage.ANIMATIC, StageStatus.SKIPPED),
             StageState(ProductionStage.GENERATION, StageStatus.IN_PROGRESS),
+            StageState(ProductionStage.POST_PROCESS, StageStatus.SKIPPED),
             StageState(ProductionStage.SOUND),
             StageState(ProductionStage.EDIT),
         ),

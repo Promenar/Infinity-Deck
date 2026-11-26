@@ -48,8 +48,22 @@ class ProductionRunService(
         scanAfterReport(sessionId)
         run
     }
+    suspend fun completeWithoutMedia(sessionId: String, runId: String, message: String? = null): ProductionRun = withContext(Dispatchers.IO) {
+        val snapshot = load(sessionId)
+        val old = active(snapshot.production, runId)
+        val time = maxOf(now(), old.reportedAt)
+        val run = old.copy(
+            state = RunState.COMPLETED,
+            completedSteps = old.steps ?: old.completedSteps,
+            message = message?.takeIf(String::isNotBlank)?.take(1000) ?: old.message,
+            reportedAt = time,
+        )
+        store.apply(sessionId, snapshot, ProductionUserAction.SaveRun(run))
+        run
+    }
     suspend fun finish(sessionId: String, runId: String, path: String, sourceTakeId: String? = null, operation: String? = null,
-        params: Map<String, JsonPrimitive> = emptyMap(), segmentPaths: List<String> = emptyList()): ProductionRun = withContext(Dispatchers.IO) {
+        params: Map<String, JsonPrimitive> = emptyMap(), segmentPaths: List<String> = emptyList(),
+        serviceName: String = "外部脚本"): ProductionRun = withContext(Dispatchers.IO) {
         val snapshot = load(sessionId)
         val p = snapshot.production
         val old = active(p, runId)
@@ -85,7 +99,7 @@ class ProductionRunService(
             val shot = p.requiredShot(requireNotNull(old.target.episodeId), requireNotNull(old.target.shotCode))
             require(derivation == null || shot.takes.any { it.id == derivation.sourceTakeId }) { "来源候选须属于登记镜头。" }
             require(mediaKindFromPath(resultPath) == com.promenar.infinity.domain.mediagen.InputKind.VIDEO) { "镜头产物必须是视频。" }
-            take = Take(newId(), resultPath, TakeSource("外部脚本"), time, derivedFrom = derivation, segments = segments, spec = spec, runId = old.id)
+            take = Take(newId(), resultPath, TakeSource(serviceName.take(120).ifBlank { "外部脚本" }), time, derivedFrom = derivation, segments = segments, spec = spec, runId = old.id)
         }
         val run = old.copy(state = RunState.COMPLETED, completedSteps = old.steps ?: old.completedSteps, reportedAt = time,
             resultTakeId = take?.id, resultAssetVersion = version?.number, resultPath = resultPath, segments = segments)

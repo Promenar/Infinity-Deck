@@ -7,6 +7,7 @@ import com.promenar.infinity.data.production.Episode
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ProductionKind
 import com.promenar.infinity.data.production.ProductionStage
+import com.promenar.infinity.data.production.isPostProcessTabVisible
 import com.promenar.infinity.data.production.Scene
 import com.promenar.infinity.data.production.Shot
 import com.promenar.infinity.data.production.ShotStatus
@@ -17,7 +18,18 @@ import com.promenar.infinity.data.production.currentVersionPath
 /* 制作面板的纯展示逻辑：统计、待处理清单与定位。界面只读这些结果，不直接遍历快照。 */
 
 /** 面板内的六个流程与管理页签。 */
-enum class ProductionTab { OVERVIEW, SCRIPT, ASSETS, STORYBOARD, OUTPUT, CUT }
+enum class ProductionTab { OVERVIEW, SCRIPT, ASSETS, STORYBOARD, OUTPUT, POST_PROCESS, CUT }
+
+/** 方案 A 动态顶部页签：默认隐藏「后处理」，仅在未跳过或存在派生候选时插在「出片」与「剪辑」之间。 */
+fun visibleProductionTabs(production: Production): List<ProductionTab> = buildList {
+    add(ProductionTab.OVERVIEW)
+    add(ProductionTab.SCRIPT)
+    add(ProductionTab.ASSETS)
+    add(ProductionTab.STORYBOARD)
+    add(ProductionTab.OUTPUT)
+    if (production.isPostProcessTabVisible()) add(ProductionTab.POST_PROCESS)
+    add(ProductionTab.CUT)
+}
 
 /** 镜头统计。[pending] 是等待用户处理的数量（待审）。 */
 data class ShotStats(
@@ -95,8 +107,10 @@ fun Production.redoShots(): List<ShotLocation> = shotLocations().filter { it.sho
 fun Production.currentStage(): ProductionStage? =
     stages.firstOrNull { it.status != StageStatus.LOCKED && it.status != StageStatus.SKIPPED }?.stage
 
-/** 界面展示的阶段：关闭分镜预演时不显示该阶段。 */
-fun Production.visibleStages() = stages.filter { previewEnabled || it.stage != ProductionStage.ANIMATIC }
+/** 界面展示的阶段：与顶栏流程 1:1 对齐，移除独立「声音」行（保留枚举供资产与成本归类），关闭预演时不显示预演行。 */
+fun Production.visibleStages() = stages.filter {
+    it.stage != ProductionStage.SOUND && (previewEnabled || it.stage != ProductionStage.ANIMATIC)
+}
 
 fun Production.findShot(episodeId: String, shotCode: String): ShotLocation? =
     shotLocations().firstOrNull { it.episode.id == episodeId && it.shot.code == shotCode }
@@ -128,6 +142,7 @@ fun workflowStageTarget(stage: ProductionStage): ProductionTab = when (stage) {
     ProductionStage.STORYBOARD -> ProductionTab.STORYBOARD
     ProductionStage.ANIMATIC -> ProductionTab.CUT
     ProductionStage.GENERATION -> ProductionTab.OUTPUT
+    ProductionStage.POST_PROCESS -> ProductionTab.POST_PROCESS
     ProductionStage.SOUND -> ProductionTab.ASSETS
     ProductionStage.EDIT -> ProductionTab.CUT
 }

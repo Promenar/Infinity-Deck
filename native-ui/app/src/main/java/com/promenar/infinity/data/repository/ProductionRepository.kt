@@ -60,7 +60,7 @@ class ProductionRepository(
         snapshot.production.createdAt, snapshot.production.updatedAt,
     )
     private fun snapshot(row: ProductionEntity, sync: ManifestSync = states.value[row.id] ?: row.manifestError?.let { ManifestSync.WriteFailed(it) } ?: ManifestSync.Pending) =
-        ProductionSnapshot(json.decodeFromString<Production>(row.snapshot), row.revision, sync)
+        ProductionSnapshot(json.decodeFromString<Production>(row.snapshot).normalizeStages(), row.revision, sync)
     private fun path(row: ProductionEntity) = "${row.rootPath}/production.json"
     private fun message(e: Exception) = (e.message ?: "工作区文件访问失败").take(500)
     private suspend fun required(sessionId: String) = dao.getForSession(sessionId) ?: throw IllegalArgumentException("当前会话没有制作项目，请先定义或附加项目。")

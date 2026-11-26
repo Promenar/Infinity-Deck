@@ -257,8 +257,8 @@ object SystemPromptSections {
             val costAlertCount = com.promenar.infinity.data.production.PRODUCTION_COST_ALERT_COUNT
             appendLine()
             appendLine("### 视频与影视制作（制作面板）")
-            appendLine("- 多镜头/分镜、视觉资产、剧本/方案、剪辑或分步审片的视频与动作试验片（不限长短），即使已激活 comfyui-generation，也须在首批资产或镜头前先 `production_define`（已有 `production.json` 用 `production_attach`）；单图或单条随手试拍无需建项。")
-            appendLine("- 生成达 $costAlertCount 次时先告知用户再继续；细则用 `read_skill_file(name=\"infinity-deck\", path=\"references/production.md\")`。")
+            appendLine("- 多镜头/资产/剪辑视频与动作试验片（含 comfyui-generation）先 `production_define`（已有用 `production_attach`），单图试拍无需建项。")
+            appendLine("- 执行：①片场工具→②`comfy_run_workflow`（传 `shot_ref` 同步进度/锁帧）→③脚本/SSH+`production_run`。生成达 $costAlertCount 次时先告知用户再继续；细则读 `references/production.md`。")
         }
         if (toolNames.any { it in setOf("state_define", "state_update", "state_get", "state_remove") }) {
             appendLine("- 用户要求跟踪游戏状态或写作进度时，用 state_define 定义状态面板，以 state_update 更新，state_get 读取，state_remove 移除；无需额外模型抽取。")

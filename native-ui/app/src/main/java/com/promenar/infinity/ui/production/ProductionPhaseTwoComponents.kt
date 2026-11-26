@@ -26,7 +26,12 @@ import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.theme.InfinitySpacing
 
-internal val ProductionPagePadding = PaddingValues(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small)
+internal val ProductionPagePadding = PaddingValues(
+    start = InfinitySpacing.Large,
+    top = InfinitySpacing.Large,
+    end = InfinitySpacing.Large,
+    bottom = 20.dp,
+)
 
 @Composable
 internal fun ProductionBlock(title: String? = null, content: @Composable ColumnScope.() -> Unit) = ProductionSection(title, content = content)

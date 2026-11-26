@@ -21,7 +21,30 @@ class ProductionManifestCodecTest {
         assertThat(decoded.production.stages[4].stage).isEqualTo(ProductionStage.GENERATION)
         assertThat(decoded.production.stages[2].status).isEqualTo(StageStatus.LOCKED)
         assertThat(decoded.production.stages[4].status).isEqualTo(StageStatus.IN_PROGRESS)
+        assertThat(decoded.production.stageStatus(ProductionStage.POST_PROCESS)).isEqualTo(StageStatus.SKIPPED)
         assertThat(ProductionManifestCodec.encode(decoded.production, 1).toString(Charsets.UTF_8)).contains(ProductionManifestCodec.SCHEMA)
+    }
+
+    @Test fun `旧清单含派生候选时自动激活后处理阶段并校验单镜规格字段`() {
+        val legacyWithDerived = """{"schema":"infinity.production/1","revision":1,"production":{"id":"p1","title":"项目","kind":"series","rootPath":"productions/p1","createdAt":1,"updatedAt":1,"stages":[{"stage":"script"},{"stage":"visual_dev"},{"stage":"storyboard"},{"stage":"animatic"},{"stage":"generation"},{"stage":"sound"},{"stage":"edit"}],"seasons":[{"id":"S1","number":1,"episodes":[{"id":"S1E01","number":1,"title":"集","scenes":[{"code":"SC01","number":1,"heading":"场","shots":[{"code":"SC01-01","title":"镜头","durationSeconds":3.0,"takes":[{"id":"t1","path":"productions/p1/S1E01/takes/t1.mp4","source":{"service":"gen"},"createdAt":1},{"id":"t2","path":"productions/p1/S1E01/takes/t2.mp4","source":{"service":"derive"},"createdAt":2,"derivedFrom":{"sourceTakeId":"t1","operation":"超分"}}]}]}]}]}]}}"""
+        val decoded = ProductionManifestCodec.decode(legacyWithDerived.toByteArray())
+        assertThat(decoded.production.stageStatus(ProductionStage.POST_PROCESS)).isEqualTo(StageStatus.IN_PROGRESS)
+        assertThat(decoded.production.isPostProcessTabVisible()).isTrue()
+
+        val p = production()
+        fun withShot(transform: (Shot) -> Shot) = p.copy(seasons = p.seasons.map { s ->
+            s.copy(episodes = s.episodes.map { ep -> ep.copy(scenes = ep.scenes.map { sc -> sc.copy(shots = sc.shots.map(transform)) }) })
+        })
+        val valid = withShot { it.copy(specResolution = "1080p", specWidth = 1920, specHeight = 1088) }
+        val roundTrip = ProductionManifestCodec.decode(ProductionManifestCodec.encode(valid, 1)).production
+        val rtShot = roundTrip.seasons.single().episodes.single().scenes.single().shots.single()
+        assertThat(rtShot.specResolution).isEqualTo("1080p")
+        assertThat(rtShot.specWidth).isEqualTo(1920)
+        assertThat(rtShot.specHeight).isEqualTo(1088)
+
+        assertThrows(IllegalArgumentException::class.java) { ProductionManifestCodec.encode(withShot { it.copy(specWidth = 1920, specHeight = null) }, 1) }
+        assertThrows(IllegalArgumentException::class.java) { ProductionManifestCodec.encode(withShot { it.copy(specWidth = 32, specHeight = 1088) }, 1) }
+        assertThrows(IllegalArgumentException::class.java) { ProductionManifestCodec.encode(withShot { it.copy(specWidth = 1920, specHeight = 9999) }, 1) }
     }
 
     @Test fun `清单往返保留项目和修订号`() {

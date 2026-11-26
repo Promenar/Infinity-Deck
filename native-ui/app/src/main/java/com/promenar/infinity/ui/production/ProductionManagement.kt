@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCut
@@ -149,6 +150,10 @@ internal fun ProductionManagementTab(
                         },
                         onToggleSkipAnimatic = { skipped ->
                             onRun(ProductionUserAction.SetStage(ProductionStage.ANIMATIC, if (skipped) StageStatus.SKIPPED else StageStatus.NOT_STARTED))
+                        },
+                        onToggleSkipPostProcess = { skipped ->
+                            val targetStatus = if (skipped) StageStatus.SKIPPED else if (production.hasDerivedTakes()) StageStatus.IN_PROGRESS else StageStatus.NOT_STARTED
+                            onRun(ProductionUserAction.SetStage(ProductionStage.POST_PROCESS, targetStatus))
                         },
                         onOpenPrevis = onOpenPrevis,
                     )
@@ -542,6 +547,7 @@ private fun WorkflowStageRow(
     busy: Boolean,
     onNavigate: () -> Unit,
     onToggleSkipAnimatic: (Boolean) -> Unit,
+    onToggleSkipPostProcess: (Boolean) -> Unit = {},
     onOpenPrevis: () -> Unit = onNavigate,
 ) {
     val episodes = production.episodes()
@@ -660,6 +666,35 @@ private fun WorkflowStageRow(
             }
             ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
         }
+        ProductionStage.POST_PROCESS -> {
+            val postStats = production.postProcessStats()
+            val skipped = stage.status == StageStatus.SKIPPED && !production.hasDerivedTakes()
+            val subtitle = when {
+                stats.total <= 0 -> stringResource(R.string.p2_optional_stage)
+                postStats.review > 0 -> stringResource(R.string.p2_stage_post_process_optional_review, postStats.derived, stats.total, postStats.review)
+                else -> stringResource(R.string.p2_stage_post_process_optional, postStats.derived, stats.total)
+            }
+            ProductionRow(
+                title = stage.stage.label(),
+                icon = stage.stage.icon(),
+                subtitle = subtitle,
+                chevron = false,
+                enabled = !busy,
+                trailing = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.p2_skip), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
+                        InfinitySwitch(
+                            checked = skipped,
+                            onCheckedChange = { next -> onToggleSkipPostProcess(next) },
+                            enabled = !busy && !production.hasDerivedTakes(),
+                        )
+                    }
+                },
+                onClick = {
+                    if (skipped) onToggleSkipPostProcess(false) else onNavigate()
+                },
+            )
+        }
         ProductionStage.SOUND -> {
             val dialogueCount = production.shotLocations().sumOf { it.shot.dialogue.size }
             val sounds = production.assets.filter { it.kind == AssetKind.SOUND }
@@ -762,6 +797,7 @@ internal fun ProductionStage.icon(): ImageVector = when (this) {
     ProductionStage.STORYBOARD -> Icons.AutoMirrored.Rounded.ViewList
     ProductionStage.ANIMATIC -> Icons.Rounded.Slideshow
     ProductionStage.GENERATION -> Icons.Rounded.Movie
+    ProductionStage.POST_PROCESS -> Icons.Rounded.AutoFixHigh
     ProductionStage.SOUND -> Icons.Rounded.GraphicEq
     ProductionStage.EDIT -> Icons.Rounded.ContentCut
 }

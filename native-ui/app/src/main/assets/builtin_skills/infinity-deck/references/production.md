@@ -21,7 +21,7 @@
 | upsert_season | id, number | title |
 | upsert_episode | season_id, id, number, title | script_path, previs_path |
 | upsert_scene | episode_id, code, number, heading | |
-| upsert_shot | episode_id, scene_code, code，新建还需 title, duration_seconds | title, duration_seconds, size, camera, camera_movement, visual, performance, dialogue, sound, transition, continuity, appearances, location_asset_id, prop_asset_ids, channel_id, mode, prompt, inputs, preview, preview_path, agent_note, change_note, position |
+| upsert_shot | episode_id, scene_code, code，新建还需 title, duration_seconds | title, duration_seconds, size, camera, camera_movement, visual, performance, dialogue, sound, transition, continuity, appearances, location_asset_id, prop_asset_ids, channel_id, spec_resolution, spec_width, spec_height, mode, prompt, inputs, preview, preview_path, agent_note, change_note, position |
 | set_shot_status | episode_id, shot_code, status | |
 | add_take | episode_id, shot_code, path, service，有 task_id 时须提供实际 plan_snapshot | model, mode, task_id, usage_ref, plan_snapshot, note |
 | upsert_asset | id, kind, name | description, looks, reference_voice, reference_views |
@@ -38,8 +38,8 @@
 | remove | target, ids，scene、shot 还需 episode_id | |
 
 - 季 `S[0-9]+`（S1），集 `S[0-9]+E[0-9]{2,}`（S1E01，须属该季），场 `SC[0-9]+`（SC01），镜头 `SC[0-9]+-[0-9]+`（SC01-01，须属该场）。资产 `[a-z][a-z0-9-]*`，最多 48 字符。number 为正整数，duration_seconds 为有限正数，position 从 0 起算。
-- status 取值按操作区分。镜头用 todo、generating、review，资产用 draft、review，阶段用 not_started、in_progress、skipped。stage 为 script、visual_dev、storyboard、animatic、generation、sound、edit。
-- kind 为 character、location、prop、style、sound。mode 为 text、first_frame、last_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。remove 的 target 为 season、episode、scene、shot、asset，ids 是按目标格式填写的非空无重复字符串数组。enabled 与 remove 为布尔值。ComfyUI 视频工作流声明 `fps` 后，`production_plan` / `production_generate` 会按镜头 `duration_seconds` 自动对齐 `frameBase+k*frameStep` 帧数，也支持传可选 `frames` 显式覆盖。
+- status 取值按操作区分。镜头用 todo、generating、review，资产用 draft、review，阶段用 not_started、in_progress、skipped。stage 为 script、visual_dev、storyboard、animatic、generation、post_process、sound、edit（其中 `post_process` 默认 `skipped` 隐藏；关闭跳过或任一镜头登记派生候选时，「后处理」页签自动在「出片」与「剪辑」间浮现；总览流程不再单列 `sound` 行，声音资产仍在「资产」和「剪辑」管理）。
+- kind 为 character、location、prop、style、sound。mode 为 text、first_frame、last_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。remove 的 target 为 season、episode、scene、shot、asset，ids 是按目标格式填写的非空无重复字符串数组。enabled 与 remove 为布尔值。单镜头规格可直接通过 `upsert_shot` 传入 `spec_resolution`（云端分辨率档位）或成对的 `spec_width` / `spec_height`（64～8192，ComfyUI 宽高生成参数，不影响工作流默认配置）；ComfyUI 视频工作流声明 `fps` 后，`production_plan` / `production_generate` 会按镜头 `duration_seconds` 自动对齐 `frameBase+k*frameStep` 帧数，也支持传可选 `frames` 显式覆盖。
 - **双模参考资产与版本分工红线**：
   - `versions`（`add_asset_version`）：仅用于同一定妆或原画的**纵向迭代替换**（`v1 → v2` 在面板中互斥审批，同时只生效一版）或**单图多视图整卡主图**；**禁止**用 `v1/v2/v3` 存放同一套造型的正/侧/背，也**禁止**因拆分三视图而另外新建重复角色资产。
   - **角色双模（`looks` / `upsert_look` / `set_look_slot`）**：同一造型同时支持单图多视图整卡（`sheet_path`/`sheet_note`，适合 Seedance 等直接接收整卡的模型）和分张单视图组（`slots` 里的 `front`/`side`/`back` 及自定义位，适合 H3 等分张多参模型）；支持二选一登记或双模并存，提交后即可由用户在造型区独立批准定稿。
@@ -91,7 +91,13 @@
 
 ## 生成、派生、尾帧衔接与外部编排
 
-制作面板负责审核、建议、批准、取消以及可选快捷重试；智能体通过制作工具与 ComfyUI 工作流工具独立完成全流程编排。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生工作流及参数表。对于 ComfyUI 兼容层的工作流、Python 提交器（自动适配 Linux / 内置 Python 3.14）与有状态链（`stateful_chain`，如 Motion Context 多段接续），可直接用 `comfy_list_workflows`、`comfy_run_workflow`、`comfy_get_chain_state` 与 `comfy_set_chain_tip` 编排，包括从任意 `ACTIVE` 中段传入 `parent_node_id` 发起分支或传入 `retry_node_id` 重跑任意中间段，无需依赖用户手工点击面板按钮。请求不可用时按错误返回的可用项调整规划。
+### 执行路径优先级（保留外部脚本能力，但优先内置片场工具）
+
+1. **第一优先：内置片场工具**（`production_plan` → `production_generate` / `production_derive` / `production_extend` / `production_score`）：自动组装参考图、提示词、单镜规格并接入总览任务队列与审片流。
+2. **第二优先：ComfyUI 兼容层工作流工具**（`comfy_list_workflows` / `comfy_run_workflow` / `comfy_get_chain_state` / `comfy_set_chain_tip`）：用于有状态多段链式生成（`stateful_chain`，如 Motion Context）、自定义提交器或带 `TIMED_FILES / GUIDES` 锁帧槽的工作流。调用 `comfy_run_workflow` 时务必传入 `shot_ref`（如 `S1E01/SC01-03` 或 `SC01-03`），应用会自动把实时进度同步到制作总览「任务」队列、在视频落盘项目目录时自动登记候选，并在未显式传 `guides` 时自动透传该镜头登记的 `InputRole.ANCHOR` 锁帧锚点。分辨率宽高作为正常 `CONTENT` 生成参数直接填入 `content_inputs`，无需审批；仅偏离 `FIXED` 基线的参数才走 Diff 审批。
+3. **第三兜底：外部脚本 / SSH 编排 + `production_run`**：仅当上述两层均无法满足特殊后处理或远端流水线时再采用，务必通过 `production_run(start/progress/finish/fail)` 同步进度和产物来源。
+
+制作面板负责审核、检视、批准、取消以及可选快捷重试；链式分段与锁帧锚点编排统一由智能体通过工具管理，面板只做只读检视与成片回放。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生工作流及参数表；`production_plan` 返回的 `guides` 数组直接给出该镜头登记的 `anchor` 锁帧路径与时间点。请求不可用时按错误返回的可用项调整规划。
 
 - `production_plan` 预览当前镜头输入和通道；`production_generate(episode_id, shot_code, params?)` 提交一次生成。`params` 为工作流参数 key 对应的字符串、数值或布尔值对象，省略时取工作流缺省值。
 - `production_derive(episode_id, shot_code, take_id, operation_id, params?)` 把候选视频交给 DERIVE 工作流；`operation_id` 是工作流 id。结果作为新候选登记，并保存直接来源、操作、实际参数、工作流指纹和文件实际规格；派生候选可作为新的来源。

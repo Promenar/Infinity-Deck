@@ -42,6 +42,7 @@ fun comfyTools(
     readWorkspaceFile: (suspend (sessionId: String, path: String) -> ByteArray?)? = null,
     importSkillSubmitter: (suspend (sessionId: String, skillName: String, entryPath: String, includePaths: List<String>) -> SubmitterImportedBundle)? = null,
     productionPanelNudge: ProductionPanelNudgeTracker? = null,
+    productionRunBridge: ComfyProductionRunBridge? = null,
 ): List<SkillDefinition> = listOf(
     ComfyProbeSkill(repository),
     ComfyListTemplatesSkill(repository),
@@ -55,7 +56,7 @@ fun comfyTools(
     ComfyDeleteSubmitterSkill(repository),
     ComfySaveWorkflowSkill(repository),
     ComfyDeleteWorkflowSkill(repository),
-    ComfyRunWorkflowSkill(repository, executionEngine, jobs, productionPanelNudge),
+    ComfyRunWorkflowSkill(repository, executionEngine, jobs, productionPanelNudge, productionRunBridge),
     ComfySetChainTipSkill(chainStore),
 )
 
@@ -177,14 +178,16 @@ class ComfyRunWorkflowSkill(
     executionEngine: ComfyWorkflowExecutionEngine? = null,
     jobs: BackgroundJobManager? = null,
     productionPanelNudge: ProductionPanelNudgeTracker? = null,
+    productionRunBridge: ComfyProductionRunBridge? = null,
 ) : ComfySkill(
     repository,
     "comfy_run_workflow",
-    "执行已注册的 ComfyUI 工作流。日常生成仅传入 content_inputs，不触发工作流固定参数审批；仅当传入 fixed_overrides 且值偏离已保存基线时，系统自动弹出精确 Diff 卡片请求一次性实验批准（批准仅当次生效，绝不修改原工作流）。支持单次执行（stage=single）和有状态链式执行（stage=first / next、指定 chain_id / parent_node_id 从任意有效中段接续分叉、或 retry_node_id 重跑指定段落），并支持后台任务参数。",
+    "执行已注册的 ComfyUI 工作流。日常生成（含宽高分辨率、提示词、参考图与 GUIDES 锁帧等生成参数）直接传入 content_inputs，不触发基线审批；仅当传入 fixed_overrides 且值偏离已保存固定基线时，系统才弹出精确 Diff 卡片请求一次性实验批准。支持单次执行（stage=single）和有状态链式执行（stage=first / next、指定 chain_id / parent_node_id 从任意有效中段接续分叉、或 retry_node_id 重跑指定段落）；传入 shot_ref 且当前会话已绑定制作项目时，自动同步实时进度至总览任务队列并按需透传镜头锁帧锚点。",
     COMFY_RUN_WORKFLOW_SCHEMA,
     executionEngine = executionEngine,
     jobs = jobs,
     productionPanelNudge = productionPanelNudge,
+    productionRunBridge = productionRunBridge,
 )
 
 class ComfySetChainTipSkill(
@@ -209,6 +212,7 @@ abstract class ComfySkill(
     private val readWorkspaceFile: (suspend (sessionId: String, path: String) -> ByteArray?)? = null,
     private val importSkillSubmitter: (suspend (sessionId: String, skillName: String, entryPath: String, includePaths: List<String>) -> SubmitterImportedBundle)? = null,
     private val productionPanelNudge: ProductionPanelNudgeTracker? = null,
+    private val productionRunBridge: ComfyProductionRunBridge? = null,
 ) : SkillDefinition {
     override val id get() = name
     override val mcpServerId: String? = null
@@ -746,27 +750,46 @@ abstract class ComfySkill(
         val outputDir = optional(args, "output_dir")
         val shotRef = optional(args, "shot_ref")
 
+        val workflowRecord = runCatching { repo.workflowStateOrNull(workflowId)?.workflow }.getOrNull()
+        val shotBinding = productionRunBridge?.resolveShot(context.sessionId, shotRef)
+        val effectiveContentInputs = if (productionRunBridge != null && workflowRecord != null) {
+            productionRunBridge.mergeAnchorGuidesIfMissing(workflowRecord, shotBinding?.location?.shot, contentInputs)
+        } else contentInputs
+
         suspend fun runOnce(sink: ToolLiveOutputSink): ToolResult {
-            val result = engine.execute(
-                ComfyWorkflowExecutionRequest(
-                    sessionId = context.sessionId,
-                    workflowId = workflowId,
-                    contentInputs = contentInputs,
-                    fixedOverrides = fixedOverrides,
-                    runMode = runMode,
-                    stage = stage,
-                    chainId = chainId,
-                    parentNodeId = parentNodeId,
-                    retryNodeId = retryNodeId,
-                    branchPolicy = branchPolicy,
-                    outputDir = outputDir,
-                    shotRef = shotRef,
-                    onProgress = { pct, msg ->
-                        val label = pct?.let { "${(it * 100).toInt().coerceIn(0, 100)}% $msg" } ?: msg
-                        sink.emit(ToolOutputStream.STDOUT, "$label\n")
-                    },
-                ),
-            )
+            val activeRun = if (runMode == ComfyWorkflowRunMode.EXECUTE && productionRunBridge != null && shotBinding != null && workflowRecord != null) {
+                productionRunBridge.onStart(context.sessionId, shotBinding, workflowRecord, stage)
+            } else null
+            val result = try {
+                engine.execute(
+                    ComfyWorkflowExecutionRequest(
+                        sessionId = context.sessionId,
+                        workflowId = workflowId,
+                        contentInputs = effectiveContentInputs,
+                        fixedOverrides = fixedOverrides,
+                        runMode = runMode,
+                        stage = stage,
+                        chainId = chainId,
+                        parentNodeId = parentNodeId,
+                        retryNodeId = retryNodeId,
+                        branchPolicy = branchPolicy,
+                        outputDir = outputDir,
+                        shotRef = shotRef,
+                        onProgress = { pct, msg ->
+                            val label = pct?.let { "${(it * 100).toInt().coerceIn(0, 100)}% $msg" } ?: msg
+                            sink.emit(ToolOutputStream.STDOUT, "$label\n")
+                            productionRunBridge?.onProgress(activeRun, pct, msg)
+                        },
+                    ),
+                )
+            } catch (cancelled: CancellationException) {
+                productionRunBridge?.onFail(activeRun, "已取消")
+                throw cancelled
+            } catch (failure: Exception) {
+                productionRunBridge?.onFail(activeRun, failure.message ?: "ComfyUI 工作流执行失败")
+                throw failure
+            }
+            val sync = productionRunBridge?.onComplete(activeRun, result)
             val payload = buildJsonObject {
                 put("workflow_id", result.workflow.workflowId)
                 put("workflow_name", result.workflow.name)
@@ -774,6 +797,8 @@ abstract class ComfySkill(
                 put("run_mode", result.runMode.name.lowercase())
                 result.runtime?.let { put("execution_runtime", it.name) }
                 result.promptId?.let { put("prompt_id", it) }
+                sync?.runId?.let { put("production_run_id", it) }
+                sync?.registeredTakeId?.let { put("registered_take_id", it) }
                 put("summary", result.summary)
                 put(
                     "media",

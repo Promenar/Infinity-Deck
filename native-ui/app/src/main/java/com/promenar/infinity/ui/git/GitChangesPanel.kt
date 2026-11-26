@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -228,7 +229,6 @@ fun GitChangesPanel(
                         contentInset = InfinitySpacing.ScreenHorizontal,
                         pagerState = pagerState,
                     )
-                    Spacer(modifier = Modifier.height(InfinitySpacing.Small))
                     HorizontalPager(
                         state = pagerState,
                         key = { tabs[it] },
@@ -753,7 +753,10 @@ private fun ChangesContent(load: GitLoad<GitStatus>, actions: GitPanelActions) =
                 )
                 // 列表各项等高：惰性列表看不到屏幕外的行，按三组全部变更算出是否有带路径第二行的项。
                 val twoLine = GitChangeGroup.entries.any { group -> value.group(group).entries.any { it.hasSecondaryLine() } }
-                LazyColumn(modifier = Modifier.fillMaxSize().testTag(GitPanelTags.CHANGES_LIST)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().testTag(GitPanelTags.CHANGES_LIST),
+                    contentPadding = PaddingValues(top = 14.dp, bottom = 16.dp),
+                ) {
                     if (hint.isNotEmpty()) {
                         item(key = "hint", contentType = "hint") { PanelHint(text = hint.joinToString("\n")) }
                     }
@@ -978,7 +981,10 @@ private fun BranchesContent(
             if (value.branches.isEmpty()) {
                 GitPanelStateMessage(message = stringResource(R.string.git_panel_no_branches))
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize().testTag(GitPanelTags.BRANCHES_LIST)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().testTag(GitPanelTags.BRANCHES_LIST),
+                    contentPadding = PaddingValues(top = 14.dp, bottom = 16.dp),
+                ) {
                     items(value.branches, key = { it.name }, contentType = { "branch" }) { branch ->
                         BranchRow(branch)
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1064,7 +1070,10 @@ private fun CommitsContent(load: GitLoad<GitCommitLog>, actions: GitPanelActions
             if (value.commits.isEmpty()) {
                 GitPanelStateMessage(message = stringResource(R.string.git_panel_no_commits))
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize().testTag(GitPanelTags.COMMITS_LIST)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().testTag(GitPanelTags.COMMITS_LIST),
+                    contentPadding = PaddingValues(top = 14.dp, bottom = 16.dp),
+                ) {
                     items(value.commits, key = { it.sha }, contentType = { "commit" }) { commit ->
                         CommitRow(commit, onClick = { actions.onOpenCommit(commit) })
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

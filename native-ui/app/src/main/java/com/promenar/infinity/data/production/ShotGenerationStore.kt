@@ -89,7 +89,8 @@ internal fun registerShotTask(production: Production, task: MediaTask, now: Long
             else -> InputRole.REFERENCE
         }, input.location)
     }, request.prompt, mediaInputs = request.inputs, specs = request.specs, generationMode = request.mode, templateFingerprint = request.productionContext?.templateFingerprint, params = request.params)
-    return production.mapShot(ref.episodeId, ref.shotCode) { shot ->
+    val isDerived = request.productionContext?.sourceTakeId != null
+    val updated = production.mapShot(ref.episodeId, ref.shotCode) { shot ->
         if (ref.dialogueIndex != null) {
             val additions = task.outputPaths.distinct().filter { path -> shot.audio.none { it.taskId == task.id && it.path == path } }.map { path ->
                 ShotAudio(UUID.nameUUIDFromBytes("${task.id}:$path".toByteArray()).toString(), path, ref.dialogueIndex, task.id, snapshot, now)
@@ -104,6 +105,7 @@ internal fun registerShotTask(production: Production, task: MediaTask, now: Long
             shot.copy(takes = shot.takes + additions, status = if (additions.isNotEmpty() && shot.status !in setOf(ShotStatus.LOCKED, ShotStatus.REDO)) ShotStatus.REVIEW else shot.status)
         }
     }
+    return if (isDerived) updated.autoActivatePostProcessIfNeeded() else updated
 }
 
 /** 首轮即扫持久任务；登记失败按任务隔离重试，取消不吞掉。 */

@@ -97,7 +97,7 @@ internal fun ArtifactsContent(
     if (artifacts.isEmpty()) {
         LazyColumn(
             modifier = modifier.fillMaxWidth().testTag(UiTags.CANVAS_LIST),
-            contentPadding = PaddingValues(top = InfinitySpacing.Small, bottom = InfinitySpacing.XLarge),
+            contentPadding = PaddingValues(top = 14.dp, bottom = InfinitySpacing.XLarge),
         ) {
             item(key = "candidates") { CandidatesSection(candidates, onClaim, onIgnore) }
         }
@@ -139,7 +139,7 @@ internal fun ArtifactsContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if (pageFilter == filter) Modifier.testTag(UiTags.CANVAS_LIST) else Modifier),
-                contentPadding = PaddingValues(top = InfinitySpacing.Small, bottom = InfinitySpacing.XLarge),
+                contentPadding = PaddingValues(top = 14.dp, bottom = InfinitySpacing.XLarge),
             ) {
                 if (view.prototypes.isNotEmpty()) {
                     item(key = "prototype-header") { SectionHeader(stringResource(R.string.artifact_section_prototype), stringResource(R.string.artifact_prototype_hint)) }

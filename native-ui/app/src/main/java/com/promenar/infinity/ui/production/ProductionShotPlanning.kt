@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
@@ -19,12 +20,16 @@ import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,12 +45,14 @@ import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.forInput
+import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.rememberLastNonNull
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-private enum class PlanningSheet { MODE, CHANNEL, LOOK }
+private enum class PlanningSheet { MODE, CHANNEL, SPECS, LOOK }
 private enum class PlanningDialog { PROMPT, RECOMPILE, SCENE_REVIEW, CONTENT }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -292,7 +299,39 @@ internal fun ProductionShotDetail(
                                     onSwitchMode = { targetMode -> onRun(modeSelectionAction(location, targetMode, channels, channelOrder)) },
                                 )
                             }
-                            ProductionRow(stringResource(R.string.p2_specs), valueSegments = planSpecsSegments(preview, production, shot))
+                            val activeWfForSpecs = resolvedChannel?.id?.let { id ->
+                                comfyWorkflows.firstOrNull { wf -> wf.workflow.channelId == id }?.workflow
+                            }
+                            val canConfigureSpecs = resolvedChannel != null && (
+                                (!resolvedChannel.id.startsWith("comfy:") && resolvedChannel.capabilities.resolutions.isNotEmpty()) ||
+                                    (resolvedChannel.id.startsWith("comfy:") && (
+                                        (activeWfForSpecs?.fields?.any { it.semanticRole == FieldSemanticRole.WIDTH } == true &&
+                                            activeWfForSpecs.fields.any { it.semanticRole == FieldSemanticRole.HEIGHT }) ||
+                                            (preview?.specs?.width != null && preview?.specs?.height != null)
+                                        ))
+                                )
+                            val defaultSpecsHint = if (shot.hasCustomSpecs()) {
+                                val defaultLabelText = when {
+                                    resolvedChannel?.id?.startsWith("comfy:") == true -> {
+                                        val dw = activeWfForSpecs?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.WIDTH }?.defaultValue
+                                            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                                        val dh = activeWfForSpecs?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.HEIGHT }?.defaultValue
+                                            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                                        if (dw != null && dh != null) "${dw}×${dh}" else null
+                                    }
+                                    else -> resolvedChannel?.capabilities?.resolutions?.firstOrNull()
+                                }
+                                defaultLabelText?.let { stringResource(R.string.p2_specs_default_label, it) }
+                            } else null
+                            ProductionRow(
+                                title = stringResource(R.string.p2_specs),
+                                subtitle = defaultSpecsHint,
+                                valueSegments = planSpecsSegments(preview, production, shot),
+                                chip = if (shot.hasCustomSpecs()) ProductionChipSpec(stringResource(R.string.p2_specs_custom), ProductionTone.NEUTRAL) else null,
+                                chevron = canConfigureSpecs,
+                                enabled = !working && canConfigureSpecs,
+                                onClick = if (canConfigureSpecs) ({ sheet = PlanningSheet.SPECS }) else null,
+                            )
                             ProductionRow(stringResource(R.string.p2_preview_asset), value = shot.preview?.label() ?: stringResource(R.string.p2_none))
                             shot.previewPath?.let { ProductionMediaReference(it, Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp), asLink = shot.preview == PreviewKind.TEXT_CARD) }
                         }
@@ -304,7 +343,11 @@ internal fun ProductionShotDetail(
                         val packing = resolvedChannel?.takeIf { shot.mode == ShotMode.REFERENCE && (shot.appearances.isNotEmpty() || shot.locationAssetId != null || shot.propAssetIds.isNotEmpty()) }?.let {
                             stringResource(if (production.effectiveReferenceInputMode(it) == ReferenceInputMode.SHEET) R.string.p2_composite else R.string.p2_separate)
                         }
-                        val images = inputs.count { it.kind == InputKind.IMAGE }
+                        val images = inputs.count { it.kind == InputKind.IMAGE && !it.isAnchor }
+                        val anchors = inputs.count { it.isAnchor }
+                        val wfFps = resolvedChannel?.id?.let { id ->
+                            comfyWorkflows.firstOrNull { it.workflow.channelId == id }?.workflow?.fps
+                        }
                         Column(
                             modifier = Modifier.animateContentSize(InfinityMotion.contentSizeSpec()),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -316,6 +359,7 @@ internal fun ProductionShotDetail(
                                     sectionTitle,
                                     packing,
                                     stringResource(R.string.p2_image_count, images).takeIf { images > 0 },
+                                    stringResource(R.string.p2_anchor_count, anchors).takeIf { anchors > 0 },
                                     stringResource(R.string.p2_waiting_channel).takeIf { noChannel && inputs.isNotEmpty() },
                                 ),
                                 trailing = preview?.channel?.let { stringResource(R.string.p2_inputs_by_channel, preview?.channelLabel?.substringBefore(" $InfinityMetaSeparator ") ?: it.id) },
@@ -328,7 +372,15 @@ internal fun ProductionShotDetail(
                                 ) {
                                     Box(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(12.dp), contentAlignment = Alignment.Center) { InfinityLoadingIndicator() }
                                 }
-                                inputs.forEach { PlannedInputRow(it) }
+                                inputs.forEachIndexed { idx, planned ->
+                                    if (idx > 0) {
+                                        HorizontalDivider(
+                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                            modifier = Modifier.padding(start = 76.dp, end = InfinitySpacing.RowHorizontal),
+                                        )
+                                    }
+                                    PlannedInputRow(planned, fps = wfFps)
+                                }
                                 if (preview != null && inputs.isEmpty()) ProductionMutedRow(stringResource(R.string.p2_no_inputs))
                                 if (services.planner == null) ProductionMutedRow(noPlanner)
                             }
@@ -486,6 +538,25 @@ internal fun ProductionShotDetail(
                 onDismiss = { sheet = null },
                 emptyText = stringResource(R.string.p2_no_channels),
             ) { onRun(ProductionUserAction.SetShotPlan(episodeId, shot.code, it, shot.mode)) }
+        }
+        PlanningSheet.SPECS -> {
+            val resolvedChannel = if (preview != null) preview?.channel else resolvedShotChannel(shot, channels, channelOrder, production.defaultVideoChannelId)
+            val activeWf = resolvedChannel?.id?.let { id -> comfyWorkflows.firstOrNull { it.workflow.channelId == id }?.workflow }
+            if (resolvedChannel != null) {
+                ShotSpecsSheet(
+                    shot = shot,
+                    channel = resolvedChannel,
+                    workflow = activeWf,
+                    previewSpecs = preview?.specs,
+                    onDismiss = { sheet = null },
+                    onSave = { resolution, width, height ->
+                        sheet = null
+                        onRun(ProductionUserAction.SetShotSpecs(episodeId, shot.code, resolution, width, height))
+                    },
+                )
+            } else {
+                sheet = null
+            }
         }
         PlanningSheet.LOOK -> {
             val character = production.findAsset(lookCharacter.orEmpty())
@@ -759,21 +830,236 @@ private fun remainingBlockedReasons(
     }.toList()
 }
 
-/** 输入素材行：图号、缩略图（合图并排、语音用波形块）、标题与说明。 */
+/** 单镜头规格选择面板（正常生成参数，不改动工作流或模型默认配置）。 */
 @Composable
-internal fun PlannedInputRow(input: PlannedInput) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(input.number?.let { stringResource(R.string.p2_image_number, it) }.orEmpty(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(28.dp))
+private fun ShotSpecsSheet(
+    shot: Shot,
+    channel: MediaChannel,
+    workflow: ComfyWorkflow?,
+    previewSpecs: GenerationSpecs?,
+    onDismiss: () -> Unit,
+    onSave: (resolution: String?, width: Int?, height: Int?) -> Unit,
+) {
+    InfinityBottomSheet(
+        show = true,
+        onDismiss = onDismiss,
+        title = stringResource(R.string.p2_specs_sheet_title),
+    ) {
+        ShotSpecsSheetContent(
+            shot = shot,
+            channel = channel,
+            workflow = workflow,
+            previewSpecs = previewSpecs,
+            onSave = onSave,
+        )
+    }
+}
+
+@Composable
+internal fun ShotSpecsSheetContent(
+    shot: Shot,
+    channel: MediaChannel,
+    workflow: ComfyWorkflow?,
+    previewSpecs: GenerationSpecs?,
+    onSave: (resolution: String?, width: Int?, height: Int?) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val isComfy = channel.id.startsWith("comfy:")
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = InfinitySpacing.Large, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+            Text(
+                text = stringResource(R.string.p2_specs_sheet_hint),
+                style = MaterialTheme.typography.bodySmall.forReading(),
+                color = scheme.onSurfaceVariant,
+            )
+            if (isComfy) {
+                val defaultW = workflow?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.WIDTH }?.defaultValue
+                    ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
+                    ?: previewSpecs?.width?.takeIf { shot.specWidth == null }
+                val defaultH = workflow?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.HEIGHT }?.defaultValue
+                    ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
+                    ?: previewSpecs?.height?.takeIf { shot.specHeight == null }
+                val defaultPair = if (defaultW != null && defaultH != null) "${defaultW}×${defaultH}" else null
+                var customMode by remember(shot.code) { mutableStateOf(shot.specWidth != null && shot.specHeight != null) }
+                var widthText by remember(shot.code) { mutableStateOf((shot.specWidth ?: defaultW)?.toString().orEmpty()) }
+                var heightText by remember(shot.code) { mutableStateOf((shot.specHeight ?: defaultH)?.toString().orEmpty()) }
+                var validationError by remember { mutableStateOf<String?>(null) }
+                val invalidDimensionsMsg = stringResource(R.string.p2_specs_invalid_dimensions)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    InfinityChip(
+                        label = defaultPair?.let { stringResource(R.string.p2_specs_follow_default_value, it) }
+                            ?: stringResource(R.string.p2_specs_follow_default),
+                        selected = !customMode,
+                        onClick = { customMode = false; validationError = null },
+                    )
+                    InfinityChip(
+                        label = stringResource(R.string.p2_specs_custom_dimensions),
+                        selected = customMode,
+                        onClick = { customMode = true; validationError = null },
+                    )
+                }
+                if (customMode) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = widthText,
+                            onValueChange = { widthText = it.filter(Char::isDigit).take(4); validationError = null },
+                            label = { Text(stringResource(R.string.p2_specs_width_px)) },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.forInput(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                        )
+                        OutlinedTextField(
+                            value = heightText,
+                            onValueChange = { heightText = it.filter(Char::isDigit).take(4); validationError = null },
+                            label = { Text(stringResource(R.string.p2_specs_height_px)) },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.forInput(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    validationError?.let { err ->
+                        Text(err, style = MaterialTheme.typography.bodySmall, color = scheme.error)
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    InfinityPillButton(
+                        text = stringResource(R.string.p2_specs_reset_default),
+                        onClick = { onSave(null, null, null) },
+                        tone = InfinityPillTone.NEUTRAL,
+                        compact = true,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    InfinityPillButton(
+                        text = stringResource(R.string.p2_specs_apply),
+                        onClick = {
+                            if (!customMode) {
+                                onSave(null, null, null)
+                            } else {
+                                val w = widthText.toIntOrNull()
+                                val h = heightText.toIntOrNull()
+                                if (w == null || h == null || w !in 64..8192 || h !in 64..8192) {
+                                    validationError = invalidDimensionsMsg
+                                } else {
+                                    onSave(null, w, h)
+                                }
+                            }
+                        },
+                        tone = InfinityPillTone.PRIMARY,
+                        icon = Icons.Rounded.Check,
+                        compact = true,
+                    )
+                }
+            } else {
+                val resolutions = channel.capabilities.resolutions.distinct()
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    InfinityChip(
+                        label = stringResource(R.string.p2_specs_follow_default),
+                        selected = shot.specResolution.isNullOrBlank(),
+                        onClick = { onSave(null, null, null) },
+                    )
+                    resolutions.forEach { res ->
+                        InfinityChip(
+                            label = res,
+                            selected = shot.specResolution == res,
+                            onClick = { onSave(res, null, null) },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** 输入素材行（纯检视，匹配已确认 v1.3 原型）：缩略图严格左对齐，锁帧锚点用徽章与帧号清晰区分于普通参考图。 */
+@Composable
+internal fun PlannedInputRow(input: PlannedInput, fps: Double? = null) {
+    val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         when {
-            input.compositeOf.isNotEmpty() -> Row(Modifier.width(80.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) { input.compositeOf.take(4).forEach { ProductionThumbnail(it, Modifier.weight(1f).height(48.dp)) } }
-            input.kind == InputKind.AUDIO -> Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.tertiaryContainer), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.GraphicEq, null, Modifier.size(22.dp), MaterialTheme.colorScheme.onTertiaryContainer)
+            input.compositeOf.isNotEmpty() -> Row(Modifier.width(80.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                input.compositeOf.take(4).forEach { ProductionThumbnail(it, Modifier.weight(1f).height(48.dp)) }
+            }
+            input.kind == InputKind.AUDIO -> Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(scheme.tertiaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.GraphicEq, null, Modifier.size(22.dp), scheme.onTertiaryContainer)
             }
             else -> ProductionThumbnail(input.path, Modifier.size(48.dp))
         }
-        Column(Modifier.weight(1f)) {
-            Text(input.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            if (input.detail.isNotBlank()) Text(input.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = input.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (input.isAnchor) FontWeight.Medium else FontWeight.Normal,
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (input.isAnchor) {
+                    Surface(shape = RoundedCornerShape(6.dp), color = domain.infoContainer) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Icon(Icons.Rounded.PushPin, contentDescription = null, tint = domain.onInfoContainer, modifier = Modifier.size(11.dp))
+                            Text(
+                                text = stringResource(R.string.p2_anchor_badge),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = domain.onInfoContainer,
+                            )
+                        }
+                    }
+                } else {
+                    input.number?.let { num ->
+                        Text(
+                            text = stringResource(R.string.p2_image_number, num),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            val anchorTiming = if (input.isAnchor && input.atSeconds != null) {
+                val secs = formatShotSeconds(input.atSeconds)
+                val frame = fps?.let { kotlin.math.round(input.atSeconds * it).toInt().coerceAtLeast(0) }
+                if (frame != null) stringResource(R.string.p2_anchor_frame_seconds, frame, secs) else input.detail
+            } else input.detail
+            if (anchorTiming.isNotBlank()) {
+                Text(
+                    text = anchorTiming,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

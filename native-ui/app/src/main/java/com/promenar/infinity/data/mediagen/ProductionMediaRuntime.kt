@@ -52,7 +52,7 @@ class ProductionMediaRuntime(private val app: InfinityApplication) {
         fingerprint = { id -> registry.channel(id)?.let { template(it)?.fingerprint() } }, ready = ::channelReady, specsFor = ::planningSpecs) }
     val runs by lazy { ProductionRunService(workStore, chainMediaOps::spec, files::isImageOrVideo, fileAudit::scan, normalizePath = files::normalizeRelativePath) }
     val store: ShotGenerationStore = RepositoryShotGenerationStore(app.productionRepository,
-        byId = { id -> app.database.productionDao().get(id)?.let { Json { ignoreUnknownKeys = true }.decodeFromString(Production.serializer(), it.snapshot) } },
+        byId = { id -> app.database.productionDao().get(id)?.let { Json { ignoreUnknownKeys = true }.decodeFromString(Production.serializer(), it.snapshot).normalizeStages() } },
         activeSession = { app.database.productionDao().activeSession(it) }, probe = chainMediaOps::spec)
     val queue: MediaGenerationQueue get() = requireNotNull(app.mediaGenerationModule).queue
     val planner: ShotGenerationPlanner by lazy {

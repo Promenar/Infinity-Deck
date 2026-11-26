@@ -292,7 +292,6 @@ fun RagDetailsSheetContent(
                 bleed = 16.dp,
                 pagerState = pagerState,
             )
-            Spacer(Modifier.height(8.dp))
             HorizontalPager(
                 state = pagerState,
                 key = { tabs[it] },
@@ -344,7 +343,7 @@ private fun RetrievedReferencesList(
         modifier = Modifier
             .fillMaxSize()
             .testTag(UiTags.RAG_DETAILS_LIST),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
     ) {
         trace?.let { retrievalTrace ->
             item(key = "rag_trace_summary") { RetrievalTraceSummary(retrievalTrace) }
@@ -368,7 +367,7 @@ internal fun RetrievalTraceSummary(trace: RagRetrievalTrace) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 8.dp)
+            .padding(bottom = 8.dp)
             .testTag(UiTags.RAG_DETAILS_TRACE),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -578,7 +577,7 @@ private fun WebCitationsList(citations: List<Citation>, onOpen: (String) -> Unit
             .fillMaxSize()
             .testTag(UiTags.RAG_DETAILS_LIST),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
     ) {
         itemsIndexed(
             items = keyedCitations,
@@ -699,7 +698,7 @@ private fun KnowledgeGraphList(kgPaths: List<KgPath>, references: List<RagRefere
         modifier = Modifier
             .fillMaxSize()
             .testTag(UiTags.RAG_DETAILS_LIST),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
     ) {
         item(key = "kg-summary") {
             Column(modifier = Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -721,7 +721,7 @@ data class ComfyWorkflow(
                             WorkflowFieldSpec(
                                 key = "width",
                                 label = "宽度",
-                                mutability = FieldMutability.FIXED,
+                                mutability = FieldMutability.CONTENT,
                                 valueType = FieldValueType.INT,
                                 defaultValue = existingInput,
                                 semanticRole = FieldSemanticRole.WIDTH,
@@ -733,7 +733,7 @@ data class ComfyWorkflow(
                             WorkflowFieldSpec(
                                 key = "height",
                                 label = "高度",
-                                mutability = FieldMutability.FIXED,
+                                mutability = FieldMutability.CONTENT,
                                 valueType = FieldValueType.INT,
                                 defaultValue = existingInput,
                                 semanticRole = FieldSemanticRole.HEIGHT,

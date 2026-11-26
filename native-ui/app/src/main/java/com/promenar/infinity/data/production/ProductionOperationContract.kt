@@ -19,7 +19,7 @@ internal val productionOperationFields = linkedMapOf(
     "upsert_shot" to fields(
         "episode_id scene_code code",
         "title duration_seconds size camera camera_movement visual performance dialogue sound transition continuity " +
-            "appearances location_asset_id prop_asset_ids channel_id mode prompt inputs preview preview_path agent_note change_note position",
+            "appearances location_asset_id prop_asset_ids channel_id spec_resolution spec_width spec_height mode prompt inputs preview preview_path agent_note change_note position",
     ),
     "set_shot_status" to fields("episode_id shot_code status"),
     "add_take" to fields("episode_id shot_code path service", "model mode task_id usage_ref plan_snapshot note"),
@@ -45,7 +45,7 @@ private val assetId = Regex("[a-z][a-z0-9-]{0,47}")
 internal val productionModes = listOf("text", "first_frame", "last_frame", "first_last", "reference")
 internal val productionPreviews = listOf("keyframe", "draft_clip", "text_card")
 internal val productionAssetKinds = listOf("character", "location", "prop", "style", "sound")
-internal val productionStages = listOf("script", "visual_dev", "storyboard", "animatic", "generation", "sound", "edit")
+internal val productionStages = listOf("script", "visual_dev", "storyboard", "animatic", "generation", "post_process", "sound", "edit")
 internal val productionRemoveTargets = listOf("season", "episode", "scene", "shot", "asset")
 internal val productionShotStatuses = listOf("todo", "generating", "review")
 internal val productionAssetStatuses = listOf("draft", "review")
@@ -53,7 +53,7 @@ internal val productionStageStatuses = listOf("not_started", "in_progress", "ski
 internal val productionReferenceInputModes = listOf("sheet", "separate")
 internal val nullableProductionOperationFields = setOf(
     "title", "script_path", "previs_path", "size", "camera", "camera_movement", "visual", "performance", "sound", "transition",
-    "continuity", "location_asset_id", "channel_id", "mode", "preview", "preview_path", "agent_note", "change_note",
+    "continuity", "location_asset_id", "channel_id", "spec_resolution", "spec_width", "spec_height", "mode", "preview", "preview_path", "agent_note", "change_note",
     "model", "task_id", "usage_ref", "note", "description", "reference_voice",
     "sheet_path", "sheet_note", "path", "default_video_channel_id", "reference_input_mode",
 )

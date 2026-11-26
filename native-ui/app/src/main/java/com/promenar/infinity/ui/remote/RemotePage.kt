@@ -271,7 +271,7 @@ internal fun RemotePageContent(
             Column(Modifier.fillMaxSize()) {
                 hint?.let { RemoteHint(stringResource(it)) }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    CompositionLocalProvider(LocalInfinitySettingsEmbedded provides PaddingValues(top = InfinitySpacing.XSmall)) {
+                    CompositionLocalProvider(LocalInfinitySettingsEmbedded provides PaddingValues(top = InfinitySpacing.Large)) {
                         content(pageSegment)
                     }
                 }
@@ -297,7 +297,12 @@ private fun RemoteHint(text: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.XSmall)
+            .padding(
+                start = InfinitySpacing.ScreenHorizontal,
+                top = InfinitySpacing.Medium,
+                end = InfinitySpacing.ScreenHorizontal,
+                bottom = InfinitySpacing.XSmall,
+            )
             .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))
             .padding(InfinitySpacing.Medium)
             .testTag(RemoteTags.LINUX_HINT),

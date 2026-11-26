@@ -23,6 +23,8 @@
     <string name="run_detail_tab_state">State</string>
     <string name="run_detail_group_done">%1$d/%2$d done</string>
     <string name="run_detail_current">Current</string>
+    <string name="run_detail_step_expand">Show more</string>
+    <string name="run_detail_step_collapse">Show less</string>
     <string name="run_detail_elapsed_seconds">%1$d s elapsed</string>
     <string name="run_detail_elapsed_minutes">%1$d min %2$02d s elapsed</string>
     <string name="state_board_maintained_by_agent">Maintained by the agent</string>

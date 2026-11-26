@@ -119,6 +119,10 @@ class ShotGenerationPlannerTest {
         val result = planner().preview("s", "S1E01", "SC01-01")
         assertEquals("ref/keyframe.png", result.inputs.first().path)
         assertEquals("2.0 秒", result.inputs.first().detail)
+        assertTrue(result.inputs.first().isAnchor)
+        assertEquals(2.0, result.inputs.first().atSeconds ?: -1.0, 0.001)
+        assertNull(result.inputs.first().number)
+        assertEquals(1, result.inputs[1].number)
         assertEquals("ref/prop.png", result.inputs.last().path)
     }
 

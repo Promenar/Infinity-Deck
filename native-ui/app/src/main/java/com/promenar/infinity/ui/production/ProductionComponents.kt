@@ -80,6 +80,7 @@ object ProductionUiTags {
     const val MENU = "production_menu"
     const val EMPTY = "production_panel_empty"
     const val TAB_OVERVIEW = "production_tab_overview"
+    const val TAB_POST_PROCESS = "production_tab_post_process"
     const val TAB_SCRIPT = "production_tab_script"
     const val TAB_ASSETS = "production_tab_assets"
     const val TAB_STORYBOARD = "production_tab_storyboard"
@@ -259,6 +260,7 @@ internal fun ProductionStage.label(): String = stringResource(
         ProductionStage.STORYBOARD -> R.string.production_panel_stage_storyboard
         ProductionStage.ANIMATIC -> R.string.production_panel_stage_animatic
         ProductionStage.GENERATION -> R.string.production_phase2_stage_output
+        ProductionStage.POST_PROCESS -> R.string.p2_stage_post_process
         ProductionStage.SOUND -> R.string.production_panel_stage_sound
         ProductionStage.EDIT -> R.string.production_panel_stage_edit
     },

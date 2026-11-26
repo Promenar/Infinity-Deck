@@ -38,8 +38,9 @@ object ProductionManifestCodec {
         }
         require(manifest.schema == SCHEMA || manifest.schema == LEGACY_SCHEMA) { "清单 schema 不受支持，请使用 $SCHEMA。" }
         require(manifest.revision >= 0) { "清单修订号不能为负数。" }
-        validate(manifest.production, manifest.revision)
-        return manifest
+        val normalized = manifest.copy(production = manifest.production.normalizeStages())
+        validate(normalized.production, normalized.revision)
+        return normalized
     }
 
     fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
@@ -112,6 +113,9 @@ object ProductionManifestCodec {
                         require(Regex("SC[0-9]+-[0-9]+").matches(shot.code) && shot.code.startsWith(scene.code + "-")) { "镜头标识须为所属场标识加短横线和数字。" }
                         title(shot.title, "镜头标题")
                         require(shot.durationSeconds.isFinite() && shot.durationSeconds > 0) { "镜头时长必须为有限正数。" }
+                        require(shot.specResolution == null || (shot.specResolution.isNotBlank() && shot.specResolution.length <= 32)) { "镜头分辨率档位需为 1～32 字。" }
+                        require((shot.specWidth == null) == (shot.specHeight == null)) { "自定义宽高必须同时指定或同时留空。" }
+                        require(shot.specWidth == null || (shot.specWidth in 64..8192 && shot.specHeight in 64..8192)) { "自定义宽高需在 64～8192 像素范围内。" }
                         require(shot.prompt.length <= 7000) { "镜头提示词最多 7000 字。" }
                         note(shot.userNote, "用户批注"); note(shot.agentNote, "智能体说明")
                         require(shot.changedAt >= 0) { "镜头修订号不能为负数。" }

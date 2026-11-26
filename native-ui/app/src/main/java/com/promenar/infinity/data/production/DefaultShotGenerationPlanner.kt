@@ -95,26 +95,43 @@ class DefaultShotGenerationPlanner(
             if (settled) null else asset.name
         }.distinct().map { text("reference_review", it) }.toMutableList()
         val packed = mutableListOf<PlannedInput>()
-        suspend fun input(path: String?, title: String, detail: String, role: MediaRole = MediaRole.REFERENCE, expectedKind: InputKind? = null) {
+        suspend fun input(
+            path: String?,
+            title: String,
+            detail: String,
+            role: MediaRole = MediaRole.REFERENCE,
+            expectedKind: InputKind? = null,
+            isAnchor: Boolean = false,
+            atSeconds: Double? = null,
+        ) {
             if (path == null) { issues += text("missing_input", title); return }
             ProductionManifestCodec.validatePath(path)
             val kind = kindOf(sessionId, path)
             if (kind == null || expectedKind != null && kind != expectedKind || !files.isImageOrVideo(sessionId, path)) {
                 issues += text("missing_input", "$title ($path)"); return
             }
-            packed += PlannedInput(null, title, detail, kind, role, path)
+            packed += PlannedInput(null, title, detail, kind, role, path, isAnchor = isAnchor, atSeconds = atSeconds)
         }
         val explicit = when (shot.mode) {
-            ShotMode.FIRST_FRAME, ShotMode.LAST_FRAME, ShotMode.FIRST_LAST -> shot.inputs.sortedBy { when (it.role) { InputRole.FIRST_FRAME -> 0; InputRole.LAST_FRAME -> 1; else -> 2 } }
-            else -> shot.inputs
+            ShotMode.FIRST_FRAME, ShotMode.LAST_FRAME, ShotMode.FIRST_LAST -> shot.inputs.sortedBy { when (it.role) { InputRole.FIRST_FRAME -> 0; InputRole.LAST_FRAME -> 1; InputRole.ANCHOR -> 2; else -> 3 } }
+            else -> shot.inputs.sortedBy { if (it.role == InputRole.ANCHOR) 0 else 1 }
         }
-        explicit.forEach { item -> input(item.path, item.label ?: item.role.name.lowercase(), item.atSeconds?.let { "$it 秒" }.orEmpty(),
-            when {
-                shot.mode == ShotMode.REFERENCE -> MediaRole.REFERENCE
-                item.role == InputRole.FIRST_FRAME -> MediaRole.FIRST_FRAME
-                item.role == InputRole.LAST_FRAME -> MediaRole.LAST_FRAME
-                else -> MediaRole.REFERENCE
-            }) }
+        explicit.forEach { item ->
+            val anchor = item.role == InputRole.ANCHOR
+            input(
+                path = item.path,
+                title = item.label ?: item.role.name.lowercase(),
+                detail = item.atSeconds?.let { "$it 秒" }.orEmpty(),
+                role = when {
+                    shot.mode == ShotMode.REFERENCE -> MediaRole.REFERENCE
+                    item.role == InputRole.FIRST_FRAME -> MediaRole.FIRST_FRAME
+                    item.role == InputRole.LAST_FRAME -> MediaRole.LAST_FRAME
+                    else -> MediaRole.REFERENCE
+                },
+                isAnchor = anchor,
+                atSeconds = if (anchor) item.atSeconds else null,
+            )
+        }
         if (shot.mode == ShotMode.REFERENCE) {
             shot.appearances.forEach { appearance ->
                 val character = p.assets.find { it.id == appearance.characterAssetId && it.kind == AssetKind.CHARACTER }
@@ -206,7 +223,7 @@ class DefaultShotGenerationPlanner(
             }
         }
         var number = 0
-        val numbered = packed.map { it.copy(number = if (it.kind == InputKind.IMAGE) ++number else null) }
+        val numbered = packed.map { it.copy(number = if (it.kind == InputKind.IMAGE && !it.isAnchor) ++number else null) }
         val accepted = mutableListOf<PlannedInput>()
         val overflow = mutableListOf<PlannedInput>()
         if (channel == null) {
@@ -303,6 +320,11 @@ class DefaultShotGenerationPlanner(
         }
         return Plan(snapshot, shot, ShotPlanPreview(channel, shot.channelId.isNullOrBlank(), channel?.let { labelOf(it) }.orEmpty(), shot.mode, accepted, overflow,
             prompt, shot.promptUserEdited && !compile, format, null, issues.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n"), warnings, audioPlans, specs, params = request.params))
+    }
+
+    private fun formatSecondsCompact(seconds: Double): String {
+        val rounded = kotlin.math.round(seconds * 10.0) / 10.0
+        return if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
     }
 
     override suspend fun generate(sessionId: String, episodeId: String, shotCode: String): ShotGenerateResult = generate(sessionId, episodeId, shotCode, emptyMap(), null)

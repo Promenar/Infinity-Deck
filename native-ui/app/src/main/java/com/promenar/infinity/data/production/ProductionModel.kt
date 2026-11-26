@@ -14,7 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 @Serializable
 enum class ProductionKind { @SerialName("film") FILM, @SerialName("series") SERIES }
 
-/** 制作流程的七个阶段，顺序即流程顺序。 */
+/** 制作流程的阶段定义，顺序即流程顺序；[SOUND] 保留用于兼容旧清单与成本统计，不再在总览流程中单列。 */
 @Serializable
 enum class ProductionStage {
     @SerialName("script") SCRIPT,
@@ -22,8 +22,14 @@ enum class ProductionStage {
     @SerialName("storyboard") STORYBOARD,
     @SerialName("animatic") ANIMATIC,
     @SerialName("generation") GENERATION,
+    @SerialName("post_process") POST_PROCESS,
     @SerialName("sound") SOUND,
     @SerialName("edit") EDIT,
+}
+
+/** 新建项目的默认阶段列表：可选的「后处理」默认跳过隐藏，按需开启或在产出派生候选时自动浮现。 */
+fun defaultProductionStages(): List<StageState> = ProductionStage.entries.map { stage ->
+    StageState(stage, if (stage == ProductionStage.POST_PROCESS) StageStatus.SKIPPED else StageStatus.NOT_STARTED)
 }
 
 @Serializable
@@ -149,10 +155,15 @@ data class Shot(
     val locationAssetId: String? = null,
     val propAssetIds: List<String> = emptyList(),
     val channelId: String? = null,
+    val specResolution: String? = null,
+    val specWidth: Int? = null,
+    val specHeight: Int? = null,
     val promptUserEdited: Boolean = false,
     val audio: List<ShotAudio> = emptyList(),
     val chains: List<ShotChain> = emptyList(),
 )
+
+fun Shot.hasCustomSpecs(): Boolean = !specResolution.isNullOrBlank() || (specWidth != null && specHeight != null)
 
 @Serializable
 enum class DialogueAudioSource { @SerialName("native") NATIVE, @SerialName("dubbed") DUBBED }
@@ -291,7 +302,7 @@ data class Production(
     /** 画幅，例如 `16:9`。 */
     val aspectRatio: String? = null,
     val bible: List<DocumentRef> = emptyList(),
-    val stages: List<StageState> = ProductionStage.entries.map { StageState(it) },
+    val stages: List<StageState> = defaultProductionStages(),
     val seasons: List<Season> = emptyList(),
     val assets: List<Asset> = emptyList(),
     val previewEnabled: Boolean = true,
@@ -314,6 +325,47 @@ data class Production(
     val defaultVideoChannelId: String? = null,
     val referenceInputMode: ReferenceInputMode? = null,
 )
+
+/** 项目内是否已存在任一派生（后处理）候选。 */
+fun Production.hasDerivedTakes(): Boolean = seasons.asSequence()
+    .flatMap { it.episodes.asSequence() }
+    .flatMap { it.scenes.asSequence() }
+    .flatMap { it.shots.asSequence() }
+    .any { shot -> shot.takes.any { it.derivedFrom != null } }
+
+fun Production.stageStatus(stage: ProductionStage): StageStatus =
+    stages.firstOrNull { it.stage == stage }?.status ?: StageStatus.NOT_STARTED
+
+/** 方案 A 动态「后处理」页签可见条件：未跳过，或任一镜头已存在派生候选。 */
+fun Production.isPostProcessTabVisible(): Boolean =
+    stageStatus(ProductionStage.POST_PROCESS) != StageStatus.SKIPPED || hasDerivedTakes()
+
+/**
+ * 兼容旧版清单与数据库快照：补齐新增阶段（如 [ProductionStage.POST_PROCESS]），并保持枚举声明顺序。
+ * 已有派生候选的旧项目自动置为进行中，其余默认跳过隐藏。
+ */
+fun Production.normalizeStages(): Production {
+    val existing = stages.associateBy { it.stage }
+    if (stages.size == ProductionStage.entries.size && existing.size == ProductionStage.entries.size) return this
+    val hasDerived = hasDerivedTakes()
+    val normalized = ProductionStage.entries.map { stage ->
+        existing[stage] ?: StageState(
+            stage = stage,
+            status = when {
+                stage == ProductionStage.POST_PROCESS && hasDerived -> StageStatus.IN_PROGRESS
+                stage == ProductionStage.POST_PROCESS -> StageStatus.SKIPPED
+                else -> StageStatus.NOT_STARTED
+            },
+        )
+    }
+    return copy(stages = normalized)
+}
+
+/** 登记派生候选时，若后处理阶段此前处于默认跳过状态，自动切为进行中使总览开关与动态页签保持一致。 */
+internal fun Production.autoActivatePostProcessIfNeeded(): Production {
+    if (stageStatus(ProductionStage.POST_PROCESS) != StageStatus.SKIPPED) return this
+    return copy(stages = stages.map { if (it.stage == ProductionStage.POST_PROCESS) it.copy(status = StageStatus.IN_PROGRESS) else it })
+}
 
 /** 当前镜头的生效参考入参模式：优先遵循所选视频通道或工作流声明的能力，未指定通道时回退兼容旧清单字段，默认分张单视图。 */
 fun Production.effectiveReferenceInputMode(channel: com.promenar.infinity.domain.mediagen.MediaChannel? = null): ReferenceInputMode =
@@ -367,6 +419,7 @@ sealed interface ProductionUserAction {
     data class EditShotContent(val episodeId: String, val shotCode: String, val proposed: Shot) : ProductionUserAction
     data class SetExperimental(val enabled: Boolean) : ProductionUserAction
     data class SetShotPlan(val episodeId: String, val shotCode: String, val channelId: String?, val mode: ShotMode) : ProductionUserAction
+    data class SetShotSpecs(val episodeId: String, val shotCode: String, val resolution: String? = null, val width: Int? = null, val height: Int? = null) : ProductionUserAction
     data class RecompilePrompt(val episodeId: String, val shotCode: String, val prompt: String) : ProductionUserAction
     /** 生成层登记已完成任务；保留用户状态与内容决定。 */
     data class RegisterGeneratedTask(val task: com.promenar.infinity.domain.mediagen.MediaTask, val specs: Map<String, MediaSpec> = emptyMap()) : ProductionUserAction

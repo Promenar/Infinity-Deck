@@ -2244,6 +2244,10 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 readWorkspaceFile = ::readComfyWorkspaceFile,
                 importSkillSubmitter = ::importComfySkillSubmitter,
                 productionPanelNudge = productionPanelNudge,
+                productionRunBridge = com.promenar.infinity.ui.chat.manager.skills.ComfyProductionRunBridge(
+                    workStore = productionMediaRuntime.workStore,
+                    runService = productionMediaRuntime.runs,
+                ),
             ).forEach(::register)
             register(InitializePlanSkill(taskRepository))
             register(com.promenar.infinity.ui.chat.manager.skills.CanvasCreateSkill(canvasStore))

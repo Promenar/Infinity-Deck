@@ -172,10 +172,77 @@ fun Production.stageProgressCounts(stage: ProductionStage): Pair<Int, Int>? {
         ProductionStage.STORYBOARD -> episodes.flatMap { it.scenes }.let { scenes -> scenes.count { it.storyboardLocked } to scenes.size }
         ProductionStage.ANIMATIC -> shotLocations().count { it.shot.previewPath != null } to shotStats().total
         ProductionStage.GENERATION -> shotStats().locked to shotStats().total
+        ProductionStage.POST_PROCESS -> postProcessStats().let { it.locked to it.total }
         ProductionStage.SOUND -> assets.filter { it.kind == AssetKind.SOUND }.let { sounds -> sounds.count { it.status == AssetStatus.LOCKED } to sounds.size }
         ProductionStage.EDIT -> null
     }
 }
+
+enum class PostProcessFilter { ALL, PENDING, REVIEW, LOCKED }
+
+enum class PostProcessShotStatus { PENDING, REVIEW, LOCKED }
+
+data class PostProcessShotRow(
+    val location: ShotLocation,
+    val sourceTake: Take?,
+    val derivedTake: Take?,
+    val status: PostProcessShotStatus,
+)
+
+data class PostProcessStats(
+    val total: Int,
+    val derived: Int,
+    val pending: Int,
+    val review: Int,
+    val locked: Int,
+)
+
+/** 汇总所有已出片或已派生的镜头供「后处理」页签筛选与总览统计。 */
+fun Production.postProcessRows(filter: PostProcessFilter = PostProcessFilter.ALL): List<PostProcessShotRow> =
+    shotLocations().mapNotNull { location ->
+        val shot = location.shot
+        val derivedTakes = shot.takes.filter { it.derivedFrom != null }
+        val latestDerived = derivedTakes.maxByOrNull { it.createdAt }
+        val selected = shot.selectedTake()
+        val selectedDerived = selected?.takeIf { it.derivedFrom != null }
+        val baseTake = latestDerived?.derivedFrom?.sourceTakeId?.let { srcId ->
+            shot.takes.firstOrNull { it.id == srcId }
+        } ?: selected?.takeIf { it.derivedFrom == null }
+            ?: shot.takes.filter { it.derivedFrom == null }.maxByOrNull { it.createdAt }
+        // 仅展示已有原片候选或已有派生候选的镜头
+        if (baseTake == null && latestDerived == null) return@mapNotNull null
+        val status = when {
+            selectedDerived != null && shot.status == ShotStatus.LOCKED -> PostProcessShotStatus.LOCKED
+            latestDerived != null -> PostProcessShotStatus.REVIEW
+            else -> PostProcessShotStatus.PENDING
+        }
+        PostProcessShotRow(
+            location = location,
+            sourceTake = baseTake,
+            derivedTake = selectedDerived ?: latestDerived,
+            status = status,
+        )
+    }.filter { row ->
+        when (filter) {
+            PostProcessFilter.ALL -> true
+            PostProcessFilter.PENDING -> row.status == PostProcessShotStatus.PENDING
+            PostProcessFilter.REVIEW -> row.status == PostProcessShotStatus.REVIEW
+            PostProcessFilter.LOCKED -> row.status == PostProcessShotStatus.LOCKED
+        }
+    }.toList()
+
+fun Production.postProcessStats(): PostProcessStats {
+    val rows = postProcessRows(PostProcessFilter.ALL)
+    return PostProcessStats(
+        total = shotStats().total,
+        derived = rows.count { it.derivedTake != null },
+        pending = rows.count { it.status == PostProcessShotStatus.PENDING },
+        review = rows.count { it.status == PostProcessShotStatus.REVIEW },
+        locked = rows.count { it.status == PostProcessShotStatus.LOCKED },
+    )
+}
+
+fun Production.postProcessPendingReviewCount(): Int = postProcessStats().review
 
 /** 剪辑时间线窄块内使用的角色简称：去掉版本号与括号备注，保证对话轨可读。 */
 internal fun shortTrackSpeaker(name: String): String =

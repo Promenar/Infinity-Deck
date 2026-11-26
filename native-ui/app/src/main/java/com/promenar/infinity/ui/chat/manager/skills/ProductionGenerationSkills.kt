@@ -98,10 +98,26 @@ internal fun shotPlanJson(plan: ShotPlanPreview): JsonObject = buildJsonObject {
     put("params", JsonObject(plan.params))
     put("mode", plan.mode.name.lowercase()); put("prompt", plan.prompt); put("prompt_user_edited", plan.promptEdited); put("prompt_format", plan.promptFormat.name.lowercase())
     fun inputs(values: List<PlannedInput>) = buildJsonArray { values.forEach { input -> add(buildJsonObject {
-        put("number", input.number?.let(::JsonPrimitive) ?: JsonNull); put("title", input.title); put("detail", input.detail); put("kind", input.kind.name.lowercase()); put("role", input.role.name.lowercase())
+        put("number", input.number?.let(::JsonPrimitive) ?: JsonNull); put("title", input.title); put("detail", input.detail); put("kind", input.kind.name.lowercase()); put("role", if (input.isAnchor) "anchor" else input.role.name.lowercase())
         put("path", input.path?.let(::JsonPrimitive) ?: JsonNull); put("composite_of", JsonArray(input.compositeOf.map(::JsonPrimitive)))
+        if (input.isAnchor) {
+            put("is_anchor", true)
+            input.atSeconds?.let { put("at_seconds", it) }
+        }
     }) } }
     put("inputs", inputs(plan.inputs)); put("overflow", inputs(plan.overflow))
+    val guides = plan.inputs.filter { it.isAnchor && !it.path.isNullOrBlank() }
+    if (guides.isNotEmpty()) {
+        put("guides", buildJsonArray {
+            guides.forEach { g ->
+                add(buildJsonObject {
+                    put("file", g.path!!)
+                    put("at_seconds", g.atSeconds ?: 0.0)
+                    put("title", g.title)
+                })
+            }
+        })
+    }
     put("blocked_reason", plan.blockedReason?.let(::JsonPrimitive) ?: JsonNull); put("warnings", JsonArray(plan.warnings.map(::JsonPrimitive)))
     put("dubbing", buildJsonArray { plan.audioPlans.forEach { audio -> add(buildJsonObject { put("dialogue_index", audio.dialogueIndex); put("channel_id", audio.request.channelId); put("text", audio.request.prompt) }) } })
 }

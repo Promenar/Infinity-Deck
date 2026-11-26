@@ -543,6 +543,7 @@ fun ProductionPanelContent(
     var tab by rememberSaveable(production.id) { mutableStateOf(initialTab) }
     var requestedAssetKind by rememberSaveable(production.id) { mutableStateOf<AssetKind?>(null) }
     var outputFilter by rememberSaveable(production.id) { mutableStateOf(OutputFilter.ALL) }
+    var postProcessFilter by rememberSaveable(production.id) { mutableStateOf(PostProcessFilter.ALL) }
     var detailInitialTab by rememberSaveable(production.id) { mutableStateOf(initialShotTab) }
     var pageStack by rememberSaveable(production.id) { mutableStateOf(initialProductionPageStack(production, initialShot, initialAssetId)) }
     var openSheetAssetId by rememberSaveable(production.id) { mutableStateOf(initialAssetId?.takeIf { production.findAsset(it)?.kind == AssetKind.SOUND }) }
@@ -650,8 +651,13 @@ fun ProductionPanelContent(
     if (openSheetAssetId != null && production.findAsset(openSheetAssetId!!) == null) {
         LaunchedEffect(openSheetAssetId) { openSheetAssetId = null }
     }
-    val allTabs = ProductionTab.entries
-    val pagerState = rememberPanelTabPagerState(tabs = allTabs, selected = tab, onSelect = { tab = it }, key = production.id)
+    val allTabs = remember(production.stages, production.seasons) { visibleProductionTabs(production) }
+    val effectiveTab = if (tab in allTabs) tab else ProductionTab.OVERVIEW
+    if (effectiveTab != tab) {
+        LaunchedEffect(effectiveTab) { tab = effectiveTab }
+    }
+    val postProcessReviewCount = remember(production) { production.postProcessPendingReviewCount() }
+    val pagerState = rememberPanelTabPagerState(tabs = allTabs, selected = effectiveTab, onSelect = { tab = it }, key = "${production.id}:${allTabs.size}")
     CompositionLocalProvider(LocalProductionSend provides sendState) {
         Box(modifier.fillMaxSize()) {
             androidx.compose.runtime.key(production.id) {
@@ -742,20 +748,28 @@ fun ProductionPanelContent(
                                 }
                             }
                             InfinityPanelTabs(
-                                tabs = listOf(
-                                    InfinityPanelTab(ProductionTab.OVERVIEW, stringResource(R.string.production_panel_tab_overview), testTag = ProductionUiTags.TAB_OVERVIEW),
-                                    InfinityPanelTab(ProductionTab.SCRIPT, stringResource(R.string.production_panel_tab_script), testTag = ProductionUiTags.TAB_SCRIPT),
-                                    InfinityPanelTab(
-                                        ProductionTab.ASSETS,
-                                        stringResource(R.string.production_panel_tab_assets),
-                                        count = production.assets.count { it.status == AssetStatus.REVIEW }.takeIf { it > 0 }?.toString(),
-                                        testTag = ProductionUiTags.TAB_ASSETS,
-                                    ),
-                                    InfinityPanelTab(ProductionTab.STORYBOARD, stringResource(R.string.p2_tab_storyboard), dot = MaterialTheme.colorScheme.primary.takeIf { signals.storyboardDot }, testTag = ProductionUiTags.TAB_STORYBOARD),
-                                    InfinityPanelTab(ProductionTab.OUTPUT, stringResource(R.string.p2_tab_output), count = signals.reviews.takeIf { it > 0 }?.toString()),
-                                    InfinityPanelTab(ProductionTab.CUT, stringResource(R.string.p2_tab_cut)),
-                                ),
-                                selected = tab,
+                                tabs = allTabs.map { item ->
+                                    when (item) {
+                                        ProductionTab.OVERVIEW -> InfinityPanelTab(ProductionTab.OVERVIEW, stringResource(R.string.production_panel_tab_overview), testTag = ProductionUiTags.TAB_OVERVIEW)
+                                        ProductionTab.SCRIPT -> InfinityPanelTab(ProductionTab.SCRIPT, stringResource(R.string.production_panel_tab_script), testTag = ProductionUiTags.TAB_SCRIPT)
+                                        ProductionTab.ASSETS -> InfinityPanelTab(
+                                            ProductionTab.ASSETS,
+                                            stringResource(R.string.production_panel_tab_assets),
+                                            count = production.assets.count { it.status == AssetStatus.REVIEW }.takeIf { it > 0 }?.toString(),
+                                            testTag = ProductionUiTags.TAB_ASSETS,
+                                        )
+                                        ProductionTab.STORYBOARD -> InfinityPanelTab(ProductionTab.STORYBOARD, stringResource(R.string.p2_tab_storyboard), dot = MaterialTheme.colorScheme.primary.takeIf { signals.storyboardDot }, testTag = ProductionUiTags.TAB_STORYBOARD)
+                                        ProductionTab.OUTPUT -> InfinityPanelTab(ProductionTab.OUTPUT, stringResource(R.string.p2_tab_output), count = signals.reviews.takeIf { it > 0 }?.toString())
+                                        ProductionTab.POST_PROCESS -> InfinityPanelTab(
+                                            ProductionTab.POST_PROCESS,
+                                            stringResource(R.string.p2_tab_post_process),
+                                            count = postProcessReviewCount.takeIf { it > 0 }?.toString(),
+                                            testTag = ProductionUiTags.TAB_POST_PROCESS,
+                                        )
+                                        ProductionTab.CUT -> InfinityPanelTab(ProductionTab.CUT, stringResource(R.string.p2_tab_cut))
+                                    }
+                                },
+                                selected = effectiveTab,
                                 onSelect = { tab = it },
                                 contentInset = InfinitySpacing.ScreenHorizontal,
                                 pagerState = pagerState,
@@ -800,6 +814,12 @@ fun ProductionPanelContent(
                                         production, outputFilter, { outputFilter = it }, services, tasks, channels, channelOrder, openShot,
                                         onScene = { storyboardEpisodeId = it; tab = ProductionTab.STORYBOARD },
                                         busy = busy, onRun = run, onSubmit = submit,
+                                    )
+                                    ProductionTab.POST_PROCESS -> ProductionPostProcessTab(
+                                        production = production,
+                                        filter = postProcessFilter,
+                                        onFilter = { postProcessFilter = it },
+                                        onShot = openShot,
                                     )
                                     ProductionTab.CUT -> ProductionCutTab(
                                         production = production,

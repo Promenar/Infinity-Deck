@@ -57,7 +57,7 @@ data class ShotPlanPreview(
 )
 
 data class PlannedInput(
-    /** 图片的“图N”编号（与提示词引用一致）；非图片为 null。 */
+    /** 图片的“图N”编号（与提示词引用一致）；非图片或锁帧锚点为 null。 */
     val number: Int?,
     /** 例如“林晚 · 风衣 · 合图”。 */
     val title: String,
@@ -69,6 +69,10 @@ data class PlannedInput(
     val path: String?,
     /** 合图由哪些参考位图片（工作区相对路径）按顺序组成；非合图为空。 */
     val compositeOf: List<String> = emptyList(),
+    /** 是否来自镜头的 [com.promenar.infinity.data.production.InputRole.ANCHOR] 强锁帧输入。 */
+    val isAnchor: Boolean = false,
+    /** 仅锁帧锚点：锚定的时间点（秒）。 */
+    val atSeconds: Double? = null,
 )
 
 data class PlannedDialogueAudio(val dialogueIndex: Int, val characterAssetId: String, val tone: String?,

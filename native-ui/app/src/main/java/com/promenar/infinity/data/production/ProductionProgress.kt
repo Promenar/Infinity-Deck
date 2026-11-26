@@ -102,7 +102,10 @@ internal fun applyProductionProgress(p: Production, action: ProductionUserAction
         p.validateRunTarget(action.run.target)
         p.runs.firstOrNull { it.id == action.run.id }?.let { old -> require(old.isActive()) { "登记项当前为 ${old.state}，不能再回报。" }; require(old.target == action.run.target) { "登记目标不能改变。" } }
         var result = p
-        action.take?.let { take -> result = result.mapShot(requireNotNull(action.run.target.episodeId), requireNotNull(action.run.target.shotCode)) { it.addProductionTake(take) } }
+        action.take?.let { take ->
+            result = result.mapShot(requireNotNull(action.run.target.episodeId), requireNotNull(action.run.target.shotCode)) { it.addProductionTake(take) }
+            if (take.derivedFrom != null) result = result.autoActivatePostProcessIfNeeded()
+        }
         action.assetVersion?.let { version -> result = result.copy(assets = result.assets.map { if (it.id == action.run.target.assetId) it.addProductionVersion(version) else it }) }
         result.copy(runs = result.runs.filterNot { it.id == action.run.id } + action.run)
     }

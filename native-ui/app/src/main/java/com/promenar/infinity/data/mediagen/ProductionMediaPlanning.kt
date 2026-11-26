@@ -37,16 +37,28 @@ internal fun comfyPlanningSpecs(template: ComfyTemplate, shot: Shot? = null, fra
         else -> positive(SlotKind.FRAMES)?.also { require(it >= template.frameBase && (it - template.frameBase) % template.frameStep == 0 && (template.maxFrames == null || it <= template.maxFrames)) }
     }
     fun aligned(kind: SlotKind) = positive(kind)?.also { require(it <= Int.MAX_VALUE - 31) }?.let { ((it + 31) / 32) * 32 }
+    val hasWidthSlot = template.slots.any { it.kind == SlotKind.WIDTH }
+    val hasHeightSlot = template.slots.any { it.kind == SlotKind.HEIGHT }
+    val customWidth = shot?.specWidth?.takeIf { hasWidthSlot && hasHeightSlot && shot.specHeight != null }
+    val customHeight = shot?.specHeight?.takeIf { hasWidthSlot && hasHeightSlot && shot.specWidth != null }
     val durationExact = if (shot != null && template.slots.any { it.kind == SlotKind.DURATION }) shot.durationSeconds else null
-    val specs = GenerationSpecs(width = aligned(SlotKind.WIDTH), height = aligned(SlotKind.HEIGHT), frames = frames, seed = value(SlotKind.SEED), durationSecondsExact = durationExact)
+    val specs = GenerationSpecs(
+        width = customWidth ?: aligned(SlotKind.WIDTH),
+        height = customHeight ?: aligned(SlotKind.HEIGHT),
+        frames = frames,
+        seed = value(SlotKind.SEED),
+        durationSecondsExact = durationExact,
+    )
     require((specs.width == null) == (specs.height == null))
     return specs
 }
 
 internal fun cloudPlanningSpecs(model: CloudMediaModel, shot: Shot): GenerationSpecs {
     val fixed = model.settings.api == CloudMediaApi.MINIMAX_VIDEO_V1 && model.modelId.equals("S2V-01", true)
-    return GenerationSpecs(resolution = if (fixed) null else model.settings.options.defaultResolution,
-        durationSeconds = if (fixed) null else shot.durationSeconds.takeIf { it % 1.0 == 0.0 && it <= Int.MAX_VALUE }?.toInt())
+    return GenerationSpecs(
+        resolution = if (fixed) null else shot.specResolution?.takeIf(String::isNotBlank) ?: model.settings.options.defaultResolution,
+        durationSeconds = if (fixed) null else shot.durationSeconds.takeIf { it % 1.0 == 0.0 && it <= Int.MAX_VALUE }?.toInt(),
+    )
 }
 
 /** 预览复用纯协议校验；不执行 HTTP、上传、计费或凭据读取。 */

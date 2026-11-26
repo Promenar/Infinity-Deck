@@ -135,7 +135,11 @@ object ProductionEngine {
                             appearances = appearances,
                             locationAssetId = optional(op, "location_asset_id", old.locationAssetId),
                             propAssetIds = if ("prop_asset_ids" in op) decodeProductionField(op, "prop_asset_ids") else old.propAssetIds,
-                            channelId = optional(op, "channel_id", old.channelId), changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev)
+                            channelId = optional(op, "channel_id", old.channelId),
+                            specResolution = optional(op, "spec_resolution", old.specResolution),
+                            specWidth = if ("spec_width" in op) op["spec_width"]?.takeUnless { it is JsonNull }?.let { (it as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull ?: throw IllegalArgumentException("spec_width 须为正整数。") } else old.specWidth,
+                            specHeight = if ("spec_height" in op) op["spec_height"]?.takeUnless { it is JsonNull }?.let { (it as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull ?: throw IllegalArgumentException("spec_height 须为正整数。") } else old.specHeight,
+                            changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev)
                         val changes = ProductionRules.changes(old, updated)
                         val stored = if (sc.storyboardLocked && !structuralLockedChange && changes.isNotEmpty()) {
                             val id = UUID.nameUUIDFromBytes("${p.id}:$rev:$index:change".toByteArray(Charsets.UTF_8)).toString()
