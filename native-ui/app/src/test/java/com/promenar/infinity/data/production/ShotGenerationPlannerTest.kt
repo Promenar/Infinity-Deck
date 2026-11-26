@@ -61,6 +61,28 @@ class ShotGenerationPlannerTest {
         assertEquals(compiled, shot().prompt)
         assertFalse(shot().promptUserEdited)
     }
+    @Test fun `智能体写入的提示词用于预览与提交并支持显式重编`() = runTest {
+        val planner = planner()
+        val structured = planner.preview("s", "S1E01", "SC01-01").prompt
+        val written = "  智能体精写的提示词\n保留原有排版。  "
+        edit { it.copy(prompt = written, promptUserEdited = false) }
+
+        val preview = planner.preview("s", "S1E01", "SC01-01")
+        assertEquals(written, preview.prompt)
+        assertFalse(preview.promptEdited)
+        assertTrue(planner.generate("s", "S1E01", "SC01-01") is ShotGenerateResult.Submitted)
+        assertEquals(written, queue.tasks.value.single().request.prompt)
+        assertEquals(structured, planner.recompilePrompt("s", "S1E01", "SC01-01"))
+        assertEquals(structured, shot().prompt)
+        assertFalse(shot().promptUserEdited)
+    }
+
+    @Test fun `空白提示词按当前结构化字段编译`() = runTest {
+        edit { it.copy(prompt = " \n ", promptUserEdited = true) }
+        val preview = planner().preview("s", "S1E01", "SC01-01")
+        assertTrue(preview.prompt.contains("图1"))
+        assertTrue(preview.promptEdited)
+    }
     @Test fun `未锁场阻断而试验项目允许`() = runTest {
         store.production = store.production.copy(seasons = store.production.seasons.map { it.copy(episodes = it.episodes.map { ep -> ep.copy(scenes = ep.scenes.map { sc -> sc.copy(storyboardLocked = false) }) }) })
         assertNotNull(planner().preview("s", "S1E01", "SC01-01").blockedReason)

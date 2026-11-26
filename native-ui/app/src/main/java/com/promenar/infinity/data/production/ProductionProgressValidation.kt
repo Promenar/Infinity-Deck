@@ -47,7 +47,10 @@ internal fun validateProductionProgress(p: Production) {
         require(run.completedSteps >= 0 && (run.steps == null || run.steps > 0 && run.completedSteps <= run.steps)) { "登记项完成步数不能超出总步数。" }
         require(run.startedAt >= 0 && run.reportedAt >= run.startedAt) { "登记项回报时间无效。" }
         run.resultPath?.let { ProductionCuts.validateProjectPath(p, it) }; segments(run.segments)
-        if (run.state == RunState.COMPLETED) {
+        if (run.completedWithoutMedia) {
+            require(run.state == RunState.COMPLETED && run.target.assetId == null && run.resultTakeId == null &&
+                run.resultAssetVersion == null && run.resultPath == null && run.segments.isEmpty()) { "无媒体完成的登记不能含有产物。" }
+        } else if (run.state == RunState.COMPLETED) {
             if (run.target.assetId != null) require(p.assets.first { it.id == run.target.assetId }.versions.any { it.number == run.resultAssetVersion }) { "登记项产物资产版本不存在。" }
             else require(p.requiredShot(requireNotNull(run.target.episodeId), requireNotNull(run.target.shotCode)).takes.any { it.id == run.resultTakeId }) { "登记项产物候选不存在。" }
         }

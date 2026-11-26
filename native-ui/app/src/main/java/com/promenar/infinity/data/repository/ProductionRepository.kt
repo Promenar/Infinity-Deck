@@ -309,6 +309,32 @@ class ProductionRepository(
     suspend fun applyForProduction(sessionId: String, productionId: String, expectedRevision: Long, action: ProductionUserAction): ProductionSnapshot =
         applyChecked(sessionId, productionId, expectedRevision, action)
 
+    /** 在同一事务内检查绑定和终态，收尾本次执行已启动的登记。 */
+    internal suspend fun recoverWorkflowFailure(sessionId: String, productionId: String, runId: String, reason: String): ProductionRun? =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val run = database.withTransaction {
+                    val stillBound = dao.getForSession(sessionId)?.id == productionId
+                    val row = dao.get(productionId) ?: return@withTransaction null
+                    val current = snapshot(row)
+                    val old = current.production.runs.firstOrNull { it.id == runId && it.target.shotCode != null }
+                        ?: return@withTransaction null
+                    if (!old.isActive()) return@withTransaction old
+                    val time = now()
+                    val failed = old.copy(
+                        state = RunState.FAILED,
+                        failure = if (stillBound) reason else "制作项目绑定已变化，已结束原项目的任务登记。",
+                        reportedAt = maxOf(time, old.reportedAt),
+                    )
+                    val next = ProductionUserEngine.apply(current, current.revision, ProductionUserAction.SaveRun(failed), time)
+                    dao.update(entity(next, row))
+                    failed
+                }
+                if (run?.state == RunState.FAILED) enqueue(productionId)
+                run
+            }
+        }
+
     /** 原子登记或清除指定集的 3D 白模预演 DSL 路径，总是递增修订号以驱动面板热加载。 */
     suspend fun setEpisodePrevis(sessionId: String, episodeId: String, previsPath: String?): ProductionSnapshot = withContext(Dispatchers.IO) {
         previsPath?.let(ProductionManifestCodec::validatePath)

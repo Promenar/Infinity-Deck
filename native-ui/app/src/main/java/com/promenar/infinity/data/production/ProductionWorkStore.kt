@@ -6,9 +6,12 @@ import com.promenar.infinity.data.repository.ProductionRepository
 interface ProductionWorkStore {
     suspend fun load(sessionId: String): ProductionSnapshot?
     suspend fun apply(sessionId: String, snapshot: ProductionSnapshot, action: ProductionUserAction): ProductionSnapshot
+    suspend fun recoverWorkflowFailure(sessionId: String, productionId: String, runId: String, reason: String): ProductionRun? = null
 }
 class RepositoryProductionWorkStore(private val repository: ProductionRepository) : ProductionWorkStore {
     override suspend fun load(sessionId: String) = repository.get(sessionId)
     override suspend fun apply(sessionId: String, snapshot: ProductionSnapshot, action: ProductionUserAction) =
         repository.applyForProduction(sessionId, snapshot.production.id, snapshot.revision, action)
+    override suspend fun recoverWorkflowFailure(sessionId: String, productionId: String, runId: String, reason: String) =
+        repository.recoverWorkflowFailure(sessionId, productionId, runId, reason)
 }

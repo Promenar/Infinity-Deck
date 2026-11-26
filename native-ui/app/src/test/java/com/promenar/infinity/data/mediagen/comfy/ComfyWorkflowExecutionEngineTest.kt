@@ -101,6 +101,11 @@ class ComfyWorkflowExecutionEngineTest {
                 ),
             )
             f.repository.saveWorkflow(wfMulti, runPreflight = false)
+            val savedWorkflow = f.repository.workflowState(wfMulti.workflowId).workflow
+            val rejected = runCatching {
+                engine.execute(ComfyWorkflowExecutionRequest("s", wfMulti.workflowId, expectedWorkflow = savedWorkflow, requirePreflightPass = true))
+            }.exceptionOrNull()
+            assertTrue(rejected is IllegalArgumentException && rejected.message.orEmpty().contains("预检状态已变化"))
             f.http.history = Json.parseToJsonElement(
                 """{"prompt-1":{"status":{"completed":true,"status_str":"success"},"outputs":{"9":{"images":[{"filename":"out.png","subfolder":"","type":"output"}]}}}}""",
             ).jsonObject

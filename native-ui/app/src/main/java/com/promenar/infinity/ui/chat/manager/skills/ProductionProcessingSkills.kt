@@ -30,7 +30,7 @@ private fun JsonObject.strings(key: String): List<String> = if (key !in this) em
 private val progressJson = Json { encodeDefaults = true }
 
 class ProductionOperationsSkill(private val processing: () -> ProductionProcessing) : ProductionGenerationTool("production_operations",
-    "读取镜头可由应用执行的尾帧衔接与派生处理及参数表；其余多步编排走脚本并用 production_run 登记。",
+    "读取镜头的尾帧衔接能力和已通过预检的派生操作。derivations 给出 DERIVE 模板或通用 ComfyUI 工作流的 operation_id、source 和可传参数。带 unavailable_reason 的条目需另行编排。",
     """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"}},"required":["episode_id","shot_code"],"additionalProperties":false}""", ToolRisk.SAFE_READ) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         args.keys(setOf("episode_id", "shot_code"))
@@ -42,19 +42,62 @@ class ProductionOperationsSkill(private val processing: () -> ProductionProcessi
                 put("subsequent_reference_images", false)
             } } ?: JsonNull)
             put("derivations", buildJsonArray { operations.derivations.forEach { operation -> add(buildJsonObject {
-                put("operation_id", operation.templateId); put("label", operation.label); put("params", JsonArray(operation.params.map { progressJson.encodeToJsonElement(TemplateParam.serializer(), it) }))
+                put("operation_id", operation.id)
+                put("label", operation.label)
+                when (operation) {
+                    is ShotDeriveOperation.Template -> {
+                        put("source", "template")
+                        put("params", JsonArray(operation.template.params.map { progressJson.encodeToJsonElement(TemplateParam.serializer(), it) }))
+                    }
+                    is ShotDeriveOperation.Workflow -> {
+                        put("source", "comfy_workflow")
+                        operation.unavailableReason?.let { put("unavailable_reason", it) }
+                        put("params", buildJsonArray { operation.params.forEach { field -> add(buildJsonObject {
+                            put("key", field.key)
+                            put("label", field.label)
+                            put("type", field.valueType.name)
+                            put("default", field.defaultValue ?: JsonNull)
+                            put("description", field.description)
+                            put("required", field.required)
+                            if (field.options.isNotEmpty()) put("options", JsonArray(field.options.map(::JsonPrimitive)))
+                            field.min?.let { put("min", it) }
+                            field.max?.let { put("max", it) }
+                        }) } })
+                    }
+                }
             }) } })
             put("script_route", "一次提交和逐段尾帧衔接由应用执行；依赖工作流内部状态的多步编排经脚本执行，并用 production_run 回报进度和登记产物。")
         }
     }
 }
 class ProductionDeriveSkill(private val processing: () -> ProductionProcessing) : ProductionGenerationTool("production_derive",
-    "把候选视频交给 DERIVE 模板，产出新候选并保存直接来源、实际参数与指纹。operation_id 为模板 id，任务直接入队。",
+    "用 production_operations 返回的 operation_id 派生候选视频。DERIVE 模板入队并返回 task_id。通用 ComfyUI 工作流自动填入来源视频，实时同步总览任务进度，登记新候选并返回 run_id、take_id 和 output_paths。params 按参数表传入。",
     """{"type":"object","properties":{"episode_id":{"type":"string"},"shot_code":{"type":"string"},"take_id":{"type":"string"},"operation_id":{"type":"string"},"params":{"type":"object"}},"required":["episode_id","shot_code","take_id","operation_id"],"additionalProperties":false}""", ToolRisk.SESSION_STATE) {
     override suspend fun run(args: JsonObject, context: SkillExecutionContext): JsonObject {
         args.keys(setOf("episode_id", "shot_code", "take_id", "operation_id"), setOf("episode_id", "shot_code", "take_id", "operation_id", "params"))
-        val task = processing().derive(context.sessionId, args.text("episode_id"), args.text("shot_code"), args.text("take_id"), args.text("operation_id"), productionParams(args))
-        return buildJsonObject { put("status", "submitted"); put("task_id", task.id) }
+        val operationId = args.text("operation_id")
+        val params = if ("params" !in args) emptyMap() else {
+            val value = args["params"] as? JsonObject ?: throw IllegalArgumentException("params 必须是对象。")
+            require(value.values.none { it == JsonNull }) { "params 需要非空参数值。" }
+            value
+        }
+        val result = processing().derive(context.sessionId, args.text("episode_id"), args.text("shot_code"), args.text("take_id"), operationId, params)
+        return buildJsonObject {
+            put("operation_id", operationId)
+            when (result) {
+                is ProductionDeriveResult.Submitted -> {
+                    put("status", "submitted")
+                    put("task_id", result.task.id)
+                }
+                is ProductionDeriveResult.Workflow -> {
+                    put("status", result.status?.name?.lowercase() ?: "registration_failed")
+                    put("run_id", result.runId)
+                    put("take_id", result.takeId?.let(::JsonPrimitive) ?: JsonNull)
+                    put("output_paths", JsonArray(result.outputPaths.map(::JsonPrimitive)))
+                    put("summary", result.summary)
+                }
+            }
+        }
     }
 }
 class ProductionScoreSkill(private val processing: () -> ProductionProcessing) : ProductionGenerationTool("production_score",

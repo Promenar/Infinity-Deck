@@ -2247,6 +2247,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 productionRunBridge = com.promenar.infinity.ui.chat.manager.skills.ComfyProductionRunBridge(
                     workStore = productionMediaRuntime.workStore,
                     runService = productionMediaRuntime.runs,
+                    queue = { mediaGenerationModule?.queue },
                 ),
             ).forEach(::register)
             register(InitializePlanSkill(taskRepository))

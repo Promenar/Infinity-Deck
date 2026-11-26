@@ -29,6 +29,8 @@ data class ComfyWorkflowExecutionRequest(
     val branchPolicy: StatefulBranchPolicy? = null,
     val outputDir: String? = null,
     val shotRef: String? = null,
+    val expectedWorkflow: ComfyWorkflow? = null,
+    val requirePreflightPass: Boolean = false,
     val onProgress: suspend (Float?, String) -> Unit = { _, _ -> },
 )
 
@@ -76,6 +78,12 @@ class ComfyWorkflowExecutionEngine(
         require(request.sessionId.isNotBlank()) { "执行工作流需要有效的 sessionId" }
         val wfState = repository.workflowState(request.workflowId)
         val workflow = wfState.workflow
+        require(request.expectedWorkflow == null || workflow == request.expectedWorkflow) {
+            "工作流配置已变化，请重新读取后执行。"
+        }
+        require(!request.requirePreflightPass || wfState.preflight.status == PreflightStatus.PASS) {
+            "工作流预检状态已变化，请重新查询派生操作。"
+        }
         val host = repository.host(workflow.hostId)
 
         // 校验入参字段归属、类型、随机种子策略与固定基线差异（绝不改写原基线）。

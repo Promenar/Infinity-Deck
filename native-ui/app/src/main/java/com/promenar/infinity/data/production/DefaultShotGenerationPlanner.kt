@@ -240,7 +240,7 @@ class DefaultShotGenerationPlanner(
             if (overflow.isNotEmpty()) issues += text("overflow", overflow.joinToString("；") { "${it.title} (${it.path ?: it.compositeOf.joinToString()})" })
         }
         val format = channel?.capabilities?.promptFormat ?: PromptFormat.GENERIC
-        val prompt = if (shot.promptUserEdited && !compile) shot.prompt else ShotPromptCompiler.compile(p, shot, accepted, format)
+        val prompt = if (!compile && shot.prompt.isNotBlank()) shot.prompt else ShotPromptCompiler.compile(p, shot, accepted, format)
         val template = channel?.let { templateFor(it) }
         val baseSpecs = if (channel == null) GenerationSpecs() else try { specsFor(channel, shot) }
             catch (cancelled: CancellationException) { throw cancelled }

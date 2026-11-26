@@ -77,6 +77,46 @@ class ProductionRepositoryTest {
         val updated = repo.applyForProduction("s", "project", created.revision, action)
         assertThat(updated.production.stages.first { it.stage == ProductionStage.EDIT }.status).isEqualTo(StageStatus.IN_PROGRESS)
     }
+    @Test fun `会话换绑后仅收尾原项目已启动的工作流登记`() = runBlocking {
+        repo.define("s", "影片", ProductionKind.FILM, "productions/origin")
+        val original = repo.update("s", "m", Json.parseToJsonElement("""[
+            {"op":"upsert_season","id":"S1","number":1},
+            {"op":"upsert_episode","season_id":"S1","id":"S1E01","number":1,"title":"集"},
+            {"op":"upsert_scene","episode_id":"S1E01","code":"SC01","number":1,"heading":"场"},
+            {"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"镜头","duration_seconds":2}
+        ]""").jsonArray)
+        val service = ProductionRunService(RepositoryProductionWorkStore(repo), { _, _ -> MediaSpec() }, { _, _ -> true })
+        val run = service.start("s", RunTarget("S1E01", "SC01-01"), "执行中")
+        awaitInSync()
+        val other = original.production.copy(id = "another-project", rootPath = "productions/another")
+        val otherManifest = "${other.rootPath}/production.json"
+        files.bytes["s" to otherManifest] = ProductionManifestCodec.encode(other, original.revision)
+        repo.attach("s", otherManifest)
+
+        val closed = service.reportWorkflowFailure("s", original.production.id, run.id, "登记失败")
+        assertThat(closed?.state).isEqualTo(RunState.FAILED)
+        assertThat(closed?.failure).contains("绑定已变化")
+        assertThat(repo.get("s")!!.production.runs).isEmpty()
+        val restored = repo.attach("s", "productions/origin/production.json")
+        assertThat(restored.production.runs.single()).isEqualTo(closed)
+
+        val secondRun = service.start("s", RunTarget("S1E01", "SC01-01"), "换绑后恢复")
+        val repositoryStore = RepositoryProductionWorkStore(repo)
+        val rebindingStore = object : ProductionWorkStore by repositoryStore {
+            private var firstRead = true
+            override suspend fun load(sessionId: String): ProductionSnapshot? {
+                if (firstRead) {
+                    firstRead = false
+                    return null
+                }
+                return repositoryStore.load(sessionId)
+            }
+        }
+        val rebindingService = ProductionRunService(rebindingStore, { _, _ -> MediaSpec() }, { _, _ -> true })
+        val retried = rebindingService.reportWorkflowFailure("s", original.production.id, secondRun.id, "登记失败")
+        assertThat(retried?.state).isEqualTo(RunState.FAILED)
+        assertThat(repo.get("s")!!.production.runs.last()).isEqualTo(retried)
+    }
     @Test fun `定义解绑重新绑定与曾经绑定`() = runBlocking {
         val created = repo.define("s", "影片", ProductionKind.FILM)
         assertThat(created.manifest).isEqualTo(ManifestSync.Pending)

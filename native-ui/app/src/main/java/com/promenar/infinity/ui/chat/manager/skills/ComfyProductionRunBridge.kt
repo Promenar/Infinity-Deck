@@ -1,22 +1,41 @@
 package com.promenar.infinity.ui.chat.manager.skills
 
+import com.promenar.infinity.data.mediagen.comfy.ComfyErrorDiagnostics
 import com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowExecutionResult
 import com.promenar.infinity.data.production.InputRole
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ProductionRunService
+import com.promenar.infinity.data.production.ProductionSnapshot
+import com.promenar.infinity.data.production.ProductionSubmissionMutex
 import com.promenar.infinity.data.production.ProductionWorkStore
 import com.promenar.infinity.data.production.RunTarget
+import com.promenar.infinity.data.production.RunState
 import com.promenar.infinity.data.production.Shot
+import com.promenar.infinity.data.production.acceptsVideoDerivation
+import com.promenar.infinity.data.production.isVideoInput
+import com.promenar.infinity.data.production.occupiedShotCandidates
+import com.promenar.infinity.data.production.releaseShotCandidate
+import com.promenar.infinity.data.production.reserveShotCandidate
+import com.promenar.infinity.data.production.retryProductionRunRevision
+import com.promenar.infinity.data.production.shotTakesDirectory
+import com.promenar.infinity.data.production.videoInputField
 import com.promenar.infinity.domain.media.MediaKind
+import com.promenar.infinity.domain.mediagen.ComfyMediaCategory
 import com.promenar.infinity.domain.mediagen.ComfyWorkflow
+import com.promenar.infinity.domain.mediagen.FieldMutability
 import com.promenar.infinity.domain.mediagen.FieldSemanticRole
 import com.promenar.infinity.domain.mediagen.FieldValueType
+import com.promenar.infinity.domain.mediagen.MediaGenerationQueue
 import com.promenar.infinity.ui.production.ShotLocation
-import com.promenar.infinity.ui.production.selectedTake
 import com.promenar.infinity.ui.production.shotLocations
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.math.roundToInt
@@ -30,17 +49,23 @@ class ComfyProductionRunBridge(
     private val workStore: ProductionWorkStore,
     private val runService: ProductionRunService,
     private val now: () -> Long = System::currentTimeMillis,
+    private val queue: () -> MediaGenerationQueue? = { null },
 ) {
     data class ResolvedShotBinding(
-        val production: Production,
+        val snapshot: ProductionSnapshot,
         val location: ShotLocation,
-    )
+    ) {
+        val production get() = snapshot.production
+    }
 
     data class ActiveRunHandle(
         val sessionId: String,
         val runId: String,
-        val location: ShotLocation,
+        val productionId: String,
+        val rootPath: String,
         val workflow: ComfyWorkflow,
+        val sourceTakeId: String?,
+        val derivationParams: Map<String, JsonElement>,
     ) {
         @Volatile
         internal var lastReportedSteps: Int = 0
@@ -55,14 +80,18 @@ class ComfyProductionRunBridge(
     data class CompletionSync(
         val runId: String,
         val registeredTakeId: String? = null,
+        val registrationError: String? = null,
     )
 
     suspend fun resolveShot(sessionId: String, shotRef: String?): ResolvedShotBinding? {
         val raw = shotRef?.trim()?.takeIf(String::isNotBlank) ?: return null
-        val production = runCatching { workStore.load(sessionId)?.production }.getOrNull() ?: return null
-        val loc = matchShotLocation(production, raw) ?: return null
-        return ResolvedShotBinding(production, loc)
+        val snapshot = workStore.load(sessionId) ?: return null
+        val loc = matchShotLocation(snapshot.production, raw) ?: return null
+        return ResolvedShotBinding(snapshot, loc)
     }
+
+    fun defaultOutputDir(binding: ResolvedShotBinding): String =
+        shotTakesDirectory(binding.production, binding.location.episode.id)
 
     /**
      * 若工作流声明了 `GUIDES` / `TIMED_FILES` 字段且 `contentInputs` 未显式提供该键，
@@ -75,7 +104,8 @@ class ComfyProductionRunBridge(
     ): Map<String, JsonElement> {
         if (shot == null) return contentInputs
         val guideField = workflow.fields.firstOrNull {
-            it.semanticRole == FieldSemanticRole.GUIDES || it.valueType == FieldValueType.TIMED_FILES
+            it.mutability == FieldMutability.CONTENT &&
+                (it.semanticRole == FieldSemanticRole.GUIDES || it.valueType == FieldValueType.TIMED_FILES)
         } ?: return contentInputs
         if (guideField.key in contentInputs) return contentInputs
         val anchors = shot.inputs.filter { it.role == InputRole.ANCHOR }
@@ -98,37 +128,67 @@ class ComfyProductionRunBridge(
         binding: ResolvedShotBinding,
         workflow: ComfyWorkflow,
         stage: String,
-    ): ActiveRunHandle? = try {
+        contentInputs: Map<String, JsonElement> = emptyMap(),
+        fixedOverrides: Map<String, JsonElement> = emptyMap(),
+    ): ActiveRunHandle {
         val stageSuffix = when (stage) {
             "first" -> "（首段）"
             "next" -> "（续写）"
             else -> ""
         }
         val label = "${workflow.name}$stageSuffix".take(120)
-        val run = runService.start(
-            sessionId = sessionId,
-            target = RunTarget(episodeId = binding.location.episode.id, shotCode = binding.location.shot.code),
-            label = label,
-            steps = 100,
-        )
-        ActiveRunHandle(sessionId, run.id, binding.location, workflow)
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        null
+        val field = workflow.videoInputField() ?: workflow.fields.firstOrNull { it.isVideoInput() }
+        val sourceTakeId = field?.let {
+            val inputs = if (it.mutability == FieldMutability.FIXED) fixedOverrides else contentInputs
+            val explicit = inputs[it.key]?.takeUnless { value -> value == JsonNull }
+            val default = if (it.key in workflow.chainSpec?.lockedInheritedKeys.orEmpty()) null else it.defaultValue
+            val input = (explicit ?: default) as? JsonPrimitive
+            val path = input?.takeIf { value -> value.isString }?.content?.takeIf(String::isNotBlank) ?: return@let null
+            val shot = binding.location.shot
+            val normalized = try {
+                runService.normalizeRunPath(sessionId, path, binding.production.rootPath)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            shot.takes.filter { take -> take.path == normalized }
+                .maxWithOrNull(compareBy({ take -> take.id == shot.selectedTakeId }, { take -> take.createdAt }))?.id
+        }
+        val episodeId = binding.location.episode.id
+        val shotCode = binding.location.shot.code
+        val reserveCandidate = workflow.mediaCategory == ComfyMediaCategory.VIDEO || workflow.acceptsVideoDerivation()
+        val derivationParams = if (sourceTakeId == null) emptyMap() else workflow.fields
+            .filter { it.mutability == FieldMutability.CONTENT && !it.isVideoInput() }
+            .mapNotNull { spec -> contentInputs[spec.key]?.takeUnless { it == JsonNull }?.let { spec.key to it } }
+            .toMap()
+        return ProductionSubmissionMutex.withLock {
+            val current = workStore.load(sessionId)
+            require(current != null && current.production.id == binding.production.id && current.revision == binding.snapshot.revision) {
+                "制作项目或镜头已变化，请重新读取后执行。"
+            }
+            if (reserveCandidate) {
+                require(occupiedShotCandidates(binding.production, episodeId, shotCode, queue()) < 30) { "候选容量不足。" }
+            }
+            withContext(NonCancellable) {
+                val run = runService.start(sessionId, RunTarget(episodeId, shotCode), label, steps = 100, expected = binding.snapshot)
+                if (reserveCandidate) run.reserveShotCandidate(binding.production.id)
+                ActiveRunHandle(sessionId, run.id, binding.production.id, binding.production.rootPath, workflow, sourceTakeId, derivationParams)
+            }
+        }
     }
 
     suspend fun onProgress(handle: ActiveRunHandle?, pct: Float?, message: String) {
         if (handle == null) return
         val cleanMsg = message.trim().take(1000).ifBlank { "执行中" }
-        val targetSteps = pct?.let { (it * 100f).roundToInt().coerceIn(0, 99) } ?: handle.lastReportedSteps
+        val targetSteps = pct?.takeIf { it.isFinite() }?.let { (it * 100f).roundToInt().coerceIn(0, 99) } ?: handle.lastReportedSteps
         val monotonicSteps = maxOf(handle.lastReportedSteps, targetSteps)
         val currentNow = now()
         val shouldSync = monotonicSteps >= handle.lastReportedSteps + 2 ||
             (cleanMsg != handle.lastMessage && currentNow - handle.lastReportedAt >= 800L)
         if (!shouldSync) return
         try {
-            runService.progress(handle.sessionId, handle.runId, monotonicSteps, cleanMsg)
+            retryProductionRunRevision {
+                runService.progress(handle.sessionId, handle.runId, monotonicSteps, cleanMsg, handle.productionId)
+            }
             handle.lastReportedSteps = monotonicSteps
             handle.lastReportedAt = currentNow
             handle.lastMessage = cleanMsg
@@ -141,51 +201,56 @@ class ComfyProductionRunBridge(
 
     suspend fun onComplete(handle: ActiveRunHandle?, result: ComfyWorkflowExecutionResult): CompletionSync? {
         if (handle == null) return null
-        val videoRef = result.savedMedia.firstOrNull { it.kind == MediaKind.VIDEO }
-        if (videoRef != null) {
-            try {
-                val latest = workStore.load(handle.sessionId)?.production
-                val shot = latest?.let { matchShotLocation(it, "${handle.location.episode.id}/${handle.location.shot.code}")?.shot }
-                val isVideoDerive = handle.workflow.fields.any {
-                    it.semanticRole == FieldSemanticRole.INPUT_VIDEO || it.valueType == FieldValueType.VIDEO_FILE
-                }
-                val sourceTakeId = if (isVideoDerive && shot != null) {
-                    shot.selectedTake()?.id ?: shot.takes.filter { it.derivedFrom == null }.maxByOrNull { it.createdAt }?.id
-                } else null
-                val operation = if (sourceTakeId != null) handle.workflow.name.take(120) else null
-                val finished = runService.finish(
-                    sessionId = handle.sessionId,
-                    runId = handle.runId,
-                    path = videoRef.path,
-                    sourceTakeId = sourceTakeId,
-                    operation = operation,
-                    serviceName = "ComfyUI（${handle.workflow.name}）".take(120),
-                )
-                return CompletionSync(handle.runId, finished.resultTakeId)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                // 若输出不在项目根目录下或无有效视频规格，仍完成队列任务状态而不抛错
-            }
-        }
         return try {
-            runService.completeWithoutMedia(handle.sessionId, handle.runId, result.summary)
-            CompletionSync(handle.runId, null)
+            completeRun(handle, result)
+        } finally {
+            releaseShotCandidate(handle.runId)
+        }
+    }
+
+    private suspend fun completeRun(handle: ActiveRunHandle, result: ComfyWorkflowExecutionResult): CompletionSync {
+        return try {
+            val projectVideo = result.savedMedia.firstOrNull { media ->
+                media.kind == MediaKind.VIDEO && try {
+                    runService.normalizeRunPath(handle.sessionId, media.path, handle.rootPath).startsWith("${handle.rootPath}/")
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+            val finished = retryProductionRunRevision {
+                if (projectVideo == null) {
+                    runService.completeWithoutMedia(handle.sessionId, handle.runId, result.summary, handle.productionId)
+                } else {
+                    runService.finish(
+                        sessionId = handle.sessionId,
+                        runId = handle.runId,
+                        path = projectVideo.path,
+                        sourceTakeId = handle.sourceTakeId,
+                        operation = handle.sourceTakeId?.let { handle.workflow.name },
+                        params = handle.derivationParams,
+                        serviceName = "ComfyUI（${handle.workflow.name}）".take(120),
+                        expectedProductionId = handle.productionId,
+                    )
+                }
+            }
+            CompletionSync(handle.runId, finished.resultTakeId)
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            null
+        } catch (failure: Exception) {
+            val reason = ComfyErrorDiagnostics.redactSensitive("制作候选登记失败。 ${failure.message.orEmpty()}").trim().take(1000)
+            val run = runService.reportWorkflowFailure(handle.sessionId, handle.productionId, handle.runId, reason)
+            if (run?.state == RunState.COMPLETED) CompletionSync(handle.runId, run.resultTakeId)
+            else CompletionSync(handle.runId, registrationError = run?.failure ?: reason)
         }
     }
 
     suspend fun onFail(handle: ActiveRunHandle?, reason: String) {
         if (handle == null) return
         try {
-            runService.fail(handle.sessionId, handle.runId, reason.trim().take(1000).ifBlank { "ComfyUI 工作流执行失败" })
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // 避免掩盖原始执行异常
+            val detail = ComfyErrorDiagnostics.redactSensitive(reason).trim().take(1000).ifBlank { "ComfyUI 工作流执行失败" }
+            runService.reportWorkflowFailure(handle.sessionId, handle.productionId, handle.runId, detail)
+        } finally {
+            releaseShotCandidate(handle.runId)
         }
     }
 

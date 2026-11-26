@@ -12,6 +12,8 @@ import com.promenar.infinity.domain.tool.ToolSchemaValidator
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
@@ -182,7 +184,7 @@ class ComfyRunWorkflowSkill(
 ) : ComfySkill(
     repository,
     "comfy_run_workflow",
-    "执行已注册的 ComfyUI 工作流。日常生成（含宽高分辨率、提示词、参考图与 GUIDES 锁帧等生成参数）直接传入 content_inputs，不触发基线审批；仅当传入 fixed_overrides 且值偏离已保存固定基线时，系统才弹出精确 Diff 卡片请求一次性实验批准。支持单次执行（stage=single）和有状态链式执行（stage=first / next、指定 chain_id / parent_node_id 从任意有效中段接续分叉、或 retry_node_id 重跑指定段落）；传入 shot_ref 且当前会话已绑定制作项目时，自动同步实时进度至总览任务队列并按需透传镜头锁帧锚点。",
+    "执行已注册的 ComfyUI 工作流。通过 content_inputs 传入提示词、宽高、参考图和 GUIDES 等生成参数。fixed_overrides 偏离已保存基线时需要一次性 Diff 审批。支持单次与有状态链式执行。传入 shot_ref 且会话已绑定制作项目时，实时同步总览任务进度，自动填入未传的 CONTENT 锁帧槽对应的 ANCHOR 锚点，output_dir 省略或空白时使用镜头的 takes/ 目录。项目目录内的视频自动登记为候选，视频输入匹配现有候选时保存来源并激活后处理。结果包含 production_run_id 和成功登记时的 registered_take_id。收到 registered_take_id 后跳过 add_take。",
     COMFY_RUN_WORKFLOW_SCHEMA,
     executionEngine = executionEngine,
     jobs = jobs,
@@ -747,21 +749,22 @@ abstract class ComfySkill(
             StatefulBranchPolicy.entries.firstOrNull { it.name == raw }
                 ?: throw IllegalArgumentException("branch_policy 必须为 ISOLATED_DIR 或 IN_PLACE_OVERWRITE")
         }
-        val outputDir = optional(args, "output_dir")
+        val explicitOutputDir = optionalRawString(args, "output_dir")?.takeIf(String::isNotBlank)
         val shotRef = optional(args, "shot_ref")
 
-        val workflowRecord = runCatching { repo.workflowStateOrNull(workflowId)?.workflow }.getOrNull()
         val shotBinding = productionRunBridge?.resolveShot(context.sessionId, shotRef)
+        val workflowRecord = shotBinding?.let { repo.workflowState(workflowId).workflow }
+        val outputDir = explicitOutputDir ?: shotBinding?.let { productionRunBridge?.defaultOutputDir(it) }
         val effectiveContentInputs = if (productionRunBridge != null && workflowRecord != null) {
             productionRunBridge.mergeAnchorGuidesIfMissing(workflowRecord, shotBinding?.location?.shot, contentInputs)
         } else contentInputs
 
         suspend fun runOnce(sink: ToolLiveOutputSink): ToolResult {
             val activeRun = if (runMode == ComfyWorkflowRunMode.EXECUTE && productionRunBridge != null && shotBinding != null && workflowRecord != null) {
-                productionRunBridge.onStart(context.sessionId, shotBinding, workflowRecord, stage)
+                productionRunBridge.onStart(context.sessionId, shotBinding, workflowRecord, stage, effectiveContentInputs, fixedOverrides)
             } else null
-            val result = try {
-                engine.execute(
+            val (result, sync) = try {
+                val result = engine.execute(
                     ComfyWorkflowExecutionRequest(
                         sessionId = context.sessionId,
                         workflowId = workflowId,
@@ -775,6 +778,7 @@ abstract class ComfySkill(
                         branchPolicy = branchPolicy,
                         outputDir = outputDir,
                         shotRef = shotRef,
+                        expectedWorkflow = activeRun?.workflow,
                         onProgress = { pct, msg ->
                             val label = pct?.let { "${(it * 100).toInt().coerceIn(0, 100)}% $msg" } ?: msg
                             sink.emit(ToolOutputStream.STDOUT, "$label\n")
@@ -782,14 +786,14 @@ abstract class ComfySkill(
                         },
                     ),
                 )
+                result to productionRunBridge?.onComplete(activeRun, result)
             } catch (cancelled: CancellationException) {
-                productionRunBridge?.onFail(activeRun, "已取消")
+                withContext(NonCancellable) { productionRunBridge?.onFail(activeRun, "已取消") }
                 throw cancelled
             } catch (failure: Exception) {
                 productionRunBridge?.onFail(activeRun, failure.message ?: "ComfyUI 工作流执行失败")
                 throw failure
             }
-            val sync = productionRunBridge?.onComplete(activeRun, result)
             val payload = buildJsonObject {
                 put("workflow_id", result.workflow.workflowId)
                 put("workflow_name", result.workflow.name)
@@ -799,6 +803,7 @@ abstract class ComfySkill(
                 result.promptId?.let { put("prompt_id", it) }
                 sync?.runId?.let { put("production_run_id", it) }
                 sync?.registeredTakeId?.let { put("registered_take_id", it) }
+                sync?.registrationError?.let { put("production_registration_error", it) }
                 put("summary", result.summary)
                 put(
                     "media",
@@ -1316,7 +1321,7 @@ private const val COMFY_RUN_WORKFLOW_SCHEMA = """{
   "retry_node_id":{"type":"string","description":"重跑已有链段落节点 id；可作用于任意分段并继承同一前驱上下文"},
   "branch_policy":{"type":"string","enum":["ISOLATED_DIR","IN_PLACE_OVERWRITE"]},
   "output_dir":{"type":"string","description":"可选，工作区输出相对子目录"},
-  "shot_ref":{"type":"string","description":"可选，关联制作镜头编码"},
+  "shot_ref":{"type":"string","description":"可选，已绑定制作项目时关联镜头（集 ID/镜头编码或唯一镜头编码）。执行时实时同步总览任务，向未传入的 CONTENT 锁帧槽透传 ANCHOR，output_dir 省略或空白时使用 takes/。项目内视频自动登记候选，匹配输入来源时关联已有候选并激活后处理。返回 production_run_id，登记成功时返回 registered_take_id，收到后跳过 add_take。"},
   "run_in_background":{"type":"boolean"},
   "yield_after_seconds":{"type":"integer"},
   "max_runtime_minutes":{"type":"integer"},

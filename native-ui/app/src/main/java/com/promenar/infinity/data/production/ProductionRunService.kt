@@ -1,9 +1,21 @@
 package com.promenar.infinity.data.production
 
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonElement
+
+internal suspend fun retryProductionRunRevision(action: suspend () -> ProductionRun): ProductionRun {
+    repeat(2) {
+        try {
+            return action()
+        } catch (_: ProductionRevisionConflictException) {
+            // 重新读取当前修订，保留并发写入的项目修改。
+        }
+    }
+    return action()
+}
 
 class ProductionRunService(
     private val store: ProductionWorkStore,
@@ -17,12 +29,36 @@ class ProductionRunService(
     private suspend fun scanAfterReport(sessionId: String) {
         try { audit(sessionId) } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { /* 由回合结束与面板打开的扫描补查。 */ }
     }
-    private suspend fun load(sessionId: String) = requireNotNull(store.load(sessionId)) { "当前会话没有制作项目。" }
+    private suspend fun load(sessionId: String, expectedProductionId: String? = null): ProductionSnapshot {
+        val snapshot = requireNotNull(store.load(sessionId)) { "当前会话没有制作项目。" }
+        require(expectedProductionId == null || snapshot.production.id == expectedProductionId) { "制作项目绑定已变化。" }
+        return snapshot
+    }
     private fun active(p: Production, id: String) = requireNotNull(p.runs.firstOrNull { it.id == id }) { "登记项不存在。" }
         .also { require(it.isActive()) { "登记项当前为 ${it.state}，不能再回报。" } }
 
-    suspend fun start(sessionId: String, target: RunTarget, label: String, steps: Int? = null): ProductionRun = withContext(Dispatchers.IO) {
-        val snapshot = load(sessionId)
+    internal suspend fun normalizeRunPath(sessionId: String, path: String, projectRoot: String): String =
+        normalizePath(sessionId, path, projectRoot)
+
+    internal suspend fun reportWorkflowFailure(sessionId: String, productionId: String, runId: String, reason: String): ProductionRun? {
+        try {
+            return retryProductionRunRevision { fail(sessionId, runId, reason, productionId) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return try {
+                store.recoverWorkflowFailure(sessionId, productionId, runId, reason) ?: store.load(sessionId)
+                    ?.production?.takeIf { it.id == productionId }?.runs?.firstOrNull { it.id == runId && !it.isActive() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    suspend fun start(sessionId: String, target: RunTarget, label: String, steps: Int? = null, expected: ProductionSnapshot? = null): ProductionRun = withContext(Dispatchers.IO) {
+        val snapshot = expected ?: load(sessionId)
         snapshot.production.validateRunTarget(target)
         require(label.isNotBlank() && label.length <= 120 && (steps == null || steps > 0)) { "label 需要 1～120 字，steps 需要正整数。" }
         val time = now()
@@ -30,8 +66,8 @@ class ProductionRunService(
         store.apply(sessionId, snapshot, ProductionUserAction.SaveRun(run))
         run
     }
-    suspend fun progress(sessionId: String, runId: String, completedSteps: Int, message: String): ProductionRun = withContext(Dispatchers.IO) {
-        val snapshot = load(sessionId)
+    suspend fun progress(sessionId: String, runId: String, completedSteps: Int, message: String, expectedProductionId: String? = null): ProductionRun = withContext(Dispatchers.IO) {
+        val snapshot = load(sessionId, expectedProductionId)
         val old = active(snapshot.production, runId)
         require(completedSteps >= old.completedSteps && (old.steps == null || completedSteps <= old.steps)) { "完成步数不能倒退或超过总步数。" }
         require(message.isNotBlank() && message.length <= 1000) { "进度说明需要 1～1000 字。" }
@@ -39,8 +75,8 @@ class ProductionRunService(
             store.apply(sessionId, snapshot, ProductionUserAction.SaveRun(it))
         }
     }
-    suspend fun fail(sessionId: String, runId: String, reason: String): ProductionRun = withContext(Dispatchers.IO) {
-        val snapshot = load(sessionId)
+    suspend fun fail(sessionId: String, runId: String, reason: String, expectedProductionId: String? = null): ProductionRun = withContext(Dispatchers.IO) {
+        val snapshot = load(sessionId, expectedProductionId)
         val old = active(snapshot.production, runId)
         require(reason.isNotBlank() && reason.length <= 1000) { "失败原因需要 1～1000 字。" }
         val run = old.copy(state = RunState.FAILED, failure = reason, reportedAt = maxOf(now(), old.reportedAt))
@@ -48,8 +84,8 @@ class ProductionRunService(
         scanAfterReport(sessionId)
         run
     }
-    suspend fun completeWithoutMedia(sessionId: String, runId: String, message: String? = null): ProductionRun = withContext(Dispatchers.IO) {
-        val snapshot = load(sessionId)
+    suspend fun completeWithoutMedia(sessionId: String, runId: String, message: String? = null, expectedProductionId: String? = null): ProductionRun = withContext(Dispatchers.IO) {
+        val snapshot = load(sessionId, expectedProductionId)
         val old = active(snapshot.production, runId)
         val time = maxOf(now(), old.reportedAt)
         val run = old.copy(
@@ -57,21 +93,22 @@ class ProductionRunService(
             completedSteps = old.steps ?: old.completedSteps,
             message = message?.takeIf(String::isNotBlank)?.take(1000) ?: old.message,
             reportedAt = time,
+            completedWithoutMedia = true,
         )
         store.apply(sessionId, snapshot, ProductionUserAction.SaveRun(run))
         run
     }
     suspend fun finish(sessionId: String, runId: String, path: String, sourceTakeId: String? = null, operation: String? = null,
-        params: Map<String, JsonPrimitive> = emptyMap(), segmentPaths: List<String> = emptyList(),
-        serviceName: String = "外部脚本"): ProductionRun = withContext(Dispatchers.IO) {
-        val snapshot = load(sessionId)
+        params: Map<String, JsonElement> = emptyMap(), segmentPaths: List<String> = emptyList(),
+        serviceName: String = "外部脚本", expectedProductionId: String? = null): ProductionRun = withContext(Dispatchers.IO) {
+        val snapshot = load(sessionId, expectedProductionId)
         val p = snapshot.production
         val old = active(p, runId)
         require((sourceTakeId == null) == (operation == null)) { "来源候选与处理名称须同时提供。" }
         require(params.isEmpty() || sourceTakeId != null) { "处理参数需要来源候选与处理名称。" }
         require(operation == null || operation.isNotBlank() && operation.length <= 120) { "处理名称需要 1～120 字。" }
-        val resultPath = normalizePath(sessionId, path, p.rootPath)
-        val normalizedSegments = segmentPaths.map { normalizePath(sessionId, it, p.rootPath) }
+        val resultPath = normalizeRunPath(sessionId, path, p.rootPath)
+        val normalizedSegments = segmentPaths.map { normalizeRunPath(sessionId, it, p.rootPath) }
         for (file in listOf(resultPath) + normalizedSegments) {
             ProductionCuts.validateProjectPath(p, file)
             require(exists(sessionId, file)) { "产物不可读或媒体类型无效：$file" }
@@ -79,7 +116,7 @@ class ProductionRunService(
         val spec = probe(sessionId, resultPath)
         val derivation = sourceTakeId?.let { source ->
             require(p.seasons.flatMap { it.episodes }.flatMap { it.scenes }.flatMap { it.shots }.any { shot -> shot.takes.any { it.id == source } }) { "来源候选不存在。" }
-            TakeDerivation(source, requireNotNull(operation), params = params)
+            TakeDerivation(source, requireNotNull(operation), inputParams = params)
         }
         var cursor = 0.0
         val segments = normalizedSegments.mapIndexed { index, segment ->

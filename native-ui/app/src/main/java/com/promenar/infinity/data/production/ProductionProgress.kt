@@ -1,7 +1,10 @@
 package com.promenar.infinity.data.production
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 
 @Serializable
@@ -9,7 +12,16 @@ data class MediaSpec(val width: Int? = null, val height: Int? = null, val fps: D
 
 /** 派生候选的直接来源；允许从派生候选再派生。 */
 @Serializable
-data class TakeDerivation(val sourceTakeId: String, val operation: String, val channelId: String? = null, val params: Map<String, JsonPrimitive> = emptyMap())
+data class TakeDerivation(
+    val sourceTakeId: String,
+    val operation: String,
+    val channelId: String? = null,
+    @SerialName("params") val inputParams: Map<String, JsonElement> = emptyMap(),
+) {
+    /** 保留已有参数展示接口，清单中按原 JSON 类型保存实际入参。 */
+    val params: Map<String, JsonPrimitive>
+        get() = inputParams.mapValues { (_, value) -> value as? JsonPrimitive ?: JsonPrimitive(value.toString()) }
+}
 
 /** 时间为拼接成片中的起止秒数。 */
 @Serializable
@@ -46,6 +58,9 @@ data class ProductionRun(
     val startedAt: Long, val reportedAt: Long, val resultTakeId: String? = null, val resultAssetVersion: Int? = null,
     /** 保留外部产物引用，供文件审计与资产版本来源恢复使用。 */
     val resultPath: String? = null, val segments: List<TakeSegment> = emptyList(),
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val completedWithoutMedia: Boolean = false,
 )
 
 const val RUN_UNREPORTED_MILLIS = 30 * 60_000L

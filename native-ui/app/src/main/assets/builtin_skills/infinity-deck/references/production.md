@@ -94,16 +94,16 @@
 ### 执行路径优先级（保留外部脚本能力，但优先内置片场工具）
 
 1. **第一优先：内置片场工具**（`production_plan` → `production_generate` / `production_derive` / `production_extend` / `production_score`）：自动组装参考图、提示词、单镜规格并接入总览任务队列与审片流。
-2. **第二优先：ComfyUI 兼容层工作流工具**（`comfy_list_workflows` / `comfy_run_workflow` / `comfy_get_chain_state` / `comfy_set_chain_tip`）：用于有状态多段链式生成（`stateful_chain`，如 Motion Context）、自定义提交器或带 `TIMED_FILES / GUIDES` 锁帧槽的工作流。调用 `comfy_run_workflow` 时务必传入 `shot_ref`（如 `S1E01/SC01-03` 或 `SC01-03`），应用会自动把实时进度同步到制作总览「任务」队列、在视频落盘项目目录时自动登记候选，并在未显式传 `guides` 时自动透传该镜头登记的 `InputRole.ANCHOR` 锁帧锚点。分辨率宽高作为正常 `CONTENT` 生成参数直接填入 `content_inputs`，无需审批；仅偏离 `FIXED` 基线的参数才走 Diff 审批。
+2. **第二优先：ComfyUI 兼容层工作流工具**（`comfy_list_workflows` / `comfy_run_workflow` / `comfy_get_chain_state` / `comfy_set_chain_tip`）适用于有状态多段链式生成（`stateful_chain`）、自定义提交器或带 `TIMED_FILES / GUIDES` 锁帧槽的工作流。会话已绑定制作项目时，调用 `comfy_run_workflow` 传入 `shot_ref`（如 `S1E01/SC01-03` 或唯一镜头编码 `SC01-03`）。应用实时同步制作总览「任务」进度，并在调用方省略 `CONTENT` 锁帧槽时自动透传该镜头的 `ANCHOR` 锚点。`output_dir` 省略或空白时，产物默认保存到该镜头所在集的 `takes/` 目录。项目目录内的视频自动登记为镜头候选，视频输入匹配已有候选时保存直接来源并激活「后处理」。执行结果返回 `production_run_id`，成功登记后同时返回 `registered_take_id`。**收到 `registered_take_id` 后跳过 `add_take`。** 通过 `content_inputs` 传入工作流声明的 `CONTENT` 参数。偏离 `FIXED` 基线的覆写须经一次性 Diff 审批。
 3. **第三兜底：外部脚本 / SSH 编排 + `production_run`**：仅当上述两层均无法满足特殊后处理或远端流水线时再采用，务必通过 `production_run(start/progress/finish/fail)` 同步进度和产物来源。
 
 制作面板负责审核、检视、批准、取消以及可选快捷重试；链式分段与锁帧锚点编排统一由智能体通过工具管理，面板只做只读检视与成片回放。先用 `production_get` 读取项目、镜头、资产和用户决定，再用 `production_operations(episode_id, shot_code)` 查询当前可执行的尾帧衔接、派生工作流及参数表；`production_plan` 返回的 `guides` 数组直接给出该镜头登记的 `anchor` 锁帧路径与时间点。请求不可用时按错误返回的可用项调整规划。
 
-- `production_plan` 预览当前镜头输入和通道；`production_generate(episode_id, shot_code, params?)` 提交一次生成。`params` 为工作流参数 key 对应的字符串、数值或布尔值对象，省略时取工作流缺省值。
-- `production_derive(episode_id, shot_code, take_id, operation_id, params?)` 把候选视频交给 DERIVE 工作流；`operation_id` 是工作流 id。结果作为新候选登记，并保存直接来源、操作、实际参数、工作流指纹和文件实际规格；派生候选可作为新的来源。
+- `production_plan` 预览镜头输入和通道，`production_generate(episode_id, shot_code, params?)` 提交生成。两者优先使用镜头已保存的非空 `prompt`，空白时按结构化字段编译。`params` 按通道参数表传入，省略时取通道默认值。
+- `production_derive(episode_id, shot_code, take_id, operation_id, params?)` 使用 `production_operations` 返回的操作 ID 和参数表。旧 DERIVE 模板（`source: template`）直接入队并返回 `task_id`。通过预检的通用 ComfyUI 后处理或视频输入工作流（`source: comfy_workflow`）使用其声明的 `CONTENT` 视频槽接收 `take_id` 对应的文件，按参数表接收非视频 `CONTENT` 参数，实时回报进度并返回 `run_id`、`take_id` 和 `output_paths`。登记保存直接来源、操作名、调用入参和文件实际规格。新候选可作为下一次派生的来源。带 `unavailable_reason` 的工作流需按其字段契约另行编排。
 - `production_score(asset_id, template_id?, prompt?, duration_seconds?, versions?)` 生成声音资产版本。工作流须为 AUDIO/GENERATE、支持 MUSIC 且声明 DURATION、SEED 与音频输出；版本数缺省 4，各版本种子不同。省略时长时取项目最新剪辑版本的成片时长。已批准资产保留当前版本，新版本进入版本列表待审。
 - `production_extend(action, episode_id, shot_code, ...)` 管理尾帧衔接链。`start` 可带 `start_take_id`、`segments`（默认 3，含起点段，最多 8）、`segment_seconds`（时长槽位可控的工作流或通道）、`segment_prompts`（与段数相同）。起点候选直接作为段 0；后段只以上一段尾帧为首帧。`status`、`retry`、`cancel` 需要 `chain_id`；重试保留成功段并重做失败段及后段。应用在拼接时裁掉每个后续段开头一帧，成片登记为一个候选。
-- `production_generation_tasks` 查询媒体任务。以上生成提交直接入队；ComfyUI 工作流与提交器变更走 `comfy_save_workflow` / `comfy_save_submitter`（或传统 `comfy_define_template`）审批机制，`comfy_run_workflow` 中的 `fixed_overrides` 若偏离基线则触发单次 Diff 审批。
+- `production_generation_tasks` 查询直接入队的媒体任务。ComfyUI 工作流与提交器变更通过 `comfy_save_workflow`、`comfy_save_submitter` 或传统 `comfy_define_template` 审批。
 
 一次工作流提交与按序尾帧串联由应用执行。有状态多段链式提交使用 `comfy_run_workflow(workflow_id, stage="first"|"next", ...)` 与 `comfy_get_chain_state`；其它需要通过已授权 SSH/命令路线执行的远端脚本编排，可通过 `production_run` 登记进度和来源：
 

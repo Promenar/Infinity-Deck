@@ -1,7 +1,10 @@
 package com.promenar.infinity.data.production
 
 import com.google.common.truth.Truth.assertThat
+import com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowExecutionRequest
 import com.promenar.infinity.domain.mediagen.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.runTest
@@ -49,19 +52,23 @@ class ProductionProcessingTest {
     @Test fun `能力只按首帧模式和已预检派生模板判断跨主机`() {
         val first = MediaChannel("v", MediaGroup.VIDEO, MediaCapabilities(setOf(GenerationMode.FIRST_FRAME), minDurationSeconds = 2, maxDurationSeconds = 8))
         val a = progressTemplate("a", host = "one"); val b = progressTemplate("b", host = "two"); val missing = progressTemplate("missing")
-        val result = resolveShotOperations(first, listOf(first), listOf(a, b, missing, progressTemplate("music", TemplateRole.GENERATE))) { it.id != "missing" }
+        val ids = listOf(a, b, missing, progressTemplate("music", TemplateRole.GENERATE), progressTemplate("unlocked").copy(locked = false))
+        val generic = ComfyWorkflow("a", "one", "重复投影", mediaCategory = ComfyMediaCategory.POST_PROCESS, rawWorkflowJson = buildJsonObject {})
+        val derivations = readyShotDerivations(ids.map { ProductionTemplate(it, it.id != "missing") },
+            listOf(ComfyWorkflowState(generic, PreflightResult(PreflightStatus.PASS))))
+        val result = resolveShotOperations(first, listOf(first), derivations)
         assertThat(result.extension?.maxSegments).isEqualTo(8)
         assertThat(result.extension?.minDurationSeconds).isEqualTo(2)
-        assertThat(result.derivations.map { it.templateId }).containsExactly("a", "b")
-        assertThat(result.derivations.first().params.single().key).isEqualTo("scale")
+        assertThat(result.derivations.map { it.id }).containsExactly("a", "b")
+        assertThat((result.derivations.first() as ShotDeriveOperation.Template).template.params.single().key).isEqualTo("scale")
         val text = first.copy(capabilities = first.capabilities.copy(modes = setOf(GenerationMode.TEXT)))
-        assertThat(resolveShotOperations(text, listOf(text), emptyList()) { true }.extension).isNull()
-        assertThat(resolveShotOperations(null, listOf(first), emptyList()) { true }.extension).isNull()
+        assertThat(resolveShotOperations(text, listOf(text), emptyList()).extension).isNull()
+        assertThat(resolveShotOperations(null, listOf(first), emptyList()).extension).isNull()
     }
     @Test fun `派生冻结来源参数指纹实际规格并可再次派生`() = runTest {
         val store = ProgressStore(); val queue = ProgressQueue(); val template = progressTemplate()
         val processor = DefaultProductionProcessing(store, ProgressRegistry(template.channel()), queue, { listOf(ProductionTemplate(template, true)) }, { _, _ -> GenerationSpecs() }, { _, _ -> true })
-        val first = processor.derive("s", "S1E01", "SC01-01", "t1", "up", mapOf("scale" to JsonPrimitive(4)))
+        val first = (processor.derive("s", "S1E01", "SC01-01", "t1", "up", mapOf("scale" to JsonPrimitive(4))) as ProductionDeriveResult.Submitted).task
         val actual = MediaSpec(3840, 2160, 24.0, 3.0)
         val completed = first.copy(state = MediaTaskState.COMPLETED, outputPaths = listOf("p/S1E01/takes/derived.mp4"))
         store.snapshot = store.snapshot.copy(production = requireNotNull(registerProductionTask(store.snapshot.production, completed, 30, mapOf(completed.outputPaths.single() to actual))))
@@ -70,7 +77,7 @@ class ProductionProcessingTest {
         assertThat(derived.spec).isEqualTo(actual)
         assertThat(derived.planSnapshot?.templateFingerprint).isEqualTo(template.fingerprint())
         assertThat(derived.planSnapshot?.params).isEqualTo(first.request.params)
-        val second = processor.derive("s", "S1E01", "SC01-01", derived.id, "up")
+        val second = (processor.derive("s", "S1E01", "SC01-01", derived.id, "up") as ProductionDeriveResult.Submitted).task
         assertThat(second.request.productionContext?.sourceTakeId).isEqualTo(derived.id)
         assertThat(second.request.params["scale"]).isEqualTo(JsonPrimitive(2))
         assertThat(registerProductionTask(store.snapshot.production, completed, 40, mapOf(completed.outputPaths.single() to actual))).isEqualTo(store.snapshot.production)
@@ -123,6 +130,45 @@ class ProductionCapacityRegressionTest {
         val error = try { service.derive("s", "S1E01", "SC01-01", "t1", "up"); null } catch (e: IllegalArgumentException) { e }
         assertThat(error?.message).contains("容量不足")
         assertThat(queue.tasks.value).isEmpty()
+    }
+
+    @Test fun `运行中的通用派生预留最后名额并在失败后释放`() = runTest {
+        val store = ProgressStore()
+        val queue = ProgressQueue()
+        store.snapshot = store.snapshot.copy(production = store.snapshot.production.mapShot("S1E01", "SC01-01") { shot ->
+            shot.copy(takes = shot.takes + List(27) { Take("extra-$it", "p/extra-$it.mp4", TakeSource("源"), 1) })
+        })
+        val workflow = ComfyWorkflow(
+            "generic", "host", "后处理", rawWorkflowJson = buildJsonObject {},
+            fields = listOf(WorkflowFieldSpec("clip", "源视频", valueType = FieldValueType.VIDEO_FILE)),
+        )
+        val submitted = CompletableDeferred<ComfyWorkflowExecutionRequest>()
+        val release = CompletableDeferred<Unit>()
+        val service = DefaultProductionProcessing(
+            store, ProgressRegistry(), queue, { emptyList() }, { _, _ -> GenerationSpecs() }, { _, _ -> true },
+            workflows = { listOf(ComfyWorkflowState(workflow, PreflightResult(PreflightStatus.PASS))) },
+            runs = ProductionRunService(store, { _, _ -> MediaSpec() }, { _, _ -> true }),
+            executeWorkflow = { request ->
+                submitted.complete(request)
+                release.await()
+                throw IllegalStateException("测试工作流失败")
+            },
+        )
+        val first = async { service.derive("s", "S1E01", "SC01-01", "t1", workflow.workflowId) }
+        try {
+            assertThat(submitted.await().contentInputs).containsExactly("clip", JsonPrimitive("p/1.mp4"))
+            assertThat(occupiedShotCandidates(store.snapshot.production, "S1E01", "SC01-01", queue)).isEqualTo(30)
+            val rejected = runCatching { service.derive("s", "S1E01", "SC01-01", "t2", workflow.workflowId) }.exceptionOrNull()
+            assertThat(rejected?.message).contains("容量不足")
+        } finally {
+            release.complete(Unit)
+        }
+        val result = first.await() as ProductionDeriveResult.Workflow
+        val run = store.snapshot.production.runs.single()
+        assertThat(result.status).isEqualTo(RunState.FAILED)
+        assertThat(result.runId).isEqualTo(run.id)
+        assertThat(run.failure).isEqualTo("测试工作流失败")
+        assertThat(occupiedShotCandidates(store.snapshot.production, "S1E01", "SC01-01", queue)).isEqualTo(29)
     }
 }
 

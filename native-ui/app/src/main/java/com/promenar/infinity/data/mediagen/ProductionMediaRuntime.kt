@@ -47,7 +47,14 @@ class ProductionMediaRuntime(private val app: InfinityApplication) {
     private suspend fun channelReady(id: String) = if (id.startsWith("comfy:")) templates().any { it.template.channelId == id && it.ready && it.template.role == TemplateRole.GENERATE && it.template.slots.filter { slot -> slot.kind == SlotKind.OUTPUT }.sumOf { slot -> slot.capacity } == 1 } else registry.channel(id) != null
     private suspend fun planningSpecs(channel: MediaChannel, shot: Shot): GenerationSpecs =
         template(channel)?.let { comfyPlanningSpecs(it, shot) } ?: cloudPlanningSpecs(requireNotNull(models.find(channel.id)), shot)
-    val processing: ProductionProcessing by lazy { DefaultProductionProcessing(workStore, registry, queue, ::templates, ::planningSpecs, files::isImageOrVideo) }
+    val processing: ProductionProcessing by lazy {
+        DefaultProductionProcessing(
+            workStore, registry, queue, ::templates, ::planningSpecs, files::isImageOrVideo,
+            workflows = { app.comfyMedia.repository.workflowStates() },
+            runs = runs,
+            executeWorkflow = app.comfyMedia.executionEngine::execute,
+        )
+    }
     val chains by lazy { ShotChainCoordinator(workStore, registry, queue, planner, chainMediaOps,
         fingerprint = { id -> registry.channel(id)?.let { template(it)?.fingerprint() } }, ready = ::channelReady, specsFor = ::planningSpecs) }
     val runs by lazy { ProductionRunService(workStore, chainMediaOps::spec, files::isImageOrVideo, fileAudit::scan, normalizePath = files::normalizeRelativePath) }
