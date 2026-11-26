@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.80.1-beta] - 2026-11-26
+
 - **重构分镜「镜头规格」为面板原位内联展开并修复窄检视器分组头挤压（[ProductionShotPlanning.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionShotPlanning.kt)、[ProductionDesign.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionDesign.kt)、[production_panel_phase2_strings.xml](native-ui/app/src/main/res/values-zh-rCN/production_panel_phase2_strings.xml)）**：
   - 移除独立镜头规格模态弹窗，改为在「通道与模式」分组内点击「规格」行原位平滑展开/收起 `ShotSpecsInlineEditor`（`InfinityMotion.expandIn/shrinkOut`，展开/收起图标替代右箭头）；本地 ComfyUI 工作流提供「工作流默认 / 自定义」满宽分段控件、无框浅底宽高像素槽与宽高互换按钮及实时比例提示，云端通道提供动态能力枚举单行即点即选，均不硬编码具体工作流或分辨率。
   - 修复 `ProductionSectionHeader` 在窄检视器中右侧长通道名（如 `按 H3 Ref2VA 参考图 ... 传入`）将左侧 `titleSegments`（如 `输入 · 分张 · 6 张`）挤成多行竖排的问题，改为左侧主标题保底 `56%` 宽度、右侧说明占余量并单行省略。
