@@ -5,14 +5,16 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "validate-screenshots-parallel.py"
 SPEC = importlib.util.spec_from_file_location("validate_screenshots_parallel", SCRIPT_PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
+MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
