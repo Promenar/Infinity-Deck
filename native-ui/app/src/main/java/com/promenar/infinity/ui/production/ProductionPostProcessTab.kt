@@ -251,6 +251,14 @@ private fun PostProcessShotItemCard(
 private fun com.promenar.infinity.data.production.Shot.takeNumber(take: Take): Int =
     (takes.indexOfFirst { it.id == take.id }.takeIf { it >= 0 } ?: 0) + 1
 
+/** 候选规格紧凑文案：优先像素宽高（如 `2688×1536`），否则回退规划分辨率（如 `1080p`）。 */
+internal fun Take.compactSpecLabel(): String? {
+    val width = spec?.width ?: planSnapshot?.specs?.width
+    val height = spec?.height ?: planSnapshot?.specs?.height
+    if (width != null && height != null) return "${width}×${height}"
+    return planSnapshot?.specs?.resolution?.takeIf(String::isNotBlank)
+}
+
 @Composable
 private fun takeSpecSegments(
     prefix: String,
@@ -259,10 +267,7 @@ private fun takeSpecSegments(
     fallbackDuration: Double? = null,
 ): List<String> = buildList {
     add(prefix)
-    val width = take.spec?.width ?: take.planSnapshot?.specs?.width
-    val height = take.spec?.height ?: take.planSnapshot?.specs?.height
-    if (width != null && height != null) add("${width}×${height}")
-    else take.planSnapshot?.specs?.resolution?.takeIf(String::isNotBlank)?.let(::add)
+    take.compactSpecLabel()?.let(::add)
     val duration = take.spec?.durationSeconds ?: fallbackDuration
     if (duration != null && operation == null) add(secondsLabel(duration))
     operation?.let(::add)

@@ -3,10 +3,41 @@ package com.promenar.infinity.data.production
 import java.util.UUID
 import kotlinx.serialization.json.*
 
+/** 引擎批量更新结果：除新快照外携带非致命提醒（如受保护的用户改写提示词未覆盖）。 */
+internal data class ProductionUpdateResult(
+    val snapshot: ProductionSnapshot,
+    val warnings: List<String> = emptyList(),
+)
+
 /** 批量操作只创建新快照；媒体存在性由调用方在进入引擎前提供。 */
 object ProductionEngine {
+    internal fun promptProtectedWarning(shotCode: String): String =
+        "镜头 $shotCode 的提示词已由用户手动编辑锁定，本次未覆盖 prompt。"
+
+    /** 汇总本批操作中因用户手动编辑锁定提示词而未覆盖 prompt 的提醒。 */
+    internal fun collectPromptProtectionWarnings(production: Production, operations: List<JsonElement>): List<String> =
+        operations.mapNotNull { element ->
+            val op = element as? JsonObject ?: return@mapNotNull null
+            if ((op["op"] as? JsonPrimitive)?.takeIf { it.isString }?.content != "upsert_shot") return@mapNotNull null
+            val incomingPrompt = (op["prompt"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val episodeId = (op["episode_id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val shotCode = (op["code"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val shot = production.seasons.flatMap { it.episodes }.firstOrNull { it.id == episodeId }
+                ?.scenes?.flatMap { it.shots }?.firstOrNull { it.code == shotCode } ?: return@mapNotNull null
+            if (shot.promptUserEdited && incomingPrompt != shot.prompt) promptProtectedWarning(shot.code) else null
+        }.distinct()
+
     fun update(snapshot: ProductionSnapshot, operations: List<JsonElement>, seenRevision: Long?, now: Long, isMedia: (String) -> Boolean): ProductionSnapshot =
-        update(snapshot, prepareProductionOperations(operations, snapshot.production) { it }, seenRevision, now, isMedia)
+        updateWithWarnings(snapshot, operations, seenRevision, now, isMedia).snapshot
+
+    internal fun updateWithWarnings(
+        snapshot: ProductionSnapshot,
+        operations: List<JsonElement>,
+        seenRevision: Long?,
+        now: Long,
+        isMedia: (String) -> Boolean,
+    ): ProductionUpdateResult =
+        updateWithWarnings(snapshot, prepareProductionOperations(operations, snapshot.production) { it }, seenRevision, now, isMedia)
 
     internal fun update(
         snapshot: ProductionSnapshot,
@@ -17,11 +48,32 @@ object ProductionEngine {
         lockAuthorization: ProductionLockPreflight? = null,
         scriptHashes: Map<String, String> = emptyMap(),
         scriptMtimes: Map<String, Long> = emptyMap(),
-    ): ProductionSnapshot {
+    ): ProductionSnapshot = updateWithWarnings(
+        snapshot = snapshot,
+        prepared = prepared,
+        seenRevision = seenRevision,
+        now = now,
+        isMedia = isMedia,
+        lockAuthorization = lockAuthorization,
+        scriptHashes = scriptHashes,
+        scriptMtimes = scriptMtimes,
+    ).snapshot
+
+    internal fun updateWithWarnings(
+        snapshot: ProductionSnapshot,
+        prepared: PreparedProductionOperations,
+        seenRevision: Long?,
+        now: Long,
+        isMedia: (String) -> Boolean,
+        lockAuthorization: ProductionLockPreflight? = null,
+        scriptHashes: Map<String, String> = emptyMap(),
+        scriptMtimes: Map<String, Long> = emptyMap(),
+    ): ProductionUpdateResult {
         require(snapshot.revision < Long.MAX_VALUE) { "项目修订号已达到上限。" }
         val authorized = lockAuthorization != null
         val rev = snapshot.revision + 1
         var p = snapshot.production
+        val warnings = mutableListOf<String>()
         val baseline = seenRevision ?: 0L
         fun check(source: ChangeSource, changed: Long, name: String) {
             require(source != ChangeSource.USER || changed <= baseline) { "$name 在读取后由用户修改，请先调用 production_get，再依据用户决定修改。" }
@@ -127,7 +179,11 @@ object ProductionEngine {
                                 } else app
                             }
                         }
-                        val updated = old.copy(title = if ("title" in op) text(op, "title") else old.title, size = optional(op, "size", old.size), durationSeconds = if ("duration_seconds" in op) number(op, "duration_seconds") else old.durationSeconds, mode = if ("mode" in op) mode(op, "mode") else old.mode, prompt = if ("prompt" in op && !old.promptUserEdited) text(op, "prompt") else old.prompt, inputs = inputs, preview = preview, previewPath = optional(op, "preview_path", old.previewPath), agentNote = optional(op, "agent_note", old.agentNote),
+                        val incomingPrompt = if ("prompt" in op) text(op, "prompt") else null
+                        if (incomingPrompt != null && old.promptUserEdited && incomingPrompt != old.prompt) {
+                            warnings += promptProtectedWarning(old.code)
+                        }
+                        val updated = old.copy(title = if ("title" in op) text(op, "title") else old.title, size = optional(op, "size", old.size), durationSeconds = if ("duration_seconds" in op) number(op, "duration_seconds") else old.durationSeconds, mode = if ("mode" in op) mode(op, "mode") else old.mode, prompt = if (incomingPrompt != null && !old.promptUserEdited) incomingPrompt else old.prompt, inputs = inputs, preview = preview, previewPath = optional(op, "preview_path", old.previewPath), agentNote = optional(op, "agent_note", old.agentNote),
                             camera = optional(op, "camera", old.camera), cameraMovement = optional(op, "camera_movement", old.cameraMovement),
                             visual = optional(op, "visual", old.visual), performance = optional(op, "performance", old.performance),
                             dialogue = if ("dialogue" in op) decodeProductionField(op, "dialogue") else old.dialogue,
@@ -137,8 +193,8 @@ object ProductionEngine {
                             propAssetIds = if ("prop_asset_ids" in op) decodeProductionField(op, "prop_asset_ids") else old.propAssetIds,
                             channelId = optional(op, "channel_id", old.channelId),
                             specResolution = optional(op, "spec_resolution", old.specResolution),
-                            specWidth = if ("spec_width" in op) op["spec_width"]?.takeUnless { it is JsonNull }?.let { (it as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull ?: throw IllegalArgumentException("spec_width 须为正整数。") } else old.specWidth,
-                            specHeight = if ("spec_height" in op) op["spec_height"]?.takeUnless { it is JsonNull }?.let { (it as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull ?: throw IllegalArgumentException("spec_height 须为正整数。") } else old.specHeight,
+                            specWidth = if ("spec_width" in op) op["spec_width"]?.takeUnless { it is JsonNull }?.let { (it as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull?.takeIf { n -> n >= 1 } ?: throw IllegalArgumentException("spec_width 须为正整数。") } else old.specWidth,
+                            specHeight = if ("spec_height" in op) op["spec_height"]?.takeUnless { it is JsonNull }?.let { (it as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull?.takeIf { n -> n >= 1 } ?: throw IllegalArgumentException("spec_height 须为正整数。") } else old.specHeight,
                             changedBy = old.changedBy, changedAt = if (old.changedBy == ChangeSource.USER) old.changedAt else rev)
                         val changes = ProductionRules.changes(old, updated)
                         val stored = if (sc.storyboardLocked && !structuralLockedChange && changes.isNotEmpty()) {
@@ -462,7 +518,7 @@ object ProductionEngine {
             .pruneDeletedReviewTargets()
             .copy(updatedAt = now)
         ProductionManifestCodec.encode(p, rev)
-        return ProductionSnapshot(p, rev, ManifestSync.Pending)
+        return ProductionUpdateResult(ProductionSnapshot(p, rev, ManifestSync.Pending), warnings.distinct())
     }
 }
 

@@ -202,4 +202,54 @@ class ProductionEngineTest {
         assertThat(listOf(afterEpisode.changedBy, afterEpisode.scenes.single().changedBy, out.production.assets.single().changedBy, out.production.stages.first().changedBy)).containsExactly(ChangeSource.USER, ChangeSource.USER, ChangeSource.USER, ChangeSource.USER)
     }
 
+    @Test fun `upsert_shot 接受正整数 spec_width 与 spec_height 支持 null 清空并拒绝字符串或非正数`() {
+        val base = fixture()
+        val withSpecs = update(base, """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","spec_width":864,"spec_height":480}]""")
+        assertThat(shot(withSpecs).specWidth).isEqualTo(864)
+        assertThat(shot(withSpecs).specHeight).isEqualTo(480)
+
+        val cleared = update(withSpecs, """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","spec_width":null,"spec_height":null}]""")
+        assertThat(shot(cleared).specWidth).isNull()
+        assertThat(shot(cleared).specHeight).isNull()
+
+        listOf(
+            """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","spec_width":"864"}]""",
+            """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","spec_height":"480"}]""",
+            """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","spec_width":0}]""",
+            """[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","spec_height":-16}]""",
+        ).forEach { invalid ->
+            val err = assertThrows(IllegalArgumentException::class.java) { update(base, invalid) }
+            assertThat(err.message).contains("大于或等于 1 的整数")
+        }
+    }
+
+    @Test fun `用户改写提示词锁定后 upsert_shot 不覆盖并返回中文告警`() {
+        val base = fixture()
+        val edited = ProductionUserEngine.apply(base, base.revision, ProductionUserAction.EditPrompt("S1E01", "SC01-01", "用户手写提示词"), 3)
+        val blocked = ProductionEngine.updateWithWarnings(
+            edited,
+            ops("""[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","prompt":"智能体企图覆盖"}]"""),
+            edited.revision,
+            4,
+        ) { true }
+        assertThat(shot(blocked.snapshot).prompt).isEqualTo("用户手写提示词")
+        assertThat(blocked.warnings).containsExactly("镜头 SC01-01 的提示词已由用户手动编辑锁定，本次未覆盖 prompt。")
+
+        val samePrompt = ProductionEngine.updateWithWarnings(
+            edited,
+            ops("""[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","prompt":"用户手写提示词"}]"""),
+            edited.revision,
+            4,
+        ) { true }
+        assertThat(samePrompt.warnings).isEmpty()
+
+        val withoutPrompt = ProductionEngine.updateWithWarnings(
+            edited,
+            ops("""[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","agent_note":"仅更新备注"}]"""),
+            edited.revision,
+            4,
+        ) { true }
+        assertThat(withoutPrompt.warnings).isEmpty()
+    }
+
 }

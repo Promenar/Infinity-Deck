@@ -162,4 +162,68 @@ class CutCompositionPlannerTest {
             CutCompositionPlanner.plan(production(listOf(tooShort)), cut(listOf(clip(tooShort))))
         }
     }
+
+    @Test fun `全集素材共享项目画幅容差内的偶数分辨率时保留原尺寸`() {
+        val first = shot()
+        val second = shot("SC01-02", secondPath)
+        val gap = Shot("SC01-03", "缺口标题卡", durationSeconds = 2.0)
+        val landscapeProd = production(listOf(first, second, gap), aspectRatio = "16:9")
+        val landscapeCut = cut(listOf(clip(first), CutClip("S1E01", gap.code, seconds = gap.durationSeconds), clip(second)))
+        val landscapeMeta = mapOf(
+            firstPath to CutMediaMetadata(width = 864, height = 480),
+            secondPath to CutMediaMetadata(width = 864, height = 480),
+        )
+        val landscape = CutCompositionPlanner.plan(landscapeProd, landscapeCut, landscapeMeta)
+        assertThat(landscape.width).isEqualTo(864)
+        assertThat(landscape.height).isEqualTo(480)
+
+        val portraitProd = production(listOf(first, second), aspectRatio = "9:16")
+        val portraitCut = cut(listOf(clip(first), clip(second)))
+        val portraitMeta = mapOf(
+            firstPath to CutMediaMetadata(width = 480, height = 864),
+            secondPath to CutMediaMetadata(width = 480, height = 864),
+        )
+        val portrait = CutCompositionPlanner.plan(portraitProd, portraitCut, portraitMeta)
+        assertThat(portrait.width).isEqualTo(480)
+        assertThat(portrait.height).isEqualTo(864)
+    }
+
+    @Test fun `素材画幅偏离超容差或混用尺寸或超一千零八十时仍按项目画幅计算`() {
+        val first = shot()
+        val second = shot("SC01-02", secondPath)
+        val p = production(listOf(first, second), aspectRatio = "16:9")
+        val cut = cut(listOf(clip(first), clip(second)))
+
+        // 1:1 偏离 16:9 超过 ±3%，不覆盖项目画幅。
+        val square = CutCompositionPlanner.plan(p, cut, mapOf(
+            firstPath to CutMediaMetadata(width = 480, height = 480),
+            secondPath to CutMediaMetadata(width = 480, height = 480),
+        ))
+        assertThat(square.width).isEqualTo(854)
+        assertThat(square.height).isEqualTo(480)
+
+        // 混用分辨率时取最大高度并按项目画幅推导偶数宽。
+        val mixed = CutCompositionPlanner.plan(p, cut, mapOf(
+            firstPath to CutMediaMetadata(width = 864, height = 480),
+            secondPath to CutMediaMetadata(width = 1280, height = 720),
+        ))
+        assertThat(mixed.width).isEqualTo(1280)
+        assertThat(mixed.height).isEqualTo(720)
+
+        // 超过 1080 高度上限时仍钳位至 1080p。
+        val uhd = CutCompositionPlanner.plan(p, cut, mapOf(
+            firstPath to CutMediaMetadata(width = 3840, height = 2160),
+            secondPath to CutMediaMetadata(width = 3840, height = 2160),
+        ))
+        assertThat(uhd.width).isEqualTo(1920)
+        assertThat(uhd.height).isEqualTo(1080)
+
+        // 奇数宽不直接沿用。
+        val odd = CutCompositionPlanner.plan(p, cut, mapOf(
+            firstPath to CutMediaMetadata(width = 863, height = 480),
+            secondPath to CutMediaMetadata(width = 863, height = 480),
+        ))
+        assertThat(odd.width).isEqualTo(854)
+        assertThat(odd.height).isEqualTo(480)
+    }
 }

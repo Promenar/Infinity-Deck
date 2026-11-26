@@ -28,6 +28,7 @@ abstract class ProductionSkill(private val repo: ProductionRepository, override 
         fun text(key: String): String = (args[key] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: throw IllegalArgumentException("$key 必须是字符串。")
         fun optional(key: String): String? = if (key !in args || args[key] == JsonNull) null else text(key)
         fun keys(required: Set<String>, allowed: Set<String>) = validateProductionToolKeys(args, required, allowed)
+        var updateOps: List<JsonElement> = emptyList()
         val result = when (name) {
             "production_define" -> {
                 keys(setOf("title", "kind"), setOf("title", "kind", "root_path", "logline", "aspect_ratio"))
@@ -40,6 +41,7 @@ abstract class ProductionSkill(private val repo: ProductionRepository, override 
                 keys(setOf("operations"), setOf("operations", "reason"))
                 com.promenar.infinity.data.production.ProductionLockApprovalPlanner.extractReason(args)
                 val ops = args["operations"] as? JsonArray ?: throw IllegalArgumentException("operations 必须是包含 1～100 个操作对象的数组。")
+                updateOps = ops
                 val owner = requireNotNull(context.assistantMessageId) { "缺少所属助手消息。" }
                 val lockTarget = context.approvedExecutionTarget?.takeIf {
                     context.isApprovalBoundExecution && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(it)
@@ -65,6 +67,8 @@ abstract class ProductionSkill(private val repo: ProductionRepository, override 
             if (name == "production_update") {
                 val pending = result?.production?.changeRequests.orEmpty().filter { !it.approved && !it.rejected }
                 put("change_requests", buildJsonArray { pending.forEach { add(buildJsonObject { put("id", it.id); put("status", "待用户审批") }) } })
+                val warnings = result?.production?.let { ProductionEngine.collectPromptProtectionWarnings(it, updateOps) }.orEmpty()
+                put("warnings", JsonArray(warnings.map(::JsonPrimitive)))
             }
         }.toString()
         if (name == "production_get" && context.assistantMessageId != null) repo.recordContextRead(context.sessionId, context.assistantMessageId!!, result!!.revision, result.production.id)
@@ -217,8 +221,49 @@ internal fun productionGetResult(snapshot: ProductionSnapshot?, scope: String, e
     fun target(value: ReviewTarget) = snake(ProductionToolJson.encodeToJsonElement(value))
     val selected: JsonElement = when (scope) {
         "overview" -> buildJsonObject {
-            val overview = p.copy(seasons = p.seasons.map { it.copy(episodes = it.episodes.map { ep -> ep.copy(scenes = emptyList()) }) }, assets = emptyList(), bible = p.bible.take(10), reviews = emptyList(), reviewRounds = emptyList(), reviewDrafts = emptyList())
-            ProductionToolJson.encodeToJsonElement(overview).jsonObject.filterKeys { it !in setOf("reviews", "reviewRounds", "reviewDrafts") }.forEach { (key, value) -> put(key, value) }
+            val overview = p.copy(
+                seasons = p.seasons.map { it.copy(episodes = it.episodes.map { ep -> ep.copy(scenes = emptyList()) }) },
+                assets = emptyList(),
+                bible = p.bible.take(10),
+                reviews = emptyList(),
+                reviewRounds = emptyList(),
+                reviewDrafts = emptyList(),
+            )
+            val episodeCounts = p.seasons.flatMap { it.episodes }.associate { ep ->
+                ep.id to (ep.scenes.size to ep.scenes.sumOf { it.shots.size })
+            }
+            ProductionToolJson.encodeToJsonElement(overview).jsonObject
+                .filterKeys { it !in setOf("reviews", "reviewRounds", "reviewDrafts", "assets") }
+                .forEach { (key, value) ->
+                    if (key == "seasons") {
+                        put(key, buildJsonArray {
+                            value.jsonArray.forEach { seasonEl ->
+                                val seasonObj = seasonEl.jsonObject
+                                add(buildJsonObject {
+                                    seasonObj.forEach { (sk, sv) ->
+                                        if (sk == "episodes") {
+                                            put(sk, buildJsonArray {
+                                                sv.jsonArray.forEach { epEl ->
+                                                    val epObj = epEl.jsonObject
+                                                    val epId = epObj["id"]?.jsonPrimitive?.content.orEmpty()
+                                                    val (sceneCount, shotCount) = episodeCounts[epId] ?: (0 to 0)
+                                                    add(buildJsonObject {
+                                                        epObj.filterKeys { it != "scenes" }.forEach { (ek, ev) -> put(ek, ev) }
+                                                        put("scene_count", sceneCount)
+                                                        put("shot_count", shotCount)
+                                                    })
+                                                }
+                                            })
+                                        } else put(sk, sv)
+                                    }
+                                })
+                            }
+                        })
+                    } else put(key, value)
+                }
+            put("asset_count", p.assets.size)
+            put("omitted_in_overview", buildJsonArray { add("scenes"); add("assets") })
+            put("hint", "概览已省略场次与资产明细，查看请传 scope=episode 或 scope=assets")
             put("generation_counts", buildJsonObject { stats.byStage.forEach { (stage, value) -> put(stage.name.lowercase(), count(value)) } })
             put("alert_shots", buildJsonArray { stats.alertShots.forEach { (key, value) -> add(buildJsonObject { put("episode_id", key.episodeId); put("shot_code", key.shotCode); put("generation_count", count(value)) }) } })
             put("alert_assets", buildJsonArray { stats.alertAssets.forEach { (id, value) -> add(buildJsonObject { put("asset_id", id); put("generation_count", count(value)) }) } })

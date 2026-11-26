@@ -553,7 +553,9 @@ data class ComfyWorkflow(
     fun toMediaChannel(): MediaChannel = MediaChannel(
         id = channelId,
         group = mediaCategory.toMediaGroup(capabilities.modes),
-        capabilities = capabilities,
+        capabilities = capabilities.copy(
+            deriveOnly = capabilities.deriveOnly || mediaCategory == ComfyMediaCategory.POST_PROCESS,
+        ),
     )
 
     fun detectFixedOverrides(fixedOverrides: Map<String, JsonElement>): List<WorkflowFixedOverrideDiff> {

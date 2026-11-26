@@ -136,7 +136,17 @@ class ProductionRunService(
             val shot = p.requiredShot(requireNotNull(old.target.episodeId), requireNotNull(old.target.shotCode))
             require(derivation == null || shot.takes.any { it.id == derivation.sourceTakeId }) { "来源候选须属于登记镜头。" }
             require(mediaKindFromPath(resultPath) == com.promenar.infinity.domain.mediagen.InputKind.VIDEO) { "镜头产物必须是视频。" }
-            take = Take(newId(), resultPath, TakeSource(serviceName.take(120).ifBlank { "外部脚本" }), time, derivedFrom = derivation, segments = segments, spec = spec, runId = old.id)
+            take = Take(
+                id = newId(),
+                path = resultPath,
+                source = TakeSource(serviceName.take(120).ifBlank { "外部脚本" }, mode = shot.mode),
+                createdAt = time,
+                planSnapshot = ProductionRules.planSnapshot(shot),
+                derivedFrom = derivation,
+                segments = segments,
+                spec = spec,
+                runId = old.id,
+            )
         }
         val run = old.copy(state = RunState.COMPLETED, completedSteps = old.steps ?: old.completedSteps, reportedAt = time,
             resultTakeId = take?.id, resultAssetVersion = version?.number, resultPath = resultPath, segments = segments)

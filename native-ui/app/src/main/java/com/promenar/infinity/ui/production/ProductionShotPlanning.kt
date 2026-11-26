@@ -61,7 +61,82 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private enum class PlanningSheet { MODE, CHANNEL, LOOK }
-private enum class PlanningDialog { PROMPT, RECOMPILE, SCENE_REVIEW, CONTENT }
+private enum class PlanningDialog { PROMPT, RECOMPILE, CONTENT }
+
+/**
+ * 镜头详情「候选」页签的默认选中候选：
+ * 1. 优先落到最新一条尚未审批（未批准且未否决）的派生（后处理）候选，避免对比审片误落已定稿的原片；
+ * 2. 否则若有已批准的派生候选（已选定或存在批准结论），选中最新的已批准派生候选；
+ * 3. 其余情况回退既有逻辑 `shot.displayTake()`（已选定候选，否则最新候选）。
+ */
+internal fun initialViewingTake(production: Production, episodeId: String, shot: Shot): Take? {
+    val derivedTakes = shot.takes.withIndex().filter { it.value.derivedFrom != null }
+    if (derivedTakes.isNotEmpty()) {
+        val newestOrder = compareBy<IndexedValue<Take>> { it.value.createdAt }.thenBy { it.index }
+        fun isSettled(take: Take): Boolean = take.id == shot.selectedTakeId && shot.status == ShotStatus.LOCKED
+        val unreviewedDerived = derivedTakes.filter { (_, take) ->
+            production.verdictOf(ReviewTarget.take(episodeId, shot.code, take.id)) == null && !isSettled(take)
+        }.maxWithOrNull(newestOrder)?.value
+        if (unreviewedDerived != null) return unreviewedDerived
+
+        val selectedDerived = shot.selectedTake()?.takeIf { it.derivedFrom != null }
+        if (selectedDerived != null) return selectedDerived
+
+        val approvedDerived = derivedTakes.filter { (_, take) ->
+            val verdict = production.verdictOf(ReviewTarget.take(episodeId, shot.code, take.id))
+            verdict?.kind == ReviewKind.APPROVE || isSettled(take)
+        }.maxWithOrNull(newestOrder)?.value
+        if (approvedDerived != null) return approvedDerived
+    }
+    return shot.displayTake()
+}
+
+/**
+ * 解析当前查看候选的一键 A/B 对比配对（原片候选 to 后处理派生候选）：
+ * - 若当前候选本身是派生候选且来源候选存在，返回 `sourceTake to currentTake`；
+ * - 否则若存在以当前候选为来源的派生子候选，返回 `currentTake to latestDerivedChild`；
+ * - 其余情况返回 null，不展示 A/B 切换条。
+ */
+internal fun abComparePair(shot: Shot, currentTake: Take): Pair<Take, Take>? {
+    val sourceTake = currentTake.derivedFrom?.sourceTakeId?.let { id ->
+        shot.takes.firstOrNull { it.id == id && it.id != currentTake.id }
+    }
+    if (sourceTake != null) return sourceTake to currentTake
+    val derivedChild = shot.takes.withIndex()
+        .filter { it.value.derivedFrom?.sourceTakeId == currentTake.id && it.value.id != currentTake.id }
+        .maxWithOrNull(compareBy<IndexedValue<Take>> { it.value.createdAt }.thenBy { it.index })
+        ?.value
+    return derivedChild?.let { currentTake to it }
+}
+
+/**
+ * 判断镜头当前是否对生效通道/工作流的默认规格进行了实质覆盖，用于控制「规格」行的「自定」标签与默认提示：
+ * - ComfyUI 通道仅认 `specWidth`/`specHeight`（忽略历史残留的 `specResolution`），且与工作流默认宽高一致时不标「自定」；
+ * - 云端通道仅认 `specResolution`（忽略 Comfy 宽高），且与通道默认分辨率一致时不标「自定」；
+ * - 未解析通道时回退 `shot.hasCustomSpecs()`。
+ */
+internal fun hasEffectiveCustomSpecs(
+    shot: Shot,
+    channel: MediaChannel?,
+    workflow: ComfyWorkflow?,
+): Boolean {
+    if (channel == null) return shot.hasCustomSpecs()
+    return if (channel.id.startsWith("comfy:")) {
+        val customW = shot.specWidth
+        val customH = shot.specHeight
+        if (customW == null || customH == null) return false
+        val defaultW = workflow?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.WIDTH }?.defaultValue
+            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
+        val defaultH = workflow?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.HEIGHT }?.defaultValue
+            ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
+        if (defaultW != null && defaultH != null) customW != defaultW || customH != defaultH
+        else true
+    } else {
+        val customRes = shot.specResolution?.trim()?.takeIf(String::isNotBlank) ?: return false
+        val defaultRes = channel.capabilities.resolutions.firstOrNull()?.trim()?.takeIf(String::isNotBlank)
+        defaultRes == null || !customRes.equals(defaultRes, ignoreCase = true)
+    }
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -77,15 +152,18 @@ internal fun ProductionShotDetail(
     val shot = location.shot
     val episodeId = location.episode.id
     var tab by rememberSaveable(episodeId, shot.code, initialTab) { mutableStateOf(initialTab ?: shot.defaultDetailTab()) }
+    val defaultViewing = remember(production, episodeId, shot) { initialViewingTake(production, episodeId, shot) }
     // 查看的候选 id，或进行中占位项的 key。
-    var viewingId by rememberSaveable(episodeId, shot.code) { mutableStateOf(shot.displayTake()?.id) }
+    var viewingId by rememberSaveable(episodeId, shot.code) { mutableStateOf(defaultViewing?.id) }
     val placeholders = production.shotPlaceholders(episodeId, shot.code)
     val viewingPlaceholder = placeholders.firstOrNull { it.key == viewingId }
     // 正在查看的链完成后转到它登记的候选。
     val chainTake = shot.chains.firstOrNull { "chain:${it.id}" == viewingId }?.takeId?.let { id -> shot.takes.firstOrNull { it.id == id } }
-    val viewing = if (viewingPlaceholder != null) null else shot.takes.firstOrNull { it.id == viewingId } ?: chainTake ?: shot.displayTake()
+    val viewing = if (viewingPlaceholder != null) null else shot.takes.firstOrNull { it.id == viewingId } ?: chainTake ?: defaultViewing
     val now = rememberProductionNow(placeholders.any { it is ShotPlaceholder.Run })
     var dialog by rememberSaveable(episodeId, shot.code) { mutableStateOf<PlanningDialog?>(null) }
+    val sceneReviewTarget = ReviewTarget.scene(episodeId, location.scene.code)
+    var sceneReviewOpen by rememberSaveable(episodeId, location.scene.code) { mutableStateOf(false) }
     var sheet by remember { mutableStateOf<PlanningSheet?>(null) }
     var specsExpanded by rememberSaveable(episodeId, shot.code) { mutableStateOf(false) }
     var lookCharacter by remember { mutableStateOf<String?>(null) }
@@ -192,7 +270,31 @@ internal fun ProductionShotDetail(
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
                     if (production.experimental) item("experimental") { ProductionTrialStrip() }
                     item("player") {
+                        val abPair = remember(shot, viewing) { viewing?.let { abComparePair(shot, it) } }
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (viewingPlaceholder == null && viewing != null && abPair != null) {
+                                val (sourceTake, derivedTake) = abPair
+                                val sourceSpec = sourceTake.compactSpecLabel()
+                                val derivedSpec = derivedTake.compactSpecLabel()
+                                InfinitySegmentedControl(
+                                    segments = listOf(
+                                        InfinitySegment(
+                                            value = sourceTake.id,
+                                            label = if (sourceSpec != null) stringResource(R.string.p2_ab_source_with_spec, sourceSpec)
+                                            else stringResource(R.string.p2_ab_source_take),
+                                        ),
+                                        InfinitySegment(
+                                            value = derivedTake.id,
+                                            label = if (derivedSpec != null) stringResource(R.string.p2_ab_derived_with_spec, derivedSpec)
+                                            else stringResource(R.string.p2_ab_derived_take),
+                                        ),
+                                    ),
+                                    selected = viewing.id,
+                                    onSelect = { viewingId = it },
+                                    fillWidth = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                             if (viewingPlaceholder != null) ProductionPlaceholderCard(viewingPlaceholder, now, working, onRun, episodeId, shot.code)
                             else if (viewing != null) key(viewing.id) { ProductionMediaReference(viewing.path, Modifier.fillMaxWidth(), alt = shot.title) }
                             else ProductionSection(null) {
@@ -226,14 +328,42 @@ internal fun ProductionShotDetail(
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
                     if (production.experimental) item("experimental") { ProductionTrialStrip() }
                     if (!location.scene.storyboardLocked && !production.experimental) item("unlocked") {
-                        ProductionSection(null) {
-                            ProductionRow(
-                                stringResource(R.string.p2_unlocked_scene),
-                                icon = Icons.Rounded.LockOpen,
-                                chip = production.reviewChipSpec(ReviewTarget.scene(episodeId, location.scene.code)),
-                                enabled = !working,
-                                onClick = { dialog = PlanningDialog.SCENE_REVIEW },
+                        val sceneLabel = listOf(
+                            stringResource(R.string.production_panel_scene_number, location.scene.number),
+                            location.scene.heading,
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ProductionSection(null) {
+                                ProductionRow(
+                                    title = stringResource(R.string.p2_unlocked_scene),
+                                    icon = Icons.Rounded.LockOpen,
+                                    chip = production.reviewChipSpec(sceneReviewTarget),
+                                    chevron = false,
+                                    trailing = {
+                                        Icon(
+                                            imageVector = if (sceneReviewOpen) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                            contentDescription = stringResource(
+                                                if (sceneReviewOpen) R.string.production_review_collapse else R.string.production_review_entry,
+                                            ),
+                                            tint = if (sceneReviewOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    },
+                                    enabled = !working,
+                                    onClick = { sceneReviewOpen = !sceneReviewOpen },
+                                )
+                            }
+                            ProductionInlineReviewSlot(
+                                visible = sceneReviewOpen,
+                                production = production,
+                                target = sceneReviewTarget,
+                                label = sceneLabel,
+                                busy = working,
+                                onDismiss = { sceneReviewOpen = false },
+                                onSubmit = onSubmit,
+                                settled = location.scene.storyboardLocked,
                             )
+                            ProductionReviewNotes(production, sceneReviewTarget)
                         }
                     }
                     item("content") {
@@ -319,7 +449,8 @@ internal fun ProductionShotDetail(
                                             (preview?.specs?.width != null && preview?.specs?.height != null)
                                         ))
                                 )
-                            val defaultSpecsHint = if (shot.hasCustomSpecs()) {
+                            val effectiveCustomSpecs = hasEffectiveCustomSpecs(shot, resolvedChannel, activeWfForSpecs)
+                            val defaultSpecsHint = if (effectiveCustomSpecs) {
                                 val defaultLabelText = when {
                                     resolvedChannel?.id?.startsWith("comfy:") == true -> {
                                         val dw = activeWfForSpecs?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.WIDTH }?.defaultValue
@@ -336,7 +467,7 @@ internal fun ProductionShotDetail(
                                 title = stringResource(R.string.p2_specs),
                                 subtitle = defaultSpecsHint,
                                 valueSegments = planSpecsSegments(preview, production, shot),
-                                chip = if (shot.hasCustomSpecs()) ProductionChipSpec(stringResource(R.string.p2_specs_custom), ProductionTone.NEUTRAL) else null,
+                                chip = if (effectiveCustomSpecs) ProductionChipSpec(stringResource(R.string.p2_specs_custom), ProductionTone.NEUTRAL) else null,
                                 chevron = false,
                                 trailing = if (canConfigureSpecs) ({
                                     Icon(
@@ -588,14 +719,6 @@ internal fun ProductionShotDetail(
         null -> Unit
     }
     when (dialog) {
-        PlanningDialog.SCENE_REVIEW -> ProductionUnifiedReviewDialog(
-            production = production,
-            target = ReviewTarget.scene(episodeId, location.scene.code),
-            label = listOf(stringResource(R.string.production_panel_scene_number, location.scene.number), location.scene.heading),
-            settled = location.scene.storyboardLocked,
-            onDismiss = { dialog = null },
-            onSubmit = onSubmit,
-        )
         PlanningDialog.RECOMPILE -> InfinityConfirmDialog(stringResource(R.string.p2_recompile), stringResource(R.string.p2_recompile_message), stringResource(R.string.p2_recompile), onConfirm = {
             dialog = null; execute { services.planner?.recompilePrompt(sessionId, episodeId, shot.code); refresh++ }
         }, onCancel = { dialog = null })
@@ -881,8 +1004,8 @@ internal fun ShotSpecsInlineEditor(
                 val defaultH = workflow?.fields?.firstOrNull { it.semanticRole == FieldSemanticRole.HEIGHT }?.defaultValue
                     ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
                     ?: previewSpecs?.height?.takeIf { shot.specHeight == null }
-                var customMode by remember(shot.code, shot.specWidth, shot.specHeight) {
-                    mutableStateOf(shot.specWidth != null && shot.specHeight != null)
+                var customMode by remember(shot.code, shot.specWidth, shot.specHeight, defaultW, defaultH) {
+                    mutableStateOf(hasEffectiveCustomSpecs(shot, channel, workflow))
                 }
                 var widthText by remember(shot.code, shot.specWidth, defaultW) {
                     mutableStateOf((shot.specWidth ?: defaultW)?.toString().orEmpty())

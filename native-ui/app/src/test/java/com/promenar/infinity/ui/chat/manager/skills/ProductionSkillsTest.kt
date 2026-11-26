@@ -158,4 +158,64 @@ class ProductionSkillsTest {
         assertThat(skill.description).contains("open_items")
         assertThat(ProductionUpdateSkill(repo).description).doesNotContain("set_budget")
     }
+
+    @Test fun `overview 省略场次与资产明细并附带准确计数和查看提示`() {
+        val sc1 = Scene("SC01", 1, "场一", shots = listOf(Shot("SC01-01", "镜一", durationSeconds = 3.0), Shot("SC01-02", "镜二", durationSeconds = 2.0)))
+        val sc2 = Scene("SC02", 2, "场二", shots = listOf(Shot("SC02-01", "镜三", durationSeconds = 4.0)))
+        val p = Production(
+            id = "p",
+            title = "项目",
+            kind = ProductionKind.SERIES,
+            rootPath = "productions/p",
+            seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "第一集", scenes = listOf(sc1, sc2))))),
+            assets = listOf(Asset("hero", AssetKind.CHARACTER, "主角"), Asset("pier", AssetKind.LOCATION, "码头")),
+            createdAt = 1,
+            updatedAt = 1,
+        )
+        val overview = Json.parseToJsonElement(productionGetResult(ProductionSnapshot(p, 5, ManifestSync.InSync), "overview", null, null))
+            .jsonObject.getValue("content").jsonObject
+        assertThat(overview.keys).doesNotContain("assets")
+        assertThat(overview.getValue("asset_count").jsonPrimitive.int).isEqualTo(2)
+        assertThat(overview.getValue("omitted_in_overview").jsonArray.map { it.jsonPrimitive.content })
+            .containsExactly("scenes", "assets").inOrder()
+        assertThat(overview.getValue("hint").jsonPrimitive.content)
+            .isEqualTo("概览已省略场次与资产明细，查看请传 scope=episode 或 scope=assets")
+        val episode = overview.getValue("seasons").jsonArray.single().jsonObject
+            .getValue("episodes").jsonArray.single().jsonObject
+        assertThat(episode.keys).doesNotContain("scenes")
+        assertThat(episode.getValue("scene_count").jsonPrimitive.int).isEqualTo(2)
+        assertThat(episode.getValue("shot_count").jsonPrimitive.int).isEqualTo(3)
+    }
+
+    @Test fun `production_update 在用户改写提示词受保护时返回 warnings 提示`() = runBlocking {
+        val repo = mockk<ProductionRepository>(relaxed = true)
+        val shot = Shot("SC01-01", "镜头", durationSeconds = 3.0, prompt = "用户手写提示词", promptUserEdited = true)
+        val p = Production(
+            id = "p",
+            title = "项目",
+            kind = ProductionKind.FILM,
+            rootPath = "productions/p",
+            seasons = listOf(Season("S1", 1, episodes = listOf(Episode("S1E01", 1, "集", scenes = listOf(Scene("SC01", 1, "场", shots = listOf(shot))))))),
+            createdAt = 1,
+            updatedAt = 2,
+        )
+        io.mockk.coEvery { repo.update("s", "m", any()) } returns ProductionSnapshot(p, 3, ManifestSync.Pending)
+
+        val skill = ProductionUpdateSkill(repo)
+        val blockedResult = skill.execute(
+            Json.parseToJsonElement("""{"operations":[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","prompt":"智能体覆盖文案"}]}""").jsonObject,
+            context,
+        )
+        assertThat(blockedResult.status).isEqualTo("success")
+        val blockedWarnings = Json.parseToJsonElement(blockedResult.content).jsonObject.getValue("warnings").jsonArray.map { it.jsonPrimitive.content }
+        assertThat(blockedWarnings).containsExactly("镜头 SC01-01 的提示词已由用户手动编辑锁定，本次未覆盖 prompt。")
+
+        val matchingResult = skill.execute(
+            Json.parseToJsonElement("""{"operations":[{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","prompt":"用户手写提示词"}]}""").jsonObject,
+            context,
+        )
+        assertThat(matchingResult.status).isEqualTo("success")
+        val matchingWarnings = Json.parseToJsonElement(matchingResult.content).jsonObject.getValue("warnings").jsonArray
+        assertThat(matchingWarnings).isEmpty()
+    }
 }

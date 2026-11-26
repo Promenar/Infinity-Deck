@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.renderer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import com.google.common.truth.Truth.assertThat
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.jupiter.api.Test
 
 class ImageLightboxGestureMathTest {
@@ -56,5 +58,24 @@ class ImageLightboxGestureMathTest {
         // 旋转满一圈回到 0° 且未放大时恢复未变换状态。
         assertThat(ImageLightboxGestureMath.isTransformed(1f, 4)).isFalse()
         assertThat(ImageLightboxGestureMath.formatTransformSummary(1f, 4)).isNull()
+    }
+
+    @Test fun `底部多图分页指示点使用深色半透明胶囊底托与高对比点色且无硬编码颜色`() {
+        val moduleRoot = Path.of(System.getProperty("user.dir") ?: ".").let { root ->
+            if (Files.isDirectory(root.resolve("src/main"))) root else root.resolve("app")
+        }
+        val lightboxSource = Files.readString(
+            moduleRoot.resolve("src/main/java/com/promenar/infinity/ui/renderer/ImageLightbox.kt"),
+        )
+        val bottomBar = lightboxSource
+            .substringAfter("private fun LightboxBottomBar(")
+            .substringBefore("private suspend fun loadImageBitmap(")
+
+        assertThat(bottomBar).contains("shape = CircleShape")
+        assertThat(bottomBar).contains("color = scheme.scrim.copy(alpha = 0.62f)")
+        assertThat(bottomBar).contains("padding(horizontal = 10.dp, vertical = 5.dp)")
+        assertThat(bottomBar).contains("overlayTint.copy(alpha = 0.45f)")
+        assertThat(lightboxSource).doesNotContain("Color.Black")
+        assertThat(lightboxSource).doesNotContain("Color.White")
     }
 }

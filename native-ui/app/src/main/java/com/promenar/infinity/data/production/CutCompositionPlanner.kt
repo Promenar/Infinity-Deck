@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.production
 
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -79,9 +80,7 @@ object CutCompositionPlanner {
             timeline += clip.seconds
         }
         music(production, timeline, metadata)?.let(audio::add)
-        val height = cut.clips.mapNotNull { clip -> clip.path?.let { metadata[it]?.height } }
-            .filter { it > 1 }.maxOrNull()?.coerceAtMost(1080)?.let { it - it % 2 } ?: 1080
-        val width = outputWidth(production.aspectRatio, height)
+        val (width, height) = outputDimensions(production.aspectRatio, cut.clips, metadata)
         return CutCompositionPlan(width, height, timeline, ProductionCuts.videoPath(production, cut),
             ProductionCuts.subtitlePath(production, cut), cut.burnSubtitles, segments, audio, subtitles, toSrt(subtitles))
     }
@@ -114,10 +113,50 @@ object CutCompositionPlanner {
     private fun measuredDuration(metadata: CutMediaMetadata?): Double? =
         metadata?.durationSeconds?.takeIf { it.isFinite() && it > 0.0 && it <= ProductionCuts.MAX_TIMELINE_SECONDS }
 
-    private fun outputWidth(aspectRatio: String?, height: Int): Int {
+    private const val COMMON_DIMENSION_ASPECT_TOLERANCE = 0.03
+
+    private fun outputDimensions(
+        aspectRatio: String?,
+        clips: List<CutClip>,
+        metadata: Map<String, CutMediaMetadata>,
+    ): Pair<Int, Int> {
+        val targetRatio = parseAspectRatio(aspectRatio)
+        val clipPaths = clips.mapNotNull { it.path }
+        if (clipPaths.isNotEmpty()) {
+            val resolved = clipPaths.map { path ->
+                val meta = metadata[path]
+                val w = meta?.width?.takeIf { it > 1 }
+                val h = meta?.height?.takeIf { it > 1 }
+                if (w != null && h != null) w to h else null
+            }
+            // 所有视频素材共享一致的有效偶数分辨率且画幅在项目画幅 ±3% 内（如 864×480 对 16:9）时，
+            // 直接保留素材原生分辨率，避免导出阶段无谓缩放或产生细黑边。
+            if (resolved.all { it != null }) {
+                val distinct = resolved.filterNotNull().distinct()
+                if (distinct.size == 1) {
+                    val (commonW, commonH) = distinct.single()
+                    val ratio = commonW.toDouble() / commonH.toDouble()
+                    if (commonW % 2 == 0 && commonH % 2 == 0 &&
+                        commonH <= 1080 && commonW <= 3840 &&
+                        abs(ratio - targetRatio) / targetRatio <= COMMON_DIMENSION_ASPECT_TOLERANCE
+                    ) {
+                        return commonW to commonH
+                    }
+                }
+            }
+        }
+        val height = clipPaths.mapNotNull { metadata[it]?.height }
+            .filter { it > 1 }.maxOrNull()?.coerceAtMost(1080)?.let { it - it % 2 } ?: 1080
+        return outputWidth(targetRatio, height) to height
+    }
+
+    private fun parseAspectRatio(aspectRatio: String?): Double {
         val parts = aspectRatio?.split(':')
         val pair = parts?.takeIf { it.size == 2 }?.map { it.trim().toDoubleOrNull() }
-        val ratio = if (pair != null && pair.all { it != null && it.isFinite() && it > 0.0 }) pair[0]!! / pair[1]!! else 16.0 / 9.0
+        return if (pair != null && pair.all { it != null && it.isFinite() && it > 0.0 }) pair[0]!! / pair[1]!! else 16.0 / 9.0
+    }
+
+    private fun outputWidth(ratio: Double, height: Int): Int {
         val candidate = height * ratio
         val safe = if (candidate.isFinite() && candidate >= 2.0 && candidate <= Int.MAX_VALUE - 2.0) candidate else height * 16.0 / 9.0
         return ((safe / 2.0).roundToInt() * 2).coerceAtLeast(2)

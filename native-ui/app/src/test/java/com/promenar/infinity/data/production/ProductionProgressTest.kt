@@ -106,6 +106,30 @@ class ProductionProgressTest {
         assertThat(summary).contains("production_get 的 changes")
         assertThat(summary).contains("共 33 条")
     }
+    @Test fun `finish 自动登记镜头候选时保留镜头模式与规划快照`() = runTest {
+        val store = ProgressStore()
+        store.snapshot = store.snapshot.copy(
+            production = store.snapshot.production.mapShot("S1E01", "SC01-01") {
+                it.copy(
+                    channelId = "comfy:h3_ref",
+                    mode = ShotMode.REFERENCE,
+                    prompt = "雨夜古坪低身旋斩",
+                    inputs = listOf(ShotInput(InputRole.REFERENCE, "p/1.png", label = "主角")),
+                )
+            },
+        )
+        val expectedShot = store.shot()
+        var nextId = 0
+        val service = ProductionRunService(store, { _, _ -> MediaSpec(1344, 768, 24.0, 5.0) }, { _, _ -> true }, now = { 50 }, newId = { "rt${nextId++}" })
+        val started = service.start("s", RunTarget("S1E01", "SC01-01"), "ComfyUI 工作流生成")
+        service.finish("s", started.id, "p/comfy_take.mp4", serviceName = "ComfyUI（H3）")
+        val take = store.shot().takes.last()
+        assertThat(take.source.service).isEqualTo("ComfyUI（H3）")
+        assertThat(take.source.mode).isEqualTo(ShotMode.REFERENCE)
+        assertThat(take.planSnapshot).isEqualTo(ProductionRules.planSnapshot(expectedShot))
+        assertThat(take.planSnapshot?.channelId).isEqualTo("comfy:h3_ref")
+        assertThat(take.planSnapshot?.prompt).isEqualTo("雨夜古坪低身旋斩")
+    }
 }
 
 class ProductionReportAuditRegressionTest {

@@ -48,7 +48,7 @@ fun projectTasks(tasks: List<MediaTask>, prefix: String?): List<MediaTask> {
 }
 
 fun Production.tabSignals(): ProductionTabSignals = ProductionTabSignals(
-    storyboardDot = episodes().any { episode -> episode.scenes.any { !it.storyboardLocked } },
+    storyboardDot = episodes().any { episode -> episode.scenes.any { it.shots.isNotEmpty() && !it.storyboardLocked } },
     reviews = shotLocations().count { it.shot.status == ShotStatus.REVIEW },
 )
 
@@ -124,7 +124,7 @@ fun ShotMode.generationMode(): GenerationMode = when (this) {
 
 /** 注册表的显式顺序优先，尚未登记顺序的通道按观察列表顺序补在末尾。 */
 fun channelChoices(channels: List<MediaChannel>, order: List<String>, mode: ShotMode): List<MediaChannel> {
-    val supported = channels.filter { it.group == MediaGroup.VIDEO && mode.generationMode() in it.capabilities.modes }.distinctBy { it.id }
+    val supported = channels.filter { it.group == MediaGroup.VIDEO && !it.capabilities.deriveOnly && mode.generationMode() in it.capabilities.modes }.distinctBy { it.id }
     return order.distinct().mapNotNull { id -> supported.firstOrNull { it.id == id } } + supported.filter { it.id !in order }
 }
 

@@ -25,7 +25,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -126,6 +126,25 @@ internal fun NoteBlock(title: String, text: String) {
     }
 }
 
+/**
+ * 查找通过参考语音绑定到当前声音资产任一版本路径的角色资产。
+ * 仅声音资产参与匹配；统一路径分隔符与前缀后再比对，兼容相对路径写法差异。
+ */
+internal fun Production.boundCharactersForSoundAsset(asset: Asset): List<Asset> {
+    if (asset.kind != AssetKind.SOUND) return emptyList()
+    val versionPaths = asset.versions
+        .mapNotNull { normalizeSoundAssetPath(it.path) }
+        .toSet()
+    if (versionPaths.isEmpty()) return emptyList()
+    return assets.filter { candidate ->
+        candidate.kind == AssetKind.CHARACTER &&
+            normalizeSoundAssetPath(candidate.referenceVoice?.path) in versionPaths
+    }
+}
+
+private fun normalizeSoundAssetPath(path: String?): String? =
+    path?.trim()?.replace('\\', '/')?.removePrefix("./")?.trimStart('/')?.takeIf(String::isNotBlank)
+
 /** 资产详情：查看各版本，对选中的版本批准、否决或建议。 */
 @Composable
 internal fun ProductionAssetSheet(
@@ -139,6 +158,7 @@ internal fun ProductionAssetSheet(
     var versionNumber by rememberSaveable(asset.id) { mutableStateOf(asset.currentVersion ?: asset.versions.maxOfOrNull { it.number }) }
     val version = asset.versions.firstOrNull { it.number == versionNumber } ?: asset.versions.maxByOrNull { it.number }
     val usage = production.shotsUsingAsset(asset.id)
+    val boundCharacters = remember(asset, production.assets) { production.boundCharactersForSoundAsset(asset) }
     val versionChip = version?.let { selected ->
         production.reviewChipSpec(
             ReviewTarget.assetVersion(asset.id, selected.number),
@@ -154,11 +174,14 @@ internal fun ProductionAssetSheet(
     ) {
         Column(Modifier.fillMaxWidth().testTag(ProductionUiTags.ASSET_SHEET), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium)) {
             InfinityMetaLine(
-                segments = listOfNotNull(
-                    asset.kind.label(),
-                    pluralStringResource(R.plurals.production_panel_asset_usage, usage, usage),
-                    version?.let { stringResource(R.string.production_panel_version, it.number) },
-                ),
+                segments = buildList {
+                    add(asset.kind.label())
+                    boundCharacters.forEach { character ->
+                        add(stringResource(R.string.p2_sound_bound_character, character.name))
+                    }
+                    add(pluralStringResource(R.plurals.production_panel_asset_usage, usage, usage))
+                    version?.let { add(stringResource(R.string.production_panel_version, it.number)) }
+                },
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

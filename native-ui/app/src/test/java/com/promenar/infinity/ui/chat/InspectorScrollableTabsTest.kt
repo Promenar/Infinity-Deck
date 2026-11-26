@@ -87,7 +87,7 @@ class InspectorScrollableTabsTest {
             "Remote" to "远程",
             "Canvas" to "产物",
             "State" to "状态",
-            "Production" to "视频",
+            "Production" to "制作",
         )
         val expectedEn = mapOf(
             "Run" to "Tasks",
@@ -97,7 +97,7 @@ class InspectorScrollableTabsTest {
             "Remote" to "Remote",
             "Canvas" to "Artifacts",
             "State" to "State",
-            "Production" to "Video",
+            "Production" to "Production",
         )
 
         mapped.forEach { (page, key) ->
@@ -124,5 +124,22 @@ class InspectorScrollableTabsTest {
         assertThat(inspector).contains("LocalInspectionMode.current")
         assertThat(inspector).contains("inspectorTabLabel()")
         assertThat(inspector).contains("softWrap = false")
+        assertThat(inspector).contains("R.string.chat_inspector_badge_send")
+    }
+
+    @Test fun `检视器底栏选中制作页签或存在待发送项时并列内联双角标其余保持图标角标`() {
+        val prodBoth = PanelHubEntry(ChatPage.Production, summary = "雾港", pending = 1, running = false, available = true, onOpen = {}, secondaryPending = 4)
+        val prodReviewOnly = prodBoth.copy(secondaryPending = 0)
+        val prodSendOnly = prodBoth.copy(pending = 0)
+        val prodNone = prodBoth.copy(pending = 0, secondaryPending = 0)
+        val runPending = PanelHubEntry(ChatPage.Run, summary = null, pending = 2, running = true, available = true, onOpen = {})
+
+        assertThat(shouldShowInlineInspectorBadges(prodBoth, selected = true)).isTrue()
+        assertThat(shouldShowInlineInspectorBadges(prodReviewOnly, selected = true)).isTrue()
+        assertThat(shouldShowInlineInspectorBadges(prodSendOnly, selected = true)).isTrue()
+        assertThat(shouldShowInlineInspectorBadges(prodNone, selected = true)).isFalse()
+        assertThat(shouldShowInlineInspectorBadges(prodBoth, selected = false)).isFalse()
+        assertThat(shouldShowInlineInspectorBadges(prodBoth.copy(available = false), selected = true)).isFalse()
+        assertThat(shouldShowInlineInspectorBadges(runPending, selected = true)).isFalse()
     }
 }

@@ -119,6 +119,8 @@ fun InfinityModalSheet(
     properties: ModalBottomSheetProperties = ModalBottomSheetProperties(),
     containerColor: Color = infinitySheetContainerColor(),
     popover: InfinityPopoverSpec? = null,
+    /** 宽窗口居中弹窗的最大宽度，默认 640dp；紧凑单选列表可按需收窄。 */
+    centeredMaxWidth: Dp = 640.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
@@ -143,7 +145,15 @@ fun InfinityModalSheet(
             return
         }
         InfinitySheetPresentation.CenteredDialog -> {
-            InfinityCenteredSheet(onDismissRequest, height, modifier, properties, containerColor, content)
+            InfinityCenteredSheet(
+                onDismissRequest = onDismissRequest,
+                height = height,
+                modifier = modifier,
+                properties = properties,
+                containerColor = containerColor,
+                centeredMaxWidth = centeredMaxWidth,
+                content = content,
+            )
             return
         }
         InfinitySheetPresentation.BottomSheet -> Unit
@@ -233,6 +243,7 @@ private fun InfinityCenteredSheet(
     modifier: Modifier,
     properties: ModalBottomSheetProperties,
     containerColor: Color,
+    centeredMaxWidth: Dp = 640.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val maxHeight = (LocalConfiguration.current.screenHeightDp * INFINITY_CENTERED_SHEET_HEIGHT_FRACTION).dp
@@ -276,7 +287,7 @@ private fun InfinityCenteredSheet(
                         shadowElevation = 12.dp,
                         modifier = modifier
                             .padding(horizontal = 32.dp)
-                            .widthIn(max = 640.dp)
+                            .widthIn(max = centeredMaxWidth)
                             .fillMaxWidth()
                             .then(if (height == InfinitySheetHeight.Large) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight))
                             .testTag(InfinitySheetTags.CENTERED),
@@ -336,6 +347,8 @@ fun InfinityBottomSheet(
     dragGesturesEnabled: Boolean = true,
     /** 宽窗口下贴着触发控件弹出；窄窗口仍是底部上滑面板。 */
     popover: InfinityPopoverSpec? = null,
+    /** 宽窗口居中弹窗的最大宽度，默认 640dp；单选列表等紧凑面板可按需传入更小宽度。 */
+    centeredMaxWidth: Dp = 640.dp,
     content: @Composable () -> Unit
 ) {
     val wide = rememberInfinityWideWindow()
@@ -400,6 +413,7 @@ fun InfinityBottomSheet(
             shouldDismissOnBackPress = dismissEnabled,
             shouldDismissOnClickOutside = dismissEnabled,
         ),
+        centeredMaxWidth = centeredMaxWidth,
     ) {
         Column(
             modifier = modifier

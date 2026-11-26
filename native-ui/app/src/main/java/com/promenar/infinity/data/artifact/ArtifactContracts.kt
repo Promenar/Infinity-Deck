@@ -96,9 +96,14 @@ interface SessionArtifactRepository {
 
     /**
      * 从本会话的工作区改动中挑出未收录的候选：同一路径取最后一次改动；排除已声明的来源路径、已忽略的路径、
-     * 已不存在或是目录的路径、隐藏目录与内部目录（`.infinity`、`.git`、`node_modules` 等）、画布镜像目录与临时类文件。
+     * [excludedPathPrefixes] 指定的托管目录（如已绑定的制作项目根目录）、已不存在或是目录的路径、
+     * 隐藏目录与内部目录（`.infinity`、`.git`、`node_modules` 等）、画布镜像目录与临时类文件。
      */
-    suspend fun candidates(sessionId: String, changes: List<WorkspaceChangedFile>): List<ArtifactCandidate>
+    suspend fun candidates(
+        sessionId: String,
+        changes: List<WorkspaceChangedFile>,
+        excludedPathPrefixes: Set<String> = emptySet(),
+    ): List<ArtifactCandidate>
 
     /** 忽略一个候选路径；之后同一路径不再作为候选，直到它被声明或收录。 */
     suspend fun ignoreCandidate(sessionId: String, path: String)
@@ -154,3 +159,61 @@ private val DOCUMENT_MIME_TYPES = setOf(
     "text/markdown", "text/plain", "application/pdf", "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 )
+
+private val ARTIFACT_EXCLUSION_ROOT_PREFIXES = listOf(
+    "/home/session/",
+    "/workspace/",
+    "/session/",
+    "/.infinity-production-private/",
+    ".infinity-production-private/",
+    "/",
+)
+
+private val ARTIFACT_EXCLUSION_BARE_ROOTS = setOf(
+    "/home/session",
+    "/workspace",
+    "/session",
+    "/.infinity-production-private",
+    ".infinity-production-private",
+    "/",
+)
+
+private val MULTIPLE_SLASHES_REGEX = Regex("/+")
+
+private fun normalizeArtifactExclusionPath(raw: String): String {
+    val trimmed = raw.trim().replace('\\', '/')
+    if (trimmed.isEmpty()) return ""
+    val collapsed = MULTIPLE_SLASHES_REGEX.replace(trimmed, "/")
+    val withoutTrailing = collapsed.trimEnd('/').ifEmpty { "/" }
+    if (withoutTrailing in ARTIFACT_EXCLUSION_BARE_ROOTS) return ""
+    val stripped = ARTIFACT_EXCLUSION_ROOT_PREFIXES
+        .firstOrNull { withoutTrailing.startsWith(it) }
+        ?.let { withoutTrailing.removePrefix(it) }
+        ?: withoutTrailing
+    val resolved = ArrayDeque<String>()
+    for (segment in stripped.split('/')) {
+        when (segment) {
+            "", "." -> continue
+            ".." -> if (resolved.isEmpty()) return "" else resolved.removeLast()
+            else -> resolved.addLast(segment)
+        }
+    }
+    return resolved.joinToString("/")
+}
+
+/**
+ * 判断工作区路径 [path] 是否落在排除目录 [excludedPrefix] 下（含目录本身与任意嵌套子目录）。
+ * 统一剥离首尾斜杠与已知工作区根前缀（`/home/session/`、`/workspace/`、`/session/`、`.infinity-production-private/`、`/`），
+ * 并按完整目录边界匹配，避免将兄弟目录（如 `productions/demo-2/foo.md`）误判为 `productions/demo` 的子项。
+ */
+fun isInsideExcludedDirectory(path: String, excludedPrefix: String): Boolean {
+    val normalizedPrefix = normalizeArtifactExclusionPath(excludedPrefix)
+    if (normalizedPrefix.isEmpty()) return false
+    val normalizedPath = normalizeArtifactExclusionPath(path)
+    if (normalizedPath.isEmpty()) return false
+    return normalizedPath == normalizedPrefix || normalizedPath.startsWith("$normalizedPrefix/")
+}
+
+/** 判断工作区路径 [path] 是否命中任意排除目录前缀。 */
+fun isPathExcluded(path: String, excludedPrefixes: Collection<String>): Boolean =
+    excludedPrefixes.any { prefix -> isInsideExcludedDirectory(path, prefix) }

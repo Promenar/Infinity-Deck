@@ -56,6 +56,13 @@ class WorkspaceCutMediaProbe(private val context: Context, private val resolver:
     }
 }
 
+/** 粗剪导出基准帧率（与 PrevisVideoEncoder 及主流 24fps AI 视频镜头一致）。 */
+internal const val CUT_EXPORT_FRAME_RATE = 24
+
+/** 仅静态标题卡需要显式指定帧率；视频片段沿用自身帧率，避免 24fps 镜头与 30fps 标题卡混排产生 VFR。 */
+internal fun cutSegmentFrameRate(segment: CutVideoSegment): Int? =
+    if (segment.path == null) CUT_EXPORT_FRAME_RATE else null
+
 /** 主序列显式包含音频轨，Media3 为无音轨视频和图片补静音。 */
 @androidx.annotation.OptIn(UnstableApi::class)
 class Media3CutExporter(private val context: Context, private val resolver: WorkspaceMediaResolver) : CutExporter {
@@ -63,7 +70,7 @@ class Media3CutExporter(private val context: Context, private val resolver: Work
         require(plan.segments.isNotEmpty()) { "剪辑为空" }
         if (!MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { codec ->
             codec.isEncoder && codec.supportedTypes.any { it.equals(MimeTypes.VIDEO_H264, ignoreCase = true) } &&
-                codec.getCapabilitiesForType(MimeTypes.VIDEO_H264).videoCapabilities?.areSizeAndRateSupported(plan.width, plan.height, 30.0) == true
+                codec.getCapabilitiesForType(MimeTypes.VIDEO_H264).videoCapabilities?.areSizeAndRateSupported(plan.width, plan.height, CUT_EXPORT_FRAME_RATE.toDouble()) == true
         }) throw CutExportFailure(CutFailureReason.UNSUPPORTED_SIZE)
         val directory = java.nio.file.Files.createTempDirectory(context.cacheDir.toPath(), "cut-export-").toFile()
         val output = File(directory, "output.mp4")
@@ -128,11 +135,13 @@ class Media3CutExporter(private val context: Context, private val resolver: Work
                 .setImageDurationMs((segment.durationSeconds * 1000).roundToLong().coerceAtLeast(1)).build()
             else clipped(requireNotNull(sources[segment.path]), 0.0, segment.durationSeconds)
             val effects = mutableListOf<androidx.media3.common.Effect>(
+                // LAYOUT_SCALE_TO_FIT 等比适配并补黑边（letterbox/pillarbox），绝不拉伸画面；同尺寸时无损透传。
                 Presentation.createForWidthAndHeight(plan.width, plan.height, Presentation.LAYOUT_SCALE_TO_FIT),
             )
             val original = plan.audio.firstOrNull { it.kind == CutAudioKind.ORIGINAL && it.path == segment.path && abs(it.startSeconds - segment.startSeconds) < 0.000001 }
-            EditedMediaItem.Builder(item).setFrameRate(30)
-                .setEffects(Effects(original?.let(::gain).orEmpty(), effects)).build()
+            EditedMediaItem.Builder(item).apply {
+                cutSegmentFrameRate(segment)?.let { setFrameRate(it) }
+            }.setEffects(Effects(original?.let(::gain).orEmpty(), effects)).build()
         }
         val sequences = mutableListOf(EditedMediaItemSequence.withAudioAndVideoFrom(videos))
         plan.audio.filter { it.kind != CutAudioKind.ORIGINAL && it.durationSeconds > 0 }.groupBy { it.kind }.values.forEach { track ->

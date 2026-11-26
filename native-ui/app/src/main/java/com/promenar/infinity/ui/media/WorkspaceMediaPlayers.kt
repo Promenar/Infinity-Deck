@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -249,6 +250,12 @@ internal fun MediaProgressSlider(
     )
 }
 
+/** 内联叠层播放器控件保持单行排布的最小宽度；窄分屏下进度条独立占满顶行，避免滑块被挤压。 */
+internal val CompactOverlaySingleRowMinWidth = 460.dp
+
+internal fun useSingleRowCompactOverlayControls(maxWidthDp: Float): Boolean =
+    maxWidthDp >= CompactOverlaySingleRowMinWidth.value
+
 /** 进度条与控制行：播放/暂停、时间、静音与全屏切换均使用 Media3 Material3 组件。 */
 @OptIn(UnstableApi::class, ExperimentalApi::class)
 @Composable
@@ -263,35 +270,73 @@ internal fun MediaPlaybackControls(
     val progressLabel = stringResource(R.string.media_playback_progress)
     if (compactOverlay) {
         val overlayColor = MaterialTheme.infinityDomainColors.overlayContent
+        val sliderColors = SliderDefaults.colors(
+            thumbColor = overlayColor,
+            activeTrackColor = overlayColor,
+            inactiveTrackColor = overlayColor.copy(alpha = 0.32f),
+        )
         CompositionLocalProvider(LocalContentColor provides overlayColor) {
-            Row(
-                modifier = modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                PlayPauseButton(player = player)
-                ProgressSlider(
-                    player = player,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp)
-                        .semantics { contentDescription = progressLabel },
-                    colors = SliderDefaults.colors(
-                        thumbColor = overlayColor,
-                        activeTrackColor = overlayColor,
-                        inactiveTrackColor = overlayColor.copy(alpha = 0.32f),
-                    ),
-                )
-                PositionAndDurationText(player = player)
-                if (showMute) MuteButton(player = player)
-                if (onFullscreen != null) {
-                    IconButton(onClick = onFullscreen) {
-                        Icon(
-                            imageVector = if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                            contentDescription = stringResource(
-                                if (fullscreen) R.string.media_action_exit_fullscreen else R.string.media_action_fullscreen,
-                            ),
+            BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+                if (useSingleRowCompactOverlayControls(maxWidth.value)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        PlayPauseButton(player = player)
+                        ProgressSlider(
+                            player = player,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp)
+                                .semantics { contentDescription = progressLabel },
+                            colors = sliderColors,
                         )
+                        PositionAndDurationText(player = player)
+                        if (showMute) MuteButton(player = player)
+                        if (onFullscreen != null) {
+                            IconButton(onClick = onFullscreen) {
+                                Icon(
+                                    imageVector = if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                    contentDescription = stringResource(
+                                        if (fullscreen) R.string.media_action_exit_fullscreen else R.string.media_action_fullscreen,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        ProgressSlider(
+                            player = player,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp)
+                                .semantics { contentDescription = progressLabel },
+                            colors = sliderColors,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            PlayPauseButton(player = player)
+                            PositionAndDurationText(
+                                player = player,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (showMute) MuteButton(player = player)
+                            if (onFullscreen != null) {
+                                IconButton(onClick = onFullscreen) {
+                                    Icon(
+                                        imageVector = if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                        contentDescription = stringResource(
+                                            if (fullscreen) R.string.media_action_exit_fullscreen else R.string.media_action_fullscreen,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

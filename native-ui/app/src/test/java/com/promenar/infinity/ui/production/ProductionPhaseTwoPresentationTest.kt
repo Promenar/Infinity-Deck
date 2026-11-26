@@ -14,6 +14,8 @@ import com.promenar.infinity.domain.mediagen.MediaTaskState
 import com.promenar.infinity.domain.mediagen.Money
 import com.promenar.infinity.domain.mediagen.PromptFormat
 import java.math.BigDecimal
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Test
 
 class ProductionPhaseTwoPresentationTest {
@@ -46,9 +49,11 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(production.taskTitleSegments("p:task")).isEmpty()
     }
 
-    @Test fun `页签待审数只看镜头状态且待定场显示圆点`() {
-        val p = production.copy(seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene, scene.copy(code = "SC02", storyboardLocked = false, shots = emptyList())))))))
-        assertThat(p.tabSignals()).isEqualTo(ProductionTabSignals(storyboardDot = true, reviews = 1))
+    @Test fun `页签待审数只看镜头状态且空未锁场不亮圆点有镜头未锁场才亮圆点`() {
+        val emptyUnlocked = production.copy(seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene, scene.copy(code = "SC02", storyboardLocked = false, shots = emptyList())))))))
+        assertThat(emptyUnlocked.tabSignals()).isEqualTo(ProductionTabSignals(storyboardDot = false, reviews = 1))
+        val nonEmptyUnlocked = production.copy(seasons = listOf(Season("S1", 1, episodes = listOf(episode.copy(scenes = listOf(scene, scene.copy(code = "SC02", storyboardLocked = false, shots = listOf(shot.copy(code = "SC02-01", status = ShotStatus.TODO)))))))))
+        assertThat(nonEmptyUnlocked.tabSignals()).isEqualTo(ProductionTabSignals(storyboardDot = true, reviews = 1))
         assertThat(production.tabSignals()).isEqualTo(ProductionTabSignals(storyboardDot = false, reviews = 1))
     }
 
@@ -140,6 +145,47 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(channelChoices(listOf(first, second, textOnly, audio), listOf("missing", "second", "second", "first", "text"), ShotMode.REFERENCE).map { it.id }).containsExactly("second", "first").inOrder()
         assertThat(channelChoices(listOf(first, second), listOf("second"), ShotMode.TEXT).map { it.id }).containsExactly("second", "first").inOrder()
         assertThat(channelChoices(listOf(textOnly), emptyList(), ShotMode.FIRST_LAST)).isEmpty()
+    }
+
+    @Test fun `派生模板通道在分镜生成通道选择与默认解析中被排除而生成模板保留`() {
+        val graph = kotlinx.serialization.json.Json.parseToJsonElement("""{"1":{"class_type":"Node","inputs":{"video":"a.mp4","prompt":""}},"2":{"class_type":"Save","inputs":{}}}""").jsonObject
+        val deriveTemplate = com.promenar.infinity.domain.mediagen.ComfyTemplate(
+            id = "flashvsr_2x",
+            workflow = graph,
+            slots = listOf(
+                com.promenar.infinity.domain.mediagen.ComfySlot("1", "video", com.promenar.infinity.domain.mediagen.SlotKind.INPUT_VIDEO),
+                com.promenar.infinity.domain.mediagen.ComfySlot("2", "videos", com.promenar.infinity.domain.mediagen.SlotKind.OUTPUT, outputKind = com.promenar.infinity.domain.mediagen.InputKind.VIDEO),
+            ),
+            locked = true,
+            capabilities = MediaCapabilities(setOf(GenerationMode.REFERENCE)),
+            hostId = "h1",
+            group = MediaGroup.VIDEO,
+            name = "FlashVSR 2×",
+            role = com.promenar.infinity.domain.mediagen.TemplateRole.DERIVE,
+            operation = com.promenar.infinity.domain.mediagen.TemplateOperation("超分 2×"),
+        )
+        val generateTemplate = com.promenar.infinity.domain.mediagen.ComfyTemplate(
+            id = "h3_ref",
+            workflow = graph,
+            slots = listOf(
+                com.promenar.infinity.domain.mediagen.ComfySlot("1", "prompt", com.promenar.infinity.domain.mediagen.SlotKind.PROMPT),
+                com.promenar.infinity.domain.mediagen.ComfySlot("2", "videos", com.promenar.infinity.domain.mediagen.SlotKind.OUTPUT, outputKind = com.promenar.infinity.domain.mediagen.InputKind.VIDEO),
+            ),
+            locked = true,
+            capabilities = MediaCapabilities(setOf(GenerationMode.REFERENCE)),
+            hostId = "h1",
+            group = MediaGroup.VIDEO,
+            name = "H3 参考生成",
+            role = com.promenar.infinity.domain.mediagen.TemplateRole.GENERATE,
+        )
+        val deriveChannel = deriveTemplate.channel()
+        val generateChannel = generateTemplate.channel()
+        assertThat(deriveChannel.capabilities.deriveOnly).isTrue()
+        assertThat(generateChannel.capabilities.deriveOnly).isFalse()
+        assertThat(channelChoices(listOf(deriveChannel, generateChannel), listOf(deriveChannel.id, generateChannel.id), ShotMode.REFERENCE).map { it.id })
+            .containsExactly(generateChannel.id)
+        assertThat(com.promenar.infinity.domain.mediagen.resolveDefaultChannel(MediaGroup.VIDEO, GenerationMode.REFERENCE, listOf(deriveChannel, generateChannel)))
+            .isEqualTo(generateChannel)
     }
 
     @Test fun `参考位多选可逆造型切换默认三位并经审批写入`() {
@@ -365,6 +411,99 @@ class ProductionPhaseTwoPresentationTest {
             assertThat(line.oldText.orEmpty()).doesNotContain("characterAssetId")
             assertThat(line.newText.orEmpty()).doesNotContain("characterAssetId")
         }
+    }
+
+    @Test fun `非角色视觉资产单图参考文案避免误标多视角整卡且角色资产保留整卡文案`() {
+        val characterCopy = singleImageCopyFor(AssetKind.CHARACTER)
+        assertThat(characterCopy.isMultiViewSheet).isTrue()
+        assertThat(characterCopy.sectionTitleRes).isEqualTo(com.promenar.infinity.R.string.p2_mode_sheet_title)
+        assertThat(characterCopy.readyBadgeRes).isEqualTo(com.promenar.infinity.R.string.p2_mode_sheet_ready_badge)
+        assertThat(characterCopy.overlayTagRes).isEqualTo(com.promenar.infinity.R.string.p2_mode_sheet_tag)
+        assertThat(characterCopy.defaultSubtitleRes).isEqualTo(com.promenar.infinity.R.string.p2_mode_sheet_default_subtitle)
+        assertThat(characterCopy.emptyHintRes).isEqualTo(com.promenar.infinity.R.string.p2_mode_sheet_unregistered_hint)
+        assertThat(characterCopy.usingReferenceRes).isEqualTo(com.promenar.infinity.R.string.p2_using_sheet_image)
+
+        listOf(AssetKind.LOCATION, AssetKind.PROP, AssetKind.STYLE).forEach { kind ->
+            val singleCopy = singleImageCopyFor(kind)
+            assertThat(singleCopy.isMultiViewSheet).isFalse()
+            assertThat(singleCopy.sectionTitleRes).isEqualTo(com.promenar.infinity.R.string.p2_single_reference_title)
+            assertThat(singleCopy.readyBadgeRes).isEqualTo(com.promenar.infinity.R.string.p2_single_concept_tag)
+            assertThat(singleCopy.overlayTagRes).isEqualTo(com.promenar.infinity.R.string.p2_single_concept_tag)
+            assertThat(singleCopy.defaultSubtitleRes).isEqualTo(com.promenar.infinity.R.string.p2_single_reference_subtitle)
+            assertThat(singleCopy.emptyHintRes).isEqualTo(com.promenar.infinity.R.string.p2_single_reference_subtitle)
+            assertThat(singleCopy.usingReferenceRes).isEqualTo(com.promenar.infinity.R.string.p2_single_reference_using)
+        }
+
+        val moduleRoot = Path.of(System.getProperty("user.dir") ?: ".").let { root ->
+            if (Files.isDirectory(root.resolve("src/main"))) root else root.resolve("app")
+        }
+        val characterSource = Files.readString(
+            moduleRoot.resolve("src/main/java/com/promenar/infinity/ui/production/ProductionCharacter.kt"),
+        )
+        assertThat(characterSource).contains("R.string.p2_optional_reference_slot")
+        assertThat(characterSource).doesNotContain("R.string.p2_optional_stage")
+        assertThat(characterSource).contains("singleImageCopyFor(asset.kind)")
+    }
+
+    @Test fun `声音资产详情准确匹配绑定该配音路径的角色并兼容路径归一化`() {
+        val voiceSound = Asset(
+            id = "snd-lin",
+            kind = AssetKind.SOUND,
+            name = "林提灯·雨夜低语配音",
+            versions = listOf(
+                AssetVersion(1, "productions/p/voices/lin_v1.wav", 1),
+                AssetVersion(2, "./productions/p/voices/lin_v2.wav", 2),
+            ),
+            currentVersion = 2,
+        )
+        val bgmSound = Asset(
+            id = "snd-bgm",
+            kind = AssetKind.SOUND,
+            name = "雨巷古筝配乐",
+            versions = listOf(AssetVersion(1, "productions/p/audio/bgm.wav", 1)),
+            currentVersion = 1,
+        )
+        val lin = Asset(
+            id = "char-lin",
+            kind = AssetKind.CHARACTER,
+            name = "林提灯",
+            referenceVoice = ReferenceVoice("productions\\p\\voices\\lin_v2.wav"),
+        )
+        val flashbackLin = Asset(
+            id = "char-lin-young",
+            kind = AssetKind.CHARACTER,
+            name = "少年林提灯",
+            referenceVoice = ReferenceVoice("/productions/p/voices/lin_v1.wav"),
+        )
+        val silentChar = Asset(
+            id = "char-silent",
+            kind = AssetKind.CHARACTER,
+            name = "过客",
+            referenceVoice = ReferenceVoice("   "),
+        )
+        val nonSoundSamePath = Asset(
+            id = "prop-fake",
+            kind = AssetKind.PROP,
+            name = "风灯",
+            versions = listOf(AssetVersion(1, "productions/p/voices/lin_v2.wav", 1)),
+            currentVersion = 1,
+        )
+        val prod = production.copy(assets = listOf(voiceSound, bgmSound, lin, flashbackLin, silentChar, nonSoundSamePath))
+
+        assertThat(prod.boundCharactersForSoundAsset(voiceSound).map { it.name })
+            .containsExactly("林提灯", "少年林提灯")
+            .inOrder()
+        assertThat(prod.boundCharactersForSoundAsset(bgmSound)).isEmpty()
+        assertThat(prod.boundCharactersForSoundAsset(nonSoundSamePath)).isEmpty()
+
+        val moduleRoot = Path.of(System.getProperty("user.dir") ?: ".").let { root ->
+            if (Files.isDirectory(root.resolve("src/main"))) root else root.resolve("app")
+        }
+        val shotDetailSource = Files.readString(
+            moduleRoot.resolve("src/main/java/com/promenar/infinity/ui/production/ProductionShotDetail.kt"),
+        )
+        assertThat(shotDetailSource).contains("production.boundCharactersForSoundAsset(asset)")
+        assertThat(shotDetailSource).contains("R.string.p2_sound_bound_character")
     }
 
 }

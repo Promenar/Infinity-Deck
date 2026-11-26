@@ -90,12 +90,28 @@ internal fun ProductionManagementTab(
     val stats = remember(production) { production.shotStats() }
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
         if (production.experimental) item("experiment") { ProductionTrialStrip() }
+        if (stats.total > 0) item("top-progress") {
+            OverviewTopProgressCard(
+                production = production,
+                stats = stats,
+                onClick = {
+                    val targetTab = if (stats.review > 0 || stats.redo > 0 || stats.locked > 0) ProductionTab.OUTPUT else ProductionTab.STORYBOARD
+                    onOpenTab(targetTab)
+                },
+            )
+        }
         if (pendingChanges.isNotEmpty()) item("changes") {
             val unapprovedIds = pendingChanges.filter { production.verdictOf(ReviewTarget.change(it.id))?.kind != ReviewKind.APPROVE }.map { it.id }
+            val headerCounts = production.changeRequestHeaderCounts(pendingChanges)
             val sectionTitle = stringResource(R.string.p2_change_request)
+            val titleSegments = listOfNotNull(
+                sectionTitle,
+                headerCounts.unhandled.takeIf { it > 0 }?.let { stringResource(R.string.p2_change_pending_count, it) },
+                headerCounts.handled.takeIf { it > 0 }?.let { stringResource(R.string.p2_change_handled_count, it) },
+            )
             ProductionSection(
                 title = sectionTitle,
-                titleSegments = listOf(sectionTitle, stringResource(R.string.p2_change_pending_count, pendingChanges.size)),
+                titleSegments = titleSegments,
                 titleAction = if (unapprovedIds.size >= 2) {
                     {
                         InfinityPillButton(
@@ -120,16 +136,6 @@ internal fun ProductionManagementTab(
                     ChangeRequestRow(request, production, busy, onRun, onSubmit)
                 }
             }
-        }
-        if (stats.total > 0) item("top-progress") {
-            OverviewTopProgressCard(
-                production = production,
-                stats = stats,
-                onClick = {
-                    val targetTab = if (stats.review > 0 || stats.redo > 0 || stats.locked > 0) ProductionTab.OUTPUT else ProductionTab.STORYBOARD
-                    onOpenTab(targetTab)
-                },
-            )
         }
         item("stages") {
             ProductionSection(stringResource(R.string.p2_workflow_section)) {
@@ -230,6 +236,64 @@ internal fun Production.scriptStageSummary(): ScriptStageSummary {
     }
     return ScriptStageSummary(kind = kind, locked = locked, scriptedEpisodes = scripted.size, totalEpisodes = episodes.size)
 }
+
+/** 分镜阶段汇总分类：没有拆出任何镜头的空场不视为待审，锁定/待审统计仅针对已有镜头的场。 */
+internal enum class StoryboardStageKind {
+    NOT_STARTED,
+    ALL_APPROVED,
+    PENDING,
+}
+
+internal data class StoryboardStageSummary(
+    val kind: StoryboardStageKind,
+    val totalScenes: Int,
+    val scenesWithShots: Int,
+    val lockedScenes: Int,
+    val pendingScenes: Int,
+)
+
+internal fun Production.storyboardStageSummary(): StoryboardStageSummary {
+    val scenes = episodes().flatMap { it.scenes }
+    val withShots = scenes.filter { it.shots.isNotEmpty() }
+    val locked = withShots.count { it.storyboardLocked }
+    val pending = withShots.size - locked
+    val kind = when {
+        withShots.isEmpty() -> StoryboardStageKind.NOT_STARTED
+        pending == 0 -> StoryboardStageKind.ALL_APPROVED
+        else -> StoryboardStageKind.PENDING
+    }
+    return StoryboardStageSummary(
+        kind = kind,
+        totalScenes = scenes.size,
+        scenesWithShots = withShots.size,
+        lockedScenes = locked,
+        pendingScenes = pending,
+    )
+}
+
+/** 总览变更请求分组的未处理与已处理计数，用于区分待审条数与本轮已批未发条数。 */
+internal data class ChangeRequestHeaderCounts(
+    val unhandled: Int,
+    val handled: Int,
+)
+
+internal fun Production.changeRequestHeaderCounts(
+    pendingChanges: List<ShotChangeRequest> = pendingChangeRequests(),
+): ChangeRequestHeaderCounts {
+    val unhandled = pendingChanges.count { verdictOf(ReviewTarget.change(it.id)) == null }
+    return ChangeRequestHeaderCounts(unhandled = unhandled, handled = pendingChanges.size - unhandled)
+}
+
+/** 是否存在尚未给出审批结论的内容变更请求，用于驱动总览页签的待审提示点。 */
+internal fun Production.hasUnhandledChangeRequests(): Boolean = changeRequestHeaderCounts().unhandled > 0
+
+/** 分镜预演处于跳过或未开始（尚无预演镜头）时展示简洁可选说明。 */
+internal fun useAnimaticOptionalHint(skipped: Boolean, totalShots: Int, previewedShots: Int): Boolean =
+    skipped || totalShots <= 0 || previewedShots <= 0
+
+/** 后处理处于跳过或未开始（尚无派生镜头）时展示简洁可选说明。 */
+internal fun usePostProcessOptionalHint(skipped: Boolean, derivedShots: Int): Boolean =
+    skipped || derivedShots <= 0
 
 /** 总览置顶紧凑项目进度摘要卡：单集显示全片定稿进度，多集显示全剧汇总进度与待审/重做摘要。 */
 @Composable
@@ -572,21 +636,31 @@ private fun WorkflowStageRow(
             } else {
                 val done = production.shotLocations().count { it.shot.previewPath != null }
                 val skipped = stage.status == StageStatus.SKIPPED
-                val subtitle = if (stats.total > 0) stringResource(R.string.p2_stage_animatic_optional, done, stats.total) else stringResource(R.string.p2_optional_stage)
+                val subtitle = if (useAnimaticOptionalHint(skipped, stats.total, done)) {
+                    stringResource(R.string.p2_optional_stage_animatic_hint)
+                } else {
+                    stringResource(R.string.p2_stage_animatic_optional, done, stats.total)
+                }
                 ProductionRow(
                     title = stage.stage.label(),
                     icon = stage.stage.icon(),
                     subtitle = subtitle,
+                    subtitleMaxLines = 2,
                     chevron = false,
                     enabled = !busy,
-                    role = Role.Switch,
                     trailing = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(stringResource(R.string.p2_skip), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
-                            InfinitySwitch(checked = skipped, onCheckedChange = null, enabled = !busy)
+                            InfinitySwitch(
+                                checked = skipped,
+                                onCheckedChange = { next -> onToggleSkipAnimatic(next) },
+                                enabled = !busy,
+                            )
                         }
                     },
-                    onClick = { onToggleSkipAnimatic(!skipped) },
+                    onClick = {
+                        if (skipped) onToggleSkipAnimatic(false) else onOpenPrevis()
+                    },
                 )
             }
         }
@@ -634,22 +708,34 @@ private fun WorkflowStageRow(
             )
         }
         ProductionStage.STORYBOARD -> {
-            val scenes = episodes.flatMap { it.scenes }
-            val lockedScenes = scenes.count { it.storyboardLocked }
+            val summary = production.storyboardStageSummary()
             val totalSeconds = formatShotSeconds(production.shotLocations().sumOf { it.shot.durationSeconds })
-            val subtitle = if (scenes.isEmpty()) stringResource(R.string.production_panel_no_shots)
-            else stringResource(R.string.p2_workflow_storyboard_summary, scenes.size, stats.total, totalSeconds)
-            val pending = scenes.size - lockedScenes
-            val chip = when {
-                scenes.isEmpty() -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
-                pending == 0 -> ProductionChipSpec(stringResource(R.string.p2_stage_scenes, lockedScenes, scenes.size), ProductionTone.SUCCESS)
-                else -> ProductionChipSpec(stringResource(R.string.p2_stage_scenes_pending, pending), ProductionTone.WARNING)
+            val subtitle = when {
+                summary.totalScenes == 0 -> stringResource(R.string.production_panel_no_shots)
+                summary.scenesWithShots == 0 -> null
+                else -> stringResource(R.string.p2_workflow_storyboard_summary, summary.totalScenes, stats.total, totalSeconds)
             }
-            ProductionRow(title = stage.stage.label(), icon = stage.stage.icon(), subtitle = subtitle, chip = chip, enabled = !busy, onClick = onNavigate)
+            val subtitleSegments = if (summary.totalScenes > 0 && summary.scenesWithShots == 0) {
+                listOf("${stringResource(R.string.p2_scenes)} ${summary.totalScenes}", stringResource(R.string.p2_no_shots_split))
+            } else null
+            val chip = when (summary.kind) {
+                StoryboardStageKind.NOT_STARTED -> ProductionChipSpec(stringResource(R.string.production_panel_stage_not_started), ProductionTone.NEUTRAL)
+                StoryboardStageKind.ALL_APPROVED -> ProductionChipSpec(stringResource(R.string.p2_stage_scenes, summary.lockedScenes, summary.scenesWithShots), ProductionTone.SUCCESS)
+                StoryboardStageKind.PENDING -> ProductionChipSpec(stringResource(R.string.p2_stage_scenes_pending, summary.pendingScenes), ProductionTone.WARNING)
+            }
+            ProductionRow(
+                title = stage.stage.label(),
+                icon = stage.stage.icon(),
+                subtitle = subtitle,
+                subtitleSegments = subtitleSegments,
+                chip = chip,
+                enabled = !busy,
+                onClick = onNavigate,
+            )
         }
         ProductionStage.GENERATION -> {
             val scenes = episodes.flatMap { it.scenes }
-            val unlockedAll = !production.experimental && scenes.isNotEmpty() && scenes.none { it.storyboardLocked } && stats.review == 0 && stats.locked == 0 && stats.generating == 0
+            val unlockedAll = !production.experimental && stats.total > 0 && scenes.isNotEmpty() && scenes.none { it.storyboardLocked } && stats.review == 0 && stats.locked == 0 && stats.generating == 0
             val subtitle = when {
                 unlockedAll -> stringResource(R.string.p2_stage_unlock_after_board)
                 stats.generating > 0 -> stringResource(R.string.p2_tasks_active, stats.generating)
@@ -670,7 +756,7 @@ private fun WorkflowStageRow(
             val postStats = production.postProcessStats()
             val skipped = stage.status == StageStatus.SKIPPED && !production.hasDerivedTakes()
             val subtitle = when {
-                stats.total <= 0 -> stringResource(R.string.p2_optional_stage)
+                usePostProcessOptionalHint(skipped, postStats.derived) -> stringResource(R.string.p2_optional_stage_post_hint)
                 postStats.review > 0 -> stringResource(R.string.p2_stage_post_process_optional_review, postStats.derived, stats.total, postStats.review)
                 else -> stringResource(R.string.p2_stage_post_process_optional, postStats.derived, stats.total)
             }
@@ -678,6 +764,7 @@ private fun WorkflowStageRow(
                 title = stage.stage.label(),
                 icon = stage.stage.icon(),
                 subtitle = subtitle,
+                subtitleMaxLines = 2,
                 chevron = false,
                 enabled = !busy,
                 trailing = {
@@ -955,6 +1042,11 @@ internal fun ProductionOutputTab(
     onRun: (ProductionUserAction) -> Unit = {},
     onSubmit: suspend (ProductionUserAction) -> String? = { null },
 ) {
+    val episodes = production.episodes()
+    var selectedEpisodeId by rememberSaveable(production.id) { mutableStateOf<String?>(null) }
+    val visibleEpisodeIds = remember(episodes, selectedEpisodeId) {
+        filterEpisodes(episodes, selectedEpisodeId).mapTo(mutableSetOf()) { it.id }
+    }
     val rows = production.outputItems(filter)
     val multiEpisode = production.showEpisodeNumbers()
     // 按场分组：同一场的镜头放进一张卡片，未锁定的场只占一行。
@@ -963,11 +1055,17 @@ internal fun ProductionOutputTab(
             is OutputItem.UnlockedScene -> row.episode to row.scene
             is OutputItem.ShotRow -> row.location.episode to row.location.scene
         }
+        if (key.first.id !in visibleEpisodeIds) return@fold acc
         if (acc.lastOrNull()?.first?.let { it.first.id == key.first.id && it.second.code == key.second.code } == true) acc.last().second += row
         else acc += key to mutableListOf(row)
         acc
     }
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
+        if (episodes.size > 1) {
+            item("episode-filter") {
+                EpisodeFilterPicker(episodes, selectedEpisodeId, { selectedEpisodeId = it })
+            }
+        }
         item("filter") { InfinitySegmentedControl(OutputFilter.entries.map { InfinitySegment(it, it.label()) }, selected = filter, onSelect = onFilter, modifier = Modifier.fillMaxWidth()) }
         if (groups.isEmpty()) item("empty") { ProductionSection(null) { ProductionMutedRow(stringResource(R.string.p2_no_output)) } }
         groups.forEach { (key, items) ->
@@ -977,6 +1075,7 @@ internal fun ProductionOutputTab(
                 val sceneTarget = ReviewTarget.scene(episode.id, scene.code)
                 val chip = production.reviewChipSpec(sceneTarget, settled = scene.storyboardLocked)
                 val sceneLabel = listOf(stringResource(R.string.production_panel_scene_number, scene.number), scene.heading)
+                var reviewOpen by remember(sceneTarget) { mutableStateOf(false) }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ProductionSceneHeader(
                         scene = scene,
@@ -995,9 +1094,23 @@ internal fun ProductionOutputTab(
                                 onSubmit = onSubmit,
                                 settled = scene.storyboardLocked,
                                 compact = true,
+                                externalExpanded = reviewOpen,
+                                onExternalExpandedChange = { reviewOpen = it },
                             )
                         }) else null,
                     )
+                    if (unlocked && scene.shots.isNotEmpty()) {
+                        ProductionInlineReviewSlot(
+                            visible = reviewOpen,
+                            production = production,
+                            target = sceneTarget,
+                            label = sceneLabel,
+                            busy = busy,
+                            onDismiss = { reviewOpen = false },
+                            onSubmit = onSubmit,
+                            settled = scene.storyboardLocked,
+                        )
+                    }
                     ProductionReviewNotes(production, sceneTarget)
                     BettboxListGroup {
                         Column(Modifier.padding(vertical = InfinitySpacing.XSmall)) {

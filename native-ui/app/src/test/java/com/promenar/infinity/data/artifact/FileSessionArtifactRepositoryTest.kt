@@ -139,4 +139,98 @@ class FileSessionArtifactRepositoryTest {
         assertThat((runCatching { linkStore.publishFile("s", "/link", origin = ArtifactOrigin.CLAIMED) }.exceptionOrNull() as ArtifactException).code).isEqualTo("INVALID_PATH")
     }
 
+    @Test fun `排除目录前缀匹配按目录边界生效并兼容各类工作区前缀`() {
+        val root = "productions/e2e-qa-lantern"
+        // 精确目录与多层子目录均命中
+        assertThat(isInsideExcludedDirectory("productions/e2e-qa-lantern", root)).isTrue()
+        assertThat(isInsideExcludedDirectory("/productions/e2e-qa-lantern/", "$root/")).isTrue()
+        assertThat(isInsideExcludedDirectory("productions/e2e-qa-lantern/S1E01/script.md", root)).isTrue()
+        assertThat(isInsideExcludedDirectory("productions/e2e-qa-lantern/assets/char/hero.png", root)).isTrue()
+        assertThat(isInsideExcludedDirectory("productions/e2e-qa-lantern/audio/bgm.mp3", root)).isTrue()
+
+        // 各类工作区与会话根前缀归一化后命中
+        listOf(
+            "/workspace/productions/e2e-qa-lantern/S1E01/script.md",
+            "/home/session/productions/e2e-qa-lantern/assets/hero.png",
+            "/session/productions/e2e-qa-lantern/audio/bgm.mp3",
+            "/productions/e2e-qa-lantern/S1E01/script.md",
+            "///workspace//./productions/e2e-qa-lantern//S1E01/script.md",
+            "other/../productions/e2e-qa-lantern/S1E01/script.md",
+        ).forEach { path ->
+            assertThat(isInsideExcludedDirectory(path, root)).isTrue()
+            assertThat(isInsideExcludedDirectory(path, "/workspace/$root/")).isTrue()
+            assertThat(isInsideExcludedDirectory(path, ".infinity-production-private/$root")).isTrue()
+        }
+
+        // 外部挂载目录同样按完整目录边界匹配
+        assertThat(isInsideExcludedDirectory("/mnt/film/demo/S1E01/shot.mp4", "mnt/film/demo")).isTrue()
+        assertThat(isInsideExcludedDirectory("/mnt/film/demo-2/S1E01/shot.mp4", "mnt/film/demo")).isFalse()
+
+        // 兄弟目录、同名文件、上级目录与越界回退不误命中
+        listOf(
+            "productions/e2e-qa-lantern-2/foo.md",
+            "/workspace/productions/e2e-qa-lantern-2/foo.md",
+            "/home/session/productions/e2e-qa-lantern_backup/a.md",
+            "productions/e2e-qa-lantern.md",
+            "productions/notes.md",
+            "productions/e2e-qa-lantern/../outside.md",
+            "../productions/e2e-qa-lantern/S1E01/script.md",
+        ).forEach { path ->
+            assertThat(isInsideExcludedDirectory(path, root)).isFalse()
+        }
+
+        // 空前缀、空白、纯工作区根与空集合绝不排除文件
+        listOf("", "   ", "/", "/workspace", "/workspace/", "/home/session", "/home/session/", "/session", "/session/").forEach { blank ->
+            assertThat(isInsideExcludedDirectory("/workspace/notes.md", blank)).isFalse()
+        }
+        assertThat(isPathExcluded("productions/e2e-qa-lantern/S1E01/script.md", emptySet())).isFalse()
+    }
+
+    @Test fun `候选发现排除已绑定制作项目根目录并保留兄弟目录与普通文件`() = runTest {
+        val workspaceResolver = object : WorkspaceMediaResolver {
+            override suspend fun resolve(sessionId: String, path: String): MediaResolution {
+                val canonical = when {
+                    path.startsWith("/workspace/") -> "/" + path.removePrefix("/workspace/")
+                    path.startsWith("/home/session/") -> "/" + path.removePrefix("/home/session/")
+                    path.startsWith("/session/") -> "/" + path.removePrefix("/session/")
+                    path == "/alias-to-production.md" -> "/productions/e2e-qa-lantern/S1E01/script.md"
+                    else -> "/" + path.trimStart('/')
+                }
+                val bytes = files[canonical] ?: return MediaResolution.Unavailable(canonical, MediaUnavailableReason.NOT_FOUND)
+                return MediaResolution.Available(MediaRef(canonical, "text/plain", MediaKind.FILE, bytes.size.toLong()), MediaSource.LocalFile(File(folder.root, "source")))
+            }
+            override suspend fun open(resolution: MediaResolution.Available) = files.getValue(resolution.ref.path).inputStream()
+        }
+        val store = FileSessionArtifacts(File(folder.root, "artifacts"), FileCanvasStore(File(folder.root, "canvas")), workspaceResolver)
+        files["/productions/e2e-qa-lantern/S1E01/script.md"] = "s".toByteArray()
+        files["/productions/e2e-qa-lantern/assets/hero.png"] = "i".toByteArray()
+        files["/productions/e2e-qa-lantern/audio/bgm.mp3"] = "a".toByteArray()
+        files["/productions/e2e-qa-lantern-2/foo.md"] = "f".toByteArray()
+        files["/notes/summary.md"] = "n".toByteArray()
+
+        val changes = listOf(
+            WorkspaceChangedFile("productions/e2e-qa-lantern/S1E01/script.md", "m1", 1),
+            WorkspaceChangedFile("/workspace/productions/e2e-qa-lantern/assets/hero.png", "m1", 2),
+            WorkspaceChangedFile("/home/session/productions/e2e-qa-lantern/audio/bgm.mp3", "m1", 3),
+            WorkspaceChangedFile("/alias-to-production.md", "m1", 4),
+            WorkspaceChangedFile("/workspace/productions/e2e-qa-lantern-2/foo.md", "m2", 5),
+            WorkspaceChangedFile("/notes/summary.md", "m2", 6),
+        )
+
+        val filtered = store.candidates("s", changes, excludedPathPrefixes = setOf("productions/e2e-qa-lantern"))
+        assertThat(filtered.map { it.path }).containsExactly(
+            "/notes/summary.md",
+            "/productions/e2e-qa-lantern-2/foo.md",
+        ).inOrder()
+
+        val unfiltered = store.candidates("s", changes, excludedPathPrefixes = emptySet())
+        assertThat(unfiltered.map { it.path }).containsAtLeast(
+            "/productions/e2e-qa-lantern/S1E01/script.md",
+            "/productions/e2e-qa-lantern/assets/hero.png",
+            "/productions/e2e-qa-lantern/audio/bgm.mp3",
+            "/productions/e2e-qa-lantern-2/foo.md",
+            "/notes/summary.md",
+        )
+    }
+
 }

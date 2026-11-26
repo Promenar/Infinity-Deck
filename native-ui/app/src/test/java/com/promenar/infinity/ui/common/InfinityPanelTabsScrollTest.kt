@@ -1,6 +1,9 @@
 package com.promenar.infinity.ui.common
 
+import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.Test
 
 /** 选中页签滚入视野：只在越出视野时滚动，并与视野边缘留出行首尾留白。 */
@@ -98,5 +101,24 @@ class InfinityPanelTabsScrollTest {
         assertThat(shouldSnapIdlePagerOffset(isScrollInProgress = true, pageSize = 800, currentPageOffsetFraction = -0.35f)).isFalse()
         assertThat(shouldSnapIdlePagerOffset(isScrollInProgress = false, pageSize = 0, currentPageOffsetFraction = -0.35f)).isFalse()
         assertThat(shouldSnapIdlePagerOffset(isScrollInProgress = false, pageSize = 800, currentPageOffsetFraction = 0f)).isFalse()
+    }
+
+    @Test
+    fun `六项及以上页签适度收紧水平内边距且二至五项保持标准留白`() {
+        for (count in 2..5) {
+            assertThat(panelTabHorizontalPadding(count)).isEqualTo(12.dp)
+        }
+        assertThat(panelTabHorizontalPadding(6)).isEqualTo(9.dp)
+        assertThat(panelTabHorizontalPadding(7)).isEqualTo(9.dp)
+    }
+
+    @Test
+    fun `面板页签使用绘制阶段滚动状态渲染三十二像素渐隐边避免首帧硬裁切`() {
+        val relative = "src/main/java/com/promenar/infinity/ui/common/InfinityPanelTabs.kt"
+        val file = Path.of("app").resolve(relative).takeIf { Files.exists(it) } ?: Path.of(relative)
+        val source = Files.readString(file)
+        assertThat(source).contains("PanelTabFadeWidth = 32.dp")
+        assertThat(source).contains("state = scrollState")
+        assertThat(source).doesNotContain("end = scrollState.canScrollForward")
     }
 }

@@ -135,4 +135,15 @@ class ChatPanelHubTest {
         assertThat(panelHubBadge(list)).isEqualTo(PanelHubBadge.None)
         assertThat(restorePanelHubUsage(savePanelHubUsage(setOf(ChatPage.Production)))).containsExactly(ChatPage.Production)
     }
+
+    @Test fun `待发送次级角标仅统计可用条目且优先级低于待审批高于运行圆点`() {
+        val disabled = PanelHubEntry(ChatPage.State, summary = null, pending = 0, running = true, available = false, onOpen = {}, secondaryPending = 3)
+        assertThat(panelHubBadge(listOf(disabled))).isEqualTo(PanelHubBadge.None)
+
+        val readyToSend = PanelHubEntry(ChatPage.Production, summary = "雾港", pending = 0, running = true, available = true, onOpen = {}, secondaryPending = 2)
+        assertThat(panelHubBadge(listOf(readyToSend))).isEqualTo(PanelHubBadge.SecondaryPending(2))
+
+        val reviewAndSend = readyToSend.copy(pending = 1)
+        assertThat(panelHubBadge(listOf(reviewAndSend))).isEqualTo(PanelHubBadge.Pending(1))
+    }
 }

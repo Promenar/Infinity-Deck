@@ -288,7 +288,13 @@ internal fun <T> ProductionChoiceSheet(
     emptyText: String? = null,
     onSelect: (T) -> Unit,
 ) {
-    InfinityBottomSheet(show = true, onDismiss = onDismiss, title = title, scrollContent = true) {
+    InfinityBottomSheet(
+        show = true,
+        onDismiss = onDismiss,
+        title = title,
+        scrollContent = true,
+        centeredMaxWidth = 440.dp,
+    ) {
         Column(Modifier.fillMaxWidth()) {
             subtitle?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 4.dp))

@@ -2,6 +2,8 @@ package com.promenar.infinity.ui.chat.manager.skills
 
 import com.promenar.infinity.data.mediagen.comfy.ComfyErrorDiagnostics
 import com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowExecutionResult
+import com.promenar.infinity.data.production.Asset
+import com.promenar.infinity.data.production.AssetKind
 import com.promenar.infinity.data.production.InputRole
 import com.promenar.infinity.data.production.Production
 import com.promenar.infinity.data.production.ProductionRunService
@@ -12,6 +14,7 @@ import com.promenar.infinity.data.production.RunTarget
 import com.promenar.infinity.data.production.RunState
 import com.promenar.infinity.data.production.Shot
 import com.promenar.infinity.data.production.acceptsVideoDerivation
+import com.promenar.infinity.data.production.isActive
 import com.promenar.infinity.data.production.isVideoInput
 import com.promenar.infinity.data.production.occupiedShotCandidates
 import com.promenar.infinity.data.production.releaseShotCandidate
@@ -43,7 +46,9 @@ import kotlin.math.roundToInt
 /**
  * 通用桥接：把 `comfy_run_workflow` 与当前会话绑定的制作项目衔接起来（不硬编码任何具体工作流）。
  * 1. 若目标工作流声明了 `GUIDES / TIMED_FILES` 槽且调用方未显式传入，自动从绑定镜头的 `InputRole.ANCHOR` 透传；
- * 2. 在 `EXECUTE` 模式下自动向总览「任务」队列回报开始、实时进度与结束/失败状态，并在视频落盘于项目目录时自动登记候选。
+ * 2. 在 `EXECUTE` 模式下自动向总览「任务」队列回报开始、实时进度与结束/失败状态：
+ *    - 镜头目标（`shot_ref`）：视频落盘于项目目录时自动登记候选；
+ *    - 资产目标（`asset_id`）：媒体落盘于项目目录时自动登记资产新版本。
  */
 class ComfyProductionRunBridge(
     private val workStore: ProductionWorkStore,
@@ -58,6 +63,13 @@ class ComfyProductionRunBridge(
         val production get() = snapshot.production
     }
 
+    data class ResolvedAssetBinding(
+        val snapshot: ProductionSnapshot,
+        val asset: Asset,
+    ) {
+        val production get() = snapshot.production
+    }
+
     data class ActiveRunHandle(
         val sessionId: String,
         val runId: String,
@@ -66,6 +78,8 @@ class ComfyProductionRunBridge(
         val workflow: ComfyWorkflow,
         val sourceTakeId: String?,
         val derivationParams: Map<String, JsonElement>,
+        val assetId: String? = null,
+        val assetKind: AssetKind? = null,
     ) {
         @Volatile
         internal var lastReportedSteps: Int = 0
@@ -81,6 +95,7 @@ class ComfyProductionRunBridge(
         val runId: String,
         val registeredTakeId: String? = null,
         val registrationError: String? = null,
+        val registeredAssetVersion: Int? = null,
     )
 
     suspend fun resolveShot(sessionId: String, shotRef: String?): ResolvedShotBinding? {
@@ -90,8 +105,20 @@ class ComfyProductionRunBridge(
         return ResolvedShotBinding(snapshot, loc)
     }
 
+    suspend fun resolveAsset(sessionId: String, assetId: String?): ResolvedAssetBinding? {
+        val raw = assetId?.trim()?.takeIf(String::isNotBlank) ?: return null
+        val snapshot = workStore.load(sessionId) ?: return null
+        val asset = snapshot.production.assets.firstOrNull { it.id == raw }
+            ?: snapshot.production.assets.firstOrNull { it.id.equals(raw, ignoreCase = true) }
+            ?: return null
+        return ResolvedAssetBinding(snapshot, asset)
+    }
+
     fun defaultOutputDir(binding: ResolvedShotBinding): String =
         shotTakesDirectory(binding.production, binding.location.episode.id)
+
+    fun defaultOutputDir(binding: ResolvedAssetBinding): String =
+        "${binding.production.rootPath}/assets/${binding.asset.id}"
 
     /**
      * 若工作流声明了 `GUIDES` / `TIMED_FILES` 字段且 `contentInputs` 未显式提供该键，
@@ -176,6 +203,44 @@ class ComfyProductionRunBridge(
         }
     }
 
+    suspend fun onStart(
+        sessionId: String,
+        binding: ResolvedAssetBinding,
+        workflow: ComfyWorkflow,
+        stage: String,
+    ): ActiveRunHandle {
+        val stageSuffix = when (stage) {
+            "first" -> "（首段）"
+            "next" -> "（续写）"
+            else -> ""
+        }
+        val label = "${workflow.name}$stageSuffix".take(120)
+        return ProductionSubmissionMutex.withLock {
+            val current = workStore.load(sessionId)
+            require(current != null && current.production.id == binding.production.id && current.revision == binding.snapshot.revision) {
+                "制作项目或资产已变化，请重新读取后执行。"
+            }
+            val currentAsset = current.production.assets.firstOrNull { it.id == binding.asset.id }
+                ?: throw IllegalArgumentException("资产不存在：${binding.asset.id}")
+            val activeAssetRuns = current.production.runs.count { it.isActive() && it.target.assetId == currentAsset.id }
+            require(currentAsset.versions.size + activeAssetRuns < 30) { "资产版本容量不足。" }
+            withContext(NonCancellable) {
+                val run = runService.start(sessionId, RunTarget(assetId = currentAsset.id), label, steps = 100, expected = binding.snapshot)
+                ActiveRunHandle(
+                    sessionId = sessionId,
+                    runId = run.id,
+                    productionId = binding.production.id,
+                    rootPath = binding.production.rootPath,
+                    workflow = workflow,
+                    sourceTakeId = null,
+                    derivationParams = emptyMap(),
+                    assetId = currentAsset.id,
+                    assetKind = currentAsset.kind,
+                )
+            }
+        }
+    }
+
     suspend fun onProgress(handle: ActiveRunHandle?, pct: Float?, message: String) {
         if (handle == null) return
         val cleanMsg = message.trim().take(1000).ifBlank { "执行中" }
@@ -204,44 +269,95 @@ class ComfyProductionRunBridge(
         return try {
             completeRun(handle, result)
         } finally {
-            releaseShotCandidate(handle.runId)
+            if (handle.assetId == null) releaseShotCandidate(handle.runId)
         }
+    }
+
+    private suspend fun isInsideProjectRoot(handle: ActiveRunHandle, path: String): Boolean = try {
+        runService.normalizeRunPath(handle.sessionId, path, handle.rootPath).startsWith("${handle.rootPath}/")
+    } catch (_: IllegalArgumentException) {
+        false
     }
 
     private suspend fun completeRun(handle: ActiveRunHandle, result: ComfyWorkflowExecutionResult): CompletionSync {
         return try {
-            val projectVideo = result.savedMedia.firstOrNull { media ->
-                media.kind == MediaKind.VIDEO && try {
-                    runService.normalizeRunPath(handle.sessionId, media.path, handle.rootPath).startsWith("${handle.rootPath}/")
-                } catch (_: IllegalArgumentException) {
-                    false
-                }
+            if (handle.assetId != null) {
+                completeAssetRun(handle, result)
+            } else {
+                completeShotRun(handle, result)
             }
-            val finished = retryProductionRunRevision {
-                if (projectVideo == null) {
-                    runService.completeWithoutMedia(handle.sessionId, handle.runId, result.summary, handle.productionId)
-                } else {
-                    runService.finish(
-                        sessionId = handle.sessionId,
-                        runId = handle.runId,
-                        path = projectVideo.path,
-                        sourceTakeId = handle.sourceTakeId,
-                        operation = handle.sourceTakeId?.let { handle.workflow.name },
-                        params = handle.derivationParams,
-                        serviceName = "ComfyUI（${handle.workflow.name}）".take(120),
-                        expectedProductionId = handle.productionId,
-                    )
-                }
-            }
-            CompletionSync(handle.runId, finished.resultTakeId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
-            val reason = ComfyErrorDiagnostics.redactSensitive("制作候选登记失败。 ${failure.message.orEmpty()}").trim().take(1000)
+            val prefix = if (handle.assetId != null) "制作资产版本登记失败。" else "制作候选登记失败。"
+            val reason = ComfyErrorDiagnostics.redactSensitive("$prefix ${failure.message.orEmpty()}").trim().take(1000)
             val run = runService.reportWorkflowFailure(handle.sessionId, handle.productionId, handle.runId, reason)
-            if (run?.state == RunState.COMPLETED) CompletionSync(handle.runId, run.resultTakeId)
-            else CompletionSync(handle.runId, registrationError = run?.failure ?: reason)
+            if (run?.state == RunState.COMPLETED) {
+                CompletionSync(handle.runId, run.resultTakeId, registeredAssetVersion = run.resultAssetVersion)
+            } else {
+                CompletionSync(handle.runId, registrationError = run?.failure ?: reason)
+            }
         }
+    }
+
+    private suspend fun completeShotRun(handle: ActiveRunHandle, result: ComfyWorkflowExecutionResult): CompletionSync {
+        val projectVideo = result.savedMedia.firstOrNull { media ->
+            media.kind == MediaKind.VIDEO && isInsideProjectRoot(handle, media.path)
+        }
+        val finished = retryProductionRunRevision {
+            if (projectVideo == null) {
+                runService.completeWithoutMedia(handle.sessionId, handle.runId, result.summary, handle.productionId)
+            } else {
+                runService.finish(
+                    sessionId = handle.sessionId,
+                    runId = handle.runId,
+                    path = projectVideo.path,
+                    sourceTakeId = handle.sourceTakeId,
+                    operation = handle.sourceTakeId?.let { handle.workflow.name },
+                    params = handle.derivationParams,
+                    serviceName = "ComfyUI（${handle.workflow.name}）".take(120),
+                    expectedProductionId = handle.productionId,
+                )
+            }
+        }
+        return CompletionSync(handle.runId, finished.resultTakeId)
+    }
+
+    private suspend fun completeAssetRun(handle: ActiveRunHandle, result: ComfyWorkflowExecutionResult): CompletionSync {
+        val projectMedia = if (handle.assetKind == AssetKind.SOUND) {
+            result.savedMedia.firstOrNull { media ->
+                media.kind == MediaKind.AUDIO && isInsideProjectRoot(handle, media.path)
+            }
+        } else {
+            result.savedMedia.firstOrNull { media ->
+                media.kind == MediaKind.IMAGE && isInsideProjectRoot(handle, media.path)
+            } ?: result.savedMedia.firstOrNull { media ->
+                media.kind in setOf(MediaKind.VIDEO, MediaKind.AUDIO) && isInsideProjectRoot(handle, media.path)
+            }
+        }
+        if (projectMedia == null) {
+            val detail = if (handle.assetKind == AssetKind.SOUND) {
+                "制作资产版本登记失败。项目目录内未产出可用音频文件"
+            } else {
+                "制作资产版本登记失败。项目目录内未产出可登记的媒体文件"
+            }
+            val run = runService.reportWorkflowFailure(handle.sessionId, handle.productionId, handle.runId, detail)
+            return if (run?.state == RunState.COMPLETED) {
+                CompletionSync(handle.runId, registeredAssetVersion = run.resultAssetVersion)
+            } else {
+                CompletionSync(handle.runId, registrationError = run?.failure ?: detail)
+            }
+        }
+        val finished = retryProductionRunRevision {
+            runService.finish(
+                sessionId = handle.sessionId,
+                runId = handle.runId,
+                path = projectMedia.path,
+                serviceName = "ComfyUI（${handle.workflow.name}）".take(120),
+                expectedProductionId = handle.productionId,
+            )
+        }
+        return CompletionSync(handle.runId, registeredAssetVersion = finished.resultAssetVersion)
     }
 
     suspend fun onFail(handle: ActiveRunHandle?, reason: String) {
@@ -250,7 +366,7 @@ class ComfyProductionRunBridge(
             val detail = ComfyErrorDiagnostics.redactSensitive(reason).trim().take(1000).ifBlank { "ComfyUI 工作流执行失败" }
             runService.reportWorkflowFailure(handle.sessionId, handle.productionId, handle.runId, detail)
         } finally {
-            releaseShotCandidate(handle.runId)
+            if (handle.assetId == null) releaseShotCandidate(handle.runId)
         }
     }
 

@@ -52,11 +52,55 @@ class ProductionMediaPlanningTest {
     @Test fun `对齐后的分辨率必须在真实后端白名单内`() {
         val template = template(listOf(ComfySlot("1", "prompt", SlotKind.PROMPT), ComfySlot("1", "width", SlotKind.WIDTH), ComfySlot("1", "height", SlotKind.HEIGHT))).copy(
             workflow = Json.parseToJsonElement("""{"1":{"class_type":"Generator","inputs":{"width":1050,"height":1050,"prompt":"文字"}}}""").jsonObject,
-            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT), resolutions = listOf("1024x1024")))
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT), resolutions = listOf("768x768", "1024x1024")))
         val specs = comfyPlanningSpecs(template)
         assertEquals(1056, specs.width)
         val request = MediaGenerationRequest("comfy:h3", GenerationMode.TEXT, "镜头", emptyList(), "source", specs, "s", "takes")
-        assertFalse(validateComfyShotPlan(template, request).isEmpty())
+        val errors = validateComfyShotPlan(template, request)
+        assertFalse(errors.isEmpty())
+        assertTrue(errors.single().contains("对齐后的宽高不在模板允许的分辨率内"))
+    }
+
+    @Test fun `单默认分辨率的宽高槽位模板允许自定义32对齐尺寸且失败时透出真实原因`() {
+        val template = template(listOf(
+            ComfySlot("1", "prompt", SlotKind.PROMPT),
+            ComfySlot("1", "width", SlotKind.WIDTH),
+            ComfySlot("1", "height", SlotKind.HEIGHT),
+            ComfySlot("1", "frames", SlotKind.FRAMES),
+        )).copy(
+            workflow = Json.parseToJsonElement("""{"1":{"class_type":"Generator","inputs":{"width":1344,"height":768,"frames":121,"prompt":"文字"}}}""").jsonObject,
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT), resolutions = listOf("1344x768")),
+        )
+        for ((w, h) in listOf(864 to 480, 1920 to 1088)) {
+            val shot = com.promenar.infinity.data.production.Shot("SC01-01", "镜头", durationSeconds = 5.0, specWidth = w, specHeight = h)
+            val specs = comfyPlanningSpecs(template, shot)
+            assertEquals(w, specs.width)
+            assertEquals(h, specs.height)
+            val filled = fillComfyWorkflow(
+                template,
+                mapOf(
+                    SlotKind.PROMPT to listOf("镜头"),
+                    SlotKind.WIDTH to listOf(w.toString()),
+                    SlotKind.HEIGHT to listOf(h.toString()),
+                    SlotKind.FRAMES to listOf("121"),
+                ),
+            )
+            com.promenar.infinity.data.mediagen.comfy.validateFilledComfySpecs(template, filled)
+            val request = MediaGenerationRequest("comfy:h3", GenerationMode.TEXT, "镜头", emptyList(), "source", specs, "s", "takes")
+            assertTrue("期望 ${w}x${h} 通过校验", validateComfyShotPlan(template, request).isEmpty())
+        }
+
+        val tooSmall = MediaGenerationRequest("comfy:h3", GenerationMode.TEXT, "镜头", emptyList(), "source", GenerationSpecs(width = 32, height = 32, frames = 121), "s", "takes")
+        val smallErrors = validateComfyShotPlan(template, tooSmall)
+        assertTrue(smallErrors.single().contains("64～4096"))
+
+        val unlockedErrors = validateComfyShotPlan(template.copy(locked = false), MediaGenerationRequest("comfy:h3", GenerationMode.TEXT, "镜头", emptyList(), "source", GenerationSpecs(width = 864, height = 480, frames = 121), "s", "takes"))
+        assertEquals(listOf("模板尚未锁定"), unlockedErrors)
+
+        val videoSettings = mediaModelPreset("doubao-seedance-2-0")!!
+        val cloudVideo = CloudMediaModel("p", "doubao-seedance-2-0", "https://example.invalid", videoSettings)
+        val localVideoReq = MediaGenerationRequest("video", GenerationMode.REFERENCE, "镜头", listOf(MediaInput("local.mp4", InputKind.VIDEO, InputRole.REFERENCE)), "source", GenerationSpecs(durationSeconds = 5), "s", "takes")
+        assertEquals(listOf("云端视频参考需要已上传的素材"), validateCloudShotPlan(cloudVideo, MediaChannel("video", MediaGroup.VIDEO, videoSettings.capabilities), localVideoReq))
     }
     @Test fun `排队期间场解锁后不可付费提交`() = kotlinx.coroutines.test.runTest {
         val store = com.promenar.infinity.data.production.PlanningStore()

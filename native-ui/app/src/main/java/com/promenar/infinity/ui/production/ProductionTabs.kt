@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.UnfoldLess
 import androidx.compose.material.icons.rounded.UnfoldMore
@@ -343,6 +345,9 @@ private fun ProductionFileRowHost(
 @Composable
 internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (ProductionUserAction) -> Unit, onSubmit: suspend (ProductionUserAction) -> String? = { null }, onOpenEpisode: (String) -> Unit = {}) {
     val episodes = production.episodes()
+    var selectedEpisodeId by rememberSaveable(production.id) { mutableStateOf<String?>(null) }
+    val visibleEpisodes = remember(episodes, selectedEpisodeId) { filterEpisodes(episodes, selectedEpisodeId) }
+    val visibleShotCount = remember(visibleEpisodes) { visibleEpisodes.sumOf { ep -> ep.scenes.sumOf { it.shots.size } } }
     val inInspector = LocalInfinityPanePresentation.current == InfinityPanePresentation.Inspector
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // 展开态视口上限按当前窗体可用高度缩放并钳制，确保审批区与下方「场次」始终就近可达。
@@ -357,6 +362,19 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
             contentPadding = ProductionPagePadding,
             verticalArrangement = Arrangement.spacedBy(ProductionSectionGap),
         ) {
+            if (episodes.size > 1) {
+                item("episode-filter") {
+                    EpisodeFilterPicker(
+                        episodes = episodes,
+                        selectedEpisodeId = selectedEpisodeId,
+                        onSelect = { selectedEpisodeId = it },
+                        trailingSummary = listOfNotNull(
+                            pluralStringResource(R.plurals.production_panel_episode_count, episodes.size, episodes.size),
+                            pluralStringResource(R.plurals.production_panel_shot_count, visibleShotCount, visibleShotCount).takeIf { visibleShotCount > 0 },
+                        ),
+                    )
+                }
+            }
             production.logline?.takeIf(String::isNotBlank)?.let { logline ->
                 item("logline") {
                     ProductionSection(stringResource(R.string.p2_logline)) {
@@ -365,7 +383,7 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                 }
             }
             item("scripts") {
-                if (episodes.isEmpty()) {
+                if (visibleEpisodes.isEmpty()) {
                     ProductionSection(if (production.logline.isNullOrBlank()) null else stringResource(R.string.production_panel_stage_script)) {
                         ProductionMutedRow(stringResource(R.string.production_panel_no_script))
                     }
@@ -374,7 +392,7 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                         if (!production.logline.isNullOrBlank()) {
                             ProductionSectionHeader(stringResource(R.string.production_panel_stage_script))
                         }
-                        episodes.forEach { episode ->
+                        visibleEpisodes.forEach { episode ->
                             val title = episodeDisplayName(production, episode).joinToString(" ")
                             val path = episode.scriptPath
                             if (path == null) {
@@ -397,7 +415,7 @@ internal fun ProductionScriptTab(production: Production, busy: Boolean, onRun: (
                     }
                 }
             }
-            episodes.forEach { episode ->
+            visibleEpisodes.forEach { episode ->
                 item("scenes-${episode.id}") {
                     val scenes = stringResource(R.string.p2_scenes)
                     val titleSegments = if (production.showEpisodeNumbers()) listOf(episodeDisplayName(production, episode).joinToString(" "), scenes) else null
@@ -750,6 +768,7 @@ internal fun ProductionStoryboardTab(
                 val sceneTarget = ReviewTarget.scene(episode.id, scene.code)
                 val chip = production.reviewChipSpec(sceneTarget, settled = scene.storyboardLocked)
                 val sceneLabel = listOf(stringResource(R.string.production_panel_scene_number, scene.number), scene.heading)
+                var reviewOpen by remember(sceneTarget) { mutableStateOf(false) }
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     ProductionSceneHeader(
                         scene = scene,
@@ -765,9 +784,23 @@ internal fun ProductionStoryboardTab(
                                 onSubmit = onSubmit,
                                 settled = scene.storyboardLocked,
                                 compact = true,
+                                externalExpanded = reviewOpen,
+                                onExternalExpandedChange = { reviewOpen = it },
                             )
                         }),
                     )
+                    if (scene.shots.isNotEmpty()) {
+                        ProductionInlineReviewSlot(
+                            visible = reviewOpen,
+                            production = production,
+                            target = sceneTarget,
+                            label = sceneLabel,
+                            busy = busy,
+                            onDismiss = { reviewOpen = false },
+                            onSubmit = onSubmit,
+                            settled = scene.storyboardLocked,
+                        )
+                    }
                     ProductionReviewNotes(production, sceneTarget)
                     if (scene.shots.isEmpty()) {
                         BettboxListGroup {
@@ -963,17 +996,18 @@ private fun PlanLine(shot: Shot, production: Production, services: ProductionPan
     val packing = if (shot.mode == ShotMode.REFERENCE && channel != null) stringResource(
         if (production.effectiveReferenceInputMode(channel) == ReferenceInputMode.SHEET) R.string.p2_composite else R.string.p2_separate,
     ) else null
-    val paths = production.importedReferencePaths(shot).take(4)
+    val allPaths = production.importedReferencePaths(shot)
+    val previewPaths = allPaths.take(4)
     val voice = shot.dialogue.any { it.audioSource == DialogueAudioSource.NATIVE }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            paths.forEach { ProductionThumbnail(it, Modifier.size(22.dp)) }
+            previewPaths.forEach { ProductionThumbnail(it, Modifier.size(22.dp)) }
             if (voice) Box(Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.tertiaryContainer), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.GraphicEq, null, Modifier.size(13.dp), MaterialTheme.colorScheme.onTertiaryContainer)
             }
-            if (paths.isNotEmpty()) {
+            if (allPaths.isNotEmpty()) {
                 Spacer(Modifier.width(2.dp))
-                Text(stringResource(R.string.p2_ref_count_compact, paths.size), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1)
+                Text(stringResource(R.string.p2_ref_count_compact, allPaths.size), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 1)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -1013,6 +1047,106 @@ internal fun EpisodePicker(episodes: List<Episode>, current: Episode, onSelect: 
                 InfinityMenuItem(
                     text = { InfinityMetaLine(segments = episodeName(episode), maxLines = 1) },
                     selected = episode.id == current.id,
+                    onClick = { menu = false; onSelect(episode.id) },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 按选中的集筛选剧集列表；selectedEpisodeId 为空或已不存在时返回全部剧集。 */
+internal fun filterEpisodes(episodes: List<Episode>, selectedEpisodeId: String?): List<Episode> {
+    if (selectedEpisodeId == null) return episodes
+    val matched = episodes.firstOrNull { it.id == selectedEpisodeId }
+    return if (matched != null) listOf(matched) else episodes
+}
+
+/**
+ * 多集筛选器：用于「剧本」「出片」等跨集页签，在剧集数大于 1 时支持查看「全部剧集」或切至指定单集。
+ * [selectedEpisodeId] 为 null 表示查看全部剧集。
+ */
+@Composable
+internal fun EpisodeFilterPicker(
+    episodes: List<Episode>,
+    selectedEpisodeId: String?,
+    onSelect: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+    trailingSummary: List<String> = emptyList(),
+) {
+    if (episodes.size <= 1) return
+    val current = selectedEpisodeId?.let { id -> episodes.firstOrNull { it.id == id } }
+    var menu by remember { mutableStateOf(false) }
+    val allLabel = stringResource(R.string.p2_all_episodes)
+    val scheme = MaterialTheme.colorScheme
+    Box(modifier.fillMaxWidth()) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = scheme.surfaceContainerLow,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(role = Role.DropdownList) { menu = true },
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (current != null) {
+                        InfinityMetaLine(
+                            segments = episodeName(current),
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    } else {
+                        Text(
+                            text = allLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = scheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
+                    Icon(
+                        Icons.Rounded.ExpandMore,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                if (trailingSummary.isNotEmpty()) {
+                    InfinityMetaLine(
+                        segments = trailingSummary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        InfinityDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            InfinityMenuItem(
+                text = { Text(allLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                selected = current == null,
+                onClick = { menu = false; onSelect(null) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            )
+            episodes.forEach { episode ->
+                InfinityMenuItem(
+                    text = { InfinityMetaLine(segments = episodeName(episode), maxLines = 1) },
+                    selected = episode.id == current?.id,
                     onClick = { menu = false; onSelect(episode.id) },
                     modifier = Modifier.heightIn(min = 48.dp),
                 )
@@ -1087,9 +1221,65 @@ internal fun ProductionAssetsTab(
     }
 }
 
+private fun isImagePreviewPath(path: String): Boolean {
+    val ext = path.substringAfterLast('/', path).substringAfterLast('.', "").lowercase()
+    return ext in setOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif")
+}
+
+private fun Production.normalizedProjectRelativePath(raw: String): String {
+    val clean = raw.trim().trimStart('/')
+    val root = rootPath.trim().trimStart('/').trimEnd('/')
+    return if (root.isNotEmpty() && clean.startsWith("$root/")) clean.removePrefix("$root/") else clean
+}
+
+/** 查找将当前声音资产任一版本路径绑定为参考语音的角色资产。 */
+internal fun Production.boundCharacterForSound(sound: Asset): Asset? {
+    if (sound.kind != AssetKind.SOUND) return null
+    val soundPaths = buildSet {
+        sound.versions.forEach { version ->
+            val normalized = normalizedProjectRelativePath(version.path)
+            if (normalized.isNotEmpty()) add(normalized)
+        }
+        sound.currentPath()?.let { path ->
+            val normalized = normalizedProjectRelativePath(path)
+            if (normalized.isNotEmpty()) add(normalized)
+        }
+    }
+    if (soundPaths.isEmpty()) return null
+    return assets.firstOrNull { candidate ->
+        if (candidate.kind != AssetKind.CHARACTER) return@firstOrNull false
+        val voicePath = candidate.referenceVoice?.path?.takeIf(String::isNotBlank) ?: return@firstOrNull false
+        normalizedProjectRelativePath(voicePath) in soundPaths
+    }
+}
+
+/** 提取声音资产激活版本的时长与格式标签（如 `["13.6s", "WAV"]`）；两者均无时返回空列表。 */
+internal fun soundAssetMetaSegments(asset: Asset): List<String> {
+    if (asset.kind != AssetKind.SOUND) return emptyList()
+    val activeVersion = asset.versions.firstOrNull { it.number == asset.currentVersion }
+        ?: asset.versions.maxByOrNull { it.number }
+        ?: return emptyList()
+    val duration = activeVersion.durationSeconds
+        ?.takeIf { it > 0.0 }
+        ?.let { "${formatShotSeconds(it)}s" }
+    val ext = activeVersion.path
+        .substringAfterLast('/')
+        .substringAfterLast('.', "")
+        .trim()
+        .takeIf { it.isNotEmpty() && it.length <= 6 && it.all(Char::isLetterOrDigit) }
+        ?.uppercase()
+    return listOfNotNull(duration, ext)
+}
+
 @Composable
 private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val versionNumber = asset.currentVersion ?: asset.versions.maxByOrNull { it.number }?.number
+    val boundCharacter = remember(asset, production.assets, production.rootPath) {
+        if (asset.kind == AssetKind.SOUND) production.boundCharacterForSound(asset) else null
+    }
+    val soundMeta = remember(asset) {
+        if (asset.kind == AssetKind.SOUND) soundAssetMetaSegments(asset) else emptyList()
+    }
     val chip = when {
         asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty() -> {
             val primaryLook = asset.looks.first()
@@ -1118,19 +1308,62 @@ private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0,
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(Modifier.fillMaxWidth().aspectRatio(1.35f).clip(RoundedCornerShape(12.dp))) {
                 val path = asset.coverPreviewPath()
-                if (asset.kind == AssetKind.SOUND && path == null) {
+                if (asset.kind == AssetKind.SOUND && (path == null || !isImagePreviewPath(path))) {
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.tertiaryContainer), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.GraphicEq, null, Modifier.size(44.dp), MaterialTheme.colorScheme.onTertiaryContainer)
+                        Icon(
+                            imageVector = Icons.Rounded.GraphicEq,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .padding(top = if (boundCharacter != null) 14.dp else 0.dp)
+                                .size(if (boundCharacter != null) 34.dp else 44.dp),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
                     }
                 } else {
                     ProductionThumbnail(path, Modifier.fillMaxSize(), contentDescription = asset.name)
                 }
-                ProductionStatusChip(
-                    chip.text,
-                    chip.tone,
-                    overlay = true,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        if (boundCharacter != null) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.65f),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Person,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.infinityDomainColors.overlayContent,
+                                        modifier = Modifier.size(11.dp),
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.p2_sound_bound_character, boundCharacter.name),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.infinityDomainColors.overlayContent,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    ProductionStatusChip(
+                        chip.text,
+                        chip.tone,
+                        overlay = true,
+                    )
+                }
                 if (asset.kind == AssetKind.CHARACTER) Row(Modifier.align(Alignment.BottomStart).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     if (asset.looks.isNotEmpty()) ClipBadge(stringResource(R.string.p2_look_count, asset.looks.size))
                     if (asset.referenceVoice?.path != null) ClipBadge(stringResource(R.string.p2_voice_badge))
@@ -1148,14 +1381,23 @@ private fun AssetCard(asset: Asset, production: Production, usageCount: Int = 0,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
-            val metaParts = listOfNotNull(
-                versionNumber?.let { stringResource(R.string.production_panel_version, it) },
-                stringResource(R.string.p2_views_count, asset.referenceViews.size).takeIf { versionNumber == null && asset.referenceViews.isNotEmpty() },
-                usageCount.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.production_panel_asset_usage, it, it) },
-            )
-            val subtitle = if (metaParts.isNotEmpty()) metaParts.joinToString(" · ") // wrap-check: allow 资产卡片底栏版本号与引用数固定单行省略
-            else if (asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty()) asset.looks.joinToString(" · ") { it.name } // wrap-check: allow 素材网格说明固定单行省略，右侧为状态
-            else asset.kind.label()
+            val subtitle = if (asset.kind == AssetKind.SOUND) {
+                val soundParts = soundMeta + listOfNotNull(
+                    versionNumber?.takeIf { asset.versions.size > 1 }?.let { stringResource(R.string.production_panel_version, it) },
+                    usageCount.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.production_panel_asset_usage, it, it) },
+                )
+                if (soundParts.isNotEmpty()) soundParts.joinToString(" · ") // wrap-check: allow 声音资产卡片底栏时长与格式固定单行省略
+                else asset.kind.label()
+            } else {
+                val metaParts = listOfNotNull(
+                    versionNumber?.let { stringResource(R.string.production_panel_version, it) },
+                    stringResource(R.string.p2_views_count, asset.referenceViews.size).takeIf { versionNumber == null && asset.referenceViews.isNotEmpty() },
+                    usageCount.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.production_panel_asset_usage, it, it) },
+                )
+                if (metaParts.isNotEmpty()) metaParts.joinToString(" · ") // wrap-check: allow 资产卡片底栏版本号与引用数固定单行省略
+                else if (asset.kind == AssetKind.CHARACTER && asset.looks.isNotEmpty()) asset.looks.joinToString(" · ") { it.name } // wrap-check: allow 素材网格说明固定单行省略，右侧为状态
+                else asset.kind.label()
+            }
             Text(
                 subtitle,
                 style = MaterialTheme.typography.labelSmall,

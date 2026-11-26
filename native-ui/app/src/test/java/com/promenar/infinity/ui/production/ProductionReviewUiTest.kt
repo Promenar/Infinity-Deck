@@ -214,4 +214,76 @@ class ProductionReviewUiTest {
         assertThat(revisedSceneProd.reviewChips(scene)).containsExactly(ReviewChip.PENDING)
         assertThat(revisedEp.scenes.single().awaitsReview(revisedSceneProd, revisedEp)).isTrue()
     }
+
+    @Test fun `一键快捷批准仅在可裁决未批准未定稿且内联区收起时展示`() {
+        assertThat(production.shouldShowQuickApprove(take)).isTrue()
+        assertThat(withReviews(ReviewEntry(take, ReviewKind.REJECT, "重画", at = 1)).shouldShowQuickApprove(take)).isTrue()
+        assertThat(withReviews(ReviewEntry(take, ReviewKind.APPROVE, at = 1)).shouldShowQuickApprove(take)).isFalse()
+        assertThat(production.shouldShowQuickApprove(take, settled = true)).isFalse()
+        assertThat(production.shouldShowQuickApprove(take, inlineOpen = true)).isFalse()
+        assertThat(production.shouldShowQuickApprove(shot)).isFalse()
+    }
+
+    @Test fun `内联审批表单默认裁决附注与撤回目标保持原有业务语义`() {
+        // 仅收建议的对象锁定建议且无撤回
+        assertThat(production.initialReviewKind(shot)).isEqualTo(ReviewKind.SUGGEST)
+        assertThat(production.retractReviewTargetKind(shot, ReviewKind.SUGGEST)).isNull()
+
+        // 待审对象默认批准，无附注
+        assertThat(production.initialReviewKind(take)).isEqualTo(ReviewKind.APPROVE)
+        assertThat(production.initialReviewNote(take, ReviewKind.APPROVE)).isEmpty()
+        assertThat(production.retractReviewTargetKind(take, ReviewKind.APPROVE)).isNull()
+
+        // 未发送的否决：默认回到否决、带出原否决原因，且切到任意分段均可撤回该未发送结论
+        val unsentReject = withReviews(ReviewEntry(take, ReviewKind.REJECT, "穿帮", at = 1))
+        assertThat(unsentReject.initialReviewKind(take)).isEqualTo(ReviewKind.REJECT)
+        assertThat(unsentReject.initialReviewNote(take, ReviewKind.REJECT)).isEqualTo("穿帮")
+        assertThat(unsentReject.initialReviewNote(take, ReviewKind.APPROVE)).isEmpty()
+        assertThat(unsentReject.retractReviewTargetKind(take, ReviewKind.APPROVE)).isEqualTo(ReviewKind.REJECT)
+
+        // 已发送或已排队的结论不可撤回
+        val sentApprove = withReviews(ReviewEntry(take, ReviewKind.APPROVE, "通过", at = 1, round = 1))
+        assertThat(sentApprove.retractReviewTargetKind(take, ReviewKind.APPROVE)).isNull()
+        assertThat(sentApprove.initialReviewNote(take, ReviewKind.APPROVE)).isEqualTo("通过")
+        val queuedApprove = withReviews(ReviewEntry(take, ReviewKind.APPROVE, at = 1, queuedRound = 1))
+        assertThat(queuedApprove.retractReviewTargetKind(take, ReviewKind.APPROVE)).isNull()
+
+        // 仅有未发送建议时默认切到建议，仅在建议分段可直接撤回
+        val unsentSuggest = withReviews(ReviewEntry(scene, ReviewKind.SUGGEST, "节奏再紧凑一点", at = 1))
+        assertThat(unsentSuggest.initialReviewKind(scene)).isEqualTo(ReviewKind.SUGGEST)
+        assertThat(unsentSuggest.retractReviewTargetKind(scene, ReviewKind.SUGGEST)).isEqualTo(ReviewKind.SUGGEST)
+        assertThat(unsentSuggest.retractReviewTargetKind(scene, ReviewKind.APPROVE)).isNull()
+
+        // 旧版已定稿对象默认落在批准
+        assertThat(production.initialReviewKind(take, settled = true)).isEqualTo(ReviewKind.APPROVE)
+    }
+
+    @Test fun `审批入口全面内联化且不再由操作栏触发全屏弹窗并保留输入框底部描边安全留白`() {
+        fun productionSource(name: String): String {
+            val path = Path.of("app/src/main/java/com/promenar/infinity/ui/production/$name").let {
+                if (Files.exists(it)) it else Path.of("src/main/java/com/promenar/infinity/ui/production/$name")
+            }
+            return Files.readString(path)
+        }
+        val reviewUi = productionSource("ProductionReviewUi.kt")
+        assertThat(reviewUi).contains("internal fun ProductionInlineReviewSlot(")
+        assertThat(reviewUi).contains("rememberAnimationsEnabled() && !LocalInspectionMode.current")
+        assertThat(reviewUi).contains("R.string.production_review_quick_approve")
+        assertThat(reviewUi).contains("R.string.production_review_collapse")
+
+        val actionsBody = reviewUi
+            .substringAfter("internal fun ProductionReviewActions(")
+            .substringBefore("internal fun ProductionUnifiedReviewDialog(")
+        assertThat(actionsBody).contains("externalExpanded: Boolean? = null")
+        assertThat(actionsBody).contains("onExternalExpandedChange: ((Boolean) -> Unit)? = null")
+        assertThat(actionsBody).contains("ProductionInlineReviewSlot(")
+        assertThat(actionsBody).doesNotContain("ProductionUnifiedReviewDialog(")
+
+        val legacyDialogBody = reviewUi.substringAfter("internal fun ProductionUnifiedReviewDialog(")
+        assertThat(legacyDialogBody).contains(".padding(bottom = 4.dp)")
+
+        val components = productionSource("ProductionComponents.kt")
+        val textDialogBody = components.substringAfter("internal fun ProductionTextDialog(")
+        assertThat(textDialogBody).contains(".padding(top = 4.dp, bottom = 6.dp)")
+    }
 }

@@ -24,6 +24,7 @@ import com.promenar.infinity.domain.tool.ToolOutputStream
 import com.promenar.infinity.domain.tool.ToolRisk
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
 import com.promenar.infinity.ui.chat.manager.registry.SkillExecutionContext
+import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -72,7 +73,7 @@ class MusicGenerationSkill(
                 },
                 "duration_seconds": {
                     "type": "integer",
-                    "description": "可选，期望曲目时长（5–300 秒；Lyria 3 Clip 约 30 秒片段，Lyria 3 Pro / 3.5 支持完整歌曲）。"
+                    "description": "可选，期望曲目时长参考（5–300 秒）。注意：仅作为曲式结构的软提示，Lyria 3.5 / Lyria 3 Pro 始终生成约 2–3 分钟的完整曲目，Lyria 3 Clip 约 30 秒片段；如需精确片段时长请在剪辑或后处理阶段裁剪。"
                 },
                 "model_id": {
                     "type": "string",
@@ -146,11 +147,22 @@ class MusicGenerationSkill(
                 )
             }
             output.emit(ToolOutputStream.STDOUT, "已保存音乐：${savedRef.path}\n")
+            val measuredSeconds = estimateAudioDurationSeconds(synthesized.bytes)
+                ?: savedRef.durationMs?.takeIf { it > 0 }?.div(1000.0)
+            val durationNote = measuredSeconds?.let { sec ->
+                "，时长约 ${String.format(Locale.US, "%.1f", sec)}s"
+            }.orEmpty()
             ToolResult(
                 id = resultId,
                 content = buildString {
-                    appendLine("${savedRef.path}（${synthesized.mimeType}，${savedRef.sizeBytes} 字节，模型：${modelInfo.name}）")
+                    appendLine("${savedRef.path}（${synthesized.mimeType}，${savedRef.sizeBytes} 字节$durationNote，模型：${modelInfo.name}）")
                     appendLine("回复中可用 [${modelInfo.name} 配乐](${savedRef.path}) 引用此音频供用户播放。")
+                    if (req.durationSeconds != null) {
+                        val actualPart = measuredSeconds?.let {
+                            "实际生成音频时长约 ${String.format(Locale.US, "%.1f", it)}s；"
+                        }.orEmpty()
+                        appendLine("提示：${actualPart}duration_seconds（${req.durationSeconds}s）仅为曲式软提示（Lyria 3.5 Pro 始终输出完整曲目），如需精确片段时长请在剪辑或后处理阶段裁剪。")
+                    }
                     synthesized.transcriptText?.let { lyrics ->
                         appendLine()
                         appendLine("生成歌词与曲式：")

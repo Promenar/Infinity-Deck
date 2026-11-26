@@ -29,6 +29,7 @@ data class MediaCapabilities(
     val promptFormat: PromptFormat = PromptFormat.GENERIC,
     val characterReferenceMode: CharacterReferenceMode = CharacterReferenceMode.SEPARATE,
     val referenceOrder: List<String> = emptyList(),
+    val deriveOnly: Boolean = false,
 ) {
     init {
         require(maxImages >= 0 && maxVideos >= 0 && maxAudio >= 0) { "capabilities.maxImages/maxVideos/maxAudio: 不能小于 0" }
@@ -80,7 +81,27 @@ data class RequestValidation(
 }
 
 fun resolveDefaultChannel(group: MediaGroup, mode: GenerationMode, orderedChannels: List<MediaChannel>): MediaChannel? =
-    orderedChannels.firstOrNull { it.group == group && mode in it.capabilities.modes }
+    orderedChannels.firstOrNull { it.group == group && !it.capabilities.deriveOnly && mode in it.capabilities.modes }
+
+/** 把 [validateRequest] 产出的英文规格错误码转译为简体中文提示，避免原始枚举/字段名泄露。 */
+fun localizeMediaSpecError(code: String): String = when (code) {
+    "prompt" -> "提示词不能为空"
+    "firstFrameCount" -> "首帧模式需要正好 1 张首帧参考图"
+    "lastFrameCount" -> "尾帧模式需要正好 1 张尾帧参考图"
+    "referenceRequired" -> "参考模式至少需要 1 项参考输入"
+    "resolution" -> "所选分辨率不在当前通道支持范围内"
+    "durationSeconds" -> "镜头时长超出当前通道支持范围"
+    "durationSecondsExact" -> "镜头小数时长超出当前通道支持范围"
+    "width" -> "输出宽度须为正整数"
+    "height" -> "输出高度须为正整数"
+    "dimensions" -> "自定义宽高须成对提供"
+    "frames" -> "生成帧数须为正整数"
+    "maxImages" -> "参考图数量超出当前通道上限"
+    "maxAudio" -> "参考音频数量超出当前通道上限"
+    "maxVideos" -> "参考视频数量超出当前通道上限"
+    "unsupportedMode" -> "当前通道不支持该生成模式"
+    else -> code
+}
 
 fun validateRequest(channel: MediaChannel, request: MediaGenerationRequest): RequestValidation {
     val caps = channel.capabilities

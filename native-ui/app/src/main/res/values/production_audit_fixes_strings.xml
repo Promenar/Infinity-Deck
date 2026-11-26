@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Inline review composer -->
+    <string name="production_review_collapse">Collapse</string>
+    <string name="production_review_quick_approve">Approve</string>
+    <string name="production_review_note_button">Note</string>
+
+    <!-- Overview, change requests, empty scan & inspector badges -->
+    <string name="p2_change_handled_count">%1$d handled</string>
+    <string name="p2_optional_stage_animatic_hint">Optional · Enable to preview animatic in Cut</string>
+    <string name="p2_optional_stage_post_hint">Optional · Unskip to show Post-process tab</string>
+    <string name="production_empty_rescan_none">Scanned workspace; no attachable production projects found</string>
+    <string name="chat_inspector_badge_send">Send %1$d</string>
+    <string name="chat_inspector_badge_review_desc">%1$d pending review</string>
+    <string name="chat_inspector_badge_send_desc">%1$d ready to send</string>
+
+    <!-- Multi-episode filter & post-process A/B compare -->
+    <string name="p2_all_episodes">All episodes</string>
+    <string name="p2_ab_source_take">Original</string>
+    <string name="p2_ab_derived_take">Enhanced</string>
+    <string name="p2_ab_source_with_spec">Original · %1$s</string>
+    <string name="p2_ab_derived_with_spec">Enhanced · %1$s</string>
+
+    <!-- Assets, single reference & sound binding -->
+    <string name="p2_optional_reference_slot">Optional slot</string>
+    <string name="p2_single_concept_tag">Key visual</string>
+    <string name="p2_single_reference_title">Single reference</string>
+    <string name="p2_single_reference_subtitle">Passed directly as the primary reference image</string>
+    <string name="p2_single_reference_using">Using single reference</string>
+    <string name="p2_sound_bound_character">Bound: %1$s</string>
+</resources>

@@ -29,6 +29,7 @@ import com.promenar.infinity.data.artifact.ArtifactOrigin
 import com.promenar.infinity.data.artifact.ArtifactSummary
 import com.promenar.infinity.data.artifact.SessionArtifactRepository
 import com.promenar.infinity.data.artifact.WorkspaceChangedFile
+import com.promenar.infinity.data.artifact.isPathExcluded
 import com.promenar.infinity.data.artifact.toArtifactSummary
 import android.widget.Toast
 import androidx.compose.runtime.mutableIntStateOf
@@ -84,6 +85,14 @@ internal fun canvasRevealPath(metadata: CanvasMetadata, primaryWorkspaceId: Stri
 
 internal val LocalCanvasSession = staticCompositionLocalOf<CanvasSessionAccess?> { null }
 
+/** 过滤掉位于排除目录前缀下、已由其它面板托管的工作区文件改动。 */
+internal fun filterWorkspaceChangesByExcludedPrefixes(
+    changes: List<WorkspaceChangedFile>,
+    excludedPathPrefixes: Set<String>,
+): List<WorkspaceChangedFile> =
+    if (excludedPathPrefixes.isEmpty()) changes
+    else changes.filterNot { change -> isPathExcluded(change.path, excludedPathPrefixes) }
+
 /** 会话切换会销毁所有页面；仅跟随最新时订阅当前版本，历史查看保持固定。 */
 @Composable
 fun CanvasSessionHost(
@@ -97,6 +106,8 @@ fun CanvasSessionHost(
     artifactRepository: SessionArtifactRepository? = null,
     /** 本会话工具调用新增或修改的工作区文件，用于找出未收录的候选。 */
     workspaceChanges: List<WorkspaceChangedFile> = emptyList(),
+    /** 由其它面板托管、不应计入未收录候选的目录前缀（例如当前绑定的制作项目根目录）。 */
+    excludedPathPrefixes: Set<String> = emptySet(),
     content: @Composable () -> Unit,
 ) = key(sessionId, store, artifactRepository) {
     var canvases by remember { mutableStateOf<List<CanvasMetadata>>(emptyList()) }
@@ -134,10 +145,16 @@ fun CanvasSessionHost(
     var candidates by remember { mutableStateOf<List<ArtifactCandidate>>(emptyList()) }
     var candidateRevision by remember { mutableIntStateOf(0) }
     val sourcePaths = artifacts.mapNotNull { it.sourcePath }
-    LaunchedEffect(workspaceChanges, sourcePaths, candidateRevision, artifactRepository) {
+    LaunchedEffect(workspaceChanges, excludedPathPrefixes, sourcePaths, candidateRevision, artifactRepository) {
         val repository = artifactRepository ?: return@LaunchedEffect
         candidates = try {
-            if (workspaceChanges.isEmpty()) emptyList() else repository.candidates(sessionId, workspaceChanges)
+            val filteredChanges = filterWorkspaceChangesByExcludedPrefixes(workspaceChanges, excludedPathPrefixes)
+            if (filteredChanges.isEmpty()) {
+                emptyList()
+            } else {
+                repository.candidates(sessionId, filteredChanges, excludedPathPrefixes)
+                    .filterNot { candidate -> isPathExcluded(candidate.path, excludedPathPrefixes) }
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

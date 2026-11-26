@@ -473,4 +473,42 @@ class ShotGenerationPlannerTest {
         assertEquals(listOf(1, 2, 3, 4, 5, 6), preview.inputs.map { it.number })
     }
 
+    @Test fun `资产类型标签与首尾帧校验错误使用中文且不泄露英文枚举和字段名`() = runTest {
+        files.bytes["ref/prop.png"] = byteArrayOf(41)
+        store.production = store.production.copy(
+            assets = store.production.assets + Asset("letter", AssetKind.PROP, "信封", versions = listOf(AssetVersion(1, "ref/prop.png", 1)), currentVersion = 1),
+        )
+        edit { it.copy(propAssetIds = listOf("letter")) }
+        val refPreview = planner().preview("s", "S1E01", "SC01-01")
+        val locationInput = refPreview.inputs.first { it.path == "ref/pier.png" }
+        val propInput = refPreview.inputs.first { it.path == "ref/prop.png" }
+        assertEquals("场景", locationInput.detail)
+        assertEquals("道具", propInput.detail)
+        assertTrue(refPreview.prompt.contains("场景"))
+        assertTrue(refPreview.prompt.contains("道具"))
+        assertFalse(refPreview.prompt.contains("location"))
+        assertFalse(refPreview.prompt.contains("prop"))
+
+        edit {
+            it.copy(
+                mode = ShotMode.FIRST_LAST,
+                inputs = listOf(ShotInput(InputRole.FIRST_FRAME, "ref/front.png")),
+            )
+        }
+        val missingLast = planner().preview("s", "S1E01", "SC01-01")
+        assertEquals("首帧", missingLast.inputs.single().title)
+        val blocked = missingLast.blockedReason.orEmpty()
+        assertTrue(blocked.contains("尾帧模式需要正好 1 张尾帧参考图"))
+        assertFalse(blocked.contains("lastFrameCount"))
+        assertFalse(blocked.contains("firstFrameCount"))
+
+        val deriveOnlyChannel = planningChannel("comfy:flashvsr").let {
+            it.copy(capabilities = it.capabilities.copy(deriveOnly = true))
+        }
+        val generateChannel = planningChannel("comfy:h3_ref")
+        edit { it.copy(mode = ShotMode.REFERENCE, inputs = emptyList(), channelId = null) }
+        val chosen = planner(PlanningRegistry(deriveOnlyChannel, generateChannel)).preview("s", "S1E01", "SC01-01")
+        assertEquals("comfy:h3_ref", chosen.channel?.id)
+    }
+
 }

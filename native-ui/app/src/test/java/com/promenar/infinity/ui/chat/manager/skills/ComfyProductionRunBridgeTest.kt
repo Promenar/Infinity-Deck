@@ -8,6 +8,10 @@ import com.promenar.infinity.data.mediagen.comfy.ComfyRepository
 import com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowExecutionEngine
 import com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowExecutionRequest
 import com.promenar.infinity.data.mediagen.comfy.ComfyWorkflowRunMode
+import com.promenar.infinity.data.production.Asset
+import com.promenar.infinity.data.production.AssetKind
+import com.promenar.infinity.data.production.AssetStatus
+import com.promenar.infinity.data.production.AssetVersion
 import com.promenar.infinity.data.production.Episode
 import com.promenar.infinity.data.production.InputRole
 import com.promenar.infinity.data.production.ManifestSync
@@ -332,5 +336,236 @@ class ComfyProductionRunBridgeTest {
         assertThat(occupied?.message).contains("候选容量不足")
         bridge.onFail(handle, "测试失败")
         assertThat(occupiedShotCandidates(store.snapshot.production, "S1E01", "SC01-03", null)).isEqualTo(29)
+    }
+
+    @Test
+    fun `工具关联asset_id自动推导assets默认目录并同步总览进度与资产版本登记`() = runTest {
+        var clock = 20_000L
+        val store = MemoryWorkStore(
+            sampleProduction().copy(
+                assets = listOf(
+                    Asset(id = "char-linwan", kind = AssetKind.CHARACTER, name = "林晚"),
+                    Asset(id = "bgm-main", kind = AssetKind.SOUND, name = "主配乐"),
+                ),
+            ),
+        )
+        val broken = "productions/demo/broken"
+        val runs = ProductionRunService(
+            store,
+            { _, path -> if (path.endsWith(".mp3")) MediaSpec(durationSeconds = 12.0) else MediaSpec(width = 1024, height = 1024) },
+            { _, path -> !path.startsWith("$broken/") },
+            now = { clock },
+        )
+        val imageWf = ComfyWorkflow(
+            workflowId = "wf-image",
+            hostId = "h1",
+            name = "角色资产生图",
+            mediaCategory = ComfyMediaCategory.IMAGE,
+            rawWorkflowJson = buildJsonObject {},
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)),
+            fields = emptyList(),
+        )
+        val repository = mockk<ComfyRepository>()
+        coEvery { repository.workflowState(imageWf.workflowId) } returns ComfyWorkflowState(imageWf)
+        val engine = mockk<ComfyWorkflowExecutionEngine>()
+        val requests = mutableListOf<ComfyWorkflowExecutionRequest>()
+        var observedRunningSteps: Int? = null
+        var observedRunningAssetId: String? = null
+        coEvery { engine.execute(any()) } coAnswers {
+            val request = firstArg<ComfyWorkflowExecutionRequest>()
+            requests += request
+            clock += 1_000L
+            request.onProgress(0.5f, "采样中")
+            val activeRun = store.snapshot.production.runs.last()
+            observedRunningSteps = activeRun.completedSteps
+            observedRunningAssetId = activeRun.target.assetId
+            ComfyWorkflowExecutionResult(
+                workflow = imageWf,
+                host = ComfyHost("h1", "测试主机", "http://127.0.0.1:8188"),
+                savedMedia = listOf(MediaRef("${request.outputDir}/char-${requests.size}.png", "image/png", MediaKind.IMAGE, 2048L)),
+                summary = "完成",
+            )
+        }
+        val tool = comfyTools(
+            repository,
+            executionEngine = engine,
+            productionRunBridge = ComfyProductionRunBridge(store, runs, now = { clock }),
+        ).single { it.name == "comfy_run_workflow" }
+        val context = object : SkillExecutionContext {
+            override val sessionId = "s1"
+            override val agentId = "a"
+            override val workspacePath: String? = null
+            override val workspaceRootUuid = "root"
+            override val assistantMessageId = "m"
+        }
+
+        val defaultDir = "productions/demo/assets/char-linwan"
+        val customDir = "productions/demo/assets/custom"
+        var expectedVersion = 0
+        for ((supplied, expected) in listOf(null to defaultDir, "   " to defaultDir, customDir to customDir, "outside" to "outside", broken to broken)) {
+            store.throwAfterCompletion = expected == customDir
+            val response = tool.execute(buildJsonObject {
+                put("workflow_id", imageWf.workflowId)
+                put("asset_id", "char-linwan")
+                supplied?.let { put("output_dir", it) }
+            }, context)
+            assertThat(response.status).isNotEqualTo("error")
+            assertThat(requests.last().outputDir).isEqualTo(expected)
+            assertThat(requests.last().expectedWorkflow).isEqualTo(imageWf)
+            assertThat(observedRunningAssetId).isEqualTo("char-linwan")
+            assertThat(observedRunningSteps).isEqualTo(50)
+
+            val payload = Json.parseToJsonElement(response.content).jsonObject
+            val run = store.snapshot.production.runs.last()
+            assertThat(payload["production_run_id"]?.jsonPrimitive?.content).isEqualTo(run.id)
+            assertThat(run.target.assetId).isEqualTo("char-linwan")
+            assertThat(run.target.episodeId).isNull()
+            assertThat(run.target.shotCode).isNull()
+            when (expected) {
+                broken -> {
+                    assertThat(run.state).isEqualTo(RunState.FAILED)
+                    assertThat(payload["registered_version"]).isNull()
+                    assertThat(payload["production_registration_error"]?.jsonPrimitive?.content).contains("产物不可读")
+                }
+                "outside" -> {
+                    assertThat(run.state).isEqualTo(RunState.FAILED)
+                    assertThat(payload["registered_version"]).isNull()
+                    assertThat(payload["production_registration_error"]?.jsonPrimitive?.content).contains("项目目录内未产出")
+                }
+                else -> {
+                    expectedVersion += 1
+                    assertThat(run.state).isEqualTo(RunState.COMPLETED)
+                    assertThat(run.resultAssetVersion).isEqualTo(expectedVersion)
+                    assertThat(payload["registered_version"]?.jsonPrimitive?.int).isEqualTo(expectedVersion)
+                    assertThat(payload["production_registration_error"]).isNull()
+                    assertThat(run.resultPath).isEqualTo("$expected/char-${requests.size}.png")
+                    val asset = store.snapshot.production.assets.single { it.id == "char-linwan" }
+                    assertThat(asset.status).isEqualTo(AssetStatus.REVIEW)
+                    assertThat(asset.currentVersion).isEqualTo(expectedVersion)
+                    assertThat(asset.versions.last().path).isEqualTo("$expected/char-${requests.size}.png")
+                }
+            }
+        }
+
+        // 工具描述与 schema 均完整暴露 asset_id 与 registered_version 契约并通过门禁校验
+        listOf("asset_id", "assets/", "registered_version", "add_asset_version").forEach {
+            assertThat(tool.description).contains(it)
+        }
+        val validator = com.promenar.infinity.domain.tool.ToolSchemaValidator()
+        assertThat(validator.validateDefinition(tool.parametersSchema))
+            .isInstanceOf(com.promenar.infinity.domain.tool.ToolSchemaValidation.Valid::class.java)
+        val assetIdDesc = Json.parseToJsonElement(tool.parametersSchema).jsonObject.getValue("properties")
+            .jsonObject.getValue("asset_id").jsonObject.getValue("description").jsonPrimitive.content
+        listOf("assets/", "production_run_id", "registered_version", "add_asset_version").forEach {
+            assertThat(assetIdDesc).contains(it)
+        }
+    }
+
+    @Test
+    fun `shot_ref与asset_id互斥且资产工作流失败或音频类型不匹配时标记失败`() = runTest {
+        val store = MemoryWorkStore(
+            sampleProduction().copy(
+                assets = listOf(
+                    Asset(id = "char-linwan", kind = AssetKind.CHARACTER, name = "林晚"),
+                    Asset(id = "bgm-main", kind = AssetKind.SOUND, name = "主配乐"),
+                ),
+            ),
+        )
+        val runs = ProductionRunService(
+            store,
+            { _, path -> if (path.endsWith(".mp3")) MediaSpec(durationSeconds = 15.0) else MediaSpec(width = 1024, height = 1024) },
+            { _, _ -> true },
+        )
+        val wf = ComfyWorkflow(
+            workflowId = "wf-asset",
+            hostId = "h1",
+            name = "通用资产生成",
+            mediaCategory = ComfyMediaCategory.IMAGE,
+            rawWorkflowJson = buildJsonObject {},
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT)),
+            fields = emptyList(),
+        )
+        val repository = mockk<ComfyRepository>()
+        coEvery { repository.workflowState(wf.workflowId) } returns ComfyWorkflowState(wf)
+        val engine = mockk<ComfyWorkflowExecutionEngine>()
+        val bridge = ComfyProductionRunBridge(store, runs)
+        val tool = comfyTools(repository, executionEngine = engine, productionRunBridge = bridge)
+            .single { it.name == "comfy_run_workflow" }
+        val context = object : SkillExecutionContext {
+            override val sessionId = "s1"
+            override val agentId = "a"
+            override val workspacePath: String? = null
+            override val workspaceRootUuid = "root"
+            override val assistantMessageId = "m"
+        }
+
+        // shot_ref 与 asset_id 互斥
+        val conflict = tool.execute(buildJsonObject {
+            put("workflow_id", wf.workflowId)
+            put("shot_ref", "S1E01/SC01-03")
+            put("asset_id", "char-linwan")
+        }, context)
+        assertThat(conflict.status).isEqualTo("error")
+        assertThat(conflict.content).contains("不能同时指定")
+        assertThat(store.snapshot.production.runs).isEmpty()
+
+        // 执行抛异常时同步将资产运行登记项置为 FAILED
+        coEvery { engine.execute(any()) } throws ComfyFailure("GPU 显存不足")
+        val failed = tool.execute(buildJsonObject {
+            put("workflow_id", wf.workflowId)
+            put("asset_id", "char-linwan")
+        }, context)
+        assertThat(failed.status).isEqualTo("error")
+        val failedRun = store.snapshot.production.runs.single()
+        assertThat(failedRun.target.assetId).isEqualTo("char-linwan")
+        assertThat(failedRun.state).isEqualTo(RunState.FAILED)
+        assertThat(failedRun.failure).contains("GPU 显存不足")
+
+        // 声音资产仅产出图片时不登记并报错，产出音频时正常登记为 v1
+        coEvery { engine.execute(any()) } returnsMany listOf(
+            ComfyWorkflowExecutionResult(
+                workflow = wf,
+                host = ComfyHost("h1", "测试主机", "http://127.0.0.1:8188"),
+                savedMedia = listOf(MediaRef("productions/demo/assets/bgm-main/cover.png", "image/png", MediaKind.IMAGE, 512L)),
+                summary = "图片输出",
+            ),
+            ComfyWorkflowExecutionResult(
+                workflow = wf,
+                host = ComfyHost("h1", "测试主机", "http://127.0.0.1:8188"),
+                savedMedia = listOf(MediaRef("productions/demo/assets/bgm-main/theme.mp3", "audio/mpeg", MediaKind.AUDIO, 4096L)),
+                summary = "音频输出",
+            ),
+        )
+        val nonAudio = tool.execute(buildJsonObject {
+            put("workflow_id", wf.workflowId)
+            put("asset_id", "bgm-main")
+        }, context)
+        val nonAudioPayload = Json.parseToJsonElement(nonAudio.content).jsonObject
+        assertThat(store.snapshot.production.runs.last().state).isEqualTo(RunState.FAILED)
+        assertThat(nonAudioPayload["registered_version"]).isNull()
+        assertThat(nonAudioPayload["production_registration_error"]?.jsonPrimitive?.content).contains("音频")
+
+        val audioOk = tool.execute(buildJsonObject {
+            put("workflow_id", wf.workflowId)
+            put("asset_id", "bgm-main")
+        }, context)
+        val audioPayload = Json.parseToJsonElement(audioOk.content).jsonObject
+        assertThat(store.snapshot.production.runs.last().state).isEqualTo(RunState.COMPLETED)
+        assertThat(audioPayload["registered_version"]?.jsonPrimitive?.int).isEqualTo(1)
+        assertThat(store.snapshot.production.assets.single { it.id == "bgm-main" }.versions.single().path)
+            .isEqualTo("productions/demo/assets/bgm-main/theme.mp3")
+
+        // 资产版本达到 30 上限时拒绝启动新任务
+        val fullVersions = (1..30).map { n -> AssetVersion(n, "productions/demo/assets/char-linwan/v$n.png", n.toLong()) }
+        store.snapshot = store.snapshot.copy(
+            production = store.snapshot.production.copy(
+                assets = store.snapshot.production.assets.map { asset ->
+                    if (asset.id == "char-linwan") asset.copy(versions = fullVersions) else asset
+                },
+            ),
+        )
+        val fullBinding = bridge.resolveAsset("s1", "char-linwan")!!
+        val capError = runCatching { bridge.onStart("s1", fullBinding, wf, "single") }.exceptionOrNull()
+        assertThat(capError?.message).contains("资产版本容量不足")
     }
 }

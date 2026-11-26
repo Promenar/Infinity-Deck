@@ -59,6 +59,7 @@ import com.promenar.infinity.ui.common.FrostedChromeMaterial
 import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.launch
+import androidx.compose.material3.Badge
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -247,11 +248,18 @@ private val InspectorTabGap = 0.dp
 /** 保持 48dp 横滑视口纵高，避免 -6dp 上探角标或大字号徽章被 Offscreen 渐隐层裁切。 */
 private val InspectorTabTrackHeight = 48.dp
 private val InspectorTabTrackInset = 4.dp
-private val InspectorTabFadeWidth = 22.dp
+/** 轨道末端留出更宽余量，避免窄分屏横滑到底时最右侧图标或角标紧贴竖线造成硬裁切感。 */
+private val InspectorTabTrackEndInset = 8.dp
+private val InspectorTabFadeWidth = 28.dp
 private val InspectorTabLabelStart = 12.dp
 private val InspectorTabLabelGap = 6.dp
 private val InspectorTabLabelEnd = 12.dp
+private val InspectorTabInlineBadgePad = 10.dp
 private val InspectorTabLabelVerticalPadding = 8.dp
+
+/** 检视器底栏选中页签是否将待审与待发送角标并列展示在短标题右侧，避免两种语义角标叠压在图标上。 */
+internal fun shouldShowInlineInspectorBadges(entry: PanelHubEntry, selected: Boolean): Boolean =
+    selected && entry.available && (entry.secondaryPending > 0 || (entry.page == ChatPage.Production && entry.pending > 0))
 
 /** 计算自动滚动后选中页签两侧的安全留白：优先完整避开渐隐边缘，极窄视口下收敛以防震荡。 */
 internal fun inspectorTabScrollSafeEdge(viewport: Int, tabWidth: Int, fadePx: Int): Int =
@@ -306,7 +314,7 @@ private fun InspectorTabRow(
                     },
                 )
             }
-            Spacer(Modifier.width(InspectorTabTrackInset))
+            Spacer(Modifier.width(InspectorTabTrackEndInset))
         }
     }
 }
@@ -319,7 +327,10 @@ private fun InspectorTab(
     modifier: Modifier = Modifier,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
     val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val hasInlineBadges = entry.available && (entry.secondaryPending > 0 || (entry.page == ChatPage.Production && entry.pending > 0))
+    val inlineBadgesActive = shouldShowInlineInspectorBadges(entry, selected)
     val targetTint = when {
         !entry.available -> scheme.onSurface.copy(alpha = 0.38f)
         selected -> scheme.onSurface
@@ -338,12 +349,12 @@ private fun InspectorTab(
         label = "inspector_tab_bg",
     )
     val startPad by animateDpAsState(
-        targetValue = if (selected) InspectorTabLabelStart else 13.dp,
+        targetValue = if (selected) (if (inlineBadgesActive) InspectorTabInlineBadgePad else InspectorTabLabelStart) else 13.dp,
         animationSpec = tween(if (animate) InfinityMotion.DurationMedium else 0, easing = InfinityMotion.EmphasizedDecelerate),
         label = "inspector_tab_start_pad",
     )
     val endPad by animateDpAsState(
-        targetValue = if (selected) InspectorTabLabelEnd else 13.dp,
+        targetValue = if (selected) (if (inlineBadgesActive) InspectorTabInlineBadgePad else InspectorTabLabelEnd) else 13.dp,
         animationSpec = tween(if (animate) InfinityMotion.DurationMedium else 0, easing = InfinityMotion.EmphasizedDecelerate),
         label = "inspector_tab_end_pad",
     )
@@ -376,7 +387,12 @@ private fun InspectorTab(
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            PanelHubIcon(entry, tint, reserveBadge = selected)
+            PanelHubIcon(
+                entry = entry,
+                tint = tint,
+                showPending = !inlineBadgesActive,
+                reserveBadge = selected && !inlineBadgesActive,
+            )
             AnimatedVisibility(
                 visible = selected,
                 enter = expandHorizontally(tween(if (animate) InfinityMotion.DurationMedium else 0, easing = InfinityMotion.EmphasizedDecelerate)) +
@@ -393,6 +409,30 @@ private fun InspectorTab(
                         maxLines = 1,
                         softWrap = false,
                     )
+                    if (hasInlineBadges) {
+                        if (entry.pending > 0) {
+                            Spacer(Modifier.width(6.dp))
+                            Badge(
+                                containerColor = scheme.tertiary,
+                                contentColor = scheme.onTertiary,
+                            ) {
+                                Text(entry.pending.toString(), maxLines = 1, softWrap = false)
+                            }
+                        }
+                        if (entry.secondaryPending > 0) {
+                            Spacer(Modifier.width(if (entry.pending > 0) 4.dp else 6.dp))
+                            Badge(
+                                containerColor = domain.infoContainer,
+                                contentColor = domain.onInfoContainer,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.chat_inspector_badge_send, entry.secondaryPending),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

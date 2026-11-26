@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 内联审批交互 -->
+    <string name="production_review_collapse">收起</string>
+    <string name="production_review_quick_approve">批准</string>
+    <string name="production_review_note_button">附注</string>
+
+    <!-- 总览、变更请求、空态扫描与检视器角标 -->
+    <string name="p2_change_handled_count">已处理 %1$d 条</string>
+    <string name="p2_optional_stage_animatic_hint">可选环节 · 开启后可在剪辑页生成预演</string>
+    <string name="p2_optional_stage_post_hint">可选环节 · 关闭跳过后展示后处理页签</string>
+    <string name="production_empty_rescan_none">已扫描工作区，未发现可关联的新制作项目</string>
+    <string name="chat_inspector_badge_send">发 %1$d</string>
+    <string name="chat_inspector_badge_review_desc">待审批 %1$d 项</string>
+    <string name="chat_inspector_badge_send_desc">待发送 %1$d 项</string>
+
+    <!-- 多集切换与后处理 A/B 对比 -->
+    <string name="p2_all_episodes">全部剧集</string>
+    <string name="p2_ab_source_take">原片</string>
+    <string name="p2_ab_derived_take">后处理</string>
+    <string name="p2_ab_source_with_spec">原片 · %1$s</string>
+    <string name="p2_ab_derived_with_spec">后处理 · %1$s</string>
+
+    <!-- 资产卡片、单图参考与声音绑定 -->
+    <string name="p2_optional_reference_slot">可选参考位</string>
+    <string name="p2_single_concept_tag">概念主图</string>
+    <string name="p2_single_reference_title">单图参考</string>
+    <string name="p2_single_reference_subtitle">直接作为当前资产的主参考图传入视频模型</string>
+    <string name="p2_single_reference_using">使用单图参考</string>
+    <string name="p2_sound_bound_character">绑定：%1$s</string>
+</resources>

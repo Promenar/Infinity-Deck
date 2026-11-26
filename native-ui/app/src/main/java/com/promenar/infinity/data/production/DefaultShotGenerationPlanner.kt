@@ -79,8 +79,8 @@ class DefaultShotGenerationPlanner(
         val explicitChannelId = shot.channelId?.takeIf { it.isNotBlank() }
         val projectDefaultId = p.defaultVideoChannelId?.takeIf { it.isNotBlank() }
         val channel = when {
-            explicitChannelId != null -> registry.channel(explicitChannelId)?.takeIf { it.group == MediaGroup.VIDEO && mode in it.capabilities.modes }
-            projectDefaultId != null -> registry.channel(projectDefaultId)?.takeIf { it.group == MediaGroup.VIDEO && mode in it.capabilities.modes }
+            explicitChannelId != null -> registry.channel(explicitChannelId)?.takeIf { it.group == MediaGroup.VIDEO && !it.capabilities.deriveOnly && mode in it.capabilities.modes }
+            projectDefaultId != null -> registry.channel(projectDefaultId)?.takeIf { it.group == MediaGroup.VIDEO && !it.capabilities.deriveOnly && mode in it.capabilities.modes }
                 ?: resolveDefaultChannel(MediaGroup.VIDEO, mode, ordered)
             else -> resolveDefaultChannel(MediaGroup.VIDEO, mode, ordered)
         }
@@ -120,7 +120,7 @@ class DefaultShotGenerationPlanner(
             val anchor = item.role == InputRole.ANCHOR
             input(
                 path = item.path,
-                title = item.label ?: item.role.name.lowercase(),
+                title = item.label ?: localizedInputRoleLabel(item.role),
                 detail = item.atSeconds?.let { "$it 秒" }.orEmpty(),
                 role = when {
                     shot.mode == ShotMode.REFERENCE -> MediaRole.REFERENCE
@@ -185,7 +185,7 @@ class DefaultShotGenerationPlanner(
                 val asset = p.assets.find { it.id == id }
                 val versionPath = asset?.currentVersionPath()
                 val viewSlots = asset?.populatedReferenceViews().orEmpty()
-                val kindDetail = asset?.kind?.name?.lowercase().orEmpty()
+                val kindDetail = localizedAssetKindLabel(asset?.kind)
                 if (inputMode == ReferenceInputMode.SHEET) {
                     when {
                         versionPath != null -> if (packed.none { it.path == versionPath }) input(versionPath, asset.name, kindDetail)
@@ -244,16 +244,16 @@ class DefaultShotGenerationPlanner(
         val template = channel?.let { templateFor(it) }
         val baseSpecs = if (channel == null) GenerationSpecs() else try { specsFor(channel, shot) }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { issues += text("invalid_plan", "specs"); GenerationSpecs() }
+            catch (e: Exception) { issues += text("invalid_plan", e.message?.takeIf { it.isNotBlank() && it.any { c -> c.code > 0x2E80 } } ?: "生成规格配置有误"); GenerationSpecs() }
         val specs = if (framesOverride != null) {
             when {
                 channel == null || template == null || template.slots.none { it.kind == SlotKind.FRAMES } -> {
-                    issues += text("invalid_plan", "frames")
+                    issues += text("invalid_plan", "当前通道不支持指定帧数")
                     baseSpecs
                 }
                 framesOverride < template.frameBase || (framesOverride - template.frameBase) % template.frameStep != 0 ||
                     (template.maxFrames != null && framesOverride > template.maxFrames) -> {
-                    issues += text("invalid_plan", "frames (${template.frameBase}+${template.frameStep}n)")
+                    issues += text("invalid_plan", "帧数须满足 ${template.frameBase}+${template.frameStep}n" + (template.maxFrames?.let { " 且不超过 $it" } ?: ""))
                     baseSpecs
                 }
                 else -> baseSpecs.copy(frames = framesOverride)
@@ -268,7 +268,7 @@ class DefaultShotGenerationPlanner(
                 }
                 warnings += warning
             } else if (shot.durationSeconds % 1.0 != 0.0) {
-                issues += text("invalid_plan", "durationSeconds")
+                issues += text("invalid_plan", "云端视频通道要求整数秒时长")
             }
         }
         val request = request(p, episodeId, shot, channel?.id.orEmpty(), prompt, accepted, sessionId, specs).let { planned ->
@@ -281,7 +281,7 @@ class DefaultShotGenerationPlanner(
             if (occupied + expectedOutputs(channel) > 30) issues += text("candidate_capacity", shotCode)
             issues += validateBackend(channel, request).map { text("invalid_plan", it) }
             val validation = validateRequest(channel, request)
-            if (!validation.valid && overflow.isEmpty()) issues += text("invalid_plan", (validation.specErrors + validation.invalidInputs.map { it.location }).joinToString())
+            if (!validation.valid && overflow.isEmpty()) issues += text("invalid_plan", localizeValidationIssues(validation))
         }
         val audioPlans = mutableListOf<PlannedDialogueAudio>()
         val speech = resolveDefaultChannel(MediaGroup.SPEECH, GenerationMode.SPEECH, ordered)
@@ -289,7 +289,7 @@ class DefaultShotGenerationPlanner(
             if (dialogue.audioSource != DialogueAudioSource.DUBBED) return@forEachIndexed
             val character = p.assets.find { it.id == dialogue.characterAssetId }
             val voice = character?.referenceVoice?.path
-            if (speech == null) { issues += text("no_channel", "SPEECH"); return@forEachIndexed }
+            if (speech == null) { issues += text("no_channel", "配音"); return@forEachIndexed }
             val needsReferenceVoice = speech.capabilities.maxAudio > 0
             if (needsReferenceVoice) {
                 if (voice == null) { issues += text("missing_voice", character?.name ?: dialogue.characterAssetId); return@forEachIndexed }
@@ -313,7 +313,7 @@ class DefaultShotGenerationPlanner(
             )
             val valid = validateRequest(speech, audioRequest)
             if (valid.excessInputs.isNotEmpty()) issues += text("overflow", "${character?.name} ($voice)")
-            else if (!valid.valid) issues += text("invalid_plan", "SPEECH ${valid.specErrors.joinToString()}")
+            else if (!valid.valid) issues += text("invalid_plan", "配音：${localizeValidationIssues(valid)}")
             if (backendFor != null && backendFor.invoke(speech) == null) issues += text("unavailable_backend", speech.id)
             issues += validateBackend(speech, audioRequest).map { text("invalid_plan", it) }
             audioPlans += PlannedDialogueAudio(index, dialogue.characterAssetId, dialogue.tone, audioRequest)
@@ -367,6 +367,40 @@ class DefaultShotGenerationPlanner(
 }
 
 private fun canonicalSlot(id: String): String = when (id) { "front_full_body" -> "front"; "side_full_body" -> "side"; "back_full_body" -> "back"; else -> id }
+
+private fun localizedAssetKindLabel(kind: AssetKind?): String = when (kind) {
+    AssetKind.CHARACTER -> "角色"
+    AssetKind.LOCATION -> "场景"
+    AssetKind.PROP -> "道具"
+    AssetKind.STYLE -> "风格"
+    AssetKind.SOUND -> "声音"
+    null -> ""
+}
+
+private fun localizedInputRoleLabel(role: InputRole): String = when (role) {
+    InputRole.FIRST_FRAME -> "首帧"
+    InputRole.LAST_FRAME -> "尾帧"
+    InputRole.ANCHOR -> "锚点帧"
+    InputRole.REFERENCE -> "参考图"
+}
+
+private fun localizeValidationIssues(validation: RequestValidation): String = buildList {
+    if (validation.channelMismatch) add("所选通道与请求通道不匹配")
+    if (validation.unsupportedMode) add(localizeMediaSpecError("unsupportedMode"))
+    validation.excessInputs.map { it.kind }.distinct().forEach { kind ->
+        when (kind) {
+            InputKind.IMAGE -> add(localizeMediaSpecError("maxImages"))
+            InputKind.AUDIO -> add(localizeMediaSpecError("maxAudio"))
+            InputKind.VIDEO -> add(localizeMediaSpecError("maxVideos"))
+        }
+    }
+    validation.specErrors.forEach { add(localizeMediaSpecError(it)) }
+    if (validation.invalidInputs.isNotEmpty()) {
+        val paths = validation.invalidInputs.joinToString("、") { it.location.ifBlank { "空路径" } }
+        add("输入媒体角色或格式与当前模式不匹配：$paths")
+    }
+}.distinct().joinToString("；")
+
 internal fun mediaKindFromPath(path: String): InputKind? = when (path.substringAfterLast('.', "").lowercase()) {
     "png", "jpg", "jpeg", "webp", "gif", "bmp" -> InputKind.IMAGE
     "mp4", "webm", "mov", "mkv" -> InputKind.VIDEO

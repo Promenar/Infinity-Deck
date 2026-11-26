@@ -71,10 +71,14 @@ internal fun validateCloudShotPlan(model: CloudMediaModel, channel: MediaChannel
         CloudMediaApi.OPENAI_SPEECH -> openAiSpeechBody(model.modelId, effective.prompt, model.settings.options.voiceId.ifBlank { "alloy" }, model.settings.options.audioFormat)
         CloudMediaApi.GEMINI_LYRIA -> extractLyriaInlineImages(effective)
         CloudMediaApi.MINIMAX_VIDEO_V1, CloudMediaApi.MINIMAX_VIDEO_V2 -> miniMaxVideoBody(model.modelId, effective, api)
-        CloudMediaApi.SEEDANCE -> require(effective.specs.durationSeconds != null)
+        CloudMediaApi.SEEDANCE -> require(effective.specs.durationSeconds != null) { "Seedance 通道需要整数时长" }
         null -> error("无媒体后端")
     }
     emptyList()
+} catch (e: IllegalArgumentException) {
+    if (model.settings.api in setOf(CloudMediaApi.MINIMAX_SPEECH, CloudMediaApi.GEMINI_TTS, CloudMediaApi.OPENAI_SPEECH) && request.inputs.isNotEmpty()) {
+        listOf("云端语音通道使用预置音色，不能传入角色参考音频")
+    } else listOf(e.message?.takeIf { it.isNotBlank() } ?: "通道不支持所选输入或生成规格")
 } catch (_: Exception) {
     if (model.settings.api in setOf(CloudMediaApi.MINIMAX_SPEECH, CloudMediaApi.GEMINI_TTS, CloudMediaApi.OPENAI_SPEECH) && request.inputs.isNotEmpty()) {
         listOf("云端语音通道使用预置音色，不能传入角色参考音频")
@@ -91,7 +95,7 @@ internal fun productionConfigurationHash(value: String): String = java.security.
 internal fun comfyExpectedOutputCount(template: ComfyTemplate): Int = template.slots.filter { it.kind == SlotKind.OUTPUT }.sumOf { it.capacity }.coerceAtLeast(1)
 
 internal fun validateComfyShotPlan(template: ComfyTemplate, request: MediaGenerationRequest): List<String> = try {
-    require(template.locked)
+    require(template.locked) { "模板尚未锁定" }
     val values = mutableMapOf<SlotKind, List<String>>()
     if (template.role != TemplateRole.DERIVE || template.slots.any { it.kind == SlotKind.PROMPT }) values[SlotKind.PROMPT] = listOf(request.prompt)
     request.inputs.forEach { input ->
@@ -111,11 +115,19 @@ internal fun validateComfyShotPlan(template: ComfyTemplate, request: MediaGenera
     request.specs.width?.let { values[SlotKind.WIDTH] = listOf(it.toString()) }
     request.specs.height?.let { values[SlotKind.HEIGHT] = listOf(it.toString()) }
     if (template.slots.any { it.kind == SlotKind.DURATION }) (request.specs.durationSecondsExact?.toString() ?: request.specs.durationSeconds?.toString())?.let { values[SlotKind.DURATION] = listOf(it) }
-    require(request.specs.durationSeconds == null || request.specs.frames != null || template.slots.any { it.kind == SlotKind.DURATION })
-    require(request.specs.durationSecondsExact == null || template.slots.any { it.kind == SlotKind.DURATION })
+    require(request.specs.durationSeconds == null || request.specs.frames != null || template.slots.any { it.kind == SlotKind.DURATION }) {
+        "ComfyUI 时长需要 DURATION 槽位或显式指定 frames"
+    }
+    require(request.specs.durationSecondsExact == null || template.slots.any { it.kind == SlotKind.DURATION }) {
+        "指定小数秒数需要 DURATION 槽位"
+    }
     validateFilledComfySpecs(template, fillComfyWorkflow(template, values, request.params))
     emptyList()
-} catch (_: Exception) { listOf("模板尚未锁定或输入与工作流槽位不兼容") }
+} catch (e: IllegalArgumentException) {
+    listOf(e.message?.takeIf { it.isNotBlank() } ?: "模板尚未锁定或输入与工作流槽位不兼容")
+} catch (_: Exception) {
+    listOf("模板尚未锁定或输入与工作流槽位不兼容")
+}
 
 internal suspend fun productionRequestAvailable(request: MediaGenerationRequest, store: com.promenar.infinity.data.production.ShotGenerationStore): Boolean {
     val asset = com.promenar.infinity.data.production.ProductionAssetSourceRef.parse(request.sourceRef)

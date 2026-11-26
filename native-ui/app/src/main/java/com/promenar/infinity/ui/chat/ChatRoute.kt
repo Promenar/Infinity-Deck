@@ -46,6 +46,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
@@ -812,11 +813,22 @@ fun ChatRoute(
     val workspaceChanges = remember(stepsKey) {
         uiState.messages.flatMap { message -> workspaceChangedFiles(message.id, message.executionSteps.orEmpty()) }
     }
+    // 绑定制作项目时排除该项目根目录，避免制作面板已托管的文件在产物页重复提示未收录。
+    val productionRootPath by remember(sessionId, chatViewModel.productionSource, productionEntry.hasProduction) {
+        if (!productionEntry.hasProduction) kotlinx.coroutines.flow.flowOf<String?>(null)
+        else chatViewModel.productionSource.observe(sessionId)
+            .map { it?.production?.rootPath }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val excludedArtifactPrefixes = remember(productionRootPath) {
+        productionRootPath?.takeIf(String::isNotBlank)?.let(::setOf).orEmpty()
+    }
     com.promenar.infinity.ui.canvas.CanvasSessionHost(
         sessionId = sessionId,
         store = application.canvasStore,
         artifactRepository = application.sessionArtifacts,
         workspaceChanges = workspaceChanges,
+        excludedPathPrefixes = excludedArtifactPrefixes,
         onInsertText = { text -> chatViewModel.appendCanvasText(sessionId, text) },
         onOpenList = { openChatPage(ChatPage.Canvas) },
         onRevealInWorkspace = { path ->

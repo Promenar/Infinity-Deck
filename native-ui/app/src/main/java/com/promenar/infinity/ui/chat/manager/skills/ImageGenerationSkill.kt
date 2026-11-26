@@ -2,10 +2,13 @@ package com.promenar.infinity.ui.chat.manager.skills
 
 import android.content.Context
 import com.promenar.infinity.data.manager.ProviderManager
+import com.promenar.infinity.data.mediagen.cloud.GeminiImageClient
 import com.promenar.infinity.data.rag.ImageGenClient
 import com.promenar.infinity.data.remote.DefaultProviderRequestRouter
 import com.promenar.infinity.data.remote.ProviderRequestRouter
 import com.promenar.infinity.data.remote.ModelRequestRouteException
+import com.promenar.infinity.data.remote.ResolvedProviderModel
+import com.promenar.infinity.data.remote.protocol.ProtocolType
 import com.promenar.infinity.data.remote.requireModelRoute
 import com.promenar.infinity.data.remote.requireOpenAiModelRoute
 import com.promenar.infinity.ui.chat.manager.registry.SkillDefinition
@@ -42,6 +45,8 @@ class ImageGenerationSkill(
     private val mediaResolver: WorkspaceMediaResolver? = mediaStore as? WorkspaceMediaResolver,
     private val jobs: com.promenar.infinity.data.jobs.BackgroundJobManager? = null,
     private val productionPanelNudge: ProductionPanelNudgeTracker? = null,
+    private val geminiImageClientFactory: (route: ResolvedProviderModel) -> GeminiImageClient =
+        { route -> GeminiImageClient(route) },
     private val imageGenClientFactory: (baseUrl: String, apiKey: String, modelId: String) -> ImageGenClient =
         { baseUrl, apiKey, modelId -> ImageGenClient(baseUrl = baseUrl, apiKey = apiKey, model = modelId) },
 ) : SkillDefinition {
@@ -149,18 +154,34 @@ class ImageGenerationSkill(
                 val inputs = if (request.images.isEmpty()) null else ImageGenerationInputReader(
                     mediaResolver ?: throw WorkspaceMediaException("WORKSPACE_UNAVAILABLE", "当前会话工作区不可用，无法读取输入图片")
                 ).read(context.sessionId, request.images, request.mask, request.markup)
-                val resolved = providerRequestRouter.requireModelRoute(modelId).requireOpenAiModelRoute()
-                val client = imageGenClientFactory(resolved.config.baseUrl, resolved.config.apiKey, resolved.remoteModelId)
-                    .withProviderRoute(resolved)
+                val resolved = providerRequestRouter.requireModelRoute(modelId)
                 val options = request.requested
-                val result = if (inputs == null) client.generate(
-                    prompt = request.prompt, size = options.size, quality = options.quality, background = options.background,
-                    outputFormat = options.outputFormat, outputCompression = options.outputCompression, n = options.n,
-                ) else client.edit(
-                    prompt = request.prompt, images = inputs.images, mask = inputs.mask, markup = inputs.markup, inputFidelity = request.inputFidelity,
-                    size = options.size, quality = options.quality, background = options.background,
-                    outputFormat = options.outputFormat, outputCompression = options.outputCompression, n = options.n,
-                )
+                val result = when (resolved.config.protocolType) {
+                    ProtocolType.Google_Gemini, ProtocolType.Google_VertexAI -> {
+                        val geminiClient = geminiImageClientFactory(resolved)
+                        geminiClient.generateOrEdit(
+                            prompt = request.prompt,
+                            images = inputs?.images.orEmpty(),
+                            mask = inputs?.mask,
+                            markup = inputs?.markup,
+                            size = options.size,
+                            n = options.n,
+                        )
+                    }
+                    else -> {
+                        val openAiRoute = resolved.requireOpenAiModelRoute()
+                        val client = imageGenClientFactory(openAiRoute.config.baseUrl, openAiRoute.config.apiKey, openAiRoute.remoteModelId)
+                            .withProviderRoute(openAiRoute)
+                        if (inputs == null) client.generate(
+                            prompt = request.prompt, size = options.size, quality = options.quality, background = options.background,
+                            outputFormat = options.outputFormat, outputCompression = options.outputCompression, n = options.n,
+                        ) else client.edit(
+                            prompt = request.prompt, images = inputs.images, mask = inputs.mask, markup = inputs.markup, inputFidelity = request.inputFidelity,
+                            size = options.size, quality = options.quality, background = options.background,
+                            outputFormat = options.outputFormat, outputCompression = options.outputCompression, n = options.n,
+                        )
+                    }
+                }
                 Triple(resolved.remoteModelId, inputs, result)
             }
 

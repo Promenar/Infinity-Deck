@@ -47,4 +47,17 @@ class InfinityBottomSheetContractTest {
         assertThat(modalCall).doesNotContain("heightIn(")
         assertThat(source).contains("infinityNarrowSheetContentHeight(")
     }
+
+    @Test
+    fun `宽窗口居中弹窗支持自定义最大宽度且制作选项弹层收窄至440dp`() {
+        val sheetSource = Files.readString(moduleRoot.resolve("src/main/java/com/promenar/infinity/ui/common/InfinityBottomSheet.kt"))
+        assertThat(sheetSource.split("centeredMaxWidth: Dp = 640.dp").size - 1).isEqualTo(3)
+        assertThat(sheetSource).contains(".widthIn(max = centeredMaxWidth)")
+        assertThat(sheetSource).doesNotContain(".widthIn(max = 640.dp)")
+        assertThat(sheetSource).contains("centeredMaxWidth = centeredMaxWidth,")
+
+        val productionDesign = Files.readString(moduleRoot.resolve("src/main/java/com/promenar/infinity/ui/production/ProductionDesign.kt"))
+        val choiceSheetBody = productionDesign.substringAfter("internal fun <T> ProductionChoiceSheet(")
+        assertThat(choiceSheetBody).contains("centeredMaxWidth = 440.dp")
+    }
 }

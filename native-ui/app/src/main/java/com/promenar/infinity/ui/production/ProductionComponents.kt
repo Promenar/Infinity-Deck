@@ -435,7 +435,12 @@ internal fun ProductionTextDialog(
         confirmButtonModifier = Modifier.heightIn(min = 48.dp).testTag(ProductionUiTags.DIALOG_CONFIRM),
         cancelButtonModifier = Modifier.heightIn(min = 48.dp),
         content = {
-            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+            Column(
+                Modifier
+                    .heightIn(max = 380.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = 4.dp, bottom = 6.dp),
+            ) {
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it.take(maxLength) },

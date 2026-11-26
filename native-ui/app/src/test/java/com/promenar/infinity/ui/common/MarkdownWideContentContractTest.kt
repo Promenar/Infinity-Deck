@@ -75,4 +75,19 @@ class MarkdownWideContentContractTest {
         assertThat(tableSource).contains("BoxWithConstraints")
         assertThat(tableSource).contains("val scale = if (total > 0.dp) maxWidth / total else 1f")
     }
+
+    @Test
+    fun `宽内容外层横向滚动宿主先叠加横向渐隐边再注册横向滚动`() {
+        val markdownSource = source("src/main/java/com/promenar/infinity/ui/common/MarkdownText.kt")
+        val tableSource = source("src/main/java/com/promenar/infinity/ui/renderer/TableWidget.kt")
+        val hostSource = markdownSource
+            .substringAfter("private fun WideContentHost(")
+            .substringBefore("private val bracketBlockLatex")
+
+        val fadeIndex = hostSource.indexOf(".horizontalFadingEdges(scrollState, length = 24.dp)")
+        val scrollIndex = hostSource.indexOf(".horizontalScroll(scrollState)")
+        assertThat(fadeIndex).isAtLeast(0)
+        assertThat(scrollIndex).isGreaterThan(fadeIndex)
+        assertThat(tableSource).doesNotContain("horizontalScroll(")
+    }
 }

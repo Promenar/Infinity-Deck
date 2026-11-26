@@ -79,9 +79,14 @@ data class InfinityPanelTab<T>(
 
 /** 页签文字两侧的内边距：首项文字与内容边距对齐时，行首要少留这么多。 */
 private val PanelTabPadding = 12.dp
+private val PanelTabCompactPadding = 9.dp
 private val PanelTabIndicatorHeight = 3.dp
-private val PanelTabFadeWidth = 28.dp
+private val PanelTabFadeWidth = 32.dp
 private val PanelTabPressShape = RoundedCornerShape(10.dp)
+
+/** 页签达到 6 项及以上时适度收紧单边内边距，让窄分屏展示更多页签同时不改动 2–5 项既有间距。 */
+internal fun panelTabHorizontalPadding(tabCount: Int): Dp =
+    if (tabCount >= 6) PanelTabCompactPadding else PanelTabPadding
 
 /**
  * 面板与页面内部切换同级内容视图的二级页签：名称左对齐，主色指示条随选中项滑动，底部一条通栏细线。
@@ -107,7 +112,8 @@ fun <T> InfinityPanelTabs(
     if (tabs.isEmpty()) return
     val haptics = LocalInfinityHaptics.current
     val density = LocalDensity.current
-    val edge = (contentInset - PanelTabPadding).coerceAtLeast(0.dp)
+    val tabPadding = panelTabHorizontalPadding(tabs.size)
+    val edge = (contentInset - tabPadding).coerceAtLeast(0.dp)
     val edgePx = with(density) { edge.roundToPx() }
     // 各页签在滚动行内的起点与宽度（像素），用来摆放指示条和把选中项滚入视野。
     val bounds = remember { mutableStateMapOf<Int, Pair<Int, Int>>() }
@@ -115,11 +121,11 @@ fun <T> InfinityPanelTabs(
     val selectedIndex = tabs.indexOfFirst { it.value == selected }
     val activeIndex = pagerState?.currentPage?.takeIf { it in tabs.indices } ?: selectedIndex
     val target = bounds[activeIndex]
-    val padPx = with(density) { PanelTabPadding.roundToPx() }
+    val padPx = with(density) { tabPadding.roundToPx() }
 
     val indicatorX = remember { Animatable(0f) }
     val indicatorWidth = remember { Animatable(0f) }
-    LaunchedEffect(pagerState, target) {
+    LaunchedEffect(pagerState, target, padPx) {
         if (pagerState != null) return@LaunchedEffect
         val (x, width) = target ?: return@LaunchedEffect
         val labelX = (x + padPx).toFloat()
@@ -152,8 +158,7 @@ fun <T> InfinityPanelTabs(
             Modifier
                 .fillMaxWidth()
                 .horizontalFadingEdges(
-                    start = scrollState.canScrollBackward,
-                    end = scrollState.canScrollForward,
+                    state = scrollState,
                     length = PanelTabFadeWidth,
                 )
                 .infinityHorizontalWheelScroll(scrollState)
@@ -193,6 +198,7 @@ fun <T> InfinityPanelTabs(
                     PanelTab(
                         tab = tab,
                         selected = index == activeIndex,
+                        horizontalPadding = tabPadding,
                         onClick = {
                             haptics.select(index == activeIndex)
                             if (index != activeIndex) onSelect(tab.value)
@@ -329,7 +335,13 @@ fun <T> rememberPanelTabPagerState(
 }
 
 @Composable
-private fun <T> PanelTab(tab: InfinityPanelTab<T>, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun <T> PanelTab(
+    tab: InfinityPanelTab<T>,
+    selected: Boolean,
+    horizontalPadding: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier,
+) {
     val scheme = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
     Box(
@@ -347,7 +359,7 @@ private fun <T> PanelTab(tab: InfinityPanelTab<T>, selected: Boolean, onClick: (
     ) {
         Box(Modifier.matchParentSize().padding(vertical = 6.dp).pressFeedback(interaction, PanelTabPressShape))
         Row(
-            Modifier.padding(horizontal = PanelTabPadding),
+            Modifier.padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {

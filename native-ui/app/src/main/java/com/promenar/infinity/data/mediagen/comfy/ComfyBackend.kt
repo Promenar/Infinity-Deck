@@ -40,7 +40,7 @@ class ComfyBackend(
                 if (template.role == TemplateRole.DERIVE && template.slots.none { slot -> slot.kind == SlotKind.PROMPT })
                     it.copy(specErrors = it.specErrors.filterNot { field -> field == "prompt" }) else it
             }
-            require(validation.valid) { "生成请求不满足通道能力：超出 ${validation.excessInputs.size} 项，无效输入 ${validation.invalidInputs.size} 项；${validation.specErrors.joinToString("；")}" }
+            require(validation.valid) { "生成请求不满足通道能力：超出 ${validation.excessInputs.size} 项，无效输入 ${validation.invalidInputs.size} 项；${validation.specErrors.joinToString("；", transform = ::localizeMediaSpecError)}" }
             require(request.sessionId.isNotBlank()) { "生成请求需要会话 id" }
             if (request.outputDir.isNotEmpty()) productionPath(request.outputDir)
             require(request.specs.durationSeconds == null || request.specs.frames != null || template.slots.any { it.kind == SlotKind.DURATION }) { "ComfyUI 时长需要 DURATION 槽位或显式指定 frames" }
@@ -282,10 +282,21 @@ fun parseComfyHistory(
 
 internal fun validateFilledComfySpecs(template: ComfyTemplate, workflow: JsonObject) {
     val sizes = template.channel().capabilities.resolutions
-    if (sizes.isEmpty() || sizes.any { !it.matches(Regex("[0-9]+[xX×][0-9]+")) }) return
+    val hasWidthSlot = template.slots.any { it.kind == SlotKind.WIDTH }
+    val hasHeightSlot = template.slots.any { it.kind == SlotKind.HEIGHT }
     fun dimension(kind: SlotKind): Int? = template.slots.firstOrNull { it.kind == kind }?.let { slot ->
         (((workflow[slot.nodeId] as? JsonObject)?.get("inputs") as? JsonObject)?.get(slot.input) as? JsonPrimitive)?.intOrNull
     }
+    // 同时暴露 WIDTH/HEIGHT 槽位且未声明多档预设白名单时，允许 64～4096 范围内任意 32 对齐自定义宽高。
+    if (hasWidthSlot && hasHeightSlot && sizes.size <= 1) {
+        val width = dimension(SlotKind.WIDTH)
+        val height = dimension(SlotKind.HEIGHT)
+        require(width != null && height != null && width in 64..4096 && height in 64..4096 && width % 32 == 0 && height % 32 == 0) {
+            "对齐后的宽高须为 64～4096 之间的 32 倍数（当前 ${width ?: "?"}×${height ?: "?"}）"
+        }
+        return
+    }
+    if (sizes.isEmpty() || sizes.any { !it.matches(Regex("[0-9]+[xX×][0-9]+")) }) return
     val width = dimension(SlotKind.WIDTH)
     val height = dimension(SlotKind.HEIGHT)
     require(width != null && height != null && sizes.any {

@@ -209,8 +209,8 @@ internal fun validateProductionOperation(op: JsonObject, name: String?) {
             !(key == "title" && name == "upsert_shot") && !(key == "mode" && name == "upsert_shot")) continue
         val primitive = value as? JsonPrimitive
         when (key) {
-            "number", "position" -> {
-                val minimum = if (key == "number") 1 else 0
+            "number", "position", "spec_width", "spec_height" -> {
+                val minimum = if (key == "position") 0 else 1
                 val number = primitive?.takeUnless { it.isString }?.intOrNull
                 require(number != null && number >= minimum) { "$key 必须是大于或等于 $minimum 的整数。" }
             }

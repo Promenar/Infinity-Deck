@@ -109,12 +109,12 @@
       "linux_sha256": "4f5d27ea06fec10a60780157f9f1df0b00c034a188b4b7c59542909109929f14"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/ragDetailsRetrievedPhoneReleasePreview_RAG details retrieved phone_33c2f58a_0.png": {
-      "base_sha256": "6cc942dd893f2e0727fe4892eb331a9a79477852bf26bad8096af57867f27517",
-      "linux_sha256": "6cc942dd893f2e0727fe4892eb331a9a79477852bf26bad8096af57867f27517"
+      "base_sha256": "eb9ed4bd031dcca8b3904a54442f6a84661f3d86fd1288d4c5cae035ca5a7f72",
+      "linux_sha256": "eb9ed4bd031dcca8b3904a54442f6a84661f3d86fd1288d4c5cae035ca5a7f72"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/ragDetailsWebLargeFontReleasePreview_RAG details web large font_eb9fa9d0_0.png": {
-      "base_sha256": "9909511752b939feb48772d969ffed39ea64cf4fbff3967b46da6f23c6f95916",
-      "linux_sha256": "9909511752b939feb48772d969ffed39ea64cf4fbff3967b46da6f23c6f95916"
+      "base_sha256": "fb7e64679e9cf4fd79b10af3b3d00a6879bcb612046f6c7bafff7feb999b4b4b",
+      "linux_sha256": "fb7e64679e9cf4fd79b10af3b3d00a6879bcb612046f6c7bafff7feb999b4b4b"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/ragGlobalChineseDarkLargeFontReleasePreview_RAG global Chinese dark large font_6e60c62b_0.png": {
       "base_sha256": "30dce926e2b19e584a327be34b2628952aa313f10b5fef77d3882867b7586e2f",
@@ -225,12 +225,12 @@
       "linux_sha256": "010d6609d09571b7c8cb9811f7ebc0c697046eda6ba064955098ae730e6c28ec"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/chatInspectorCardLightLargeFontPreview_检视器卡片 浅英 大字_7a6e3f69_0.png": {
-      "base_sha256": "aac38e0b2ffebb0e77a73a6eaa2e8e23ae73bd6c0109e587f6507851df67272a",
-      "linux_sha256": "aac38e0b2ffebb0e77a73a6eaa2e8e23ae73bd6c0109e587f6507851df67272a"
+      "base_sha256": "49a3d3c6440f719e5a594990442415c553edb69462c7918da0199ef47ae09444",
+      "linux_sha256": "49a3d3c6440f719e5a594990442415c553edb69462c7918da0199ef47ae09444"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/chatInspectorInnerShiftDarkPreview_内屏检视器让位 深中814_68c06936_0.png": {
-      "base_sha256": "cfc6d511075c47e07d5bc90d1f38dc63ca1332c341238d6f88d466fd0d885c77",
-      "linux_sha256": "cfc6d511075c47e07d5bc90d1f38dc63ca1332c341238d6f88d466fd0d885c77"
+      "base_sha256": "4d99ea71ac020142ebb442fdf792c7d44b5916347b8635715e6283a09e5df2aa",
+      "linux_sha256": "4d99ea71ac020142ebb442fdf792c7d44b5916347b8635715e6283a09e5df2aa"
     },
     "com/promenar/infinity/ui/chat/GenerationProgressScreenshotTestKt/emptyChatWordmarkDarkPreview_空会话字标 深中411_2736a12a_0.png": {
       "base_sha256": "e159febf468f2e466c47650e5388879de1dfbdbe7ee549fec4330002be364099",
@@ -257,8 +257,8 @@
       "linux_sha256": "5982f468d8b1e49730953f59ab10d0caec837403f11b9637461de3e1a4b03684"
     },
     "com/promenar/infinity/ui/chat/KnowledgeSearchScreenshotTestKt/knowledgeSearchDetailsPreview_知识检索详情 浅英360 大字_80fc5719_0.png": {
-      "base_sha256": "8ea8453673329b13f7e0358fecb1746ffa115bc0b044968d168c2f4c7f2c6ec3",
-      "linux_sha256": "8ea8453673329b13f7e0358fecb1746ffa115bc0b044968d168c2f4c7f2c6ec3"
+      "base_sha256": "f46bbe21a9e1629a597597ebb8d4cd1b299aa2629151a514778d86884e7ea9e1",
+      "linux_sha256": "f46bbe21a9e1629a597597ebb8d4cd1b299aa2629151a514778d86884e7ea9e1"
     },
     "com/promenar/infinity/ui/chat/KnowledgeSearchScreenshotTestKt/knowledgeSearchDetailsPreview_知识检索详情 深中411_3880bb05_0.png": {
       "base_sha256": "c7448838d26bcd2a74b66cff57dbccf24f27b7ce6203b74c02507c2a52c0d724",
@@ -333,8 +333,8 @@
       "linux_sha256": "9f35cd7c6d533711e9ed4eb9e9354bbfb27b13b3851f40e34a77cf787177c053"
     },
     "com/promenar/infinity/ui/chat/SessionSettingsBatch1ScreenshotTestKt/sessionParamsSchemesPreview_会话参数 方案已修改 深英360 字号130_3e88fe43_0.png": {
-      "base_sha256": "b4543fe33f3630e1c3d9de4faaef3cb912af2aec712cb246823380ba458e712a",
-      "linux_sha256": "b4543fe33f3630e1c3d9de4faaef3cb912af2aec712cb246823380ba458e712a"
+      "base_sha256": "09e598504d763d8d258fdb2baf52b140c53d6d0afdff4dcaec1ee3e0029aea22",
+      "linux_sha256": "09e598504d763d8d258fdb2baf52b140c53d6d0afdff4dcaec1ee3e0029aea22"
     },
     "com/promenar/infinity/ui/chat/SessionSettingsBatch1ScreenshotTestKt/sessionParamsThirdPartyPreview_会话参数 第三方接口 深中411_6e4bc1bc_0.png": {
       "base_sha256": "d0500d00d2601cb48b7fbb4b2ef9804ffa5b25450df0a7bbaeeac0831c267147",
@@ -449,8 +449,8 @@
       "linux_sha256": "d3c77b7b45fe55add779e46e46cbc1885347850f285cd319e9b19c71e3270d5e"
     },
     "com/promenar/infinity/ui/git/GitChangesPanelScreenshotTestKt/gitBranchesLargeFontDarkPreview_Git 分支 深英360 大字体_6ac74e3f_0.png": {
-      "base_sha256": "7a7e0ee95e13c749cd48d186a7ea9a4ad2f0551587abe86e900bff2f2c18ce90",
-      "linux_sha256": "7a7e0ee95e13c749cd48d186a7ea9a4ad2f0551587abe86e900bff2f2c18ce90"
+      "base_sha256": "863c28b26d388f5d51da344e45bebc433ea290d0a1be5a878ea0f59f25653a2e",
+      "linux_sha256": "863c28b26d388f5d51da344e45bebc433ea290d0a1be5a878ea0f59f25653a2e"
     },
     "com/promenar/infinity/ui/git/GitChangesPanelScreenshotTestKt/gitBranchesLightPreview_Git 分支 浅中390_41a89936_0.png": {
       "base_sha256": "5ad885962fd043070e64f64021f2ca6d67feca0b2d8e87b340e0691de899f780",
@@ -605,100 +605,100 @@
       "linux_sha256": "005457c5193e83a2361b64b07ef305f2edc89d9d6ef2d5d789d88481a66e7b28"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionAssetsLightChinesePreview_制作面板 资产 浅中360_0ca7b81e_0.png": {
-      "base_sha256": "b2a3eb8b7d13e44e593cd5930074eacac749e56997979e5532ae350a2ee0504a",
-      "linux_sha256": "b2a3eb8b7d13e44e593cd5930074eacac749e56997979e5532ae350a2ee0504a"
+      "base_sha256": "308f5954c05f8012c48dee79755e31d8de8af13edf9d4aa168069bcb00b2ac8a",
+      "linux_sha256": "308f5954c05f8012c48dee79755e31d8de8af13edf9d4aa168069bcb00b2ac8a"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionInspectorHeaderPreview_制作面板 页头 检视器 浅中内屏_48d731eb_0.png": {
-      "base_sha256": "c767e8d317d32f8a75a1e108e7d7733b4c8abc9c11f3127b767a08c808053889",
-      "linux_sha256": "c767e8d317d32f8a75a1e108e7d7733b4c8abc9c11f3127b767a08c808053889"
+      "base_sha256": "8b7235a05ad8aa37bceb10f63a4a79fb130fd3e0046195f894ddafb8b2566724",
+      "linux_sha256": "8b7235a05ad8aa37bceb10f63a4a79fb130fd3e0046195f894ddafb8b2566724"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionInspectorHeaderPreview_制作面板 页头 检视器 深英内屏 大字_232a192d_0.png": {
-      "base_sha256": "3e35beeef4749027b352fd720f04ff23d37b3de3b917d056459536429137b11b",
-      "linux_sha256": "3e35beeef4749027b352fd720f04ff23d37b3de3b917d056459536429137b11b"
+      "base_sha256": "facfc5457f3c95c7bc3fc8be8cb271a9307415716dc0ffd28efff6062cdda665",
+      "linux_sha256": "facfc5457f3c95c7bc3fc8be8cb271a9307415716dc0ffd28efff6062cdda665"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionLockedShotPreview_制作面板 已定镜头 浅中360_c5175815_0.png": {
-      "base_sha256": "c983c8250d95ff665d84c448df9456deb6418e2922c1e4f3561b5c89f4dbb946",
-      "linux_sha256": "c983c8250d95ff665d84c448df9456deb6418e2922c1e4f3561b5c89f4dbb946"
+      "base_sha256": "5689f0405871a47fe44fedd1d9aa5194397b39da86996546f9d0fac01a85182d",
+      "linux_sha256": "5689f0405871a47fe44fedd1d9aa5194397b39da86996546f9d0fac01a85182d"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionManifestExternalChangePreview_制作面板 外部改动 浅中360_d92533a0_0.png": {
-      "base_sha256": "e1bc14377343ac84e2a8fe9cff1c3b96e48ad648f683e662f7407fbe6a9c6788",
-      "linux_sha256": "e1bc14377343ac84e2a8fe9cff1c3b96e48ad648f683e662f7407fbe6a9c6788"
+      "base_sha256": "571c98bb8f033ab4ae6ae56e182d9990edbb8c134ca466f7af19433098f17578",
+      "linux_sha256": "571c98bb8f033ab4ae6ae56e182d9990edbb8c134ca466f7af19433098f17578"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionOverviewDarkEnglishLargeFontPreview_制作面板 总览 深英360 大字_25af3baa_0.png": {
-      "base_sha256": "931adce5c2294bc0a8109fc0b0da5716ecf8c2a7b28a95463d34a38c65b4b489",
-      "linux_sha256": "931adce5c2294bc0a8109fc0b0da5716ecf8c2a7b28a95463d34a38c65b4b489"
+      "base_sha256": "63d63bb53163ff08d141d252d194cda0698e73542796039f3a1c5aaa086cb36a",
+      "linux_sha256": "63d63bb53163ff08d141d252d194cda0698e73542796039f3a1c5aaa086cb36a"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionOverviewLightChinesePreview_制作面板 总览 浅中360_512a7137_0.png": {
-      "base_sha256": "7ff3274786e0a59ff3615347c02a905c725b69842cdfb95f5f894e72b5ab2d93",
-      "linux_sha256": "7ff3274786e0a59ff3615347c02a905c725b69842cdfb95f5f894e72b5ab2d93"
+      "base_sha256": "d0bf5f4fb3d117664cba456dddb9c31435cfa79c59ac96a7b0cedb0b78fd883d",
+      "linux_sha256": "d0bf5f4fb3d117664cba456dddb9c31435cfa79c59ac96a7b0cedb0b78fd883d"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionScriptLightChinesePreview_制作面板 剧本 浅中360_50431b7f_0.png": {
-      "base_sha256": "bff5b4b3db900b2a269d5b6dff5055110ed80083eeb7a6d41124868059ce4af9",
-      "linux_sha256": "bff5b4b3db900b2a269d5b6dff5055110ed80083eeb7a6d41124868059ce4af9"
+      "base_sha256": "fa41c65773f03c319847d6c841ce7d88c635a28052adda8dd08d464447177140",
+      "linux_sha256": "fa41c65773f03c319847d6c841ce7d88c635a28052adda8dd08d464447177140"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionSheetHeaderPreview_制作面板 页头 整屏 浅中360_fb44d396_0.png": {
-      "base_sha256": "aa702473c85cc7e9de1ec97f8f2c6c1527533f4995e7b7ad3d6565a1989420b9",
-      "linux_sha256": "aa702473c85cc7e9de1ec97f8f2c6c1527533f4995e7b7ad3d6565a1989420b9"
+      "base_sha256": "f4e13e0badf20ce2c38a55846e1156e31e22e3e54daaf797c97564ec2ae2840b",
+      "linux_sha256": "f4e13e0badf20ce2c38a55846e1156e31e22e3e54daaf797c97564ec2ae2840b"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionSheetHeaderPreview_制作面板 页头 整屏 浅英360_66a43a27_0.png": {
-      "base_sha256": "350c3f1ff1e0f934cd8e75158680228b8402c478b6bda828f08c94e78625dcf9",
-      "linux_sha256": "350c3f1ff1e0f934cd8e75158680228b8402c478b6bda828f08c94e78625dcf9"
+      "base_sha256": "246ede65580fb3835264350edda7772cc4985a884436596fdf8d9a81d0811932",
+      "linux_sha256": "246ede65580fb3835264350edda7772cc4985a884436596fdf8d9a81d0811932"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionShotDetailEnglishLargeFontPreview_制作面板 镜头详情 浅英360 大字_08d53ec5_0.png": {
-      "base_sha256": "1203c52df19439b0be1459b410c4823e417222f3295f8ec233d442297b9c891f",
-      "linux_sha256": "1203c52df19439b0be1459b410c4823e417222f3295f8ec233d442297b9c891f"
+      "base_sha256": "fafa52ad189242912faf7f7545533c9e4cfaec72e63aa41bc50276d7f7d52fd7",
+      "linux_sha256": "fafa52ad189242912faf7f7545533c9e4cfaec72e63aa41bc50276d7f7d52fd7"
     },
     "com/promenar/infinity/ui/production/ProductionPanelScreenshotTestKt/productionShotDetailLightChinesePreview_制作面板 镜头详情 浅中360_24fa9068_0.png": {
-      "base_sha256": "ac412cd79ec8767792a9eb5dff93706e6ad37571acaaea55f65b3fe566f40a5c",
-      "linux_sha256": "ac412cd79ec8767792a9eb5dff93706e6ad37571acaaea55f65b3fe566f40a5c"
+      "base_sha256": "45dab61cee06513aef0c33e103228705257dad4ff33ae85fa95d442e0087b891",
+      "linux_sha256": "45dab61cee06513aef0c33e103228705257dad4ff33ae85fa95d442e0087b891"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseFourOverviewFoldPreview_四期 总览 内屏_5da2f8e3_0.png": {
-      "base_sha256": "52dee9fdbeb30724d4683821715f4973ec3efafb1fb4c3b926457d730ce9a8c1",
-      "linux_sha256": "52dee9fdbeb30724d4683821715f4973ec3efafb1fb4c3b926457d730ce9a8c1"
+      "base_sha256": "d319c167aafb819c8fb77c7c50e82d600fe92698276f192d35161a611c3e0239",
+      "linux_sha256": "d319c167aafb819c8fb77c7c50e82d600fe92698276f192d35161a611c3e0239"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseFourShotCandidatesFoldPreview_四期 镜头候选 内屏_5b7a21b0_0.png": {
-      "base_sha256": "58e4659c6c70c7fdf453d0cc25d0d562fe504dfbe3b94303562fafb9797905e2",
-      "linux_sha256": "58e4659c6c70c7fdf453d0cc25d0d562fe504dfbe3b94303562fafb9797905e2"
+      "base_sha256": "29742c890eb86ac76a5f2256aef0ea23a8a740990d8c9e270ba2a9109f1f27e7",
+      "linux_sha256": "29742c890eb86ac76a5f2256aef0ea23a8a740990d8c9e270ba2a9109f1f27e7"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseThreeCutEnglishPreview_三期 剪辑 深英大字360_4f7c79d1_0.png": {
-      "base_sha256": "bfb1b11a2e98cd1f1716d502bf46310db449b741dcaf2cf9c4fc80c45974baf4",
-      "linux_sha256": "bfb1b11a2e98cd1f1716d502bf46310db449b741dcaf2cf9c4fc80c45974baf4"
+      "base_sha256": "cf3bcfdb1bc9e64bf4f7a0d38dd6319d48f9fa884aae929146e7459a9f0f65e8",
+      "linux_sha256": "cf3bcfdb1bc9e64bf4f7a0d38dd6319d48f9fa884aae929146e7459a9f0f65e8"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseThreeCutPreview_三期 剪辑 浅中360_d38016c6_0.png": {
-      "base_sha256": "c14f751ccdbc4a71f0335643d9843695c22a45eaaf0cbfd1a447a25448da463d",
-      "linux_sha256": "c14f751ccdbc4a71f0335643d9843695c22a45eaaf0cbfd1a447a25448da463d"
+      "base_sha256": "1863b437dec80f667913cd72e058dfebb73a54bfc2daead264f9ed4ff91788ad",
+      "linux_sha256": "1863b437dec80f667913cd72e058dfebb73a54bfc2daead264f9ed4ff91788ad"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoBoardEnglishPreview_二期 分镜 浅英大字360_0b94d364_0.png": {
-      "base_sha256": "caec3c2a0e847f0d72d79ef2cdaacac86fa1a6fc1a3464e4d123c7e6364e9580",
-      "linux_sha256": "caec3c2a0e847f0d72d79ef2cdaacac86fa1a6fc1a3464e4d123c7e6364e9580"
+      "base_sha256": "6adf4d6322c8398bd83f264d0f138e4d0d6dd8443f3844f402d9cbdb8591c43b",
+      "linux_sha256": "6adf4d6322c8398bd83f264d0f138e4d0d6dd8443f3844f402d9cbdb8591c43b"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoCutFoldPreview_二期 剪辑 内屏_02e4a709_0.png": {
-      "base_sha256": "3b7673b8dbef9c2e86ebed6560e6b4fcf4213f2ff468c720667bbed952bfbfe7",
-      "linux_sha256": "3b7673b8dbef9c2e86ebed6560e6b4fcf4213f2ff468c720667bbed952bfbfe7"
+      "base_sha256": "8df8f9079e4c5cf4894339a4569b709fcda9639a1c5b0374bc892c03ec479ec9",
+      "linux_sha256": "8df8f9079e4c5cf4894339a4569b709fcda9639a1c5b0374bc892c03ec479ec9"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoOutputEnglishPreview_二期 出片 深英大字360_a89c40c9_0.png": {
-      "base_sha256": "f9834203ca1ad60fc928fa62b890aa043b5b9ae6100cd89cb2a3a38ee80b3540",
-      "linux_sha256": "f9834203ca1ad60fc928fa62b890aa043b5b9ae6100cd89cb2a3a38ee80b3540"
+      "base_sha256": "12b28ae235b5ae063a9a5476b1a29e36c58f101fc120b734ce97000e95743030",
+      "linux_sha256": "12b28ae235b5ae063a9a5476b1a29e36c58f101fc120b734ce97000e95743030"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoOutputPreview_二期 出片 浅中360_d47cd311_0.png": {
-      "base_sha256": "f0f1bba96ed8d75fbca32af708f84ff99c5919107f07c23d1a911ba2ff9f26cc",
-      "linux_sha256": "f0f1bba96ed8d75fbca32af708f84ff99c5919107f07c23d1a911ba2ff9f26cc"
+      "base_sha256": "3c1b99c26966b958e97424e0bc3dd659a178b1c06d7147ddf02fa1f5e1499270",
+      "linux_sha256": "3c1b99c26966b958e97424e0bc3dd659a178b1c06d7147ddf02fa1f5e1499270"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoOverviewDarkEnglishPreview_二期 总览 深英大字360_cdca215c_0.png": {
-      "base_sha256": "da7ce32ed836deb730e9a32e5be1fc9a453c342be2030d50e8de61dc220cac72",
-      "linux_sha256": "da7ce32ed836deb730e9a32e5be1fc9a453c342be2030d50e8de61dc220cac72"
+      "base_sha256": "c8460a96a4458750f2e456dcb651f031c53a7e9ef933f3036c40acf61aa9c4d1",
+      "linux_sha256": "c8460a96a4458750f2e456dcb651f031c53a7e9ef933f3036c40acf61aa9c4d1"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoOverviewPreview_二期 总览 浅中360_77951b55_0.png": {
-      "base_sha256": "26de01d45cdfcab1bac31e8d83756cb00da834c76517bfa7eb6bba32e68eb5b9",
-      "linux_sha256": "26de01d45cdfcab1bac31e8d83756cb00da834c76517bfa7eb6bba32e68eb5b9"
+      "base_sha256": "b9d19d21b3b3b21f2c4ff718632527fe9d311c8e7c1b164f96e664bc4d2b5e19",
+      "linux_sha256": "b9d19d21b3b3b21f2c4ff718632527fe9d311c8e7c1b164f96e664bc4d2b5e19"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoShotBoardPreview_二期 镜头分镜 浅中360_f6ba8451_0.png": {
       "base_sha256": "c0c6d0fb03a38c945834448035cee5cfd5ec4f5315d8c9b10b2bc947f17123db",
       "linux_sha256": "c0c6d0fb03a38c945834448035cee5cfd5ec4f5315d8c9b10b2bc947f17123db"
     },
     "com/promenar/infinity/ui/production/ProductionPhaseTwoScreenshotTestKt/productionPhaseTwoShotCandidatesPreview_二期 镜头候选 浅中360_72bbe449_0.png": {
-      "base_sha256": "87d33fbabbea499b0dc3f0d8e4c29fc1babeee89dc1c7496ec2eebfc9c562872",
-      "linux_sha256": "87d33fbabbea499b0dc3f0d8e4c29fc1babeee89dc1c7496ec2eebfc9c562872"
+      "base_sha256": "e37ae74c2653caaebe318fe461c5dca720c182cf3f2ca2980d372bf55bf80534",
+      "linux_sha256": "e37ae74c2653caaebe318fe461c5dca720c182cf3f2ca2980d372bf55bf80534"
     },
     "com/promenar/infinity/ui/rag/KnowledgeGraphPageScreenshotTestKt/knowledgeGraphSessionControlsEnglishPreview_Graph session controls English 360dp font130_b0ffc6f5_0.png": {
       "base_sha256": "7dd9d12b8536e7526343e0e5617529e11fb2ae576a1b1ffaa4c94d55b5a18023",

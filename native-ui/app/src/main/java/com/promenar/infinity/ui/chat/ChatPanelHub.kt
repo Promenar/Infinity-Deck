@@ -18,7 +18,7 @@ internal data class PanelHubEntry(
     val page: ChatPage,
     /** 当前内容的一句话摘要；为 null 时只显示名称。不可用的条目在界面上统一显示“未使用”。 */
     val summary: String?,
-    /** 需要用户处理的数量，挂在条目与入口按钮上。 */
+    /** 需要用户审批或处理的数量，挂在条目与入口按钮上（警示色）。 */
     val pending: Int,
     /** 有正在进行的内容：没有待处理时入口按钮显示运行圆点。 */
     val running: Boolean,
@@ -26,13 +26,16 @@ internal data class PanelHubEntry(
     val available: Boolean,
     /** 打开该面板；由会话页按当前形态给出（窄窗口整页或面板，宽窗口切换检视器页签）。 */
     val onOpen: () -> Unit,
+    /** 已暂存、等待统一发送的数量（如制作面板本轮未发送审批），以信息色胶囊与待审警示角标区分。 */
+    val secondaryPending: Int = 0,
 )
 
-/** 入口按钮上的标记：待处理总数优先，其次运行圆点。 */
+/** 入口按钮上的标记：待审批总数优先（警示色），其次待发送总数（信息色），其次运行圆点。 */
 internal sealed interface PanelHubBadge {
     data object None : PanelHubBadge
     data object Running : PanelHubBadge
     data class Pending(val count: Int) : PanelHubBadge
+    data class SecondaryPending(val count: Int) : PanelHubBadge
 }
 
 /** 由 Agent 创建内容的条目：本会话中 Agent 从未调用过时不可用。制作面板支持空态挂载/建项，始终可进入。 */
@@ -52,8 +55,10 @@ internal fun panelHubOrder(entries: List<PanelHubEntry>): List<PanelHubEntry> =
 internal fun panelHubBadge(entries: List<PanelHubEntry>): PanelHubBadge {
     val available = entries.filter { it.available }
     val pending = available.sumOf { it.pending.coerceAtLeast(0) }
+    val secondary = available.sumOf { it.secondaryPending.coerceAtLeast(0) }
     return when {
         pending > 0 -> PanelHubBadge.Pending(pending)
+        secondary > 0 -> PanelHubBadge.SecondaryPending(secondary)
         available.any { it.running } -> PanelHubBadge.Running
         else -> PanelHubBadge.None
     }
@@ -77,7 +82,7 @@ internal data class ChatPanelHubSignals(
     /** Agent 写出、等待用户认领或忽略的产物。 */
     val canvasCandidates: Int = 0,
     val hasStateBoard: Boolean = false,
-    /** 制作面板：会话曾绑定项目时可用，待审镜头与未发送意见之和挂角标，有镜头在生成时显示运行圆点。 */
+    /** 制作面板：待审镜头归入待处理角标，未发送意见归入次级待发送角标，有镜头在生成时显示运行圆点。 */
     val production: com.promenar.infinity.ui.production.ProductionEntryState = com.promenar.infinity.ui.production.ProductionEntryState.Disabled,
     /** 本会话中 Agent 调用过的条目（见 [panelHubUsage]）。 */
     val used: Set<ChatPage> = emptySet(),
@@ -102,13 +107,22 @@ internal fun chatPanelHubEntries(
     val used = panelHubUsage(signals.used, panelHubActive(signals.canvases, signals.canvasCandidates, signals.hasStateBoard, signals.production.enabled))
     return panelHubOrder(
         ChatPage.entries.map { page ->
-            val (pending, running) = when (page) {
-                ChatPage.Run -> signals.pendingApprovals to (signals.generating || signals.runningJobs > 0)
-                ChatPage.Browser -> (if (signals.browser == BrowserMode.HANDOFF) 1 else 0) to (signals.browser == BrowserMode.AGENT)
-                ChatPage.Canvas -> signals.canvasCandidates to false
-                ChatPage.Production -> (if (signals.production.hasProduction) signals.production.attentionCount else 0) to
-                    (signals.production.hasProduction && signals.production.running)
-                ChatPage.Explorer, ChatPage.Git, ChatPage.State -> 0 to false
+            val pending = when (page) {
+                ChatPage.Run -> signals.pendingApprovals
+                ChatPage.Browser -> if (signals.browser == BrowserMode.HANDOFF) 1 else 0
+                ChatPage.Canvas -> signals.canvasCandidates
+                ChatPage.Production -> if (signals.production.hasProduction) signals.production.pending else 0
+                ChatPage.Explorer, ChatPage.Git, ChatPage.State -> 0
+            }
+            val secondaryPending = when (page) {
+                ChatPage.Production -> if (signals.production.hasProduction) signals.production.unsent else 0
+                else -> 0
+            }
+            val running = when (page) {
+                ChatPage.Run -> signals.generating || signals.runningJobs > 0
+                ChatPage.Browser -> signals.browser == BrowserMode.AGENT
+                ChatPage.Production -> signals.production.hasProduction && signals.production.running
+                ChatPage.Canvas, ChatPage.Explorer, ChatPage.Git, ChatPage.State -> false
             }
             PanelHubEntry(
                 page = page,
@@ -117,6 +131,7 @@ internal fun chatPanelHubEntries(
                 running = running,
                 available = !panelHubAgentCreated(page) || page in used,
                 onOpen = { onOpen(page) },
+                secondaryPending = secondaryPending.coerceAtLeast(0),
             )
         },
     )

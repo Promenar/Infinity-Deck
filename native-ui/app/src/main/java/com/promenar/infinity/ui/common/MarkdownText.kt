@@ -1610,10 +1610,12 @@ private fun WideContentHost(
             }
         }
         val targetWidth = maxOf(viewportWidth, contentWidth)
+        val overflows = contentWidth > viewportWidth
         val scrollState = rememberScrollState()
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (overflows) Modifier.horizontalFadingEdges(scrollState, length = 24.dp) else Modifier)
                 .horizontalScroll(scrollState)
                 .testTag(UiTags.MARKDOWN_WIDE_CONTENT),
         ) {

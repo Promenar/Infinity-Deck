@@ -122,16 +122,20 @@ class FileSessionArtifacts(
         ArtifactFileSnapshot(record.summary(), selected, file)
     }
 
-    override suspend fun candidates(sessionId: String, changes: List<WorkspaceChangedFile>): List<ArtifactCandidate> = locked {
+    override suspend fun candidates(
+        sessionId: String,
+        changes: List<WorkspaceChangedFile>,
+        excludedPathPrefixes: Set<String>,
+    ): List<ArtifactCandidate> = locked {
         val published = load(sessionId).value.map { it.sourcePath }.toSet()
         val ignored = ignored(sessionId)
         val candidates = mutableMapOf<String, ArtifactCandidate>()
         val seen = mutableSetOf<String>()
         for (change in changes.asReversed()) {
-            if (!seen.add(change.path) || isSkillPath(change.path)) continue
+            if (!seen.add(change.path) || isSkillPath(change.path) || isPathExcluded(change.path, excludedPathPrefixes)) continue
             val result = resolver.resolve(sessionId, change.path) as? MediaResolution.Available ?: continue
             val path = result.ref.path
-            if (path != change.path && (!seen.add(path) || isSkillPath(path))) continue
+            if (path != change.path && (!seen.add(path) || isSkillPath(path) || isPathExcluded(path, excludedPathPrefixes))) continue
             val parts = path.split('/').filter { it.isNotEmpty() }
             val name = parts.lastOrNull() ?: continue
             if (path in published || path in ignored || result.ref.sizeBytes > limit || parts.any { it.startsWith('.') || it == "node_modules" || it == "__pycache__" || it == "canvas" } || name.substringAfterLast('.', "").lowercase() in setOf("log", "tmp", "pyc", "o", "class", "lock")) continue

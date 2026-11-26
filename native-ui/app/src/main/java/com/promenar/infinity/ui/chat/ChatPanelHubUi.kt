@@ -3,8 +3,10 @@ package com.promenar.infinity.ui.chat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -54,6 +56,7 @@ import com.promenar.infinity.ui.git.GitEntrySummary
 import com.promenar.infinity.ui.git.gitSummaryLine
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
+import com.promenar.infinity.ui.theme.infinityDomainColors
 
 /** 功能面板条目的图标；新增条目时在这里补上。 */
 internal val ChatPage.hubIcon: ImageVector
@@ -95,26 +98,39 @@ internal fun ChatPage.inspectorTabLabelRes(): Int = when (this) {
 @Composable
 internal fun ChatPage.inspectorTabLabel(): String = stringResource(inspectorTabLabelRes())
 
-/** 条目的朗读文字：名称、摘要（不可用时为“未使用”）、待处理数与运行中。 */
+/** 条目的朗读文字：名称、摘要（不可用时为“未使用”）、待审批/待处理数、待发送数与运行中。 */
 @Composable
 internal fun PanelHubEntry.description(): String = listOfNotNull(
     page.hubLabel(),
     if (available) summary?.takeIf { it.isNotBlank() } else stringResource(R.string.panel_hub_unused),
-    pending.takeIf { available && it > 0 }?.let { pluralStringResource(R.plurals.panel_hub_pending, it, it) },
-    if (available && running && pending == 0) stringResource(R.string.chat_inspector_running) else null,
+    pending.takeIf { available && it > 0 }?.let {
+        if (secondaryPending > 0 || page == ChatPage.Production) {
+            stringResource(R.string.chat_inspector_badge_review_desc, it)
+        } else {
+            pluralStringResource(R.plurals.panel_hub_pending, it, it)
+        }
+    },
+    secondaryPending.takeIf { available && it > 0 }?.let {
+        stringResource(R.string.chat_inspector_badge_send_desc, it)
+    },
+    if (available && running && pending == 0 && secondaryPending == 0) stringResource(R.string.chat_inspector_running) else null,
 ).joinToString(", ")
 
 /**
- * 条目图标与标记：运行页签在运行中换成转圈；[showPending] 为 true 时待处理数以警示色角标贴在图标右上角外侧，
- * 只压住图标右缘 [PanelHubBadgeOverlap]，伸出右缘不超过 [PanelHubBadgeReach]；没有待处理但运行中时挂主色圆点。
+ * 条目图标与标记：运行页签在运行中换成转圈；[showPending] 为 true 时待审批数以警示色角标贴在图标右上角外侧，
+ * 无待审批但有待发送项时以信息色角标展示，两者兼有时右上挂警示角标、右下补信息色小圆点；没有角标但运行中时挂主色圆点。
+ * 只压住图标右缘 [PanelHubBadgeOverlap]，伸出右缘不超过 [PanelHubBadgeReach]；
  * [reserveBadge] 为 true 时把伸出部分计入宽度，后面的名称不会被压住。
  */
 @Composable
 internal fun PanelHubIcon(entry: PanelHubEntry, tint: Color, showPending: Boolean = true, reserveBadge: Boolean = false) {
     val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
     val spinning = entry.page == ChatPage.Run && entry.running && entry.available
     val count = if (showPending && entry.available) entry.pending else 0
-    val dot = entry.available && entry.running && entry.pending == 0 && !spinning
+    val secondaryCount = if (showPending && entry.available) entry.secondaryPending else 0
+    val dot = entry.available && entry.running && entry.pending == 0 && entry.secondaryPending == 0 && !spinning
+    val showSecondaryDot = count > 0 && secondaryCount > 0
     Layout(
         content = {
             if (spinning) {
@@ -124,22 +140,27 @@ internal fun PanelHubIcon(entry: PanelHubEntry, tint: Color, showPending: Boolea
             } else {
                 Icon(entry.page.hubIcon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
             }
-            if (count > 0) {
-                Badge(containerColor = scheme.tertiary, contentColor = scheme.onTertiary) { Text(count.toString()) }
-            } else if (dot) {
-                Badge(containerColor = scheme.primary)
+            when {
+                count > 0 -> Badge(containerColor = scheme.tertiary, contentColor = scheme.onTertiary) { Text(count.toString()) }
+                secondaryCount > 0 -> Badge(containerColor = domain.infoContainer, contentColor = domain.onInfoContainer) { Text(secondaryCount.toString()) }
+                dot -> Badge(containerColor = scheme.primary)
+            }
+            if (showSecondaryDot) {
+                Box(Modifier.size(6.dp).background(domain.info, CircleShape))
             }
         },
     ) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val icon = measurables[0].measure(loose)
         val badge = measurables.getOrNull(1)?.measure(loose)
+        val secondaryDot = measurables.getOrNull(2)?.measure(loose)
         val reach = PanelHubBadgeReach.roundToPx()
         val badgeX = if (badge == null) 0 else icon.width - maxOf(PanelHubBadgeOverlap.roundToPx(), badge.width - reach)
         val width = if (badge != null && reserveBadge) badgeX + badge.width else icon.width
         layout(width, icon.height) {
             icon.place(0, 0)
             badge?.place(badgeX, -PanelHubBadgeLift.roundToPx())
+            secondaryDot?.place(icon.width - secondaryDot.width / 2, icon.height - secondaryDot.height / 2)
         }
     }
 }
@@ -157,11 +178,13 @@ internal fun PanelHubButton(entries: List<PanelHubEntry>, modifier: Modifier = M
     var expanded by remember { mutableStateOf(false) }
     val haptics = LocalInfinityHaptics.current
     val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
     val badge = panelHubBadge(entries)
     val description = listOfNotNull(
         stringResource(R.string.panel_hub_title),
         when (badge) {
             is PanelHubBadge.Pending -> pluralStringResource(R.plurals.panel_hub_pending, badge.count, badge.count)
+            is PanelHubBadge.SecondaryPending -> stringResource(R.string.chat_inspector_badge_send_desc, badge.count)
             PanelHubBadge.Running -> stringResource(R.string.chat_inspector_running)
             PanelHubBadge.None -> null
         },
@@ -189,6 +212,11 @@ internal fun PanelHubButton(entries: List<PanelHubEntry>, modifier: Modifier = M
                     is PanelHubBadge.Pending -> Badge(
                         containerColor = scheme.tertiary,
                         contentColor = scheme.onTertiary,
+                        modifier = Modifier.align(Alignment.TopEnd).offset(x = 7.dp, y = (-5).dp).testTag(PanelHubTags.BUTTON_PENDING),
+                    ) { Text(if (badge.count > 99) "99+" else badge.count.toString()) }
+                    is PanelHubBadge.SecondaryPending -> Badge(
+                        containerColor = domain.infoContainer,
+                        contentColor = domain.onInfoContainer,
                         modifier = Modifier.align(Alignment.TopEnd).offset(x = 7.dp, y = (-5).dp).testTag(PanelHubTags.BUTTON_PENDING),
                     ) { Text(if (badge.count > 99) "99+" else badge.count.toString()) }
                     PanelHubBadge.Running -> Box(
@@ -231,13 +259,25 @@ private fun PanelHubMenuItem(entry: PanelHubEntry, onClick: () -> Unit) {
         // 打开面板本身有页面过渡，菜单项不再给触感。
         haptic = null,
         leadingIcon = { PanelHubIcon(entry, LocalContentColor.current, showPending = false) },
-        trailingIcon = if (entry.available && entry.pending > 0) {
-            { PanelHubCount(entry.pending) }
+        trailingIcon = if (entry.available && (entry.pending > 0 || entry.secondaryPending > 0)) {
+            { PanelHubTrailingBadges(entry.pending, entry.secondaryPending) }
         } else null,
         modifier = Modifier
             .semantics(mergeDescendants = true) { contentDescription = description }
             .testTag(PanelHubTags.item(entry.page)),
     )
+}
+
+/** 弹出列表行尾角标：待审用警示色胶囊，待发送用信息色「发 N」胶囊，语义分离不混加。 */
+@Composable
+private fun PanelHubTrailingBadges(pending: Int, secondaryPending: Int) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (pending > 0) PanelHubCount(pending)
+        if (secondaryPending > 0) PanelHubSecondaryCount(secondaryPending)
+    }
 }
 
 /** 弹出列表行尾的待处理数：警示色胶囊，与顶栏入口角标同色。 */
@@ -251,6 +291,26 @@ private fun PanelHubCount(count: Int) {
         contentAlignment = Alignment.Center,
     ) {
         Text(count.toString(), style = InfinityTypography.labelMedium.copy(fontFeatureSettings = "tnum"), color = scheme.onTertiary, maxLines = 1)
+    }
+}
+
+/** 弹出列表行尾的待发送数：信息色胶囊（「发 N」），区别于需要审批的警示色。 */
+@Composable
+private fun PanelHubSecondaryCount(count: Int) {
+    val domain = MaterialTheme.infinityDomainColors
+    Box(
+        Modifier
+            .background(domain.infoContainer, RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 1.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.chat_inspector_badge_send, count),
+            style = InfinityTypography.labelMedium.copy(fontFeatureSettings = "tnum"),
+            color = domain.onInfoContainer,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 

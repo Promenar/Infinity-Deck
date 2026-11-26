@@ -657,21 +657,28 @@ private fun LightboxBottomBar(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (pageCount > 1) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // 深色半透明胶囊底托确保白底角色设定图等高亮度画面下分页指示点依然清晰可辨。
+            Surface(
+                shape = CircleShape,
+                color = scheme.scrim.copy(alpha = 0.62f),
             ) {
-                val dotCount = pageCount.coerceAtMost(9)
-                val mappedActive = if (pageCount <= 9) currentIndex else (currentIndex * (dotCount - 1) / (pageCount - 1).coerceAtLeast(1))
-                for (i in 0 until dotCount) {
-                    val active = i == mappedActive
-                    Box(
-                        Modifier
-                            .height(5.dp)
-                            .width(if (active) 16.dp else 5.dp)
-                            .clip(CircleShape)
-                            .background(if (active) overlayTint else overlayTint.copy(alpha = 0.38f)),
-                    )
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val dotCount = pageCount.coerceAtMost(9)
+                    val mappedActive = if (pageCount <= 9) currentIndex else (currentIndex * (dotCount - 1) / (pageCount - 1).coerceAtLeast(1))
+                    for (i in 0 until dotCount) {
+                        val active = i == mappedActive
+                        Box(
+                            Modifier
+                                .height(6.dp)
+                                .width(if (active) 16.dp else 6.dp)
+                                .clip(CircleShape)
+                                .background(if (active) overlayTint else overlayTint.copy(alpha = 0.45f)),
+                        )
+                    }
                 }
             }
         }

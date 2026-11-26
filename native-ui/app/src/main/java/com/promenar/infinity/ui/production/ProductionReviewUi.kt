@@ -2,9 +2,11 @@ package com.promenar.infinity.ui.production
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -25,7 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.rounded.RateReview
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
@@ -35,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +76,7 @@ import com.promenar.infinity.ui.theme.forInput
 import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.launch
 
-/* 回合制审核的界面构件：页头“发送”、结论标签、结构化反馈、统一单入口“审批/修改审批”与一步式表单弹窗。 */
+/* 回合制审核的界面构件：页头“发送”、结论标签、结构化反馈、快捷批准与原地展开内联审批槽。 */
 
 /**
  * 页头“发送”的状态：未发送条数、是否正在发送、是否有一轮正在会话队列里排队，以及点击回调。
@@ -277,10 +282,285 @@ internal fun ProductionReviewNotes(production: Production, target: ReviewTarget,
     }
 }
 
+/** 是否展示一键快捷「批准」按钮：可裁决、尚未批准、未定稿且内联审批区收起时展示。 */
+internal fun Production.shouldShowQuickApprove(
+    target: ReviewTarget,
+    settled: Boolean = false,
+    inlineOpen: Boolean = false,
+): Boolean = target.acceptsVerdict && verdictOf(target)?.kind != ReviewKind.APPROVE && !settled && !inlineOpen
+
+/** 审批表单打开时的默认裁决项。 */
+internal fun Production.initialReviewKind(target: ReviewTarget, settled: Boolean = false): ReviewKind {
+    val verdict = verdictOf(target)
+    val hasUnsentSuggestion = unsentSuggestions(target).isNotEmpty()
+    return when {
+        !target.acceptsVerdict -> ReviewKind.SUGGEST
+        verdict != null -> verdict.kind
+        settled -> ReviewKind.APPROVE
+        hasUnsentSuggestion -> ReviewKind.SUGGEST
+        else -> ReviewKind.APPROVE
+    }
+}
+
+/** 审批表单在指定裁决项下的默认附注文本。 */
+internal fun Production.initialReviewNote(target: ReviewTarget, kind: ReviewKind): String {
+    val verdict = verdictOf(target)
+    return when (kind) {
+        ReviewKind.APPROVE -> verdict?.takeIf { it.kind == ReviewKind.APPROVE }?.note.orEmpty()
+        ReviewKind.REJECT -> verdict?.takeIf { it.kind == ReviewKind.REJECT }?.note.orEmpty()
+        ReviewKind.SUGGEST -> ""
+    }
+}
+
+/** 当前表单状态下可直接撤回的未发送项类型。 */
+internal fun Production.retractReviewTargetKind(target: ReviewTarget, selectedKind: ReviewKind): ReviewKind? {
+    val verdict = verdictOf(target)
+    return when {
+        verdict != null && verdict.round == null && verdict.queuedRound == null -> verdict.kind
+        unsentSuggestions(target).isNotEmpty() && selectedKind == ReviewKind.SUGGEST -> ReviewKind.SUGGEST
+        else -> null
+    }
+}
+
 /**
- * 统一单入口审批操作栏：
- * 全站所有可审批与仅接受建议的对象均收口为唯一「审批 / 修改审批」胶囊按钮，
- * 点按直接打开一步式表单弹窗（顶部三段裁决 + 输入框 + 撤回/保存/取消）。
+ * 原地展开内联审批槽：
+ * 在当前对象下方平滑展开，提供三段裁决（批准 / 否决 / 建议）、紧凑附注输入框与撤回/收起/保存操作，
+ * 避免全屏弹窗暗幕遮挡被审对象正文。
+ */
+@Composable
+internal fun ProductionInlineReviewSlot(
+    visible: Boolean,
+    production: Production,
+    target: ReviewTarget,
+    label: List<String>,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: suspend (ProductionUserAction) -> String?,
+    modifier: Modifier = Modifier,
+    settled: Boolean = false,
+) {
+    val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val enter = if (animate) {
+        expandVertically(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) +
+            fadeIn(tween(InfinityMotion.DurationShort))
+    } else {
+        fadeIn(tween(InfinityMotion.DurationShort))
+    }
+    val exit = if (animate) {
+        shrinkVertically(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate)) +
+            fadeOut(tween(InfinityMotion.DurationShort))
+    } else {
+        fadeOut(tween(InfinityMotion.DurationShort))
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = enter,
+        exit = exit,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        val verdict = production.verdictOf(target)
+        val hasUnsentVerdict = verdict != null && verdict.round == null && verdict.queuedRound == null
+        val hasUnsentSuggestion = production.unsentSuggestions(target).isNotEmpty()
+        val hasAnyUnsent = hasUnsentVerdict || hasUnsentSuggestion
+
+        var selectedKind by remember(target) { mutableStateOf(production.initialReviewKind(target, settled)) }
+        var noteText by remember(target) { mutableStateOf(production.initialReviewNote(target, selectedKind)) }
+        var noteEdited by remember(target) { mutableStateOf(false) }
+        var error by remember(target) { mutableStateOf<String?>(null) }
+        var saving by remember(target) { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+
+        LaunchedEffect(visible, target) {
+            if (visible) {
+                val initialKind = production.initialReviewKind(target, settled)
+                selectedKind = initialKind
+                noteText = production.initialReviewNote(target, initialKind)
+                noteEdited = false
+                error = null
+            }
+        }
+
+        val scheme = MaterialTheme.colorScheme
+        val domain = MaterialTheme.infinityDomainColors
+        val fieldLabel = stringResource(
+            when (selectedKind) {
+                ReviewKind.APPROVE -> R.string.production_review_note_optional_approve
+                ReviewKind.REJECT -> R.string.production_review_note_optional_reject
+                ReviewKind.SUGGEST -> R.string.production_review_note_required_suggest
+            },
+        )
+        val retractTargetKind = production.retractReviewTargetKind(target, selectedKind)
+        val retractLabel = when (retractTargetKind) {
+            ReviewKind.APPROVE -> stringResource(R.string.production_review_retract_approve)
+            ReviewKind.REJECT -> stringResource(R.string.production_review_retract_reject)
+            ReviewKind.SUGGEST -> stringResource(R.string.production_review_retract_suggest)
+            null -> null
+        }
+        val canSave = !saving && (selectedKind != ReviewKind.SUGGEST || noteText.isNotBlank())
+
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = scheme.surfaceContainerHigh,
+            border = BorderStroke(0.5.dp, scheme.outlineVariant.copy(alpha = 0.65f)),
+            modifier = Modifier.fillMaxWidth().testTag(ProductionUiTags.REVIEW_DIALOG),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (target.acceptsVerdict) {
+                    InfinitySegmentedControl(
+                        segments = listOf(
+                            InfinitySegment(
+                                value = ReviewKind.APPROVE,
+                                label = stringResource(R.string.production_review_approve),
+                                leading = { Box(Modifier.size(7.dp).clip(CircleShape).background(domain.success)) },
+                            ),
+                            InfinitySegment(
+                                value = ReviewKind.REJECT,
+                                label = stringResource(R.string.production_review_reject),
+                                leading = { Box(Modifier.size(7.dp).clip(CircleShape).background(scheme.error)) },
+                            ),
+                            InfinitySegment(
+                                value = ReviewKind.SUGGEST,
+                                label = stringResource(R.string.production_review_suggest),
+                                leading = { Box(Modifier.size(7.dp).clip(CircleShape).background(scheme.primary)) },
+                            ),
+                        ),
+                        selected = selectedKind,
+                        onSelect = { next ->
+                            selectedKind = next
+                            error = null
+                            if (!noteEdited) {
+                                noteText = production.initialReviewNote(target, next)
+                            }
+                        },
+                        enabled = !saving && !busy,
+                        fillWidth = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = {
+                        noteText = it.take(PRODUCTION_NOTE_MAX)
+                        noteEdited = true
+                        error = null
+                    },
+                    label = { Text(fieldLabel) },
+                    placeholder = { Text(stringResource(R.string.production_review_note_placeholder)) },
+                    enabled = !saving && !busy,
+                    minLines = 2,
+                    maxLines = 4,
+                    textStyle = MaterialTheme.typography.bodySmall.forInput(),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag(ProductionUiTags.REASON_FIELD),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (hasAnyUnsent) {
+                        val activeRetractKind = retractTargetKind
+                        val canRetractNow = !saving && !busy && activeRetractKind != null
+                        val slotLabel = retractLabel ?: stringResource(R.string.production_review_has_unsent_suggestion)
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val kindToRetract = activeRetractKind ?: return@OutlinedButton
+                                    saving = true
+                                    scope.launch {
+                                        try {
+                                            error = onSubmit(ProductionUserAction.RetractReview(target, kindToRetract))
+                                            if (error == null) onDismiss()
+                                        } finally {
+                                            saving = false
+                                        }
+                                    }
+                                },
+                                enabled = canRetractNow,
+                                shape = CircleShape,
+                                border = BorderStroke(
+                                    0.8.dp,
+                                    if (canRetractNow) scheme.error.copy(alpha = 0.45f) else scheme.outlineVariant.copy(alpha = 0.5f),
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = scheme.error),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.heightIn(min = 34.dp).testTag(ProductionUiTags.REVIEW_RETRACT),
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.Undo,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    slotLabel,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                    InfinityPillButton(
+                        text = stringResource(R.string.production_review_collapse),
+                        onClick = onDismiss,
+                        tone = InfinityPillTone.NEUTRAL,
+                        enabled = !saving,
+                        compact = true,
+                    )
+                    InfinityPillButton(
+                        text = stringResource(R.string.production_review_save),
+                        onClick = {
+                            saving = true
+                            scope.launch {
+                                try {
+                                    val cleanNote = noteText.trim().takeIf { it.isNotEmpty() }
+                                    error = onSubmit(ProductionUserAction.Review(target, selectedKind, cleanNote))
+                                    if (error == null) onDismiss()
+                                } finally {
+                                    saving = false
+                                }
+                            }
+                        },
+                        tone = InfinityPillTone.PRIMARY,
+                        enabled = canSave && !busy,
+                        compact = true,
+                        modifier = Modifier.testTag(ProductionUiTags.DIALOG_CONFIRM),
+                    )
+                }
+                AnimatedVisibility(
+                    visible = error != null,
+                    enter = if (animate) InfinityMotion.expandIn else fadeIn(tween(InfinityMotion.DurationShort)),
+                    exit = if (animate) InfinityMotion.shrinkOut else fadeOut(tween(InfinityMotion.DurationShort)),
+                ) {
+                    error?.let { err ->
+                        Text(
+                            err,
+                            color = scheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 统一内联审批操作栏：
+ * - 外部托管模式（[externalExpanded] 与 [onExternalExpandedChange] 均非空）：用于场头等紧凑标题行，
+ *   只渲染折叠/展开胶囊按钮，内联审批槽由外层紧贴场头下方展示；
+ * - 默认自托管模式：未批准时提供一键快捷「批准」与原地展开「审批 / 修改审批 / 收起」按钮，
+ *   并在操作栏正下方平滑展开 [ProductionInlineReviewSlot]。
  */
 @Composable
 internal fun ProductionReviewActions(
@@ -294,60 +574,143 @@ internal fun ProductionReviewActions(
     settled: Boolean = false,
     compact: Boolean = false,
     statusHint: String? = null,
+    externalExpanded: Boolean? = null,
+    onExternalExpandedChange: ((Boolean) -> Unit)? = null,
 ) {
-    var dialogOpen by remember(target) { mutableStateOf(false) }
     val verdict = production.verdictOf(target)
     val hasUnsentSuggestion = production.unsentSuggestions(target).isNotEmpty()
     val hasSavedReview = verdict != null || settled || hasUnsentSuggestion
 
-    if (compact && statusHint == null) {
+    if (externalExpanded != null && onExternalExpandedChange != null) {
         InfinityPillButton(
-            text = stringResource(if (hasSavedReview) R.string.production_review_edit else R.string.production_review_entry),
-            onClick = { dialogOpen = true },
-            tone = if (hasSavedReview) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
-            icon = Icons.Rounded.RateReview,
+            text = stringResource(
+                when {
+                    externalExpanded -> R.string.production_review_collapse
+                    hasSavedReview -> R.string.production_review_edit
+                    else -> R.string.production_review_entry
+                },
+            ),
+            onClick = { onExternalExpandedChange(!externalExpanded) },
+            tone = if (externalExpanded || hasSavedReview) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
+            icon = if (externalExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
             enabled = !busy,
             compact = true,
             modifier = modifier.testTag(ProductionUiTags.REVIEW_ENTRY),
         )
+        return
+    }
+
+    var inlineOpen by remember(target) { mutableStateOf(false) }
+    var quickSaving by remember(target) { mutableStateOf(false) }
+    var quickError by remember(target) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val showQuickApprove = production.shouldShowQuickApprove(target, settled = settled, inlineOpen = inlineOpen)
+    val animate = rememberAnimationsEnabled() && !LocalInspectionMode.current
+    val quickApproveEnter = if (animate) {
+        expandHorizontally(tween(InfinityMotion.DurationMedium, easing = InfinityMotion.EmphasizedDecelerate)) +
+            fadeIn(tween(InfinityMotion.DurationShort))
     } else {
+        fadeIn(tween(InfinityMotion.DurationShort))
+    }
+    val quickApproveExit = if (animate) {
+        shrinkHorizontally(tween(InfinityMotion.DurationShort, easing = InfinityMotion.EmphasizedAccelerate)) +
+            fadeOut(tween(InfinityMotion.DurationShort))
+    } else {
+        fadeOut(tween(InfinityMotion.DurationShort))
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Row(
-            modifier = modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
         ) {
-            if (!statusHint.isNullOrBlank()) {
-                Text(
-                    text = statusHint,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
+            if (!compact) {
+                if (!statusHint.isNullOrBlank()) {
+                    Text(
+                        text = statusHint,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+            AnimatedVisibility(
+                visible = showQuickApprove,
+                enter = quickApproveEnter,
+                exit = quickApproveExit,
+            ) {
+                InfinityPillButton(
+                    text = stringResource(R.string.production_review_quick_approve),
+                    onClick = {
+                        quickSaving = true
+                        quickError = null
+                        scope.launch {
+                            try {
+                                quickError = onSubmit(ProductionUserAction.Review(target, ReviewKind.APPROVE, null))
+                            } finally {
+                                quickSaving = false
+                            }
+                        }
+                    },
+                    tone = InfinityPillTone.PRIMARY,
+                    icon = Icons.Rounded.Check,
+                    enabled = !busy && !quickSaving,
+                    compact = true,
                 )
-            } else {
-                Spacer(Modifier.weight(1f))
             }
             InfinityPillButton(
-                text = stringResource(if (hasSavedReview) R.string.production_review_edit else R.string.production_review_entry),
-                onClick = { dialogOpen = true },
-                tone = if (hasSavedReview) InfinityPillTone.NEUTRAL else InfinityPillTone.PRIMARY,
-                icon = Icons.Rounded.RateReview,
-                enabled = !busy,
-                compact = compact,
+                text = stringResource(
+                    when {
+                        inlineOpen -> R.string.production_review_collapse
+                        hasSavedReview -> R.string.production_review_edit
+                        else -> R.string.production_review_entry
+                    },
+                ),
+                onClick = {
+                    quickError = null
+                    inlineOpen = !inlineOpen
+                },
+                tone = when {
+                    inlineOpen -> InfinityPillTone.NEUTRAL
+                    showQuickApprove || hasSavedReview -> InfinityPillTone.NEUTRAL
+                    else -> InfinityPillTone.PRIMARY
+                },
+                icon = if (inlineOpen) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                enabled = !busy && !quickSaving,
+                compact = true,
                 modifier = Modifier.testTag(ProductionUiTags.REVIEW_ENTRY),
             )
         }
-    }
-
-    if (dialogOpen) {
-        ProductionUnifiedReviewDialog(
+        AnimatedVisibility(
+            visible = quickError != null,
+            enter = if (animate) InfinityMotion.expandIn else fadeIn(tween(InfinityMotion.DurationShort)),
+            exit = if (animate) InfinityMotion.shrinkOut else fadeOut(tween(InfinityMotion.DurationShort)),
+        ) {
+            quickError?.let { err ->
+                Text(
+                    text = err,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        ProductionInlineReviewSlot(
+            visible = inlineOpen,
             production = production,
             target = target,
             label = label,
-            settled = settled,
-            onDismiss = { dialogOpen = false },
+            busy = busy,
+            onDismiss = { inlineOpen = false },
             onSubmit = onSubmit,
+            settled = settled,
         )
     }
 }
@@ -371,21 +734,9 @@ internal fun ProductionUnifiedReviewDialog(
     val hasUnsentSuggestion = unsentSuggestions.isNotEmpty()
     val hasSavedReview = verdict != null || settled || hasUnsentSuggestion
 
-    val initialKind = when {
-        !target.acceptsVerdict -> ReviewKind.SUGGEST
-        verdict != null -> verdict.kind
-        settled -> ReviewKind.APPROVE
-        hasUnsentSuggestion -> ReviewKind.SUGGEST
-        else -> ReviewKind.APPROVE
-    }
-    fun initialNoteFor(kind: ReviewKind): String = when (kind) {
-        ReviewKind.APPROVE -> verdict?.takeIf { it.kind == ReviewKind.APPROVE }?.note.orEmpty()
-        ReviewKind.REJECT -> verdict?.takeIf { it.kind == ReviewKind.REJECT }?.note.orEmpty()
-        ReviewKind.SUGGEST -> ""
-    }
-
+    val initialKind = production.initialReviewKind(target, settled)
     var selectedKind by remember(target) { mutableStateOf(initialKind) }
-    var noteText by remember(target) { mutableStateOf(initialNoteFor(initialKind)) }
+    var noteText by remember(target) { mutableStateOf(production.initialReviewNote(target, initialKind)) }
     var noteEdited by remember(target) { mutableStateOf(false) }
     var error by remember(target) { mutableStateOf<String?>(null) }
     var saving by remember(target) { mutableStateOf(false) }
@@ -403,11 +754,7 @@ internal fun ProductionUnifiedReviewDialog(
             ReviewKind.SUGGEST -> R.string.production_review_note_required_suggest
         },
     )
-    val retractTargetKind = when {
-        hasUnsentVerdict -> requireNotNull(verdict).kind
-        hasUnsentSuggestion && selectedKind == ReviewKind.SUGGEST -> ReviewKind.SUGGEST
-        else -> null
-    }
+    val retractTargetKind = production.retractReviewTargetKind(target, selectedKind)
     val retractLabel = when (retractTargetKind) {
         ReviewKind.APPROVE -> stringResource(R.string.production_review_retract_approve)
         ReviewKind.REJECT -> stringResource(R.string.production_review_retract_reject)
@@ -470,7 +817,7 @@ internal fun ProductionUnifiedReviewDialog(
                             selectedKind = next
                             error = null
                             if (!noteEdited) {
-                                noteText = initialNoteFor(next)
+                                noteText = production.initialReviewNote(target, next)
                             }
                         },
                         enabled = !saving,
@@ -491,7 +838,7 @@ internal fun ProductionUnifiedReviewDialog(
                     minLines = 3,
                     maxLines = 5,
                     textStyle = LocalTextStyle.current.forInput(),
-                    modifier = Modifier.fillMaxWidth().testTag(ProductionUiTags.REASON_FIELD),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).testTag(ProductionUiTags.REASON_FIELD),
                 )
                 val hasAnyUnsent = hasUnsentVerdict || hasUnsentSuggestion
                 if (hasAnyUnsent) {

@@ -6,6 +6,7 @@ import com.promenar.infinity.ui.common.rememberPanelTabPagerState
 import com.promenar.infinity.navigation.InfinityPageStack
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.MoreVert
@@ -97,6 +100,7 @@ import com.promenar.infinity.ui.common.toNoticeSeverity
 import com.promenar.infinity.ui.media.LocalWorkspaceMedia
 import com.promenar.infinity.ui.media.rememberSessionWorkspaceMedia
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import com.promenar.infinity.domain.mediagen.MediaTask
@@ -165,13 +169,33 @@ fun ProductionPanel(
     var emptyCreating by remember(sessionId) { mutableStateOf(false) }
     var emptyError by remember(sessionId) { mutableStateOf<String?>(null) }
     var emptyScanNonce by remember(sessionId) { mutableStateOf(0) }
+    var emptyRescanNoneHint by remember(sessionId) { mutableStateOf(false) }
     val emptyScope = rememberCoroutineScope()
     val emptyNoticeController = LocalInfinityNoticeController.current
+    val rescanNoneText = stringResource(R.string.production_empty_rescan_none)
     LaunchedEffect(sessionId, source, load is ProductionLoad.Empty, emptyScanNonce) {
-        if (load !is ProductionLoad.Empty) return@LaunchedEffect
+        if (load !is ProductionLoad.Empty) {
+            emptyScanNonce = 0
+            emptyRescanNoneHint = false
+            return@LaunchedEffect
+        }
+        val userTriggered = emptyScanNonce > 0
         emptyScanning = true
+        if (userTriggered) emptyRescanNoneHint = false
         try {
-            emptyCandidates = runCatching { source.listAttachableManifests(sessionId) }.getOrDefault(emptyList())
+            val found = try {
+                source.listAttachableManifests(sessionId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+            emptyCandidates = found
+            val showNoneHint = shouldShowEmptyRescanNoneFeedback(userTriggered = userTriggered, candidateCount = found.size)
+            emptyRescanNoneHint = showNoneHint
+            if (showNoneHint) {
+                emptyNoticeController?.show(InfinityNoticeSeverity.INFO, rescanNoneText)
+            }
         } finally {
             emptyScanning = false
         }
@@ -198,12 +222,14 @@ fun ProductionPanel(
                             attachingPath = emptyAttachingPath,
                             creating = emptyCreating,
                             error = emptyError,
+                            showRescanNoneHint = emptyRescanNoneHint,
                             onDismissError = { emptyError = null },
                             onRescan = { if (!emptyScanning) emptyScanNonce += 1 },
                             onAttach = { path ->
                                 if (emptyAttachingPath == null && !emptyCreating) {
                                     emptyAttachingPath = path
                                     emptyError = null
+                                    emptyRescanNoneHint = false
                                     emptyScope.launch {
                                         try {
                                             val err = userFacing(failed) { source.attach(sessionId, path) }
@@ -222,6 +248,7 @@ fun ProductionPanel(
                                     if (!emptyCreating && emptyAttachingPath == null) {
                                         emptyCreating = true
                                         emptyError = null
+                                        emptyRescanNoneHint = false
                                         emptyScope.launch {
                                             try {
                                             val (kind, message) = trigger()
@@ -309,6 +336,10 @@ private suspend fun userFacing(fallback: String, block: suspend () -> Unit): Str
     fallback
 }
 
+/** 空面板重新扫描无结果时的反馈条件：仅用户主动触发重扫且未找到任何可关联清单时展示轻提示。 */
+internal fun shouldShowEmptyRescanNoneFeedback(userTriggered: Boolean, candidateCount: Int): Boolean =
+    userTriggered && candidateCount == 0
+
 @Composable
 fun ProductionPanelEmpty(
     modifier: Modifier = Modifier,
@@ -317,6 +348,7 @@ fun ProductionPanelEmpty(
     attachingPath: String? = null,
     creating: Boolean = false,
     error: String? = null,
+    showRescanNoneHint: Boolean = false,
     onDismissError: () -> Unit = {},
     onRescan: (() -> Unit)? = null,
     onAttach: ((String) -> Unit)? = null,
@@ -398,6 +430,37 @@ fun ProductionPanelEmpty(
                             compact = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                    }
+                    AnimatedVisibility(
+                        visible = showRescanNoneHint && candidates.isEmpty() && !scanning,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        val domain = MaterialTheme.infinityDomainColors
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = domain.infoContainer.copy(alpha = 0.35f),
+                            border = BorderStroke(0.5.dp, domain.info.copy(alpha = 0.35f)),
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = null,
+                                    tint = domain.info,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Text(
+                                    text = stringResource(R.string.production_empty_rescan_none),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = scheme.onSurface,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -750,7 +813,12 @@ fun ProductionPanelContent(
                             InfinityPanelTabs(
                                 tabs = allTabs.map { item ->
                                     when (item) {
-                                        ProductionTab.OVERVIEW -> InfinityPanelTab(ProductionTab.OVERVIEW, stringResource(R.string.production_panel_tab_overview), testTag = ProductionUiTags.TAB_OVERVIEW)
+                                        ProductionTab.OVERVIEW -> InfinityPanelTab(
+                                            ProductionTab.OVERVIEW,
+                                            stringResource(R.string.production_panel_tab_overview),
+                                            dot = MaterialTheme.colorScheme.tertiary.takeIf { production.hasUnhandledChangeRequests() },
+                                            testTag = ProductionUiTags.TAB_OVERVIEW,
+                                        )
                                         ProductionTab.SCRIPT -> InfinityPanelTab(ProductionTab.SCRIPT, stringResource(R.string.production_panel_tab_script), testTag = ProductionUiTags.TAB_SCRIPT)
                                         ProductionTab.ASSETS -> InfinityPanelTab(
                                             ProductionTab.ASSETS,

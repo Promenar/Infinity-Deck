@@ -519,6 +519,44 @@ private fun CharacterDualModeLookCard(
     }
 }
 
+/**
+ * 视觉资产单图参考文案映射：
+ * - 角色资产（[AssetKind.CHARACTER]）保留「多视角整卡」语义；
+ * - 场景、道具、画风等非角色视觉资产使用「单图参考 / 概念主图」语义，避免误标为多视角整卡。
+ */
+internal data class AssetSingleImageCopy(
+    val sectionTitleRes: Int,
+    val readyBadgeRes: Int,
+    val overlayTagRes: Int,
+    val defaultSubtitleRes: Int,
+    val emptyHintRes: Int,
+    val usingReferenceRes: Int,
+    val isMultiViewSheet: Boolean,
+)
+
+internal fun singleImageCopyFor(kind: AssetKind): AssetSingleImageCopy =
+    if (kind == AssetKind.CHARACTER) {
+        AssetSingleImageCopy(
+            sectionTitleRes = R.string.p2_mode_sheet_title,
+            readyBadgeRes = R.string.p2_mode_sheet_ready_badge,
+            overlayTagRes = R.string.p2_mode_sheet_tag,
+            defaultSubtitleRes = R.string.p2_mode_sheet_default_subtitle,
+            emptyHintRes = R.string.p2_mode_sheet_unregistered_hint,
+            usingReferenceRes = R.string.p2_using_sheet_image,
+            isMultiViewSheet = true,
+        )
+    } else {
+        AssetSingleImageCopy(
+            sectionTitleRes = R.string.p2_single_reference_title,
+            readyBadgeRes = R.string.p2_single_concept_tag,
+            overlayTagRes = R.string.p2_single_concept_tag,
+            defaultSubtitleRes = R.string.p2_single_reference_subtitle,
+            emptyHintRes = R.string.p2_single_reference_subtitle,
+            usingReferenceRes = R.string.p2_single_reference_using,
+            isMultiViewSheet = false,
+        )
+    }
+
 @Composable
 private fun VisualAssetDualModeCard(
     asset: Asset,
@@ -533,6 +571,7 @@ private fun VisualAssetDualModeCard(
     onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
     val scheme = MaterialTheme.colorScheme
+    val singleCopy = singleImageCopyFor(asset.kind)
     val populatedViews = asset.populatedReferenceViews()
     val sheetPrimary = populatedViews.isEmpty() && version != null
     val reviewUsesViews = (asset.referenceViews.isNotEmpty() && (asset.versions.isEmpty() || production.referenceInputMode != ReferenceInputMode.SHEET)) || asset.versions.isEmpty()
@@ -584,7 +623,10 @@ private fun VisualAssetDualModeCard(
                 if (sheetPrimary && asset.referenceViews.isEmpty()) {
                     EmptyModeCollapseBar(
                         sectionTitle = stringResource(R.string.p2_mode_separate_title),
-                        subtitle = stringResource(R.string.p2_mode_separate_unregistered_sheet_active),
+                        subtitle = stringResource(
+                            if (singleCopy.isMultiViewSheet) R.string.p2_mode_separate_unregistered_sheet_active
+                            else R.string.p2_mode_separate_unregistered_hint,
+                        ),
                         active = false,
                         showAddButton = true,
                         enabled = !busy,
@@ -615,7 +657,7 @@ private fun VisualAssetDualModeCard(
             val sheetSection: @Composable () -> Unit = {
                 if (version != null) {
                     val sheetTitle = asset.name
-                    val sheetSubtitle = version.note?.takeIf(String::isNotBlank) ?: stringResource(R.string.p2_mode_sheet_default_subtitle)
+                    val sheetSubtitle = version.note?.takeIf(String::isNotBlank) ?: stringResource(singleCopy.defaultSubtitleRes)
                     val openVersionInGallery = {
                         val idx = galleryItems.indexOfFirst { it.path == version.path }.coerceAtLeast(0)
                         if (galleryItems.isNotEmpty()) onOpenGallery(galleryItems, idx)
@@ -626,6 +668,7 @@ private fun VisualAssetDualModeCard(
                             title = sheetTitle,
                             subtitle = sheetSubtitle,
                             active = false,
+                            copy = singleCopy,
                             versions = versionLabels,
                             selectedVersion = version.number,
                             onSelectVersion = onSelectVersion,
@@ -637,6 +680,7 @@ private fun VisualAssetDualModeCard(
                             title = sheetTitle,
                             subtitle = sheetSubtitle,
                             active = false,
+                            copy = singleCopy,
                             versions = versionLabels,
                             selectedVersion = version.number,
                             onSelectVersion = onSelectVersion,
@@ -645,8 +689,8 @@ private fun VisualAssetDualModeCard(
                     }
                 } else {
                     EmptyModeCollapseBar(
-                        sectionTitle = stringResource(R.string.p2_mode_sheet_title),
-                        subtitle = stringResource(R.string.p2_mode_sheet_unregistered_hint),
+                        sectionTitle = stringResource(singleCopy.sectionTitleRes),
+                        subtitle = stringResource(singleCopy.emptyHintRes),
                         active = false,
                         showAddButton = false,
                         enabled = false,
@@ -853,6 +897,7 @@ private fun SheetFeaturedCard(
     title: String,
     subtitle: String,
     active: Boolean,
+    copy: AssetSingleImageCopy = singleImageCopyFor(AssetKind.CHARACTER),
     versions: List<Pair<Int, String>> = emptyList(),
     selectedVersion: Int? = null,
     showHeader: Boolean = true,
@@ -863,8 +908,8 @@ private fun SheetFeaturedCard(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (showHeader) {
             ModeSectionHeader(
-                title = stringResource(R.string.p2_mode_sheet_title),
-                badge = stringResource(if (active) R.string.p2_mode_active_badge else R.string.p2_mode_sheet_ready_badge),
+                title = stringResource(copy.sectionTitleRes),
+                badge = stringResource(if (active) R.string.p2_mode_active_badge else copy.readyBadgeRes),
                 active = active,
             )
         }
@@ -897,8 +942,13 @@ private fun SheetFeaturedCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Icon(Icons.Rounded.ViewQuilt, contentDescription = null, tint = overlayContent, modifier = Modifier.size(12.dp))
-                            Text(stringResource(R.string.p2_mode_sheet_tag), style = MaterialTheme.typography.labelSmall, color = overlayContent)
+                            Icon(
+                                if (copy.isMultiViewSheet) Icons.Rounded.ViewQuilt else Icons.Rounded.Image,
+                                contentDescription = null,
+                                tint = overlayContent,
+                                modifier = Modifier.size(12.dp),
+                            )
+                            Text(stringResource(copy.overlayTagRes), style = MaterialTheme.typography.labelSmall, color = overlayContent)
                         }
                     }
                     Surface(
@@ -937,6 +987,7 @@ private fun SheetCompactCard(
     title: String,
     subtitle: String,
     active: Boolean,
+    copy: AssetSingleImageCopy = singleImageCopyFor(AssetKind.CHARACTER),
     headerOverride: String? = null,
     versions: List<Pair<Int, String>> = emptyList(),
     selectedVersion: Int? = null,
@@ -954,8 +1005,8 @@ private fun SheetCompactCard(
             )
         } else {
             ModeSectionHeader(
-                title = stringResource(R.string.p2_mode_sheet_title),
-                badge = stringResource(if (active) R.string.p2_mode_active_badge else R.string.p2_mode_sheet_ready_badge),
+                title = stringResource(copy.sectionTitleRes),
+                badge = stringResource(if (active) R.string.p2_mode_active_badge else copy.readyBadgeRes),
                 active = active,
             )
         }
@@ -1284,7 +1335,7 @@ private fun AddViewCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = hint ?: stringResource(R.string.p2_optional_stage),
+                    text = hint ?: stringResource(R.string.p2_optional_reference_slot),
                     style = MaterialTheme.typography.labelSmall,
                     color = scheme.onSurfaceVariant.copy(alpha = 0.72f),
                     maxLines = 1,
@@ -1355,7 +1406,7 @@ private fun ShotReferencesSection(
                 }
                 shotMode == ReferenceInputMode.SEPARATE && asset.populatedReferenceViews().isNotEmpty() ->
                     stringResource(R.string.p2_views_count, asset.populatedReferenceViews().size)
-                asset.currentPath() != null -> stringResource(R.string.p2_using_sheet_image)
+                asset.currentPath() != null -> stringResource(singleImageCopyFor(asset.kind).usingReferenceRes)
                 asset.populatedReferenceViews().isNotEmpty() ->
                     stringResource(R.string.p2_views_count, asset.populatedReferenceViews().size)
                 else -> stringResource(R.string.p2_none)

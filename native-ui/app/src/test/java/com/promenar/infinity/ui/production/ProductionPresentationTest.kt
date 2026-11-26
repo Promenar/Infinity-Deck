@@ -4,8 +4,15 @@ import com.google.common.truth.Truth.assertThat
 import com.promenar.infinity.data.production.Asset
 import com.promenar.infinity.data.production.AssetKind
 import com.promenar.infinity.data.production.AssetStatus
+import com.promenar.infinity.data.production.ChangeSource
 import com.promenar.infinity.data.production.ProductionKind
 import com.promenar.infinity.data.production.ProductionStage
+import com.promenar.infinity.data.production.ReviewEntry
+import com.promenar.infinity.data.production.ReviewKind
+import com.promenar.infinity.data.production.ReviewTarget
+import com.promenar.infinity.data.production.Scene
+import com.promenar.infinity.data.production.Shot
+import com.promenar.infinity.data.production.ShotChangeRequest
 import com.promenar.infinity.data.production.ShotStatus
 import com.promenar.infinity.data.production.StageState
 import com.promenar.infinity.data.production.StageStatus
@@ -270,5 +277,132 @@ class ProductionPresentationTest {
         )
         assertThat(multiAllLocked.scriptStageSummary())
             .isEqualTo(ScriptStageSummary(ScriptStageKind.ALL_APPROVED, locked = 2, scriptedEpisodes = 2, totalEpisodes = 2))
+    }
+
+    @Test
+    fun `总览分镜阶段汇总对空场与未拆镜场景不误报待审且仅统计含镜头场`() {
+        val noScenes = production.copy(
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = listOf(production.episodes().first().copy(scenes = emptyList())),
+                ),
+            ),
+        )
+        assertThat(noScenes.storyboardStageSummary()).isEqualTo(
+            StoryboardStageSummary(StoryboardStageKind.NOT_STARTED, totalScenes = 0, scenesWithShots = 0, lockedScenes = 0, pendingScenes = 0),
+        )
+
+        val emptyScenesOnly = production.copy(
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = listOf(
+                        production.episodes().first().copy(
+                            scenes = listOf(
+                                Scene("SC01", 1, "巷口", storyboardLocked = false, shots = emptyList()),
+                                Scene("SC02", 2, "码头", storyboardLocked = false, shots = emptyList()),
+                                Scene("SC03", 3, "旧阁", storyboardLocked = false, shots = emptyList()),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertThat(emptyScenesOnly.storyboardStageSummary()).isEqualTo(
+            StoryboardStageSummary(StoryboardStageKind.NOT_STARTED, totalScenes = 3, scenesWithShots = 0, lockedScenes = 0, pendingScenes = 0),
+        )
+
+        val sampleShot = Shot("SC01-01", "提灯", durationSeconds = 4.0)
+        val mixed = production.copy(
+            seasons = listOf(
+                production.seasons.first().copy(
+                    episodes = listOf(
+                        production.episodes().first().copy(
+                            scenes = listOf(
+                                Scene("SC01", 1, "巷口", storyboardLocked = true, shots = listOf(sampleShot)),
+                                Scene("SC02", 2, "码头", storyboardLocked = false, shots = listOf(sampleShot.copy(code = "SC02-01"))),
+                                Scene("SC03", 3, "未拆镜空场", storyboardLocked = false, shots = emptyList()),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertThat(mixed.storyboardStageSummary()).isEqualTo(
+            StoryboardStageSummary(StoryboardStageKind.PENDING, totalScenes = 3, scenesWithShots = 2, lockedScenes = 1, pendingScenes = 1),
+        )
+
+        val lockedWithTrailingEmpty = mixed.copy(
+            seasons = listOf(
+                mixed.seasons.first().copy(
+                    episodes = listOf(
+                        mixed.episodes().first().copy(
+                            scenes = mixed.episodes().first().scenes.map { sc ->
+                                if (sc.code == "SC02") sc.copy(storyboardLocked = true) else sc
+                            },
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assertThat(lockedWithTrailingEmpty.storyboardStageSummary()).isEqualTo(
+            StoryboardStageSummary(StoryboardStageKind.ALL_APPROVED, totalScenes = 3, scenesWithShots = 2, lockedScenes = 2, pendingScenes = 0),
+        )
+    }
+
+    @Test
+    fun `总览变更请求标题区分未处理待审与本轮已处理条数并联动总览提示点`() {
+        val req1 = ShotChangeRequest("chg-1", "S1E01", "SC01", "SC01-01", emptyMap(), ChangeSource.AGENT)
+        val req2 = ShotChangeRequest("chg-2", "S1E01", "SC01", "SC01-02", emptyMap(), ChangeSource.AGENT)
+
+        assertThat(production.changeRequestHeaderCounts()).isEqualTo(ChangeRequestHeaderCounts(unhandled = 0, handled = 0))
+        assertThat(production.hasUnhandledChangeRequests()).isFalse()
+
+        val twoPending = production.copy(changeRequests = listOf(req1, req2))
+        assertThat(twoPending.changeRequestHeaderCounts()).isEqualTo(ChangeRequestHeaderCounts(unhandled = 2, handled = 0))
+        assertThat(twoPending.hasUnhandledChangeRequests()).isTrue()
+
+        val oneHandled = twoPending.copy(
+            reviews = listOf(ReviewEntry(ReviewTarget.change(req1.id), ReviewKind.APPROVE, at = 10L)),
+        )
+        assertThat(oneHandled.changeRequestHeaderCounts()).isEqualTo(ChangeRequestHeaderCounts(unhandled = 1, handled = 1))
+        assertThat(oneHandled.hasUnhandledChangeRequests()).isTrue()
+
+        val allHandledUnsent = twoPending.copy(
+            reviews = listOf(
+                ReviewEntry(ReviewTarget.change(req1.id), ReviewKind.APPROVE, at = 10L),
+                ReviewEntry(ReviewTarget.change(req2.id), ReviewKind.REJECT, note = "改时长", at = 11L),
+            ),
+        )
+        assertThat(allHandledUnsent.changeRequestHeaderCounts()).isEqualTo(ChangeRequestHeaderCounts(unhandled = 0, handled = 2))
+        assertThat(allHandledUnsent.hasUnhandledChangeRequests()).isFalse()
+
+        val allSent = twoPending.copy(
+            reviews = listOf(
+                ReviewEntry(ReviewTarget.change(req1.id), ReviewKind.APPROVE, at = 10L, round = 1),
+                ReviewEntry(ReviewTarget.change(req2.id), ReviewKind.REJECT, note = "改时长", at = 11L, round = 1),
+            ),
+        )
+        assertThat(allSent.changeRequestHeaderCounts()).isEqualTo(ChangeRequestHeaderCounts(unhandled = 0, handled = 0))
+        assertThat(allSent.hasUnhandledChangeRequests()).isFalse()
+    }
+
+    @Test
+    fun `可选阶段分镜预演与后处理在跳过或未开始时统一展示说明`() {
+        assertThat(useAnimaticOptionalHint(skipped = true, totalShots = 5, previewedShots = 2)).isTrue()
+        assertThat(useAnimaticOptionalHint(skipped = false, totalShots = 5, previewedShots = 0)).isTrue()
+        assertThat(useAnimaticOptionalHint(skipped = false, totalShots = 0, previewedShots = 0)).isTrue()
+        assertThat(useAnimaticOptionalHint(skipped = false, totalShots = 5, previewedShots = 2)).isFalse()
+
+        assertThat(usePostProcessOptionalHint(skipped = true, derivedShots = 0)).isTrue()
+        assertThat(usePostProcessOptionalHint(skipped = false, derivedShots = 0)).isTrue()
+        assertThat(usePostProcessOptionalHint(skipped = false, derivedShots = 1)).isFalse()
+    }
+
+    @Test
+    fun `空面板仅在用户主动重新扫描且无候选项目时触发无结果轻提示`() {
+        assertThat(shouldShowEmptyRescanNoneFeedback(userTriggered = false, candidateCount = 0)).isFalse()
+        assertThat(shouldShowEmptyRescanNoneFeedback(userTriggered = false, candidateCount = 2)).isFalse()
+        assertThat(shouldShowEmptyRescanNoneFeedback(userTriggered = true, candidateCount = 0)).isTrue()
+        assertThat(shouldShowEmptyRescanNoneFeedback(userTriggered = true, candidateCount = 1)).isFalse()
     }
 }

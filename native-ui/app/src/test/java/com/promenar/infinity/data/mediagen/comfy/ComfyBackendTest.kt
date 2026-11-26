@@ -240,6 +240,48 @@ class ComfyBackendTest {
         assertFalse(failed.message, failed.message.contains("top-secret-xyz"))
     }
 
+    @Test fun singleDefaultResolutionWithWidthHeightSlotsAllowsCustomAlignedSizesAndRejectsOutOfBounds() = runTest {
+        val f = ComfyFixture()
+        val graph = Json.parseToJsonElement("""{"1":{"class_type":"Test","inputs":{"prompt":"","width":1344,"height":768}},"2":{"class_type":"Save","inputs":{}}}""").jsonObject
+        val singleDefault = f.template.copy(
+            workflow = graph,
+            slots = listOf(
+                ComfySlot("1", "prompt", SlotKind.PROMPT),
+                ComfySlot("1", "width", SlotKind.WIDTH),
+                ComfySlot("1", "height", SlotKind.HEIGHT),
+                ComfySlot("2", "images", SlotKind.OUTPUT),
+            ),
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT), resolutions = listOf("1344x768")),
+        )
+        f.repository.saveHost(f.host)
+        f.repository.defineTemplateByAgent(singleDefault)
+        for ((w, h) in listOf(864 to 480, 1920 to 1088)) {
+            val req = f.request.copy(mode = GenerationMode.TEXT, inputs = emptyList(), specs = GenerationSpecs(width = w, height = h))
+            f.backend.submit(singleDefault.channel(), req)
+            val inputs = f.http.calls.last { it.first == "/prompt" }.second!!["prompt"]!!.jsonObject["1"]!!.jsonObject["inputs"]!!.jsonObject
+            assertEquals(w, inputs["width"]!!.jsonPrimitive.int)
+            assertEquals(h, inputs["height"]!!.jsonPrimitive.int)
+        }
+        try {
+            f.backend.submit(singleDefault.channel(), f.request.copy(mode = GenerationMode.TEXT, inputs = emptyList(), specs = GenerationSpecs(width = 32, height = 32)))
+            fail("应拒绝过小尺寸")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message.orEmpty().contains("64～4096"))
+        }
+
+        val multiWhitelist = singleDefault.copy(
+            id = "multi",
+            capabilities = MediaCapabilities(setOf(GenerationMode.TEXT), resolutions = listOf("768x768", "1344x768")),
+        )
+        f.repository.defineTemplateByAgent(multiWhitelist)
+        try {
+            f.backend.submit(multiWhitelist.channel(), f.request.copy(channelId = multiWhitelist.channelId, mode = GenerationMode.TEXT, inputs = emptyList(), specs = GenerationSpecs(width = 864, height = 480)))
+            fail("多预设白名单应拒绝名单外尺寸")
+        } catch (e: IllegalArgumentException) {
+            assertTrue(e.message.orEmpty().contains("对齐后的宽高不在模板允许的分辨率内"))
+        }
+    }
+
     private fun success(id: String) = Json.parseToJsonElement("""{"$id":{"status":{"completed":true,"status_str":"success"},"outputs":{"2":{"images":[{"filename":"out.png","subfolder":"test","type":"output"}]}}}}""").jsonObject
     private suspend fun expectFailure(action: suspend () -> Unit) {
         try { action(); fail("应拒绝无效输入") } catch (_: IllegalArgumentException) { }
