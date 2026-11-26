@@ -158,4 +158,77 @@ class ProductionPhaseTwoTest {
         val extra = outfit.copy(slots = outfit.slots + ReferenceSlot("detail", "细节"))
         assertThat(ProductionRules.removeSlot(extra, "detail").slots).hasSize(3)
     }
+
+    @Test fun `锁定场仅调整appearances参考位直接生效而换人或换造型仍走变更审批`() {
+        val base = fixture(locked = false).let { snap ->
+            val withAsset = snap.copy(
+                production = snap.production.copy(
+                    assets = listOf(
+                        Asset(
+                            id = "shen",
+                            kind = AssetKind.CHARACTER,
+                            name = "沈知澜",
+                            looks = listOf(CharacterLook("daoist", "宗门法衣"), CharacterLook("battle", "战袍")),
+                        ),
+                    ),
+                ),
+            )
+            val withApp = update(
+                withAsset,
+                """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","appearances":[{"characterAssetId":"shen","lookId":"daoist","referenceSlotIds":["front","side","back"]}]}""",
+            )
+            ProductionUserEngine.apply(withApp, withApp.revision, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.APPROVE, null), 10)
+        }
+
+        // 仅清空或重选 referenceSlotIds（角色与造型不变）：直接写入，不产生改动请求
+        val clearedSlots = update(
+            base,
+            """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","appearances":[{"characterAssetId":"shen","lookId":"daoist","referenceSlotIds":[]}]}""",
+        )
+        assertThat(clearedSlots.production.changeRequests).isEmpty()
+        assertThat(shot(clearedSlots).appearances.single().referenceSlotIds).isEmpty()
+
+        // 同时修改分镜画面与 referenceSlotIds：仅画面进入改动请求，referenceSlotIds 直接生效
+        val mixed = update(
+            clearedSlots,
+            """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","visual":"暴雨倾盆","appearances":[{"characterAssetId":"shen","lookId":"daoist","referenceSlotIds":["front"]}]}""",
+        )
+        assertThat(mixed.production.changeRequests).hasSize(1)
+        assertThat(mixed.production.changeRequests.single().changes.keys).containsExactly("visual")
+        assertThat(shot(mixed).visual).isNull()
+        assertThat(shot(mixed).appearances.single().referenceSlotIds).containsExactly("front")
+
+        // 切换造型 lookId：仍受锁场保护并生成改动请求
+        val lookSwitch = update(
+            clearedSlots,
+            """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","appearances":[{"characterAssetId":"shen","lookId":"battle","referenceSlotIds":["front"]}]}""",
+        )
+        assertThat(lookSwitch.production.changeRequests).hasSize(1)
+        assertThat(lookSwitch.production.changeRequests.single().changes.keys).containsExactly("appearances")
+        assertThat(shot(lookSwitch).appearances.single().lookId).isEqualTo("daoist")
+    }
+
+    @Test fun `批量批准原子应用多条待审变更并跳过已批准项`() {
+        val base = fixture(locked = false).let { snap ->
+            val withTwo = update(
+                snap,
+                """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-02","title":"镜头二","duration_seconds":4}""",
+            )
+            ProductionUserEngine.apply(withTwo, withTwo.revision, ProductionUserAction.Review(ReviewTarget.scene("S1E01", "SC01"), ReviewKind.APPROVE, null), 5)
+        }
+        val r1 = update(base, """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-01","title":"新镜一","change_note":"调整标题一"}""")
+        val r2 = update(r1, """{"op":"upsert_shot","episode_id":"S1E01","scene_code":"SC01","code":"SC01-02","title":"新镜二","change_note":"调整标题二"}""")
+        val ids = r2.production.changeRequests.map { it.id }
+        assertThat(ids).hasSize(2)
+
+        // 先批准第一条，再批量批准两条：第一条跳过不重复报错，第二条正常生效
+        val firstApproved = ProductionUserEngine.apply(r2, r2.revision, ProductionUserAction.Review(ReviewTarget.change(ids[0]), ReviewKind.APPROVE, null), 10)
+        val batchApproved = ProductionUserEngine.apply(firstApproved, firstApproved.revision, ProductionUserAction.ApproveChangeRequests(ids), 11)
+        val shots = batchApproved.production.seasons.single().episodes.single().scenes.single().shots
+        assertThat(shots.map { it.title }).containsExactly("新镜一", "新镜二").inOrder()
+        assertThat(batchApproved.production.changeRequests.all { it.approved }).isTrue()
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductionUserEngine.apply(batchApproved, batchApproved.revision, ProductionUserAction.ApproveChangeRequests(emptyList()), 12)
+        }
+    }
 }

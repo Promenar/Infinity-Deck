@@ -352,6 +352,8 @@ sealed interface ProductionUserAction {
     data class SaveRun(val run: ProductionRun, val take: Take? = null, val assetVersion: AssetVersion? = null) : ProductionUserAction
     data class SetUnregisteredFiles(val paths: List<String>) : ProductionUserAction
     data class Review(val target: ReviewTarget, val kind: ReviewKind, val note: String?) : ProductionUserAction
+    /** 原子批量批准多条待审镜头内容变更请求。 */
+    data class ApproveChangeRequests(val requestIds: List<String>) : ProductionUserAction
     data class RetractReview(val target: ReviewTarget, val kind: ReviewKind) : ProductionUserAction
     data class MarkReviewQueued(val round: Int, val at: Long) : ProductionUserAction
     data class RevertReviewQueued(val round: Int) : ProductionUserAction

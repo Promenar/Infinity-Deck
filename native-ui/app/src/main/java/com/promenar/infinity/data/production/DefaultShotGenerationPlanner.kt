@@ -147,14 +147,20 @@ class DefaultShotGenerationPlanner(
                             if (path == null || kindOf(sessionId, path) != InputKind.IMAGE || !files.isImageOrVideo(sessionId, path)) issues += text("missing_input", "${character.name}/${slot.name}")
                             else { ProductionManifestCodec.validatePath(path); paths += path }
                         }
-                        if (paths.size == 1) input(paths.single(), "${character.name} · ${slots.first().name}", look.name, expectedKind = InputKind.IMAGE)
-                        else if (paths.isNotEmpty()) packed += PlannedInput(null, "${character.name} · ${look.name}", slots.joinToString(" / ") { it.name }, InputKind.IMAGE, MediaRole.REFERENCE, null, paths)
+                        if (paths.size == 1) {
+                            if (packed.none { it.path == paths.single() }) input(paths.single(), "${character.name} · ${slots.first().name}", look.name, expectedKind = InputKind.IMAGE)
+                        } else if (paths.isNotEmpty()) packed += PlannedInput(null, "${character.name} · ${look.name}", slots.joinToString(" / ") { it.name }, InputKind.IMAGE, MediaRole.REFERENCE, null, paths)
                     }
                 } else {
                     if (sheetPath != null && (look.populatedSlots().isEmpty() || (selected.isNotEmpty() && slots.all { it.path.isNullOrBlank() }))) {
                         issues += text("mode_mismatch_separate", "${character.name} · ${look.name}")
                     } else {
-                        slots.forEach { slot -> input(slot.path, "${character.name} · ${slot.name}", look.name, expectedKind = InputKind.IMAGE) }
+                        slots.forEach { slot ->
+                            val path = slot.path
+                            if (path == null || packed.none { it.path == path }) {
+                                input(path, "${character.name} · ${slot.name}", look.name, expectedKind = InputKind.IMAGE)
+                            }
+                        }
                     }
                 }
             }
@@ -194,7 +200,9 @@ class DefaultShotGenerationPlanner(
             }
             shot.dialogue.filter { it.audioSource == DialogueAudioSource.NATIVE }.map { it.characterAssetId }.distinct().forEach { id ->
                 val character = p.assets.find { it.id == id }
-                character?.referenceVoice?.path?.let { input(it, character.name, "参考语音", MediaRole.REFERENCE_VOICE, InputKind.AUDIO) }
+                character?.referenceVoice?.path?.let { path ->
+                    if (packed.none { it.path == path }) input(path, character.name, "参考语音", MediaRole.REFERENCE_VOICE, InputKind.AUDIO)
+                }
             }
         }
         var number = 0

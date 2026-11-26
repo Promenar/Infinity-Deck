@@ -297,7 +297,7 @@ private val productionUpdateDescription = """
     remove 必填 target（season、episode、scene、shot、asset）、非空且无重复的 ids 字符串数组。target 为 scene 或 shot 时还必填 episode_id。
     mode 为 text、first_frame、last_frame、first_last、reference。preview 为 keyframe、draft_clip、text_card 或 null。路径保存为工作区相对路径，可使用同一会话文件工具给出的工作区虚拟路径。
     ${productionNestedFields.filterKeys { it !in setOf("ids", "prop_asset_ids") }.entries.joinToString("\n    ") { (key, format) -> "$key 用 $format。" }}
-    prop_asset_ids 为资产 ID 字符串数组。可选顶层字段 reason（最多 300 字）用于在本次批量操作涉及已锁定剧本、视觉资产、镜头或制作阶段时向用户说明修改原因，系统将弹出审批卡交由用户决定是否放行（涉及视觉参考图、剧本文件或增删重排镜头在批准后自动退回待审；锁定场允许的内容修改仍产生改动请求）。收到审核回合后逐条处理，用 agent_note、change_note 或资产 description 写明结果。用户改写的提示词受保护。
+    prop_asset_ids 为资产 ID 字符串数组。可选顶层字段 reason（最多 300 字）用于在本次批量操作涉及已锁定剧本、视觉资产、镜头或制作阶段时向用户说明修改原因，系统将弹出审批卡交由用户决定是否放行（涉及视觉参考图、剧本文件或增删重排镜头在批准后自动退回待审；锁定场修改镜头分镜内容仍产生待审变更请求，此时务必填写简明中文 change_note 说明原因；若角色与造型未变、仅调整 appearances.referenceSlotIds 则直接生效）。收到审核回合后逐条处理，用 agent_note、change_note 或资产 description 写明结果。用户改写的提示词受保护。
 """.trimIndent()
 
 private val productionUpdateSchema by lazy { buildJsonObject {
@@ -378,7 +378,7 @@ private val productionFieldDescriptions = mapOf(
     "preview" to "预览类别。", "preview_path" to "预览文件的工作区路径。",
     "sheet_path" to "造型单图多视图资产卡的工作区路径；null 可清空。",
     "sheet_note" to "造型多视图整卡说明；null 可清空。",
-    "agent_note" to "智能体处理结果。", "change_note" to "待审改动的说明。", "position" to "场内位置，从 0 起算。",
+    "agent_note" to "智能体处理结果。", "change_note" to "锁定场修改镜头内容时的简明中文修改原因（将前置展示在用户审批卡上，发起锁定场内容改动时务必填写）。", "position" to "场内位置，从 0 起算。",
     "status" to "状态，具体允许取值由 op 决定。", "kind" to "资产类别。", "name" to "资产、造型或视角显示名称。",
     "description" to "资产说明。", "path" to "候选、资产版本或参考视图的工作区媒体路径。",
     "service" to "候选的生成服务名称。", "model" to "候选使用的模型。", "task_id" to "对应生成任务标识。",

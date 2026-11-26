@@ -67,6 +67,16 @@ object ProductionUserEngine {
             is ProductionUserAction.SaveChain, is ProductionUserAction.SaveRun,
             is ProductionUserAction.SetUnregisteredFiles -> p = applyProductionProgress(p, action, now)
             is ProductionUserAction.Review -> p = ProductionReviews.review(p, action, revision, now)
+            is ProductionUserAction.ApproveChangeRequests -> {
+                val ids = action.requestIds.filter(String::isNotBlank).distinct()
+                require(ids.isNotEmpty()) { "没有可批准的变更请求。" }
+                ids.forEach { id ->
+                    val target = ReviewTarget.change(id)
+                    if (p.verdictOf(target)?.kind != ReviewKind.APPROVE) {
+                        p = ProductionReviews.review(p, ProductionUserAction.Review(target, ReviewKind.APPROVE, null), revision, now)
+                    }
+                }
+            }
             is ProductionUserAction.RetractReview -> p = ProductionReviews.retract(p, action, revision)
             is ProductionUserAction.MarkReviewQueued -> p = ProductionReviews.queued(p, action)
             is ProductionUserAction.RevertReviewQueued -> p = ProductionReviews.revertQueued(p, action, revision)

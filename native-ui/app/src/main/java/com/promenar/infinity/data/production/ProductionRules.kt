@@ -43,8 +43,20 @@ object ProductionRules {
     fun changes(old: Shot, updated: Shot): Map<String, ShotFieldChange> {
         val a = json.encodeToJsonElement(Shot.serializer(), old).jsonObject
         val b = json.encodeToJsonElement(Shot.serializer(), updated).jsonObject
-        return contentFields.mapNotNull { key -> if (a[key] != b[key]) key to ShotFieldChange(a.getValue(key), b.getValue(key)) else null }.toMap()
+        return contentFields.mapNotNull { key ->
+            when {
+                key == "appearances" && appearancesOnlyChangedSlots(old.appearances, updated.appearances) -> null
+                a[key] != b[key] -> key to ShotFieldChange(a.getValue(key), b.getValue(key))
+                else -> null
+            }
+        }.toMap()
     }
+
+    /** 角色与造型均未变化、仅调整生成阶段选用的 referenceSlotIds 时，视为出片规划参数而非锁定分镜内容变更。 */
+    private fun appearancesOnlyChangedSlots(old: List<ShotAppearance>, updated: List<ShotAppearance>): Boolean =
+        old.size == updated.size && old.zip(updated).all { (prev, next) ->
+            prev.characterAssetId == next.characterAssetId && prev.lookId == next.lookId
+        }
 
     fun applyChanges(shot: Shot, changes: Map<String, ShotFieldChange>): Shot {
         require(changes.keys.all { it in contentFields }) { "变更请求包含无效字段。" }

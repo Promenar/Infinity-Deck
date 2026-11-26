@@ -404,4 +404,47 @@ class ShotGenerationPlannerTest {
         assertNotNull(l2vPlanner.preview("s", "S1E01", "SC01-01").blockedReason)
     }
 
+    @Test fun `分张模式显式inputs已包含角色槽位图时不再重复挂载且保留显式顺序`() = runTest {
+        files.bytes["ref/face.png"] = byteArrayOf(31)
+        files.bytes["ref/sword.png"] = byteArrayOf(32)
+        store.production = store.production.copy(
+            assets = store.production.assets.map { asset ->
+                if (asset.id != "lin") asset else asset.copy(
+                    looks = asset.looks.map { look ->
+                        look.copy(slots = look.slots + ReferenceSlot("face", "面部近景", "ref/face.png"))
+                    },
+                )
+            } + Asset(
+                id = "sword",
+                kind = AssetKind.PROP,
+                name = "惊澜剑",
+                status = AssetStatus.LOCKED,
+                referenceViews = listOf(ReferenceSlot("concept", "概念图", "ref/sword.png")),
+                viewsLocked = true,
+            ),
+        )
+        edit {
+            it.copy(
+                appearances = listOf(ShotAppearance("lin", "coat", listOf("front", "side", "face", "back"))),
+                propAssetIds = listOf("sword"),
+                inputs = listOf(
+                    ShotInput(InputRole.REFERENCE, "ref/front.png", label = "P1 正面", assetId = "lin"),
+                    ShotInput(InputRole.REFERENCE, "ref/side.png", label = "P2 侧面", assetId = "lin"),
+                    ShotInput(InputRole.REFERENCE, "ref/face.png", label = "P3 面部", assetId = "lin"),
+                    ShotInput(InputRole.REFERENCE, "ref/back.png", label = "P4 背面", assetId = "lin"),
+                    ShotInput(InputRole.REFERENCE, "ref/sword.png", label = "P5 惊澜剑", assetId = "sword"),
+                    ShotInput(InputRole.REFERENCE, "ref/pier.png", label = "P6 码头", assetId = "pier"),
+                ),
+            )
+        }
+        val preview = planner(PlanningRegistry(planningChannel(max = 6))).preview("s", "S1E01", "SC01-01")
+        assertNull(preview.blockedReason)
+        assertTrue(preview.overflow.isEmpty())
+        assertEquals(
+            listOf("ref/front.png", "ref/side.png", "ref/face.png", "ref/back.png", "ref/sword.png", "ref/pier.png"),
+            preview.inputs.map { it.path },
+        )
+        assertEquals(listOf(1, 2, 3, 4, 5, 6), preview.inputs.map { it.number })
+    }
+
 }

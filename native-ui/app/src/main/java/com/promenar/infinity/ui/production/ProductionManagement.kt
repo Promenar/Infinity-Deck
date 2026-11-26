@@ -22,9 +22,11 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.DoneAll
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Palette
@@ -48,8 +50,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.promenar.infinity.R
@@ -57,6 +64,7 @@ import com.promenar.infinity.data.production.*
 import com.promenar.infinity.domain.mediagen.*
 import com.promenar.infinity.ui.common.*
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.forReading
 import com.promenar.infinity.ui.theme.infinityDomainColors
 
 // ---------- 总览 ----------
@@ -82,8 +90,32 @@ internal fun ProductionManagementTab(
     LazyColumn(contentPadding = ProductionPagePadding, verticalArrangement = Arrangement.spacedBy(ProductionSectionGap)) {
         if (production.experimental) item("experiment") { ProductionTrialStrip() }
         if (pendingChanges.isNotEmpty()) item("changes") {
-            ProductionSection(stringResource(R.string.p2_change_request)) {
-                pendingChanges.forEach { request ->
+            val unapprovedIds = pendingChanges.filter { production.verdictOf(ReviewTarget.change(it.id))?.kind != ReviewKind.APPROVE }.map { it.id }
+            val sectionTitle = stringResource(R.string.p2_change_request)
+            ProductionSection(
+                title = sectionTitle,
+                titleSegments = listOf(sectionTitle, stringResource(R.string.p2_change_pending_count, pendingChanges.size)),
+                titleAction = if (unapprovedIds.size >= 2) {
+                    {
+                        InfinityPillButton(
+                            text = stringResource(R.string.p2_change_approve_all),
+                            onClick = { onRun(ProductionUserAction.ApproveChangeRequests(unapprovedIds)) },
+                            tone = InfinityPillTone.PRIMARY,
+                            icon = Icons.Rounded.DoneAll,
+                            enabled = !busy,
+                            compact = true,
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
+                    }
+                } else null,
+            ) {
+                pendingChanges.forEachIndexed { index, request ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                            modifier = Modifier.padding(horizontal = InfinitySpacing.RowHorizontal),
+                        )
+                    }
                     ChangeRequestRow(request, production, busy, onRun, onSubmit)
                 }
             }
@@ -269,24 +301,237 @@ private fun ChangeRequestRow(
     onRun: (ProductionUserAction) -> Unit,
     onSubmit: suspend (ProductionUserAction) -> String?,
 ) {
+    val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
     val target = ReviewTarget.change(request.id)
-    ProductionRow(
-        stringResource(R.string.p2_change_request),
-        icon = Icons.Rounded.EditNote,
-        subtitle = "${request.episodeId} · ${request.shotCode}", // wrap-check: allow 改动请求副标题固定单行横滑
-        chip = production.reviewChipSpec(target),
-        chevron = false,
+    val shot = production.findShot(request.episodeId, request.shotCode)?.shot
+    val shotTitle = shot?.title?.takeIf(String::isNotBlank)
+    val codeSegments = listOfNotNull(
+        request.episodeId.takeIf { production.showEpisodeNumbers() },
+        request.shotCode,
     )
+    val sourceText = stringResource(if (request.source == ChangeSource.AGENT) R.string.p2_change_source_agent else R.string.p2_change_source_user)
+    val countText = stringResource(R.string.p2_change_item_count, request.changes.size)
+    val noNoteText = stringResource(R.string.p2_change_no_note)
+    val metaSegments = buildList {
+        add(sourceText)
+        add(countText)
+        if (request.note.isNullOrBlank()) add(noNoteText)
+    }
+    val formatStrings = rememberChangeRequestFormatStrings()
+    val diffLines = formatShotChangeRequestDiffs(production, request.changes, formatStrings)
+    val chip = production.reviewChipSpec(target)
+
     Column(
-        Modifier.fillMaxWidth().padding(start = InfinitySpacing.RowHorizontal + InfinitySpacing.RowIconSize + InfinitySpacing.RowIconGap, end = InfinitySpacing.RowHorizontal, bottom = InfinitySpacing.Small),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        request.changes.forEach { (field, change) ->
-            Text(stringResource(R.string.p2_change_diff, contentFieldLabel(field), change.oldValue.toString(), change.newValue.toString()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.EditNote,
+                    contentDescription = null,
+                    tint = scheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                InfinityMetaLine(
+                    segments = codeSegments,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = scheme.primary,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                chip?.let { ProductionStatusChip(it.text, it.tone) }
+            }
+            if (shotTitle != null) {
+                Text(
+                    text = shotTitle,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            InfinityMetaLine(
+                segments = metaSegments,
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 2,
+            )
         }
-        request.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
+        request.note?.takeIf(String::isNotBlank)?.let { reason ->
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = domain.infoContainer.copy(alpha = 0.42f),
+                border = BorderStroke(0.5.dp, domain.onInfoContainer.copy(alpha = 0.18f)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = domain.onInfoContainer,
+                        modifier = Modifier.padding(top = 2.dp).size(15.dp),
+                    )
+                    Text(
+                        text = reason,
+                        style = MaterialTheme.typography.bodySmall.forReading(),
+                        color = scheme.onSurface,
+                    )
+                }
+            }
+        }
+
+        if (diffLines.isNotEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = scheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    diffLines.forEachIndexed { index, line ->
+                        if (index > 0) {
+                            HorizontalDivider(
+                                color = scheme.outlineVariant.copy(alpha = 0.45f),
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                            )
+                        }
+                        ChangeRequestDiffRow(line)
+                    }
+                }
+            }
+        }
+
         ProductionReviewNotes(production, target)
-        ProductionReviewActions(production, target, listOf(request.shotCode, stringResource(R.string.p2_change_request)), busy, onRun, onSubmit, Modifier.padding(top = 4.dp))
+        ProductionReviewActions(production, target, listOf(request.shotCode, stringResource(R.string.p2_change_request)), busy, onRun, onSubmit)
+    }
+}
+
+@Composable
+private fun ChangeRequestDiffRow(line: ChangeRequestDiffLine) {
+    val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
+    val emptyOld = stringResource(R.string.production_lock_diff_old_empty)
+    val clearedNew = stringResource(R.string.production_lock_diff_cleared)
+
+    fun inlineDiffText(): AnnotatedString = buildAnnotatedString {
+        withStyle(
+            SpanStyle(
+                color = scheme.onSurfaceVariant,
+                textDecoration = if (line.oldText != null) TextDecoration.LineThrough else TextDecoration.None,
+            ),
+        ) {
+            append(line.oldText ?: emptyOld)
+        }
+        append("  →  ")
+        withStyle(SpanStyle(color = scheme.onSurface, fontWeight = FontWeight.Medium)) {
+            append(line.newText ?: clearedNew)
+        }
+    }
+
+    @Composable
+    fun DiffLabel(modifier: Modifier = Modifier) {
+        val labelStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+        val segments = line.labelSegments
+        if (segments != null) {
+            InfinityMetaLine(segments = segments, style = labelStyle, color = scheme.onSurfaceVariant, modifier = modifier)
+        } else {
+            Text(text = line.label, style = labelStyle, color = scheme.onSurfaceVariant, modifier = modifier)
+        }
+    }
+
+    when {
+        line.stacked -> Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            DiffLabel()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(shape = RoundedCornerShape(4.dp), color = scheme.surfaceContainerHighest) {
+                    Text(
+                        text = stringResource(R.string.p2_change_badge_old),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+                Text(
+                    text = line.oldText ?: emptyOld,
+                    style = MaterialTheme.typography.bodySmall.forReading(),
+                    color = scheme.onSurfaceVariant,
+                    textDecoration = if (line.oldText != null) TextDecoration.LineThrough else TextDecoration.None,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Surface(shape = RoundedCornerShape(4.dp), color = domain.infoContainer.copy(alpha = 0.72f)) {
+                    Text(
+                        text = stringResource(R.string.p2_change_badge_new),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = domain.onInfoContainer,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+                Text(
+                    text = line.newText ?: clearedNew,
+                    style = MaterialTheme.typography.bodySmall.forReading(),
+                    fontWeight = FontWeight.Medium,
+                    color = scheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        line.headerAbove -> Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            DiffLabel()
+            Text(
+                text = inlineDiffText(),
+                style = MaterialTheme.typography.bodySmall.forReading(),
+            )
+        }
+        else -> Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                text = line.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.weight(0.24f),
+            )
+            Text(
+                text = inlineDiffText(),
+                style = MaterialTheme.typography.bodySmall.forReading(),
+                modifier = Modifier.weight(0.76f),
+            )
+        }
     }
 }
 

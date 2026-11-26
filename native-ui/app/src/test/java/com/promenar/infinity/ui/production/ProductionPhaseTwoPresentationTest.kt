@@ -313,4 +313,58 @@ class ProductionPhaseTwoPresentationTest {
         assertThat(entry.hasProduction).isFalse()
     }
 
+    @Test fun `变更请求差异格式化输出中文名称并消除原始JSON与引号`() {
+        val json = kotlinx.serialization.json.Json { encodeDefaults = true }
+        val shen = Asset(
+            id = "shen-zhilan",
+            kind = AssetKind.CHARACTER,
+            name = "沈知澜",
+            looks = listOf(
+                CharacterLook("daoist", "宗门法衣", defaultReferenceSlots() + ReferenceSlot("face", "面部近景", "f.png")),
+                CharacterLook("battle", "雨夜战袍"),
+            ),
+        )
+        val sword = Asset("jinglan-sword", AssetKind.PROP, "惊澜剑")
+        val stream = Asset("qixia-stream", AssetKind.LOCATION, "听雨仙阁后山临溪石坪")
+        val prod = production.copy(assets = listOf(shen, sword, stream))
+
+        val changes = linkedMapOf(
+            "appearances" to ShotFieldChange(
+                json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(ShotAppearance.serializer()), listOf(ShotAppearance("shen-zhilan", "daoist", listOf("front", "side", "face", "back")))),
+                json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(ShotAppearance.serializer()), listOf(ShotAppearance("shen-zhilan", "battle", emptyList()))),
+            ),
+            "durationSeconds" to ShotFieldChange(kotlinx.serialization.json.JsonPrimitive(5.0), kotlinx.serialization.json.JsonPrimitive(6.0)),
+            "locationAssetId" to ShotFieldChange(kotlinx.serialization.json.JsonNull, kotlinx.serialization.json.JsonPrimitive("qixia-stream")),
+            "propAssetIds" to ShotFieldChange(kotlinx.serialization.json.JsonArray(emptyList()), kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("jinglan-sword")))),
+            "visual" to ShotFieldChange(
+                kotlinx.serialization.json.JsonPrimitive("原地起跳反手下劈。"),
+                kotlinx.serialization.json.JsonPrimitive("沈知澜蹬石腾空，反手举剑顺雨幕弧线劈落，落地溅起冷青色水环。"),
+            ),
+            "dialogue" to ShotFieldChange(
+                json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(ShotDialogue.serializer()), emptyList()),
+                json.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(ShotDialogue.serializer()), listOf(ShotDialogue("shen-zhilan", "破！", "冷冽沉声"))),
+            ),
+        )
+
+        val lines = formatShotChangeRequestDiffs(prod, changes)
+        assertThat(lines.map { it.label }).containsExactly("沈知澜 造型", "沈知澜 参考位", "时长", "场景", "道具", "画面", "对白").inOrder()
+        assertThat(lines[0]).isEqualTo(
+            ChangeRequestDiffLine("沈知澜 造型", "宗门法衣", "雨夜战袍", stacked = false, headerAbove = true, labelSegments = listOf("沈知澜", "造型")),
+        )
+        assertThat(lines[1].labelSegments).containsExactly("沈知澜", "参考位").inOrder()
+        assertThat(lines[1].oldText).isEqualTo("正面全身、侧面全身、面部近景、背面全身")
+        assertThat(lines[1].newText).isEqualTo("已清空")
+        assertThat(lines[1].stacked).isTrue()
+        assertThat(lines[2]).isEqualTo(ChangeRequestDiffLine("时长", "5 秒", "6 秒"))
+        assertThat(lines[3]).isEqualTo(ChangeRequestDiffLine("场景", null, "听雨仙阁后山临溪石坪"))
+        assertThat(lines[4]).isEqualTo(ChangeRequestDiffLine("道具", null, "惊澜剑"))
+        assertThat(lines[5].stacked).isTrue()
+        assertThat(lines[5].oldText).isEqualTo("原地起跳反手下劈。")
+        assertThat(lines[6].newText).isEqualTo("沈知澜（冷冽沉声）：「破！」")
+        lines.forEach { line ->
+            assertThat(line.oldText.orEmpty()).doesNotContain("characterAssetId")
+            assertThat(line.newText.orEmpty()).doesNotContain("characterAssetId")
+        }
+    }
+
 }

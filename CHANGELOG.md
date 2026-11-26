@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **修复片场分张参考图重复注入、对齐锁场参考位边界并重构「内容变更请求」可读审批卡片（[DefaultShotGenerationPlanner.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/DefaultShotGenerationPlanner.kt)、[ProductionRules.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionRules.kt)、[ProductionUserEngine.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionUserEngine.kt)、[ProductionChangeRequestFormatter.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionChangeRequestFormatter.kt)、[ProductionManagement.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionManagement.kt)、[ProductionSkills.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/ProductionSkills.kt)、[production.md](native-ui/app/src/main/assets/builtin_skills/infinity-deck/references/production.md)）**：
+  - 补齐 `DefaultShotGenerationPlanner` 分张单视图槽位、单槽合图回退与原生参考语音的路径去重（`packed.none { it.path == path }`），消除显式 `inputs` 与角色分张参考位并存时重复挂载或触发上限溢出的问题。
+  - 在 `ProductionRules.changes` 中区分「角色/造型变更」与「仅调整 `appearances.referenceSlotIds`」，锁定场内仅增减参考槽位时与用户端 `ToggleReferenceSlot` 保持一致直接生效，不再弹出无意义的二次内容变更审批。
+  - 重构制作面板总览「内容变更请求」卡片与格式化器：将出场角色/造型/参考位、对白、场景、道具、时长与文本字段翻译为中文可读差异（消除原始 JSON、英文键名与引号），前置展示 `change_note` 变更理由条，长文本自动切为「原 / 改」纵向对照，并在待审 ≥ 2 条时提供原子「全部批准」入口（`ProductionUserAction.ApproveChangeRequests`）；同步在工具说明与内置指南中要求锁定场内容变更填写简明中文 `change_note`。
+
 ## [0.79.5-beta] - 2026-11-26
 
 自上一公开版 `v0.76.3-beta` 以来的主要更新：
