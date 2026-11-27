@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.81.2-beta] - 2026-11-27
+
+- **全面收口全站公网通道绕过内置代理问题并自动补刷模型规格库（[BuiltInProxyProxies.kt](native-ui/app/src/main/java/com/promenar/infinity/data/proxy/BuiltInProxyProxies.kt)、[ModelCatalogUpdater.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/ModelCatalogUpdater.kt)、[InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt)、[GitRemoteHttpClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/git/remote/GitRemoteHttpClient.kt)、[AppUpdateChecker.kt](native-ui/app/src/main/java/com/promenar/infinity/data/update/AppUpdateChecker.kt)、[ModelDownloader.kt](native-ui/app/src/main/java/com/promenar/infinity/data/local/inference/ModelDownloader.kt)、[GeminiMediaGenerationBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/cloud/GeminiMediaGenerationBackend.kt)、[RichContentHttpsFetcher.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/RichContentHttpsFetcher.kt)、[WebDavBackupClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/remote/webdav/WebDavBackupClient.kt)、[BackupRepository.kt](native-ui/app/src/main/java/com/promenar/infinity/data/repository/BackupRepository.kt)）**：
+  - 新增 `applyOptionalBuiltInProxy` 与 `OptionalBuiltInProxySelector` 通用按需内置代理原语：内置代理运行时自动为公网目标选路并执行严格 407 `CONNECT` / 进程 realm / 代理地址校验与 `X-Infinity-Public-Target: 1` 标记；代理关闭，或目标属于本机、`.local`/`.lan`/`.internal`/`.home.arpa`、非 Tailnet 单标签内网主机、RFC1918 私网与 Tailscale 地址时严格绕过回退直连/系统代理。
+  - 修复模型规格库在线更新（`PagesCatalogTransport`）绕过内置代理导致长期报错 `规格库更新失败 / 沿用内置快照` 的问题，并在 `InfinityApplication.startModelCatalogUpdates()` 监听内置代理就绪或端口重建自动补刷未缓存或失败态规格库。
+  - 同步将应用共享 `httpClient`（技能商店、DuckDuckGo/Tavily/Keenable/公网 SearXNG 网页搜索、公网远程 MCP）、GitHub Releases 版本更新检查、本地 GGUF 与离线语音识别（Sherpa-ONNX）模型下载、MiniMax 云端音频 URL 下载、聊天富内容 HTTPS 资源抓取、云端 WebDAV 备份与公网 ComfyUI 端点全部纳入内置代理（与 Tailscale 分流共存），同步对齐 `GitRemoteProxySelector` 局域网绕过边界并补齐 [OptionalBuiltInProxyHttpTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/proxy/OptionalBuiltInProxyHttpTest.kt) 回归测试。
+
 ## [0.81.1-beta] - 2026-11-27
 
 - **放宽含多档推荐预设的 ComfyUI `WIDTH`/`HEIGHT` 工作流自定义分辨率校验并补齐 `add_asset_version(duration_seconds)`（[ComfyBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/comfy/ComfyBackend.kt)、[ProductionOperationContract.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionOperationContract.kt)、[ProductionEngine.kt](native-ui/app/src/main/java/com/promenar/infinity/data/production/ProductionEngine.kt)、[ProductionSkills.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/ProductionSkills.kt)）**：

@@ -345,6 +345,21 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     }
                 }
             })
+            // 内置代理首次就绪或重启后，若规格库尚处于失败态或仅沿用内置快照，自动补刷一次。
+            startupScope.launch {
+                var previousPort: Int? = builtInProxyManager.endpoint.value?.port
+                builtInProxyManager.endpoint.collect { endpoint ->
+                    val nextPort = endpoint?.port
+                    val becameAvailable = nextPort != null && nextPort != previousPort
+                    previousPort = nextPort
+                    if (becameAvailable && _startupState.value == BackupStartupState.Ready) {
+                        val current = modelCatalogUpdater.status.value
+                        if (current.phase == com.promenar.infinity.data.model.catalog.CatalogUpdatePhase.FAILED || !current.cached) {
+                            modelCatalogUpdater.refresh(force = true)
+                        }
+                    }
+                }
+            }
             catalogObserverRegistered = true
         }
         startupScope.launch { modelCatalogUpdater.refresh() }
@@ -2002,7 +2017,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.mediagen.comfy.ComfyModule(
             preferences = getSharedPreferences("infinity_settings", MODE_PRIVATE),
             secrets = secretStore,
-            client = gitRemoteHttpClient,
+            client = gitHttpsOutboundClient,
             resolver = workspaceMediaResolver,
             store = workspaceMediaStore,
             appFilesDir = filesDir,
@@ -2026,12 +2041,8 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                 json(Json { ignoreUnknownKeys = true })
             }
             engine {
-                // tailnet 目标经内置 Tailscale 本机代理；其它目标仍按系统默认选择器（无系统代理即直连）。
-                config {
-                    proxySelector(tailnetManager.proxySelector)
-                    proxyAuthenticator(tailnetManager.proxyAuthenticator)
-                    addNetworkInterceptor(tailnetManager.proxyAuthInterceptor)
-                }
+                // tailnet 目标经内置 Tailscale 本机代理，私网/本机保持直连，公网在内置代理运行时自动复用内置代理。
+                preconfigured = gitHttpsOutboundClient
             }
         }
     }
@@ -3965,7 +3976,7 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
             .build()
     }
 
-    private val gitHttpsOutboundClient: okhttp3.OkHttpClient by lazy {
+    internal val gitHttpsOutboundClient: okhttp3.OkHttpClient by lazy {
         com.promenar.infinity.data.git.remote.GitRemoteHttpClient.create(tailnetManager, builtInProxyManager)
     }
 

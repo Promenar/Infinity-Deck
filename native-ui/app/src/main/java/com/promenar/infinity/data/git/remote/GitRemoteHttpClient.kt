@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.git.remote
 
 import com.promenar.infinity.data.proxy.BuiltInProxyRouting
+import com.promenar.infinity.data.proxy.shouldBypassOptionalBuiltInProxy
 import com.promenar.infinity.data.tailnet.SystemDefaultProxySelector
 import com.promenar.infinity.data.tailnet.TailnetEndpointSource
 import com.promenar.infinity.data.tailnet.TailnetHosts
@@ -81,9 +82,7 @@ private class GitRemoteProxySelector(
         val host = uri?.host?.let(TailnetHosts::normalize) ?: return fallback.select(uri)
         val literal = TailnetHosts.parseAddressLiteral(host)
         if (isTailnetHost(host, literal)) return tailnet.proxySelector.select(uri)
-        if (host == "localhost" || host.endsWith(".localhost") || host.endsWith(".local") ||
-            literal != null && PublicHttpPolicy.isPrivateOrLocalAddress(InetAddress.getByAddress(literal))
-        ) {
+        if (shouldBypassOptionalBuiltInProxy(host)) {
             return fallback.select(uri)
         }
         val proxy = builtInProxy.endpoint.value?.proxy ?: return fallback.select(uri)

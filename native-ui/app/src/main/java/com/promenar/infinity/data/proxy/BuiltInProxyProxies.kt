@@ -1,10 +1,14 @@
 package com.promenar.infinity.data.proxy
 
+import com.promenar.infinity.data.tailnet.SystemDefaultProxySelector
+import com.promenar.infinity.data.tailnet.TailnetHosts
+import com.promenar.infinity.domain.network.PublicHttpPolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import okhttp3.Authenticator
 import okhttp3.Credentials
 import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
@@ -97,6 +101,73 @@ class BuiltInPreemptiveProxyAuthInterceptor(
 
 private const val PUBLIC_TARGET_HEADER = "X-Infinity-Public-Target"
 private const val PROXY_AUTHORIZATION = "Proxy-Authorization"
+private const val PROXY_AUTHENTICATE = "Proxy-Authenticate"
+private const val PREEMPTIVE_CHALLENGE = "OkHttp-Preemptive"
+
+/**
+ * 为公网出站 OkHttpClient 挂载按需内置代理路由：
+ * - 内置代理运行时，公网目标自动经由内置代理并附加 realm/地址严格校验的认证凭据；
+ * - 内置代理关闭，或目标属于本机、局域网、私网、Tailnet 地址时，回退至 [fallback]（默认系统代理/直连）。
+ */
+internal fun OkHttpClient.Builder.applyOptionalBuiltInProxy(
+    routing: () -> BuiltInProxyRouting = { InstalledBuiltInProxyRouting.routing },
+    publicTargetOnly: Boolean = true,
+    fallback: ProxySelector = SystemDefaultProxySelector,
+): OkHttpClient.Builder {
+    val dynamicSource = object : BuiltInProxyEndpointSource {
+        override val endpoint: StateFlow<BuiltInProxyEndpoint?> get() = routing().endpoint
+    }
+    val authenticator = BuiltInProxyAuthenticator(dynamicSource, publicTargetOnly = publicTargetOnly)
+    return proxySelector(OptionalBuiltInProxySelector(routing, fallback))
+        .proxyAuthenticator { route, response ->
+            if (!response.isBuiltInProxyChallenge()) return@proxyAuthenticator null
+            authenticator.authenticate(route, response)
+        }
+        .addNetworkInterceptor(BuiltInPreemptiveProxyAuthInterceptor(dynamicSource, publicTargetOnly = publicTargetOnly))
+}
+
+internal fun Response.isBuiltInProxyChallenge(): Boolean {
+    if (code != 407) return false
+    val connect = request.method == "CONNECT"
+    if (request.url.isHttps && !connect) return false
+    if (header(PROXY_AUTHENTICATE) != PREEMPTIVE_CHALLENGE) return true
+    return connect && sentRequestAtMillis == -1L && receivedResponseAtMillis == -1L
+}
+
+internal class OptionalBuiltInProxySelector(
+    private val routing: () -> BuiltInProxyRouting,
+    private val fallback: ProxySelector = SystemDefaultProxySelector,
+) : ProxySelector() {
+    override fun select(uri: URI?): List<Proxy> {
+        val host = uri?.host?.let(TailnetHosts::normalize) ?: return fallback.select(uri)
+        if (shouldBypassOptionalBuiltInProxy(host)) return fallback.select(uri)
+        val proxy = routing().endpoint.value?.proxy ?: return fallback.select(uri)
+        return listOf(proxy)
+    }
+
+    override fun connectFailed(uri: URI?, sa: SocketAddress?, ioe: IOException?) {
+        if (sa != null && sa == routing().endpoint.value?.address) return
+        fallback.connectFailed(uri, sa, ioe)
+    }
+}
+
+internal fun shouldBypassOptionalBuiltInProxy(normalizedHost: String): Boolean {
+    if (normalizedHost.isEmpty()) return true
+    val literal = TailnetHosts.parseAddressLiteral(normalizedHost)
+    if (literal != null) {
+        if (TailnetHosts.isTailnetAddress(literal)) return true
+        return PublicHttpPolicy.isPrivateOrLocalAddress(InetAddress.getByAddress(literal))
+    }
+    if (normalizedHost == "localhost" || normalizedHost.endsWith(".localhost") ||
+        normalizedHost.endsWith(".local") || normalizedHost.endsWith(".lan") ||
+        normalizedHost.endsWith(".internal") || normalizedHost.endsWith(".home.arpa") ||
+        normalizedHost.endsWith(".ts.net")
+    ) {
+        return true
+    }
+    return '.' !in normalizedHost && ':' !in normalizedHost &&
+        normalizedHost.any(Char::isLetter) && !normalizedHost.startsWith("0x")
+}
 
 private fun Request.withProxyCredentials(endpoint: BuiltInProxyEndpoint, publicTargetOnly: Boolean): Request =
     newBuilder().header(

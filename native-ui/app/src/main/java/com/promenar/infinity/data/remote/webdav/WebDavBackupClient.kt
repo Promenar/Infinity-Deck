@@ -1,6 +1,9 @@
 package com.promenar.infinity.data.remote.webdav
 
 import com.promenar.infinity.data.backup.BackupPackageLimits
+import com.promenar.infinity.data.proxy.BuiltInProxyRouting
+import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
+import com.promenar.infinity.data.proxy.applyOptionalBuiltInProxy
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
@@ -111,8 +114,14 @@ class WebDavPruneException(
     val failedFileNames: List<String>,
 ) : WebDavException("远程备份清理未完全成功：${failedFileNames.size} 个文件删除失败")
 
+internal fun createDefaultWebDavOkHttpClient(
+    builtInProxy: () -> BuiltInProxyRouting = { InstalledBuiltInProxyRouting.routing },
+): okhttp3.OkHttpClient = okhttp3.OkHttpClient.Builder()
+    .applyOptionalBuiltInProxy(routing = builtInProxy, publicTargetOnly = true)
+    .build()
+
 class KtorWebDavBackupClient(
-    engine: HttpClientEngine = OkHttp.create(),
+    engine: HttpClientEngine = OkHttp.create { preconfigured = createDefaultWebDavOkHttpClient() },
     private val uuidFactory: () -> UUID = UUID::randomUUID,
     private val timeouts: WebDavTimeouts = WebDavTimeouts(),
     private val parser: DavMultiStatusParser = DavMultiStatusParser(),

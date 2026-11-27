@@ -1,6 +1,9 @@
 package com.promenar.infinity.data.local.inference
 
 import android.content.Context
+import com.promenar.infinity.data.proxy.BuiltInProxyRouting
+import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
+import com.promenar.infinity.data.proxy.applyOptionalBuiltInProxy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -19,10 +22,19 @@ class ModelDownloadIntegrityException(message: String) : IOException(message)
 
 class ModelDownloader internal constructor(
     private val modelsDir: File,
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build(),
+    private val client: OkHttpClient = createDefaultModelDownloadClient(),
 ) {
     constructor(context: Context) : this(File(context.filesDir, "models"))
+
+    companion object {
+        internal fun createDefaultModelDownloadClient(
+            builtInProxy: () -> BuiltInProxyRouting = { InstalledBuiltInProxyRouting.routing },
+        ): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .applyOptionalBuiltInProxy(routing = builtInProxy, publicTargetOnly = true)
+            .build()
+    }
 
     data class DownloadState(
         val url: String,

@@ -1,6 +1,7 @@
 package com.promenar.infinity.data.mediagen.cloud
 
 import com.promenar.infinity.data.model.CloudMediaApi
+import com.promenar.infinity.data.proxy.applyOptionalBuiltInProxy
 import com.promenar.infinity.domain.mediagen.*
 import java.io.File
 import java.io.IOException
@@ -259,19 +260,33 @@ class GeminiMediaGenerationBackend(
         return normalizeAudioPayload(binary.bytes, binary.contentType ?: mimeForExtension(format), usage = mapOf("tasks" to 1L))
     }
 
+    private val audioDownloadClient: okhttp3.OkHttpClient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .applyOptionalBuiltInProxy(publicTargetOnly = true)
+            .build()
+    }
+
     private suspend fun downloadMiniMaxAudio(url: String): ByteArray = withContext(Dispatchers.IO) {
         val uri = java.net.URI(url)
         require(uri.scheme in setOf("https", "http") && uri.host != null) { "音频下载地址无效" }
-        val conn = (uri.toURL().openConnection() as java.net.HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 60_000
-            instanceFollowRedirects = true
-        }
-        try {
-            if (conn.responseCode !in 200..299) throw CloudHttpException(conn.responseCode)
-            conn.inputStream.use { it.readBytes() }
-        } finally {
-            conn.disconnect()
+        val request = okhttp3.Request.Builder().url(url).get().build()
+        audioDownloadClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw CloudHttpException(response.code)
+            val body = response.body ?: throw IOException("音频下载响应为空")
+            val maxBytes = 32 * 1024 * 1024
+            val out = java.io.ByteArrayOutputStream()
+            body.byteStream().use { input ->
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (out.size() + count > maxBytes) throw IOException("音频下载文件超过大小上限")
+                    out.write(buffer, 0, count)
+                }
+            }
+            out.toByteArray()
         }
     }
 

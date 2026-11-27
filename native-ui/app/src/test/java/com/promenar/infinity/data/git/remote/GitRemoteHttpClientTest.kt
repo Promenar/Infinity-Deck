@@ -66,6 +66,7 @@ class GitRemoteHttpClientTest {
         for (host in listOf(
             "127.0.0.1", "[::1]", "10.0.0.1", "172.31.0.1", "192.168.1.1", "169.254.1.1",
             "[fd00::1]", "[fe80::1]", "[::ffff:192.168.1.1]", "LOCALHOST.", "git.localhost", "nas.local.",
+            "router.lan", "searxng.internal", "home.home.arpa", "intranet",
         )) {
             assertThat(client.proxySelector.select(URI("https://$host/"))).containsExactly(fallbackProxy)
         }

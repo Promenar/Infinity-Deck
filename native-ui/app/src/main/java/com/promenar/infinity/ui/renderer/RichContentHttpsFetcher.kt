@@ -1,5 +1,8 @@
 package com.promenar.infinity.ui.renderer
 
+import com.promenar.infinity.data.proxy.BuiltInProxyRouting
+import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
+import com.promenar.infinity.data.proxy.applyOptionalBuiltInProxy
 import java.net.InetAddress
 import java.net.Proxy
 import java.net.UnknownHostException
@@ -17,8 +20,11 @@ internal class RichContentPublicDns(private val delegate: Dns = Dns.SYSTEM) : Dn
     }
 }
 
-internal class RichContentHttpsFetcher(client: OkHttpClient = publicClient) {
-    private val client = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+internal class RichContentHttpsFetcher(
+    client: OkHttpClient? = null,
+    private val builtInProxy: () -> BuiltInProxyRouting = { InstalledBuiltInProxyRouting.routing },
+) {
+    private val customClient = client?.newBuilder()?.followRedirects(false)?.followSslRedirects(false)?.build()
 
     fun fetch(url: String, headers: Map<String, String> = emptyMap()): Response? {
         var current = url
@@ -28,8 +34,9 @@ internal class RichContentHttpsFetcher(client: OkHttpClient = publicClient) {
                 headers.filterKeys { it.lowercase() in setOf("accept", "accept-language", "user-agent", "origin", "range") }
                     .forEach { (name, value) -> header(name, value) }
             }.build()
+            val activeClient = customClient ?: if (builtInProxy().endpoint.value != null) proxiedClient else publicClient
             val response = try {
-                client.newCall(request).execute()
+                activeClient.newCall(request).execute()
             } catch (_: Exception) {
                 return null
             }
@@ -42,10 +49,22 @@ internal class RichContentHttpsFetcher(client: OkHttpClient = publicClient) {
     }
 
     companion object {
-        // 解析门禁与实际连接共用同一份地址结果；关闭系统代理，避免代理代为解析绕过校验。
+        // 直连时解析门禁与实际连接共用同一份地址结果；关闭系统代理，避免未知系统代理代解析绕过校验。
         private val publicClient = OkHttpClient.Builder()
             .dns(RichContentPublicDns())
             .proxy(Proxy.NO_PROXY)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .build()
+
+        // 启用受控内置代理时附加 publicTargetOnly 标记，由 libnxproxy 侧同样强校验仅允许公网目标。
+        private val proxiedClient = OkHttpClient.Builder()
+            .applyOptionalBuiltInProxy(publicTargetOnly = true)
+            .followRedirects(false)
+            .followSslRedirects(false)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)

@@ -63,7 +63,12 @@ class BackupRepository internal constructor(
     constructor(context: Context) : this(
         dataSource = createDataSource(context),
         codec = DefaultBackupPackageCodec(),
-        webDav = KtorWebDavBackupClient(),
+        webDav = KtorWebDavBackupClient(
+            engine = io.ktor.client.engine.okhttp.OkHttp.create {
+                preconfigured = (context.applicationContext as? com.promenar.infinity.InfinityApplication)?.gitHttpsOutboundClient
+                    ?: com.promenar.infinity.data.remote.webdav.createDefaultWebDavOkHttpClient()
+            },
+        ),
         pendingStore = AndroidPendingRestoreStore(context),
         cacheDirectory = context.applicationContext.cacheDir.resolve("backup-stream-v3").toPath(),
     )

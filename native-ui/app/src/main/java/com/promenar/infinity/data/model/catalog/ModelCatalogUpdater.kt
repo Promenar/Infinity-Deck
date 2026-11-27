@@ -1,6 +1,9 @@
 package com.promenar.infinity.data.model.catalog
 
 import android.app.Application
+import com.promenar.infinity.data.proxy.BuiltInProxyRouting
+import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
+import com.promenar.infinity.data.proxy.applyOptionalBuiltInProxy
 import io.ktor.utils.io.readAvailable
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -32,13 +35,22 @@ internal fun interface CatalogTransport {
     suspend fun read(file: String, maxBytes: Int): ByteArray
 }
 
-/** 独立无凭据客户端，URL 只能是固定目录中的签名信封或内容摘要文件。 */
-internal class PagesCatalogTransport : CatalogTransport {
+/** 独立无凭据客户端，URL 只能是固定目录中的签名信封或内容摘要文件；开启内置代理时自动复用代理出站。 */
+internal class PagesCatalogTransport(
+    private val builtInProxy: () -> BuiltInProxyRouting = { InstalledBuiltInProxyRouting.routing },
+    private val baseUrl: String = DEFAULT_CATALOG_BASE_URL,
+) : CatalogTransport {
     override suspend fun read(file: String, maxBytes: Int): ByteArray {
         require(file == "manifest.json" || file.matches(Regex("catalog-[a-f0-9]{64}\\.json")))
         val client = HttpClient(OkHttp) {
             followRedirects = false
-            engine { config { followRedirects(false); followSslRedirects(false) } }
+            engine {
+                config {
+                    followRedirects(false)
+                    followSslRedirects(false)
+                    applyOptionalBuiltInProxy(routing = builtInProxy, publicTargetOnly = true)
+                }
+            }
             install(HttpTimeout) {
                 requestTimeoutMillis = 60_000
                 connectTimeoutMillis = 10_000
@@ -46,7 +58,7 @@ internal class PagesCatalogTransport : CatalogTransport {
             }
         }
         try {
-            return client.prepareGet("https://promenar.github.io/Infinity-Deck/model-catalog/v1/$file").execute { response ->
+            return client.prepareGet("$baseUrl/$file").execute { response ->
                 require(response.status.value == 200) { "目录服务返回非成功状态" }
                 response.headers["Content-Length"]?.toLongOrNull()?.let {
                     require(it in 1..maxBytes.toLong()) { "目录响应过大" }
@@ -63,6 +75,10 @@ internal class PagesCatalogTransport : CatalogTransport {
                 output.toByteArray()
             }
         } finally { client.close() }
+    }
+
+    companion object {
+        const val DEFAULT_CATALOG_BASE_URL = "https://promenar.github.io/Infinity-Deck/model-catalog/v1"
     }
 }
 
