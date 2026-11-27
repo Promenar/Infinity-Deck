@@ -369,7 +369,15 @@ class PublishedModelCatalogTest(unittest.TestCase):
                 "alibaba/gte-rerank-v2": (8_192, ["gte-rerank-v2"]),
                 "alibaba/qwen3-rerank": (32_768, ["qwen3-rerank"]),
             }
-            self.assertEqual(set(records), set(rerankers) | {"google/gemini-3.8-flash", "sensenova/sensenova-6.8-flash-lite"})
+            self.assertEqual(
+                set(records),
+                set(rerankers) | {"google/gemini-3.8-flash", "sensenova/sensenova-6.8-flash-lite", "BAAI/bge-m3"},
+            )
+            bge_embed = records["BAAI/bge-m3"]
+            self.assertEqual(bge_embed["workload"], "EMBEDDING")
+            self.assertEqual(bge_embed["contextTokens"], 8_192)
+            self.assertEqual(bge_embed["exactAliases"], ["Pro/BAAI/bge-m3", "bge-m3"])
+            self.assertEqual(bge_embed["reviewedAt"], "2026-11-27")
             for model_id, (context_tokens, aliases) in rerankers.items():
                 record = records[model_id]
                 self.assertEqual(record["workload"], "RERANK")
@@ -387,6 +395,7 @@ class PublishedModelCatalogTest(unittest.TestCase):
             self.assertIs(gemini["reasoning"], True)
             self.assertIs(gemini["tool_call"], True)
             self.assertIs(gemini["structured_output"], True)
+            self.assertEqual(gemini["knowledge"], "2026-03")
             self.assertEqual(gemini["last_updated"], "2026-09-02")
 
             sense = records["sensenova/sensenova-6.8-flash-lite"]
@@ -487,6 +496,138 @@ class PublishedModelCatalogTest(unittest.TestCase):
             self.assertEqual(set(bge_records), {"MODELS_DEV", "INFINITY_OVERRIDE"})
             self.assertEqual(bge_records["INFINITY_OVERRIDE"]["workload"], "RERANK")
             self.assertIn("Pro/BAAI/bge-reranker-v2-m3", bge_records["INFINITY_OVERRIDE"]["exactAliases"])
+            # 上游接管 gemini-3.8-flash 后仍继承官方核验的知识截止日期。
+            self.assertEqual(matching[0]["knowledge"], "2026-03")
+
+    def test_enriches_global_records_promotes_first_party_scoped_and_splits_audio_workloads(self) -> None:
+        """验证跨源缺失补全、一方作用域提升、新增能力字段、音频工作负载细分与 -highspeed 知识截止继承。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            md_models = root / "models.json"
+            md_api = root / "api.json"
+            litellm = root / "litellm.json"
+            openrouter = root / "openrouter.json"
+
+            md_models.write_text(json.dumps({
+                "minimax/MiniMax-M2.5": {
+                    "id": "minimax/MiniMax-M2.5",
+                    "name": "MiniMax M2.5",
+                    "reasoning": True,
+                    "tool_call": True,
+                    "release_date": "2026-02-12",
+                    "modalities": {"input": ["text"], "output": ["text"]},
+                    "limit": {"context": 204800, "output": 131072},
+                },
+                "minimax/MiniMax-M2.5-highspeed": {
+                    "id": "minimax/MiniMax-M2.5-highspeed",
+                    "name": "MiniMax M2.5 Highspeed",
+                    "reasoning": True,
+                    "tool_call": True,
+                    "release_date": "2026-02-13",
+                    "modalities": {"input": ["text"], "output": ["text"]},
+                    "limit": {"context": 204800, "output": 131072},
+                },
+            }), encoding="utf-8")
+            md_api.write_text(json.dumps({
+                "minimax-cn": {
+                    "id": "minimax-cn",
+                    "models": {
+                        "MiniMax-M2.5": {
+                            "id": "MiniMax-M2.5",
+                            "name": "MiniMax M2.5",
+                            "structured_output": True,
+                            "knowledge": "2025-08",
+                            "cost": {"input": 0.3, "output": 1.2, "cache_read": 0.03},
+                            "modalities": {"input": ["text"], "output": ["text"]},
+                            "limit": {"context": 204800, "output": 131072},
+                        },
+                    },
+                },
+                "google": {
+                    "id": "google",
+                    "models": {
+                        "gemini-3.8-live": {
+                            "id": "gemini-3.8-live",
+                            "name": "Gemini 3.8 Live",
+                            "type": "audio",
+                            "modalities": {"input": ["text", "audio"], "output": ["audio"]},
+                            "limit": {"context": 131072, "output": 65536},
+                        },
+                        "gemini-3.8-flash-tts": {
+                            "id": "gemini-3.8-flash-tts",
+                            "name": "Gemini 3.8 Flash TTS",
+                            "type": "audio_speech",
+                            "modalities": {"input": ["text"], "output": ["audio"]},
+                            "limit": {"context": 32768, "output": 16384},
+                        },
+                    },
+                },
+            }), encoding="utf-8")
+            litellm.write_text(json.dumps({
+                "gemini/lyria-3.5": {
+                    "litellm_provider": "gemini",
+                    "mode": "audio_speech",
+                    "max_input_tokens": 131072,
+                    "max_output_tokens": 65536,
+                    "supports_web_search": True,
+                    "supports_pdf_input": True,
+                    "supports_computer_use": False,
+                    "deprecation_date": "2027-06-01",
+                },
+            }), encoding="utf-8")
+            openrouter.write_text(json.dumps({
+                "data": [
+                    {
+                        "id": "minimax/minimax-m2.5",
+                        "name": "MiniMax: M2.5",
+                        "created": 1770854400,
+                        "context_length": 204800,
+                        "architecture": {"input_modalities": ["text", "file"], "output_modalities": ["text"]},
+                        "top_provider": {"max_completion_tokens": 131072},
+                        "supported_parameters": ["tools", "structured_outputs", "reasoning", "web_search_options"],
+                        "pricing": {"prompt": "0.0000003", "input_cache_read": "0.00000003"},
+                        "knowledge_cutoff": "2025-08",
+                    }
+                ]
+            }), encoding="utf-8")
+
+            sources = {
+                "models-dev-models": md_models,
+                "models-dev-api": md_api,
+                "litellm": litellm,
+                "openrouter": openrouter,
+            }
+            result = self.run_builder(root / "out", sources=sources)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            catalog_path, = (root / "out/model-catalog/v1").glob("catalog-*.json")
+            records = json.loads(catalog_path.read_bytes())["records"]
+            global_by_id = {
+                r["canonicalModelId"]: r
+                for r in records
+                if r["source"] == "MODELS_DEV" and "providerScope" not in r
+            }
+            m25 = global_by_id["minimax/MiniMax-M2.5"]
+            self.assertIs(m25["structured_output"], True)
+            self.assertIs(m25["prompt_caching"], True)
+            self.assertIs(m25["web_search"], True)
+            self.assertEqual(m25["knowledge"], "2025-08")
+            self.assertIn("pdf", m25["modalities"]["input"])
+
+            # -highspeed 自动受控继承同族基座知识截止。
+            m25_hs = global_by_id["minimax/MiniMax-M2.5-highspeed"]
+            self.assertEqual(m25_hs["knowledge"], "2025-08")
+
+            # 一方作用域独有模型已提升至全局并精准细分 REALTIME / SPEECH / MUSIC。
+            self.assertEqual(global_by_id["google/gemini-3.8-live"]["workload"], "REALTIME")
+            self.assertEqual(global_by_id["google/gemini-3.8-live"]["exactAliases"], ["gemini-3.8-live"])
+            self.assertEqual(global_by_id["google/gemini-3.8-flash-tts"]["workload"], "SPEECH")
+            lyria = global_by_id["google/lyria-3.5"]
+            self.assertEqual(lyria["workload"], "MUSIC")
+            self.assertEqual(lyria["exactAliases"], ["lyria-3.5"])
+            self.assertIs(lyria["web_search"], True)
+            self.assertIs(lyria["computer_use"], False)
+            self.assertEqual(lyria["deprecation_date"], "2027-06-01")
+            self.assertIn("pdf", lyria["modalities"]["input"])
 
 
 if __name__ == "__main__":

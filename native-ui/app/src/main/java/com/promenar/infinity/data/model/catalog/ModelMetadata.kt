@@ -56,6 +56,10 @@ data class ModelMetadataRecord(
     val knowledgeCutoff: String?,
     val source: MetadataSource,
     val providerScope: String? = null,
+    val releaseDate: String? = null,
+    val lastUpdated: String? = null,
+    val deprecationDate: String? = null,
+    val status: String? = null,
 )
 
 data class ModelMetadataOverride(
@@ -81,4 +85,8 @@ data class ResolvedModelMetadata(
     val knowledgeCutoff: String?,
     val sourceByField: Map<String, MetadataSource>,
     val diagnostics: Set<String> = emptySet(),
+    val releaseDate: String? = null,
+    val lastUpdated: String? = null,
+    val deprecationDate: String? = null,
+    val status: String? = null,
 )

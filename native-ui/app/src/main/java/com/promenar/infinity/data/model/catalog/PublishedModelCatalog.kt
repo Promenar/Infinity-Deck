@@ -90,6 +90,15 @@ class PublishedModelCatalog private constructor(records: List<ModelMetadataRecor
             record.optionalBoolean("structured_output")?.let {
                 capabilities[ModelCapability.STRUCTURED_OUTPUT] = it.toSupportState()
             }
+            record.optionalBoolean("prompt_caching")?.let {
+                capabilities[ModelCapability.PROMPT_CACHING] = it.toSupportState()
+            }
+            record.optionalBoolean("web_search")?.let {
+                capabilities[ModelCapability.WEB_ACCESS] = it.toSupportState()
+            }
+            record.optionalBoolean("computer_use")?.let {
+                capabilities[ModelCapability.COMPUTER_USE] = it.toSupportState()
+            }
             record.optionalModalities().forEach { (direction, modalities) ->
                 modalities.forEach { modality -> when ("$direction:${modality.lowercase()}") {
                     "input:image", "input:image_input", "input:vision" -> capabilities[ModelCapability.VISION_INPUT] = SupportState.SUPPORTED
@@ -98,7 +107,10 @@ class PublishedModelCatalog private constructor(records: List<ModelMetadataRecor
                     "input:video", "input:video_input" -> capabilities[ModelCapability.VIDEO_INPUT] = SupportState.SUPPORTED
                 } }
             }
-            listOf("release_date", "last_updated", "status").forEach { record.optionalString(it) }
+            val releaseDate = record.optionalString("release_date")
+            val lastUpdated = record.optionalString("last_updated")
+            val deprecationDate = record.optionalString("deprecation_date")
+            val status = record.optionalString("status")
             return ModelMetadataRecord(
                 canonicalModelId = canonicalId,
                 exactAliases = aliases.toSet(),
@@ -112,6 +124,10 @@ class PublishedModelCatalog private constructor(records: List<ModelMetadataRecor
                 knowledgeCutoff = record.optionalString("knowledge"),
                 source = source,
                 providerScope = providerScope,
+                releaseDate = releaseDate,
+                lastUpdated = lastUpdated,
+                deprecationDate = deprecationDate,
+                status = status,
             )
         }
 

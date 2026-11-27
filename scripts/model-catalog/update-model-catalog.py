@@ -1120,6 +1120,44 @@ def load_existing_catalog(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _enrich_missing_structured_output_from_api(
+    records: list[dict[str, Any]],
+    api_root: Any,
+) -> None:
+    if not isinstance(api_root, Mapping):
+        return
+    votes_by_short: dict[str, set[bool]] = {}
+    counts_by_short: dict[str, int] = {}
+    by_scope_model: dict[tuple[str, str], bool] = {}
+    for provider_key, provider_obj in api_root.items():
+        if not isinstance(provider_obj, Mapping):
+            continue
+        scope = str(provider_obj.get("id") or provider_key).strip().lower()
+        models = provider_obj.get("models")
+        if not isinstance(models, Mapping):
+            continue
+        for model_key, item in models.items():
+            if not isinstance(item, Mapping):
+                continue
+            so = item.get("structured_output")
+            if type(so) is not bool:
+                continue
+            raw_id = str(item.get("id") or model_key).strip().lower()
+            short = raw_id.rsplit("/", 1)[-1]
+            by_scope_model[(scope, short)] = so
+            votes_by_short.setdefault(short, set()).add(so)
+            counts_by_short[short] = counts_by_short.get(short, 0) + 1
+    for rec in records:
+        if rec.get("structured_output") is not None:
+            continue
+        cid = str(rec["canonicalModelId"]).strip().lower()
+        vendor, short = cid.split("/", 1) if "/" in cid else ("", cid)
+        if (vendor, short) in by_scope_model:
+            rec["structured_output"] = by_scope_model[(vendor, short)]
+        elif votes_by_short.get(short) == {True} and counts_by_short.get(short, 0) >= 2:
+            rec["structured_output"] = True
+
+
 def run_update(
     source_url: str,
     output_path: Path,
@@ -1127,6 +1165,7 @@ def run_update(
     *,
     diff_report: Path | None = None,
     overrides_source: Path | None = None,
+    enrich_api_url: str | None = None,
 ) -> None:
     if source_url != MANIFEST_SOURCE:
         raise ModelCatalogError(
@@ -1135,6 +1174,9 @@ def run_update(
     payload, source_sha = _fetch_source(source_url)
     parsed = _load_json_bytes(payload)
     current_records, unknown_field_count, exact_id_conflicts = _normalize_catalog_for_update(parsed)
+    if enrich_api_url:
+        api_payload, _ = _fetch_source(enrich_api_url)
+        _enrich_missing_structured_output_from_api(current_records, _load_json_bytes(api_payload))
     catalog_sha = sha256_hex(_canonical_json_bytes(current_records))
 
     overrides_covered_by_upstream = 0
@@ -1322,6 +1364,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--diff-report")
     parser.add_argument("--overrides-source")
+    parser.add_argument("--enrich-api-url", default=None)
     return parser.parse_args()
 
 
@@ -1349,6 +1392,7 @@ def main() -> None:
         manifest_path,
         diff_report=Path(args.diff_report) if args.diff_report else None,
         overrides_source=Path(args.overrides_source) if args.overrides_source else None,
+        enrich_api_url=args.enrich_api_url,
     )
 
 

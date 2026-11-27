@@ -31,6 +31,7 @@ class ModelMetadataResolver private constructor(
         remoteModelId: String,
         providerId: String? = null,
         sourceProviderId: String? = null,
+        sourceProviderFallbacks: List<String> = emptyList(),
         ownedBy: String? = null,
         providerMetadata: ModelMetadataOverride? = null,
         userOverride: ModelMetadataOverride? = null,
@@ -39,7 +40,7 @@ class ModelMetadataResolver private constructor(
         val normalizedId = lookupIds.first()
         val remoteId = remoteModelId
         val allCandidates = (lookupIds.flatMap { exactCandidatesById[it].orEmpty() } + listOfNotNull(mediaModelCatalogRecord(remoteId))).distinct()
-        val candidateResolution = resolveCatalogCandidates(allCandidates, sourceProviderId)
+        val candidateResolution = resolveCatalogCandidates(allCandidates, sourceProviderId, sourceProviderFallbacks)
         val exactRecords = candidateResolution.fieldRecords
         val diagnostics = if (candidateResolution.ambiguous) {
             setOf(AMBIGUOUS_EXACT_MATCH)
@@ -87,6 +88,10 @@ class ModelMetadataResolver private constructor(
         val canonical = candidateResolution.canonicalRecord
         val offering = candidateResolution.offeringRecord
         val knowledgeCutoff = exactField(exactRecords) { it.knowledgeCutoff }
+        val releaseDate = exactField(exactRecords) { it.releaseDate }
+        val lastUpdated = exactField(exactRecords) { it.lastUpdated }
+        val deprecationDate = exactField(exactRecords) { it.deprecationDate }
+        val status = exactField(exactRecords) { it.status }
 
         return ResolvedModelMetadata(
             remoteModelId = remoteId,
@@ -100,6 +105,10 @@ class ModelMetadataResolver private constructor(
             inputTokens = providerInputTokens.value,
             outputTokens = outputTokens.value,
             knowledgeCutoff = knowledgeCutoff.value,
+            releaseDate = releaseDate.value,
+            lastUpdated = lastUpdated.value,
+            deprecationDate = deprecationDate.value,
+            status = status.value,
             sourceByField = immutableMap(buildMap {
                 put("canonicalModelId", canonical?.source ?: MetadataSource.FALLBACK)
                 put("offeringId", offering?.source ?: MetadataSource.FALLBACK)
@@ -116,6 +125,10 @@ class ModelMetadataResolver private constructor(
                     "knowledgeCutoff",
                     knowledgeCutoff.source,
                 )
+                put("releaseDate", releaseDate.source)
+                put("lastUpdated", lastUpdated.source)
+                put("deprecationDate", deprecationDate.source)
+                put("status", status.source)
                 capabilityResolution.forEach { (capability, resolution) ->
                     put("capabilities.${capability.name}", resolution.source)
                 }
@@ -127,10 +140,15 @@ class ModelMetadataResolver private constructor(
     private fun resolveCatalogCandidates(
         candidates: List<ModelMetadataRecord>,
         sourceProviderId: String?,
+        sourceProviderFallbacks: List<String> = emptyList(),
     ): CandidateResolution {
         val globalCandidates = candidates.filter { it.providerScope == null }
-        val scopedCandidates = sourceProviderId?.let { scope ->
-            candidates.filter { it.providerScope == scope }
+        val scopesToTry = buildList {
+            sourceProviderId?.takeIf { it.isNotBlank() }?.let(::add)
+            sourceProviderFallbacks.filter { it.isNotBlank() }.forEach(::add)
+        }.distinct()
+        val scopedCandidates = scopesToTry.firstNotNullOfOrNull { scope ->
+            candidates.filter { it.providerScope == scope }.takeIf { it.isNotEmpty() }
         }.orEmpty()
         if (scopedCandidates.isEmpty()) {
             val ambiguous = isTopPriorityAmbiguous(globalCandidates)
@@ -148,8 +166,12 @@ class ModelMetadataResolver private constructor(
         val scopedRecords = exactRecordsFor(scopedCandidates)
         val offering = scopedRecords.firstOrNull()
             ?: return CandidateResolution(emptyList(), null, null, ambiguous = true)
+        val offeringNorm = normalizeRemoteModelId(offering.canonicalModelId)
+        val offeringHasVendor = '/' in offeringNorm
         val matchingGlobalCandidates = globalCandidates.filter { global ->
-            normalizeRemoteModelId(global.canonicalModelId) == normalizeRemoteModelId(offering.canonicalModelId)
+            val globalNorm = normalizeRemoteModelId(global.canonicalModelId)
+            globalNorm == offeringNorm ||
+                (!offeringHasVendor && global.exactAliases.any { normalizeRemoteModelId(it) == offeringNorm })
         }
         val globalAmbiguous = isTopPriorityAmbiguous(matchingGlobalCandidates)
         val globalRecords = exactRecordsFor(matchingGlobalCandidates)

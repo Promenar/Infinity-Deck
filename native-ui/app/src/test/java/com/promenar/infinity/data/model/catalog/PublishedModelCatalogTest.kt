@@ -148,6 +148,48 @@ class PublishedModelCatalogTest {
         }
     }
 
+    @Test
+    fun `解析prompt_caching、web_search、computer_use及release_date与deprecation_date`() {
+        val catalog = PublishedModelCatalog.fromJson(catalogJson("""
+            {
+              "canonicalModelId":"google/gemini-3.8-flash",
+              "displayName":"Gemini 3.8 Flash",
+              "source":"MODELS_DEV",
+              "exactAliases":["gemini-3.8-flash"],
+              "workload":"GENERATIVE_TEXT",
+              "reasoning":true,
+              "tool_call":true,
+              "structured_output":true,
+              "prompt_caching":true,
+              "web_search":true,
+              "computer_use":false,
+              "contextTokens":1048576,
+              "outputTokens":65536,
+              "knowledge":"2026-03",
+              "release_date":"2026-09-02",
+              "last_updated":"2026-11-20",
+              "deprecation_date":"2027-09-02",
+              "status":"stable"
+            }
+        """))
+
+        val record = catalog.records.single()
+        assertThat(record.capabilities[ModelCapability.PROMPT_CACHING]).isEqualTo(SupportState.SUPPORTED)
+        assertThat(record.capabilities[ModelCapability.WEB_ACCESS]).isEqualTo(SupportState.SUPPORTED)
+        assertThat(record.capabilities[ModelCapability.COMPUTER_USE]).isEqualTo(SupportState.UNSUPPORTED)
+        assertThat(record.releaseDate).isEqualTo("2026-09-02")
+        assertThat(record.lastUpdated).isEqualTo("2026-11-20")
+        assertThat(record.deprecationDate).isEqualTo("2027-09-02")
+        assertThat(record.status).isEqualTo("stable")
+
+        val resolved = ModelMetadataResolver(catalog.records).resolve("gemini-3.8-flash")
+        assertThat(resolved.capabilities[ModelCapability.PROMPT_CACHING]).isEqualTo(SupportState.SUPPORTED)
+        assertThat(resolved.capabilities[ModelCapability.WEB_ACCESS]).isEqualTo(SupportState.SUPPORTED)
+        assertThat(resolved.releaseDate).isEqualTo("2026-09-02")
+        assertThat(resolved.deprecationDate).isEqualTo("2027-09-02")
+        assertThat(resolved.sourceByField["releaseDate"]).isEqualTo(MetadataSource.MODELS_DEV)
+    }
+
     private fun catalogJson(records: String) = """
         {
           "schemaVersion":3,

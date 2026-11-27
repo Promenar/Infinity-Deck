@@ -20,6 +20,7 @@
       "structured_output": true,
       "inputTokens": 1048576,
       "outputTokens": 65536,
+      "knowledge": "2026-03",
       "modalities": {
         "input": [
           "text",
@@ -35,7 +36,21 @@
       "last_updated": "2026-09-02",
       "status": "stable",
       "evidenceUrl": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash",
-      "reviewedAt": "2026-09-22"
+      "reviewedAt": "2026-11-27"
+    },
+    {
+      "canonicalModelId": "BAAI/bge-m3",
+      "displayName": "BGE M3",
+      "source": "INFINITY_OVERRIDE",
+      "exactAliases": [
+        "bge-m3",
+        "Pro/BAAI/bge-m3"
+      ],
+      "family": "BGE",
+      "workload": "EMBEDDING",
+      "contextTokens": 8192,
+      "evidenceUrl": "https://huggingface.co/BAAI/bge-m3",
+      "reviewedAt": "2026-11-27"
     },
     {
       "canonicalModelId": "sensenova/sensenova-6.8-flash-lite",

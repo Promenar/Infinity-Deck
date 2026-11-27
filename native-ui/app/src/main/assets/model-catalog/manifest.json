@@ -1,11 +1,11 @@
 {
-  "catalogSha256": "ee43196126c753fde5a242221ba4010d70a52dff06a9af25bd0bec0dd893d36c",
-  "fetchedAt": "2026-09-22T09:06:45Z",
+  "catalogSha256": "392116c4353cf398e95ad867184c5a5afdaa31b09e81526e8772cb838c140418",
+  "fetchedAt": "2026-11-27T02:51:39Z",
   "license": "MIT",
-  "recordCount": 422,
+  "recordCount": 649,
   "schemaVersion": 2,
   "source": "https://models.dev/models.json",
-  "sourceBytes": 327838,
-  "sourceSha256": "282c75982f54648d774c76dab290820905aa032d0343a603c03374c728fb5892",
-  "unknownFieldCount": 1613
+  "sourceBytes": 550350,
+  "sourceSha256": "4edc5d71a70215a993e9b8d522ba1b8b34364550c52337bb903d7d6ab628ddfd",
+  "unknownFieldCount": 2701
 }

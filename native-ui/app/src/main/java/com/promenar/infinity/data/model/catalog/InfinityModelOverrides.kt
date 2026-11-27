@@ -180,6 +180,16 @@ internal val INFINITY_EXACT_MODEL_OVERRIDES = Collections.unmodifiableMap(listOf
         capabilities = snapshotCapabilities(vision = SupportState.SUPPORTED),
     ),
     exactModel(
+        exactAlias = "bge-m3",
+        canonicalId = "BAAI/bge-m3",
+        displayName = "BGE M3",
+        familyName = "BGE",
+        workload = ModelWorkload.EMBEDDING,
+        contextTokens = 8_192,
+        capabilities = snapshotCapabilities(),
+        extraAliases = listOf("Pro/BAAI/bge-m3"),
+    ),
+    exactModel(
         exactAlias = "bge-reranker-v2-m3",
         canonicalId = "BAAI/bge-reranker-v2-m3",
         displayName = "BGE Reranker V2 M3",

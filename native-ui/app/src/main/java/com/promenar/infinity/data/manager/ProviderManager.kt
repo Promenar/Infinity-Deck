@@ -894,10 +894,14 @@ class ProviderManager private constructor(
                 mediaSettingsInvalid = storedMedia != null && mediaSettings == null,
             )
 
+            val inferredScopes = inferredSourceProviderScopes(storedProviderId)
+            val effectiveSourceScope = sourceProviderId ?: inferredScopes.firstOrNull()
+            val scopeFallbacks = if (sourceProviderId != null) emptyList() else inferredScopes.drop(1)
             val resolved = ModelCatalogRuntime.resolver.resolve(
                 remoteModelId = remoteModelId,
                 providerId = storedProviderId,
-                sourceProviderId = sourceProviderId,
+                sourceProviderId = effectiveSourceScope,
+                sourceProviderFallbacks = scopeFallbacks,
                 ownedBy = providerOwnedBy,
                 providerMetadata = providerMetadata,
             )
@@ -958,7 +962,13 @@ class ProviderManager private constructor(
         if (remoteId.isEmpty()) return false
         val stableId = stableModelId(providerId, remoteId)
         if (_providerModels.value.any { it.id == stableId }) return false
-        val resolved = ModelCatalogRuntime.resolver.resolve(remoteId, providerId)
+        val inferredScopes = inferredSourceProviderScopes(providerId)
+        val resolved = ModelCatalogRuntime.resolver.resolve(
+            remoteModelId = remoteId,
+            providerId = providerId,
+            sourceProviderId = inferredScopes.firstOrNull(),
+            sourceProviderFallbacks = inferredScopes.drop(1),
+        )
         return runCatching {
             val customName = displayName.trim()
             addModel(resolved.toModelInfo(
@@ -978,7 +988,13 @@ class ProviderManager private constructor(
         if (providerId in settingsPrefs.getStringSet(suppressedProviderModelsKey, emptySet()).orEmpty()) return
         val id = stableModelId(providerId, remoteModelId)
         if (_providerModels.value.any { it.id == id }) return
-        val resolved = ModelCatalogRuntime.resolver.resolve(remoteModelId, providerId)
+        val inferredScopes = inferredSourceProviderScopes(providerId)
+        val resolved = ModelCatalogRuntime.resolver.resolve(
+            remoteModelId = remoteModelId,
+            providerId = providerId,
+            sourceProviderId = inferredScopes.firstOrNull(),
+            sourceProviderFallbacks = inferredScopes.drop(1),
+        )
         addModel(resolved.toModelInfo(
             providerId = providerId,
             providerName = providerName,
@@ -1009,10 +1025,14 @@ class ProviderManager private constructor(
         _providerModels.update { models ->
             val existing = models.firstOrNull { it.id == id }
             val effective = mergeProviderDescriptor(existing, descriptor, incomingMetadata)
+            val inferredScopes = inferredSourceProviderScopes(providerId)
+            val effectiveScope = effective.sourceProviderId ?: inferredScopes.firstOrNull()
+            val scopeFallbacks = if (effective.sourceProviderId != null) emptyList() else inferredScopes.drop(1)
             val resolved = ModelCatalogRuntime.resolver.resolve(
                 remoteModelId = remoteModelId,
                 providerId = providerId,
-                sourceProviderId = effective.sourceProviderId,
+                sourceProviderId = effectiveScope,
+                sourceProviderFallbacks = scopeFallbacks,
                 ownedBy = effective.ownedBy,
                 providerMetadata = effective.metadata,
             )
@@ -1089,10 +1109,14 @@ class ProviderManager private constructor(
         var changed = 0
         _providerModels.update { models ->
             val refreshed = models.map { existing ->
+                val inferredScopes = inferredSourceProviderScopes(existing.providerId)
+                val effectiveScope = existing.sourceProviderId ?: inferredScopes.firstOrNull()
+                val scopeFallbacks = if (existing.sourceProviderId != null) emptyList() else inferredScopes.drop(1)
                 val resolved = ModelCatalogRuntime.resolver.resolve(
                     remoteModelId = existing.remoteModelId,
                     providerId = existing.providerId,
-                    sourceProviderId = existing.sourceProviderId,
+                    sourceProviderId = effectiveScope,
+                    sourceProviderFallbacks = scopeFallbacks,
                     ownedBy = existing.providerOwnedBy,
                     providerMetadata = existing.providerMetadata,
                 )
@@ -1103,6 +1127,12 @@ class ProviderManager private constructor(
         }
         if (changed > 0) persistModels()
         return changed
+    }
+
+    private fun inferredSourceProviderScopes(providerId: String?): List<String> {
+        if (providerId.isNullOrBlank()) return emptyList()
+        val provider = _providers.value.firstOrNull { it.id == providerId } ?: return emptyList()
+        return inferCatalogSourceProviderScopes(provider.baseUrl, provider.protocolType)
     }
 
     fun applyUserModelUpdate(submitted: ModelInfo) {
@@ -1444,5 +1474,66 @@ class ProviderManager private constructor(
                 "ProviderManager not initialized. Call ProviderManager.init(app) first."
             )
         }
+    }
+}
+
+/**
+ * 按提供商官方接口域名与协议推断线上模型规格库中对应的一方 providerScope 优先级列表；
+ * 自建聚合网关（如 NEWAPI / OneAPI / 私有地址）返回空列表，直接消费全局规范条目，避免跨厂商污染。
+ */
+internal fun inferCatalogSourceProviderScopes(
+    baseUrl: String?,
+    protocolType: ProtocolType?,
+): List<String> {
+    val parsed = runCatching { baseUrl?.trim()?.takeIf { it.isNotEmpty() }?.let(java.net.URI::create) }.getOrNull()
+    val host = parsed?.host?.lowercase()?.trimEnd('.') ?: ""
+    val path = parsed?.path?.lowercase().orEmpty()
+    return when {
+        host == "generativelanguage.googleapis.com" || protocolType == ProtocolType.Google_Gemini ->
+            listOf("google", "gemini")
+        protocolType == ProtocolType.Google_VertexAI || host.endsWith("aiplatform.googleapis.com") ->
+            listOf("google-vertex", "google", "gemini")
+        host == "opencode.ai" || host.endsWith(".opencode.ai") ->
+            if ("/go" in path) listOf("opencode-go", "opencode") else listOf("opencode", "opencode-go")
+        host == "open.bigmodel.cn" ->
+            if ("/coding" in path) listOf("zhipuai-coding-plan", "zhipuai", "zai-coding-plan", "zai")
+            else listOf("zhipuai", "zai")
+        host == "api.z.ai" ->
+            if ("/coding" in path) listOf("zai-coding-plan", "zai", "zhipuai-coding-plan", "zhipuai")
+            else listOf("zai", "zhipuai")
+        host == "api.minimax.cn" || host == "api.minimaxi.com" ->
+            listOf("minimax-cn", "minimax", "minimax-cn-coding-plan", "minimax-coding-plan")
+        host == "api.minimax.io" ->
+            listOf("minimax", "minimax-cn", "minimax-coding-plan")
+        host == "openrouter.ai" || host.endsWith(".openrouter.ai") ->
+            listOf("openrouter")
+        host == "api.deepseek.com" ->
+            listOf("deepseek")
+        host == "api.openai.com" ->
+            listOf("openai")
+        host == "api.anthropic.com" ->
+            listOf("anthropic")
+        host == "api.x.ai" ->
+            listOf("xai")
+        host == "api.kimi.com" ->
+            listOf("kimi-code-plan-cn", "kimi-code-plan-global", "moonshotai-cn", "moonshotai")
+        host == "api.moonshot.cn" ->
+            listOf("moonshotai-cn", "moonshotai")
+        host == "api.moonshot.ai" ->
+            listOf("moonshotai", "moonshotai-cn")
+        host == "coding.dashscope.aliyuncs.com" ->
+            listOf("alibaba-coding-plan-cn", "alibaba-cn", "alibaba")
+        host == "dashscope.aliyuncs.com" ->
+            listOf("alibaba-cn", "alibaba")
+        host == "dashscope-intl.aliyuncs.com" ->
+            listOf("alibaba", "alibaba-cn")
+        host.endsWith(".volces.com") ->
+            if ("/coding" in path) listOf("volcengine-coding-plan", "volcengine")
+            else listOf("volcengine")
+        host == "api.siliconflow.cn" ->
+            listOf("siliconflow-cn", "siliconflow")
+        host == "api.siliconflow.com" ->
+            listOf("siliconflow", "siliconflow-cn")
+        else -> emptyList()
     }
 }

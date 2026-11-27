@@ -137,10 +137,17 @@ private data class BundledCatalogRecord(
     val reasoning: Boolean? = null,
     val tool_call: Boolean? = null,
     val structured_output: Boolean? = null,
+    val prompt_caching: Boolean? = null,
+    val web_search: Boolean? = null,
+    val computer_use: Boolean? = null,
     val contextTokens: Int? = null,
     val inputTokens: Int? = null,
     val outputTokens: Int? = null,
     val knowledge: String? = null,
+    val release_date: String? = null,
+    val last_updated: String? = null,
+    val deprecation_date: String? = null,
+    val status: String? = null,
     val modalities: BundledModalities? = null,
 ) {
     fun toRecord(): ModelMetadataRecord {
@@ -158,6 +165,9 @@ private data class BundledCatalogRecord(
                 put(ModelCapability.REASONING, reasoning.toSupportState())
                 put(ModelCapability.TOOL_CALLING, tool_call.toSupportState())
                 put(ModelCapability.STRUCTURED_OUTPUT, structured_output.toSupportState())
+                prompt_caching?.let { put(ModelCapability.PROMPT_CACHING, it.toSupportState()) }
+                web_search?.let { put(ModelCapability.WEB_ACCESS, it.toSupportState()) }
+                computer_use?.let { put(ModelCapability.COMPUTER_USE, it.toSupportState()) }
                 modalities?.input.orEmpty().forEach { modality ->
                     modality.inputCapability()?.let { put(it, SupportState.SUPPORTED) }
                 }
@@ -175,6 +185,10 @@ private data class BundledCatalogRecord(
             outputTokens = if (hideTextContext) null else outputTokens,
             knowledgeCutoff = knowledge,
             source = MetadataSource.MODELS_DEV,
+            releaseDate = release_date,
+            lastUpdated = last_updated,
+            deprecationDate = deprecation_date,
+            status = status,
         )
     }
 }

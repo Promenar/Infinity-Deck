@@ -4,6 +4,7 @@ import android.app.Application
 import com.promenar.infinity.data.proxy.BuiltInProxyRouting
 import com.promenar.infinity.data.proxy.InstalledBuiltInProxyRouting
 import com.promenar.infinity.data.proxy.applyOptionalBuiltInProxy
+import com.promenar.infinity.utils.InfinityLogger
 import io.ktor.utils.io.readAvailable
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -143,10 +144,7 @@ internal class ModelCatalogUpdater(
                     throw error
                 }
                 runCatching {
-                    android.util.Log.w(
-                        "ModelCatalogUpdater",
-                        "模型规格库更新失败: ${error::class.java.simpleName}: ${error.message.orEmpty()}",
-                    )
+                    InfinityLogger.logError("ModelCatalogUpdater", error)
                 }
                 // 缓存是崩溃恢复的提交点；投影失败明确显示并在下一次操作重新应用。
                 loaded = false

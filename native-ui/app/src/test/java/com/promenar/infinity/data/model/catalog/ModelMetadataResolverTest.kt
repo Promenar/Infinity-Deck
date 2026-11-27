@@ -561,4 +561,76 @@ class ModelMetadataResolverTest {
                 assertThat(resolver.resolve(unknown).canonicalModelId).isNull()
             }
     }
+
+    @Test
+    fun `BAAI bge-m3 精确识别为嵌入模型且裸scoped记录与前缀global平滑合并`() {
+        val bge = resolver.resolve("BAAI/bge-m3")
+        assertThat(bge.workload).isEqualTo(ModelWorkload.EMBEDDING)
+        assertThat(bge.contextTokens).isEqualTo(8_192)
+
+        val global = record(
+            canonicalId = "google/gemini-3.8-flash",
+            displayName = "Gemini 3.8 Flash",
+            workload = ModelWorkload.GENERATIVE_TEXT,
+            source = MetadataSource.MODELS_DEV,
+            exactAliases = setOf("gemini-3.8-flash"),
+            capabilities = mapOf(ModelCapability.REASONING to SupportState.SUPPORTED),
+        ).copy(contextTokens = 1_048_576, knowledgeCutoff = "2026-03", releaseDate = "2026-09-02")
+        val scoped = record(
+            canonicalId = "gemini-3.8-flash",
+            displayName = "Gemini 3.8 Flash",
+            workload = ModelWorkload.GENERATIVE_TEXT,
+            source = MetadataSource.MODELS_DEV,
+            exactAliases = setOf("gemini-3.8-flash"),
+            capabilities = mapOf(ModelCapability.STRUCTURED_OUTPUT to SupportState.SUPPORTED),
+        ).copy(providerScope = "google", outputTokens = 65_536)
+
+        val merged = ModelMetadataResolver(listOf(global, scoped)).resolve(
+            remoteModelId = "gemini-3.8-flash",
+            sourceProviderId = "google-vertex",
+            sourceProviderFallbacks = listOf("google", "gemini"),
+        )
+        assertThat(merged.offeringId).isEqualTo("gemini-3.8-flash")
+        assertThat(merged.canonicalModelId).isEqualTo("google/gemini-3.8-flash")
+        assertThat(merged.contextTokens).isEqualTo(1_048_576)
+        assertThat(merged.outputTokens).isEqualTo(65_536)
+        assertThat(merged.knowledgeCutoff).isEqualTo("2026-03")
+        assertThat(merged.releaseDate).isEqualTo("2026-09-02")
+        assertThat(merged.capabilities[ModelCapability.STRUCTURED_OUTPUT]).isEqualTo(SupportState.SUPPORTED)
+        assertThat(merged.capabilities[ModelCapability.REASONING]).isEqualTo(SupportState.SUPPORTED)
+    }
+
+    @Test
+    fun `官方提供商地址准确推断规格库作用域而自建聚合网关返回空列表`() {
+        assertThat(
+            com.promenar.infinity.data.manager.inferCatalogSourceProviderScopes(
+                "https://generativelanguage.googleapis.com",
+                com.promenar.infinity.data.remote.protocol.ProtocolType.Google_Gemini,
+            ),
+        ).containsExactly("google", "gemini").inOrder()
+        assertThat(
+            com.promenar.infinity.data.manager.inferCatalogSourceProviderScopes(
+                "https://opencode.ai/zen/go/v1",
+                com.promenar.infinity.data.remote.protocol.ProtocolType.Generic_OpenAI_Compat,
+            ),
+        ).containsExactly("opencode-go", "opencode").inOrder()
+        assertThat(
+            com.promenar.infinity.data.manager.inferCatalogSourceProviderScopes(
+                "https://open.bigmodel.cn/api/coding/paas/v4",
+                com.promenar.infinity.data.remote.protocol.ProtocolType.Generic_OpenAI_Compat,
+            ),
+        ).containsExactly("zhipuai-coding-plan", "zhipuai", "zai-coding-plan", "zai").inOrder()
+        assertThat(
+            com.promenar.infinity.data.manager.inferCatalogSourceProviderScopes(
+                "https://api.minimax.cn/anthropic",
+                com.promenar.infinity.data.remote.protocol.ProtocolType.Anthropic_Messages,
+            ),
+        ).containsExactly("minimax-cn", "minimax", "minimax-cn-coding-plan", "minimax-coding-plan").inOrder()
+        assertThat(
+            com.promenar.infinity.data.manager.inferCatalogSourceProviderScopes(
+                "https://api.promenar.com/v1",
+                com.promenar.infinity.data.remote.protocol.ProtocolType.Generic_OpenAI_Compat,
+            ),
+        ).isEmpty()
+    }
 }
