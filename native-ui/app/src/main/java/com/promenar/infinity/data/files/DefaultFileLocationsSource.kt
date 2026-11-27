@@ -7,6 +7,8 @@ import com.promenar.infinity.data.local.db.entity.SessionEntity
 import com.promenar.infinity.data.local.db.entity.WorkspaceEntity
 import com.promenar.infinity.data.workspace.SessionWorkspace
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isSftpRemoteSource
+import com.promenar.infinity.domain.storage.SftpRemoteMountSpec
 import com.promenar.infinity.domain.files.FileLocation
 import com.promenar.infinity.domain.files.FileLocationCapabilities
 import com.promenar.infinity.domain.files.FileLocationKind
@@ -113,9 +115,14 @@ internal class DefaultFileLocationsSource(
                 }
             }
             if (linux) result += linuxLocation()
-            val folders = attached.filter { it.sourceType in setOf("saf_tree", "real_path") }
+            val folders = attached.filter { ExternalMountPaths.isAttachableLibrarySource(it.sourceType) }
             val librarySources = folders.filter { ExternalMountPaths.isLibraryScope(it.sessionId) }.map { it.sourceType to it.sourceId }.toSet()
-            result += folders.filter { ExternalMountPaths.isLibraryScope(it.sessionId) || (it.sourceType to it.sourceId) !in librarySources }
+            result += folders.filter {
+                ExternalMountPaths.isLibraryScope(it.sessionId) || if (it.isSftpRemoteSource) {
+                    val spec = SftpRemoteMountSpec.decode(it.sourceId)
+                    spec?.libraryMountId == null || folders.none { library -> library.id == spec.libraryMountId }
+                } else (it.sourceType to it.sourceId) !in librarySources
+            }
                 .distinctBy { it.id }.map(::externalLocation)
             result
         }
@@ -163,6 +170,7 @@ internal class DefaultFileLocationsSource(
             it.sourceType in setOf(
                 "saf_tree",
                 "real_path",
+                ExternalMountPaths.SFTP_REMOTE_SOURCE,
                 com.promenar.infinity.data.storage.ExternalMountPaths.KNOWLEDGE_BASE_SOURCE,
                 com.promenar.infinity.data.storage.ExternalMountPaths.KNOWLEDGE_BASE_RW_SOURCE,
             )
@@ -256,19 +264,29 @@ internal class DefaultFileLocationsSource(
     }
 
     private fun externalLocation(mount: ExternalMount): FileLocation {
-        val lost = mount.unavailableReason != null || !mountAvailable(mount)
+        val remote = mount.isSftpRemoteSource
+        val spec = if (remote) SftpRemoteMountSpec.decode(mount.sourceId) else null
+        val lost = if (remote) spec == null else mount.unavailableReason != null || !mountAvailable(mount)
         val writable = !mount.readOnly && mount.sourceType != "knowledge_base" && !lost
-        val storageName = if (mount.sourceType == "real_path") compactSharedDisplayPath(mount.sourceId) else null
+        val storageName = when {
+            remote -> spec?.hostAlias
+            mount.sourceType == "real_path" -> compactSharedDisplayPath(mount.sourceId)
+            else -> null
+        }
         return FileLocation(
             id = "external:${mount.id}",
             kind = FileLocationKind.EXTERNAL_FOLDER,
             title = mount.alias,
             capabilities = FileLocationCapabilities(writable = writable, deletable = writable, archive = writable, terminal = false),
             accessLost = lost,
-            storageKind = FileLocationStorageKind.EXTERNAL_MOUNT,
+            storageKind = if (remote) FileLocationStorageKind.SFTP_REMOTE else FileLocationStorageKind.EXTERNAL_MOUNT,
             mountId = mount.id,
             storageName = storageName,
-            displayPath = mount.sourceId,
+            displayPath = if (remote) spec?.rootPath else mount.sourceId,
+            remoteHostAlias = spec?.hostAlias,
+            remoteRootPath = spec?.rootPath,
+            remoteReadOnly = remote && mount.readOnly,
+            remoteOnline = if (remote && (lost || mount.unavailableReason != null)) false else null,
         )
     }
 

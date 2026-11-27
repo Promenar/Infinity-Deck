@@ -24,6 +24,124 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class FileManagerOperationsTest {
+    @Test fun 超过八MiB的未缓存远程预览只返回元数据且分享拒绝隐式拉取() = runBlocking<Unit> {
+        val root = java.nio.file.Files.createTempDirectory("sftp-preview").toFile()
+        val size = com.promenar.infinity.data.storage.REMOTE_AUTO_PREVIEW_MAX_BYTES + 1
+        val backend = mockk<ExternalFolderBackend> {
+            coEvery { stat("/large.pdf") } returns ExternalFolderEntry("/large.pdf", "large.pdf", false, size, 123)
+        }
+        try {
+            com.promenar.infinity.data.storage.RemotePreviewCache(root).use { cache ->
+                val ops = remoteOperations(backend, cache)
+                val ref = FileRef("external:remote", "/large.pdf")
+                val details = ops.preview(ref) as FilePreview.RemoteDetails
+                assertEquals(size, details.sizeBytes)
+                assertEquals("/archive/large.pdf", details.remotePath)
+                assertEquals("/mnt/drive/large.pdf", details.virtualPath)
+                assertEquals(FileOpCode.TOO_LARGE, (runCatching { ops.shareUri(ref) }.exceptionOrNull() as FileOpException).code)
+                coVerify(exactly = 0) { backend.read(any(), any()) }
+                coVerify(exactly = 0) { backend.readStream<Any>(any(), any(), any()) }
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun 大文件命中缓存时复用本地内容并提供带副档名的共享文件() = runBlocking<Unit> {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val staged = java.io.File.createTempFile("sftp-preview-share", ".tmp", context.cacheDir)
+        val size = com.promenar.infinity.data.storage.REMOTE_AUTO_PREVIEW_MAX_BYTES + 1
+        staged.outputStream().buffered().use { file ->
+            val prefix = "远程内容".toByteArray()
+            val spaces = ByteArray(64 * 1024) { ' '.code.toByte() }
+            file.write(prefix)
+            var remaining = size - prefix.size
+            while (remaining > 0) {
+                val count = minOf(remaining, spaces.size.toLong()).toInt()
+                file.write(spaces, 0, count)
+                remaining -= count
+            }
+        }
+        val backend = mockk<ExternalFolderBackend> {
+            coEvery { stat("/large.txt") } returns ExternalFolderEntry("/large.txt", "large.txt", false, size, 123)
+        }
+        val key = com.promenar.infinity.data.storage.RemotePreviewKey("host-digest", "/archive/large.txt", size, 123)
+        try {
+            com.promenar.infinity.data.storage.RemotePreviewCache(context.cacheDir).use { cache ->
+                cache.clear()
+                cache.publishVerified(key, staged, com.promenar.infinity.data.storage.sha256File(staged), cache.generationToken())
+                val operations = remoteOperations(backend, cache)
+                val preview = operations.preview(FileRef("external:remote", "/large.txt"), "远程内容".toByteArray().size) as FilePreview.Text
+                assertEquals("远程内容", preview.content)
+                assertTrue(preview.truncated)
+                val shared = requireNotNull(cache.shareFile(key))
+                assertEquals("txt", shared.extension)
+                assertEquals(size, shared.length())
+                assertTrue(shared.toPath().startsWith(context.cacheDir.toPath().resolve("workspace-media-share")))
+                assertTrue(java.nio.file.Files.isSameFile(shared.toPath(), staged.toPath()))
+                coVerify(exactly = 0) { backend.readStream<Any>(any(), any(), any()) }
+                cache.clear()
+                assertFalse(shared.exists())
+            }
+        } finally { staged.delete() }
+    }
+
+    @Test fun 小文本远程预览走共享缓存且重复打开只拉取一次() = runBlocking<Unit> {
+        val root = java.nio.file.Files.createTempDirectory("sftp-preview-text").toFile()
+        val bytes = "远程文本".toByteArray()
+        val path = "/readme.txt"
+        val memory = MemoryFileBackend().apply { addFile(path, bytes) }
+        val pulls = java.util.concurrent.atomic.AtomicInteger()
+        val backend = object : ExternalFolderBackend by memory {
+            override suspend fun <T> readStream(path: String, maxBytes: Long, consume: suspend (java.io.InputStream) -> T): T {
+                pulls.incrementAndGet()
+                return bytes.inputStream().use { consume(it) }
+            }
+        }
+        try {
+            com.promenar.infinity.data.storage.RemotePreviewCache(root).use { cache ->
+                val ops = remoteOperations(backend, cache)
+                repeat(2) { assertEquals("远程文本", (ops.preview(FileRef("external:remote", path)) as FilePreview.Text).content) }
+                assertEquals(1, pulls.get())
+                assertEquals(bytes.size.toLong(), cache.stats.value.usedBytes)
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun 远程搜索限制两级三十二目录和一千条目() = runBlocking<Unit> {
+        val directoryCalls = mutableListOf<String>()
+        val backend = object : ExternalFolderBackend by mockk<ExternalFolderBackend>() {
+            override suspend fun stat(path: String) = ExternalFolderEntry(path, "", true, 0, 0)
+
+            override suspend fun list(path: String): List<ExternalFolderEntry> {
+                directoryCalls += path
+                return if (path == "/") (1..40).map { ExternalFolderEntry("/dir$it", "dir$it", true, 0, 0) }
+                else listOf(ExternalFolderEntry("$path/nested", "nested", true, 0, 0))
+            }
+        }
+        val ops = remoteOperations(backend)
+        val dirs = ops.search("external:remote", FileSearchQuery(""), 2_000)
+        assertEquals(32, directoryCalls.size)
+        assertTrue(directoryCalls.all { it.count { char -> char == '/' } == 1 })
+        assertTrue(dirs.none { it.item.ref.path.count { char -> char == '/' } > 2 })
+
+        val manyFiles = object : ExternalFolderBackend by backend {
+            override suspend fun list(path: String) =
+                (1..1_100).map { ExternalFolderEntry("/f$it.txt", "f$it.txt", false, 1, 1) }
+        }
+        assertEquals(1_000, remoteOperations(manyFiles).search("external:remote", FileSearchQuery(""), 2_000).size)
+    }
+
+    private fun remoteOperations(
+        backend: ExternalFolderBackend,
+        cache: com.promenar.infinity.data.storage.RemotePreviewCache? = null,
+    ): DefaultFileOperations {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val mount = com.promenar.infinity.domain.storage.ExternalMount("remote", "drive", "sftp_remote",
+            """{"v":1,"host_alias":"nas","root_path":"/archive"}""", "session", 1)
+        return DefaultFileOperations(context, { id -> FileBackendHandle(id, backend, emptyList(), true, mount = mount) },
+            { emptyList() }, mockk(relaxed = true), mockk(relaxed = true), FileIndexEventSink.None,
+            FileMutationGuard(SessionExecutionGate()) { false }, remotePreviewCache = cache, remoteHostIdentity = { "host-digest" })
+    }
+
     @Test fun `Linux主目录删除与移动源删除通知实际路径并在失败后失效`() = runBlocking<Unit> {
         val backend = mockk<ExternalFolderBackend>()
         val expected = ExternalFolderEntry("/b.txt", "b.txt", false, 1, 1, "hash", "identity")

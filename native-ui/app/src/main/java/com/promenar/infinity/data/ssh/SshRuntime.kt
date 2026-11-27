@@ -136,7 +136,8 @@ class SshRuntime(
     private val transferReturns = ConcurrentHashMap<String, TransferReturn>()
     private val _activity = MutableStateFlow(SshRuntimeActivity())
     val activity: StateFlow<SshRuntimeActivity> = _activity.asStateFlow()
-    val hasPersistentResources: Boolean get() = connections.keys.any { it.owner == "ui" } || _forwards.value.isNotEmpty() || remoteJobs.isNotEmpty()
+    private val externalPersistentSources = ConcurrentHashMap<String, () -> Unit>()
+    val hasPersistentResources: Boolean get() = connections.keys.any { it.owner == "ui" } || _forwards.value.isNotEmpty() || remoteJobs.isNotEmpty() || externalPersistentSources.isNotEmpty()
     private val _forwards = MutableStateFlow<Map<String, Int>>(emptyMap())
     val forwardStates: StateFlow<Map<String, Int>> = _forwards.asStateFlow()
     private val serviceEpoch = AtomicLong()
@@ -917,6 +918,7 @@ class SshRuntime(
     suspend fun resumeOwner(owner: String) { pausedOwners.remove(owner) }
     override fun close() {
         stopped.set(true)
+        externalPersistentSources.clear()
         oneShotOperations.close()
         connections.values.toList().forEach(::drop)
         scope.cancel()
@@ -1051,6 +1053,9 @@ class SshRuntime(
     suspend fun disconnectAll() = withContext(Dispatchers.IO) { gate.withLock { disconnectPersistentLocked() } }
     private fun disconnectPersistentLocked(timeLimit: Boolean = false) {
         remoteJobs.values.forEach { if (timeLimit) it.timeLimit() else it.stop() }
+        val transferStops = externalPersistentSources.values.toList()
+        externalPersistentSources.clear()
+        transferStops.forEach { runCatching(it) }
         connections.values.filter { it.key.owner == "ui" || it.key.owner == FORWARD_OWNER || remoteJobs.containsKey(it.key.owner) }.forEach(::drop)
         publishPersistent()
     }
@@ -1135,6 +1140,320 @@ class SshRuntime(
         }
         return pty
     }
+    /** 界面或传输使用固定 owner；不从远程文件参数派生连接池所有者。 */
+    fun sftpMountTransport(owner: String, hostAlias: String): SftpMountTransport =
+        SftpRuntimeMountTransport(this, owner, SshPolicy.alias(hostAlias))
+
+    suspend fun bindSftpMountTransport(owner: String, hostAlias: String): SftpMountTransport =
+        SftpRuntimeMountTransport(this, owner, hostAlias, host(hostAlias))
+
+    suspend fun sftpMountHostIdentityDigest(hostAlias: String): String =
+        host(hostAlias).let { configured ->
+            val identity = configured.executionIdentity()
+            sha(listOf(identity.hostId, identity.digest, configured.jumpAlias.orEmpty(), configured.keyEntryId.orEmpty())
+                .joinToString("\u0000").toByteArray())
+        }
+
+    suspend fun sftpMountHostExists(hostAlias: String): Boolean = try {
+        host(hostAlias)
+        true
+    } catch (failure: SshFailure) {
+        if (failure.code == "HOST_NOT_FOUND") false else throw failure
+    }
+
+    suspend fun browseSftpMountDirectories(owner: String, hostAlias: String, remotePath: String): List<com.promenar.infinity.domain.storage.SftpRemoteDirEntry> =
+        sftpMountList(owner, hostAlias, remotePath).filter { it.isDirectory }.map {
+            com.promenar.infinity.domain.storage.SftpRemoteDirEntry(it.name, it.fullPath, it.isDirectory)
+        }
+
+    suspend fun sftpMountStat(owner: String, hostAlias: String, remotePath: String): SftpDetailedEntry? =
+        mountChannel(owner, hostAlias, remotePath) { channel, path ->
+            channel.checkedMountEntry(path.substringBeforeLast('/').ifEmpty { "/" })?.let { parent ->
+                if (!parent.isDirectory) throw SshFailure("NOT_DIRECTORY")
+                channel.mountStat(path)
+            }
+        }
+
+    suspend fun sftpMountList(owner: String, hostAlias: String, remotePath: String, limit: Int = 1024): List<SftpDetailedEntry> =
+        mountChannel(owner, hostAlias, remotePath) { channel, path ->
+            require(limit in 1..1024)
+            if (channel.checkedMountEntry(path)?.isDirectory != true) throw SshFailure("NOT_DIRECTORY")
+            val entries = mutableListOf<SftpDetailedEntry>()
+            var examined = 0
+            channel.ls(sftpLiteral(path)) { entry ->
+                val name = entry.filename
+                if (name != "." && name != "..") {
+                    examined++
+                    if ('/' !in name && runCatching { canonicalSftpPath(sftpChild(path, name)) }.isSuccess) {
+                        val child = entry.attrs.mountEntry(sftpChild(path, name))
+                        if (!child.isSymlink && (child.isDirectory || child.isRegular)) entries += child
+                    }
+                }
+                if (examined >= limit) ChannelSftp.LsEntrySelector.BREAK else ChannelSftp.LsEntrySelector.CONTINUE
+            }
+            entries
+        }
+
+    suspend fun sftpMountMkdir(owner: String, hostAlias: String, remotePath: String) =
+        mountChannel(owner, hostAlias, remotePath) { channel, path ->
+            requireMountTarget(path)
+            if (channel.checkedMountEntry(path) != null) throw SshFailure("TARGET_CONFLICT")
+            // mkdir 不解释通配符，必须传原始路径。
+            channel.mkdir(path)
+        }
+
+    suspend fun sftpMountRenameNoReplace(owner: String, hostAlias: String, sourcePath: String, targetPath: String) =
+        withHostSnapshot(host(hostAlias)) {
+            val source = canonicalSftpPath(sourcePath).also(::requireMountTarget)
+            val target = canonicalSftpPath(targetPath).also(::requireMountTarget)
+            mountChannel(owner, hostAlias, source) { channel, _ ->
+                if (channel.checkedMountEntry(source) == null) throw SshFailure("NOT_FOUND")
+                if (channel.checkedMountEntry(target) != null) throw SshFailure("TARGET_CONFLICT")
+            }
+            try {
+                mountPacket(owner, hostAlias) { it.renameNoReplace(source, target) }
+            } catch (failure: SshFailure) {
+                if (failure.code == "SFTP_IO_FAILED" && sftpMountStat(owner, hostAlias, target) != null) {
+                    throw SshFailure("TARGET_CONFLICT")
+                }
+                throw failure
+            }
+        }
+
+    suspend fun sftpMountRemoveFile(owner: String, hostAlias: String, remotePath: String) =
+        mountChannel(owner, hostAlias, remotePath) { channel, path ->
+            requireMountTarget(path)
+            val entry = channel.checkedMountEntry(path) ?: return@mountChannel
+            if (!entry.isRegular) throw SshFailure("UNSUPPORTED_FILE_TYPE")
+            channel.rm(sftpLiteral(path))
+        }
+
+    suspend fun sftpMountRemoveEmptyDir(owner: String, hostAlias: String, remotePath: String) =
+        mountChannel(owner, hostAlias, remotePath) { channel, path ->
+            requireMountTarget(path)
+            val entry = channel.checkedMountEntry(path) ?: return@mountChannel
+            if (!entry.isDirectory) throw SshFailure("NOT_DIRECTORY")
+            try { channel.rmdir(sftpLiteral(path)) } catch (failure: com.jcraft.jsch.SftpException) {
+                if (failure.id == ChannelSftp.SSH_FX_FAILURE) {
+                    var hasChild = false
+                    channel.ls(sftpLiteral(path)) {
+                        hasChild = it.filename != "." && it.filename != ".."
+                        if (hasChild) ChannelSftp.LsEntrySelector.BREAK else ChannelSftp.LsEntrySelector.CONTINUE
+                    }
+                    if (hasChild) throw SshFailure("NOT_EMPTY")
+                }
+                throw failure
+            }
+        }
+
+    /** 使用 JSch get(source, monitor, offset)，该重载的 READ 直接从绝对 offset 开始。 */
+    suspend fun <T> sftpMountReadStream(
+        owner: String, hostAlias: String, remotePath: String, maxBytes: Long, offset: Long = 0,
+        consume: suspend (java.io.InputStream) -> T,
+    ): T {
+        require(maxBytes >= 0 && offset >= 0)
+        val caller = currentCoroutineContext()
+        return mountChannel(owner, hostAlias, remotePath) { channel, path ->
+            val entry = channel.checkedMountEntry(path) ?: throw SshFailure("NOT_FOUND")
+            if (!entry.isRegular) throw SshFailure("UNSUPPORTED_FILE_TYPE")
+            if (offset > entry.size) throw SshFailure("OFFSET_MISMATCH")
+            if (entry.size - offset > maxBytes) throw SshFailure("TOO_LARGE")
+            channel.get(sftpLiteral(path), null, offset).use { stream ->
+                // 保留调用方的上下文元素和取消信号，外层取消同时关闭 SFTP 通道。
+                kotlinx.coroutines.runBlocking(caller.minusKey(kotlin.coroutines.ContinuationInterceptor)) {
+                    runCatching { consume(SftpMountBoundedInput(stream, maxBytes)) }
+                }
+            }
+        }.getOrThrow()
+    }
+
+    internal suspend fun sftpMountCreateTemporary(owner: String, hostAlias: String, remotePath: String) =
+        withHostSnapshot(host(hostAlias)) {
+            val path = canonicalSftpPath(remotePath).also(::requireSftpPart)
+            mountChannel(owner, hostAlias, path) { channel, _ ->
+                if (channel.checkedMountEntry(path) != null) throw SshFailure("TEMPORARY_CONFLICT")
+            }
+            try {
+                mountPacket(owner, hostAlias) { it.createPrivate(path) }
+            } catch (failure: SshFailure) {
+                if (failure.code == "SFTP_IO_FAILED" && sftpMountStat(owner, hostAlias, path) != null) {
+                    throw SshFailure("TEMPORARY_CONFLICT")
+                }
+                throw failure
+            }
+            val created = sftpMountStat(owner, hostAlias, path)
+            if (created == null || !created.isRegular || created.size != 0L || (created.permissions and 0x1ff) != 0x180) {
+                throw SshFailure("INVALID_TEMPORARY_FILE")
+            }
+        }
+
+    internal suspend fun sftpMountAppend(owner: String, hostAlias: String, remotePath: String, offset: Long, bytes: ByteArray) =
+        mountChannel(owner, hostAlias, remotePath) { channel, path ->
+            requireSftpPart(path)
+            require(offset >= 0 && bytes.size in 1..SFTP_MOUNT_CHUNK_BYTES)
+            val entry = channel.checkedMountEntry(path) ?: throw SshFailure("OFFSET_MISMATCH")
+            if (!entry.isRegular || (entry.permissions and 0x1ff) != 0x180) throw SshFailure("INVALID_TEMPORARY_FILE")
+            if (entry.size != offset) throw SshFailure("OFFSET_MISMATCH")
+            // APPEND 会自行加上已有长度；调用方输入已从检查点取块，此处额外偏移固定为零。
+            channel.put(sftpLiteral(path), null, ChannelSftp.APPEND, 0L).use { it.write(bytes) }
+            if (channel.mountStat(path)?.size != offset + bytes.size) throw SshFailure("OFFSET_MISMATCH")
+        }
+
+    suspend fun sftpRemoteSha256(owner: String, hostAlias: String, remotePath: String): RemoteSha256Receipt =
+        withHostSnapshot(host(hostAlias)) {
+            val path = canonicalSftpPath(remotePath)
+            mountChannel(owner, hostAlias, path) { channel, _ ->
+                if (channel.checkedMountEntry(path)?.isRegular != true) throw SshFailure("NOT_FOUND")
+            }
+            mountChecksum(owner, hostAlias, path)
+        }
+
+    internal suspend fun sftpMountPublish(owner: String, hostAlias: String, temporary: String, target: String, expectedSha256: String): SftpMountPublishReceipt =
+        withHostSnapshot(host(hostAlias)) {
+            require(sftpSha256Pattern.matches(expectedSha256))
+            val temp = canonicalSftpPath(temporary).also(::requireSftpPart)
+            val destination = canonicalSftpPath(target).also(::requireMountTarget)
+            if (temp.substringBeforeLast('/') != destination.substringBeforeLast('/')) throw SshFailure("INVALID_TEMPORARY_PATH")
+            val checksum = sftpRemoteSha256(owner, hostAlias, temp)
+            if (!checksum.sha256.equals(expectedSha256, true)) throw SshFailure("CHECKSUM_MISMATCH")
+            suspend fun existing(): SftpMountPublishReceipt {
+                val receipt = sftpRemoteSha256(owner, hostAlias, destination)
+                if (receipt.sha256 != checksum.sha256) throw SshFailure("TARGET_CONFLICT")
+                return SftpMountPublishReceipt(receipt, true)
+            }
+            val initial = sftpMountStat(owner, hostAlias, destination)
+            if (initial != null) {
+                if (!initial.isRegular) throw SshFailure("TARGET_CONFLICT")
+                return@withHostSnapshot existing()
+            }
+            try {
+                mountChannel(owner, hostAlias, destination) { channel, _ ->
+                    if (channel.checkedMountEntry(destination) != null) throw SshFailure("TARGET_CONFLICT")
+                    val verifiedPart = channel.checkedMountEntry(temp)
+                    if (verifiedPart?.isRegular != true || (verifiedPart.permissions and 0x1ff) != 0x180) {
+                        throw SshFailure("INVALID_TEMPORARY_FILE")
+                    }
+                    if (channel.getExtension("hardlink@openssh.com") != "1") throw SshFailure("ATOMIC_PUBLISH_UNSUPPORTED")
+                    channel.hardlink(sftpLiteral(temp), sftpLiteral(destination))
+                }
+            } catch (failure: SshFailure) {
+                if (failure.code in setOf("TARGET_CONFLICT", "SFTP_IO_FAILED")) {
+                    val concurrent = sftpMountStat(owner, hostAlias, destination)
+                    if (concurrent != null) {
+                        if (!concurrent.isRegular) throw SshFailure("TARGET_CONFLICT")
+                        return@withHostSnapshot existing()
+                    }
+                }
+                throw failure
+            }
+            SftpMountPublishReceipt(checksum, false)
+        }
+
+    suspend fun sftpMountWriteBytes(owner: String, hostAlias: String, remotePath: String, bytes: ByteArray, expectedSha256: String?, createOnly: Boolean) =
+        bindSftpMountTransport(owner, hostAlias).writeMountBytes(canonicalSftpPath(remotePath).also(::requireMountTarget), bytes, expectedSha256, createOnly)
+
+    suspend fun sftpResumableUploadChunked(
+        owner: String, hostAlias: String, temporary: String, localSource: java.io.File, size: Long, offset: Long,
+        directive: () -> SftpChunkDirective, checkpoint: suspend (Long) -> Unit,
+    ): SftpChunkResult = withContext(Dispatchers.IO) {
+        bindSftpMountTransport(owner, hostAlias).sftpResumableUploadChunked(temporary, localSource, size, offset, directive, checkpoint)
+    }
+
+    suspend fun sftpResumableDownloadChunked(
+        owner: String, hostAlias: String, source: String, localTemporary: java.io.File, size: Long, offset: Long,
+        directive: () -> SftpChunkDirective, checkpoint: suspend (Long) -> Unit,
+    ): SftpChunkResult = withContext(Dispatchers.IO) {
+        bindSftpMountTransport(owner, hostAlias).sftpResumableDownloadChunked(source, localTemporary, size, offset, directive, checkpoint)
+    }
+
+    suspend fun sftpMountProbe(owner: String, hostAlias: String, remotePath: String): com.promenar.infinity.domain.storage.SftpRemoteProbeResult {
+        val started = now()
+        var hardlink = false
+        return try {
+            withHostSnapshot(host(hostAlias)) {
+                val path = canonicalSftpPath(remotePath)
+                hardlink = mountChannel(owner, hostAlias, path) { channel, _ ->
+                    if (channel.checkedMountEntry(path)?.isDirectory != true) throw SshFailure("NOT_DIRECTORY")
+                    channel.getExtension("hardlink@openssh.com") == "1"
+                }
+                val probe = sftpChild(path, ".infinity-part-${UUID.randomUUID()}.tmp")
+                val writable = try {
+                    sftpMountCreateTemporary(owner, hostAlias, probe)
+                    withContext(NonCancellable) { sftpMountRemoveFile(owner, hostAlias, probe) }
+                    true
+                } catch (failure: SshFailure) {
+                    if (failure.code !in setOf("ACCESS_DENIED", "SFTP_IO_FAILED")) throw failure
+                    false
+                }
+                val checksum = try { mountChecksum(owner, hostAlias, null) } catch (failure: SshFailure) {
+                    if (failure.code !in setOf("EXEC_UNAVAILABLE", "CHECKSUM_TOOL_UNAVAILABLE")) throw failure
+                    null
+                }
+                com.promenar.infinity.domain.storage.SftpRemoteProbeResult(true, now() - started, writable, hardlink, checksum?.verificationMethod)
+            }
+        } catch (failure: SshFailure) {
+            com.promenar.infinity.domain.storage.SftpRemoteProbeResult(false, now() - started, false, hardlink, null,
+                if (failure.code == "HOST_NOT_FOUND") "SSH_HOST_MISSING" else failure.code, "远程目录当前不可用")
+        }
+    }
+
+    private suspend fun mountChecksum(owner: String, alias: String, path: String?): RemoteSha256Receipt {
+        val output = try {
+            exec(owner, alias, remoteChecksumCommand(path), timeoutSeconds = 60, maxOutputChars = 512)
+        } catch (failure: SshFailure) {
+            if (failure.code == "SSH_IO_FAILED") throw SshFailure("EXEC_UNAVAILABLE")
+            throw failure
+        }
+        return remoteChecksumReceipt(output)
+    }
+
+    private suspend fun <T> mountChannel(owner: String, alias: String, path: String, block: (ChannelSftp, String) -> T): T {
+        val canonical = canonicalSftpPath(path)
+        return sftp(owner, alias, canonical) { channel, _ ->
+            try { block(channel, canonical) } catch (failure: com.jcraft.jsch.SftpException) { throw mountSftpError(failure) }
+        }
+    }
+
+    private suspend fun <T> mountPacket(owner: String, alias: String, block: (SftpV3MountPacket) -> T): T {
+        val ref = AtomicReference<Channel?>()
+        return try {
+            (withTimeoutOrNull(60_000) {
+                withConnection(owner, alias) { connection ->
+                    verifyCurrentConnection(connection)
+                    io({ ref.get()?.disconnect() }) {
+                        val channel = (connection.session.openChannel("subsystem") as com.jcraft.jsch.ChannelSubsystem).also(ref::set)
+                        channel.setSubsystem("sftp")
+                        channel.setWantReply(true)
+                        try {
+                            val input = channel.inputStream
+                            val output = channel.outputStream
+                            channel.connect(CONNECT_TIMEOUT)
+                            SftpCompleted(block(SftpV3MountPacket(input, output)))
+                        } finally { channel.disconnect(); connection.used = now() }
+                    }
+                }
+            } ?: throw SshFailure("TIMEOUT")).value
+        } finally { withContext(NonCancellable + Dispatchers.IO) { ref.get()?.disconnect() } }
+    }
+
+    private fun requireMountTarget(path: String) {
+        if (path == "/") throw SshFailure("INVALID_REMOTE_PATH")
+    }
+
+    suspend fun registerExternalPersistentSource(key: String, active: Boolean) =
+        registerExternalPersistentSource(key, active) {}
+
+    suspend fun registerExternalPersistentSource(key: String, active: Boolean, onServiceStop: () -> Unit) =
+        withContext(Dispatchers.IO) { gate.withLock {
+            if (active && stopped.get()) throw SshFailure("RUNTIME_CLOSED")
+            val changed = if (active) externalPersistentSources.putIfAbsent(key, onServiceStop) == null
+                else externalPersistentSources.remove(key) != null
+            if (changed) try { publishPersistent() } catch (failure: Exception) {
+                if (active) externalPersistentSources.remove(key)
+                throw failure
+            }
+        } }
+
     private suspend fun verifyCurrentConnection(connection: Connection) {
         if (host(connection.host.alias) != connection.host) throw SshFailure("HOST_CONFIGURATION_CHANGED")
     }

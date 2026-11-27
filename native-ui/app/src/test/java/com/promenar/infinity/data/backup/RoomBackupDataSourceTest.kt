@@ -1856,13 +1856,12 @@ class RoomBackupDataSourceTest {
     }
 
     @Test
-    fun `backup excludes device mounts and restore clears their derived snapshot references`() = runBlocking {
+    fun `备份排除本机挂载且恢复保留本机挂载快照`() = runBlocking<Unit> {
         seedCompleteGraph()
         val mount = ExternalMountEntity("local-mount", "资料", "saf_tree", "content://test/tree/local", "", false, 1)
         db.externalMountDao().insert(mount)
-        db.externalMountDao().putSnapshot(
-            ExternalSnapshotEntity("local-mount", "/文件.txt", "root-1", "file-1", 2, "old-hash", 3),
-        )
+        val binding = ExternalSnapshotEntity("local-mount", "/文件.txt", "root-1", "file-1", 2, "old-hash", 3)
+        db.externalMountDao().putSnapshot(binding)
         val source = newDataSource()
         val snapshot = source.snapshot(CANONICAL_CONTENT)
         val tables = Json.parseToJsonElement(snapshot.database.toString(Charsets.UTF_8))
@@ -1872,7 +1871,7 @@ class RoomBackupDataSourceTest {
         source.restore(validated(snapshot))
 
         assertThat(db.externalMountDao().get("local-mount")).isEqualTo(mount)
-        assertThat(db.externalMountDao().snapshots("local-mount", "/文件.txt")).isEmpty()
+        assertThat(db.externalMountDao().snapshots("local-mount", "/文件.txt")).containsExactly(binding)
     }
 
     @Test

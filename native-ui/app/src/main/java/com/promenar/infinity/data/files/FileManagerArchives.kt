@@ -148,20 +148,23 @@ internal object FileManagerArchives {
 
     suspend fun preview(cache: File, source: ExternalFolderBackend, path: String): FilePreview.Archive {
         val archive = spoolArchive(cache, source, path)
-        try {
-            return ZipFile(archive).use { zip ->
-                val entries = zip.entries()
-                val names = mutableListOf<String>()
-                var total = 0
-                while (entries.hasMoreElements()) {
-                    currentCoroutineContext().ensureActive()
-                    val item = entries.nextElement()
-                    if (++total > MAX_ENTRIES) throw FileOpException(FileOpCode.TOO_LARGE)
-                    if (names.size < 200) names += item.name
-                }
-                FilePreview.Archive(names, total)
+        try { return previewCached(archive) } finally { archive.delete() }
+    }
+
+    suspend fun previewCached(archive: File): FilePreview.Archive {
+        if (archive.length() > MAX_ARCHIVE_BYTES) throw FileOpException(FileOpCode.TOO_LARGE)
+        return ZipFile(archive).use { zip ->
+            val entries = zip.entries()
+            val names = mutableListOf<String>()
+            var total = 0
+            while (entries.hasMoreElements()) {
+                currentCoroutineContext().ensureActive()
+                val item = entries.nextElement()
+                if (++total > MAX_ENTRIES) throw FileOpException(FileOpCode.TOO_LARGE)
+                if (names.size < 200) names += item.name
             }
-        } finally { archive.delete() }
+            FilePreview.Archive(names, total)
+        }
     }
 
     private suspend fun spoolArchive(cache: File, source: ExternalFolderBackend, path: String): File {

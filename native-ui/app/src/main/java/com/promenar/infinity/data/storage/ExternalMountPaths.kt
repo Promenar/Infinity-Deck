@@ -8,6 +8,10 @@ import java.util.Base64
 import java.io.File
 
 object ExternalMountPaths {
+    const val SFTP_REMOTE_SOURCE = com.promenar.infinity.domain.storage.SFTP_REMOTE_SOURCE_TYPE
+    fun isAttachableLibrarySource(sourceType: String): Boolean =
+        sourceType in setOf("saf_tree", "real_path", SFTP_REMOTE_SOURCE)
+
     const val LIBRARY_SCOPE = "__library__"
     fun isLibraryScope(scope: String): Boolean = scope == LIBRARY_SCOPE
     const val ROOT_UUID = "external:root"
@@ -80,6 +84,8 @@ object ExternalMountPaths {
     }
 }
 
+val ExternalMount.isSftpRemoteSource: Boolean get() = sourceType == ExternalMountPaths.SFTP_REMOTE_SOURCE
+
 val ExternalMount.isWorkspaceRoot: Boolean get() = alias == ExternalMountPaths.WORKSPACE_ALIAS
 val ExternalMount.isUserSkills: Boolean get() = id == ExternalMountPaths.SKILLS_MOUNT_ID && sourceType == ExternalMountPaths.SKILLS_SOURCE
 
@@ -94,7 +100,9 @@ val ExternalMount.isValidKnowledgeMount: Boolean
 /** 旧版知识库来源强制只读，读写来源仍遵循持久化只读标志。 */
 internal fun ExternalMount.requireWritable() {
     if (readOnly || sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE) {
-        throw ExternalFolderException("READ_ONLY", "知识库挂载为只读")
+        val message = if (isSftpRemoteSource) "远程挂载为只读，请在挂载设置中切换为可读写归档"
+            else "知识库挂载为只读"
+        throw ExternalFolderException("READ_ONLY", message)
     }
 }
 

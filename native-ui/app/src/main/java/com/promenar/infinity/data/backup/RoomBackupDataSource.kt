@@ -97,9 +97,17 @@ class RoomBackupDataSource(
     private fun embeddingMetadata(payload: DatabaseBackupPayload, preferences: BackupPreferenceSnapshot): BackupEmbeddingMetadata? =
         com.promenar.infinity.data.backup.embeddingMetadata(payload, preferences, runCatching(embeddingSpaceKey).getOrNull())
 
-    private fun backupTables(): List<String> = INSERT_ORDER + if (database.openHelper.writableDatabase.query(
+    private fun roomBackupTables(): List<String> = INSERT_ORDER + if (database.openHelper.writableDatabase.query(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_rule_revisions'",
     ).use { it.moveToFirst() }) listOf("agent_rule_revisions") else emptyList()
+
+    private fun backupTables(): List<String> = roomBackupTables() + SftpMountBackupPolicy.TABLE
+
+    private fun snapshotTable(table: String): String =
+        if (table == SftpMountBackupPolicy.TABLE) SftpMountBackupPolicy.SOURCE_TABLE else table
+
+    private fun snapshotProjection(table: String): String =
+        if (table == SftpMountBackupPolicy.TABLE) SftpMountBackupPolicy.projection else "*"
 
     override suspend fun estimate(): Map<BackupLayer, BackupLayerStats> = estimateFor(BackupLayer.entries.toSet())
 
@@ -189,10 +197,12 @@ class RoomBackupDataSource(
     private fun readLivePayload(layers: Set<BackupLayer>? = null): DatabaseBackupPayload {
         val sqlite = database.openHelper.writableDatabase
         return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, backupTables().associateWith { table ->
-            val ids = sqlite.query("SELECT rowid FROM `$table`" + mediaSnapshotRowsSql(table, layers)).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
+            val source = snapshotTable(table)
+            val projection = snapshotProjection(table)
+            val ids = sqlite.query("SELECT rowid FROM `$source`" + mediaSnapshotRowsSql(table, layers)).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getLong(0)) } }
             object : AbstractList<JsonObject>() {
                 override val size get() = ids.size
-                override fun get(index: Int): JsonObject = sqlite.query("SELECT * FROM `$table` WHERE rowid = ?", arrayOf<Any>(ids[index])).use { cursor ->
+                override fun get(index: Int): JsonObject = sqlite.query("SELECT $projection FROM `$source` WHERE rowid = ?", arrayOf<Any>(ids[index])).use { cursor ->
                     if (!cursor.moveToFirst()) throw BackupValidationException("恢复验证期间本机记录发生变化")
                     MediaQueueBackupPolicy.snapshotRow(table, cursorRow(cursor, table))
                 }
@@ -205,6 +215,7 @@ class RoomBackupDataSource(
         else selectedRowsSql(table, layers)
 
     private fun selectedRowsSql(table: String, layers: Set<BackupLayer>?): String {
+        if (table == SftpMountBackupPolicy.TABLE) return SftpMountBackupPolicy.selection(layers)
         if (table == "kg_folder_settings") {
             val roots = "SELECT workspace_root_uuid FROM sessions WHERE agent_id = '__system__' AND workspace_root_uuid IS NOT NULL"
             val knowledge = layers == null || BackupLayer.KNOWLEDGE in layers
@@ -276,8 +287,11 @@ class RoomBackupDataSource(
     }
 
     private fun readDiskPayload(directory: Path, layers: Set<BackupLayer>? = null, mediaHistoryOnly: Boolean = false): DatabaseBackupPayload {
-        val tables = backupTables().associateWith { table ->
-            val entries = database.openHelper.writableDatabase.query("SELECT * FROM `$table`" + (if (mediaHistoryOnly) mediaSnapshotRowsSql(table, layers) else selectedRowsSql(table, layers))).use { cursor ->
+        // 本机挂载由恢复事务按当前物理表处理，无须为分层合并暂存。
+        val tables = (if (mediaHistoryOnly) backupTables() else roomBackupTables()).associateWith { table ->
+            val sql = "SELECT ${snapshotProjection(table)} FROM `${snapshotTable(table)}`" +
+                (if (mediaHistoryOnly) mediaSnapshotRowsSql(table, layers) else selectedRowsSql(table, layers))
+            val entries = database.openHelper.writableDatabase.query(sql).use { cursor ->
                 BackupDatabaseRows.write(sequence { while (cursor.moveToNext()) {
                     val row = cursorRow(cursor, table)
                     yield(if (mediaHistoryOnly) MediaQueueBackupPolicy.snapshotRow(table, row) else row)
@@ -293,6 +307,7 @@ class RoomBackupDataSource(
         try {
             requireWorkspaceMutationJournalRecovered()
             var payload = database.withTransaction { readDiskPayload(root, layers, mediaHistoryOnly = true) }
+            SftpMountBackupPolicy.validate(payload)
             val policy = BackupLayerPolicy.Index(payload.tables)
             var prefs = sanitizePreferences(preferences.snapshot(BackupPackageLimits.MAX_ENTRY_BYTES, includeVoiceprints = encrypted))
             val voiceprints = prefs.entries.firstOrNull { it.namespace == BackupPreferencePolicy.VOICE_NAMESPACE }
@@ -617,6 +632,7 @@ class RoomBackupDataSource(
                     clearAllRestorableTables()
                     insertPayload(transformed)
                 } else replaceLayers(transformed, local!!, layerSet, validated.manifest.databaseSchemaVersion < 17)
+                SftpMountBackupPolicy.replace(database.externalMountDao(), transformed.rows(SftpMountBackupPolicy.TABLE))
                 val sqlite = database.openHelper.writableDatabase
                 sqlite.execSQL("INSERT OR IGNORE INTO kg_collections(id,kind,title,root_ref,created_at) VALUES('shared','shared','通用知识',NULL,0)")
                 sqlite.execSQL("INSERT INTO vectors_fts(vectors_fts) VALUES('rebuild')")
@@ -730,9 +746,12 @@ class RoomBackupDataSource(
         val sqlite = database.openHelper.writableDatabase
         val budget = MaterializationBudget(BackupPackageLimits.MAX_IN_MEMORY_BYTES)
         val tables = backupTables().associateWith { table ->
-            sqlite.query("SELECT * FROM `$table`" + mediaSnapshotRowsSql(table, null)).use { cursor -> cursorRows(cursor, budget, table).map { MediaQueueBackupPolicy.snapshotRow(table, it) } }
+            val sql = "SELECT ${snapshotProjection(table)} FROM `${snapshotTable(table)}`" + mediaSnapshotRowsSql(table, null)
+            sqlite.query(sql).use { cursor -> cursorRows(cursor, budget, table).map { MediaQueueBackupPolicy.snapshotRow(table, it) } }
         }
-        return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, tables).also(::validateLongTermMemories)
+        return DatabaseBackupPayload(DATABASE_SCHEMA_VERSION, tables)
+            .also(::validateLongTermMemories)
+            .also(SftpMountBackupPolicy::validate)
     }
 
     private fun cursorRows(cursor: Cursor, budget: MaterializationBudget, table: String): List<JsonObject> = buildList {
@@ -957,17 +976,23 @@ class RoomBackupDataSource(
     }
 
     private fun parseValidatedDatabase(validated: ValidatedBackup): DatabaseBackupPayload =
-        parseValidatedDatabaseContent(validated).also { MediaQueueBackupPolicy.validateRows(it.tables) }
+        parseValidatedDatabaseContent(validated)
+            .also { MediaQueueBackupPolicy.validateRows(it.tables) }
+            .also(SftpMountBackupPolicy::validate)
 
     private fun parseValidatedDatabaseContent(validated: ValidatedBackup): DatabaseBackupPayload {
         if (validated.manifest.layers == null) {
             val parsed = parseDatabase(validated.database)
-            val optionalTables = setOf("agent_rule_revisions") + if (validated.manifest.databaseSchemaVersion < 19) KEYCHAIN_TABLES else emptySet()
+            val optionalTables = setOf("agent_rule_revisions", SftpMountBackupPolicy.TABLE) +
+                if (validated.manifest.databaseSchemaVersion < 19) KEYCHAIN_TABLES else emptySet()
             return parsed.copy(tables = parsed.tables + optionalTables.filter { it in backupTables() && it !in parsed.tables }.associateWith { emptyList() })
         }
         if (validated.manifest.databaseSchemaVersion !in setOf(13, 14, 15, 16, 17, 18, 19, 20, DATABASE_SCHEMA_VERSION)) throw BackupValidationException("数据库备份版本不兼容")
         val allTableEntries = validated.manifest.entries.filter { it.path.startsWith("database/") }.groupBy { it.path.split('/')[1] }
         if (allTableEntries.keys.any { it !in backupTables() }) throw BackupValidationException("备份包含当前应用不支持的数据表")
+        if (allTableEntries[SftpMountBackupPolicy.TABLE].orEmpty().any { it.layer != BackupLayer.CORE }) {
+            throw BackupValidationException("SFTP 挂载备份必须属于核心层")
+        }
         val tableEntries = if (validated.manifest.databaseSchemaVersion < 16) allTableEntries.filterKeys { it !in GRAPH_VECTOR_TABLES } else allTableEntries
         if (validated.manifest.databaseSchemaVersion == 13 && "knowledge_citations" in tableEntries) {
             throw BackupValidationException("v13 备份不应包含引用表")
@@ -976,6 +1001,7 @@ class RoomBackupDataSource(
         val layers = validated.manifest.layers.keys
         backupTables().forEach { table -> layers.forEach { layer ->
             if (BackupLayerPolicy.tableLayer(table, layer) == layer && tableEntries[table].orEmpty().none { it.layer == layer } &&
+                table != SftpMountBackupPolicy.TABLE &&
                 !(table == "knowledge_citations" && validated.manifest.databaseSchemaVersion == 13) &&
                 !(table == LONG_TERM_MEMORY_TABLE && layer != BackupLayer.CORE && validated.manifest.databaseSchemaVersion < 17) &&
                 !(table in GRAPH_VECTOR_TABLES && validated.manifest.databaseSchemaVersion < 16) &&
@@ -1042,7 +1068,9 @@ class RoomBackupDataSource(
             }
         }
         val tables = backupTables().associateWith { table ->
-            if (table in MediaQueueBackupPolicy.tables) {
+            if (table == SftpMountBackupPolicy.TABLE) {
+                imported.rows(table)
+            } else if (table in MediaQueueBackupPolicy.tables) {
                 MediaQueueBackupPolicy.mergeRows(table, local.rows(table), imported.rows(table))
             } else if (table in KEYCHAIN_TABLES && validated.manifest.databaseSchemaVersion < 19) {
                 local.rows(table)
@@ -1134,7 +1162,7 @@ class RoomBackupDataSource(
         }.mapTo(hashSetOf()) { it.requiredString("id") } else emptySet()
         data class Deletion(val columns: List<String>, val keys: List<List<String>>)
         // 删除消息父节点会级联删除子节点，主键清单必须先冻结。
-        val deletions = backupTables().associateWith { table ->
+        val deletions = roomBackupTables().associateWith { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor -> buildList {
                 val name = cursor.getColumnIndexOrThrow("name"); val pk = cursor.getColumnIndexOrThrow("pk")
                 while (cursor.moveToNext()) if (cursor.getInt(pk) > 0) add(cursor.getString(name))
@@ -1170,7 +1198,7 @@ class RoomBackupDataSource(
         sqlite.execSQL("DELETE FROM mcp_tool_snapshots")
         // 任一父表的分层替换都可能级联引用，先清空并在所有父表恢复后重建合并结果。
         sqlite.execSQL("DELETE FROM knowledge_citations")
-        backupTables().reversed().filterNot { it in GRAPH_VECTOR_TABLES || it in MediaQueueBackupPolicy.tables }.forEach { table ->
+        roomBackupTables().reversed().filterNot { it in GRAPH_VECTOR_TABLES || it in MediaQueueBackupPolicy.tables }.forEach { table ->
             val deletion = deletions.getValue(table)
             val statement = "DELETE FROM `$table` WHERE " + deletion.columns.joinToString(" AND ") { "`$it` = ?" }
             deletion.keys.forEach { sqlite.execSQL(statement, it.toTypedArray()) }
@@ -1666,7 +1694,7 @@ class RoomBackupDataSource(
         if (sqlite.version != 39 || expectedIdentity == null || identityHash != expectedIdentity) {
             throw BackupValidationException("当前 Room schema 不是受支持的精确 schema v39")
         }
-        backupTables().forEach { table ->
+        roomBackupTables().forEach { table ->
             val columns = sqlite.query("PRAGMA table_info(`$table`)").use { cursor ->
                 buildList {
                     val nameIndex = cursor.getColumnIndexOrThrow("name")
@@ -1917,12 +1945,12 @@ class RoomBackupDataSource(
 
     private fun clearAllRestorableTables() {
         val sqlite = database.openHelper.writableDatabase
-        (DERIVED_DELETE_ORDER + backupTables().reversed()).filterNot { it in MediaQueueBackupPolicy.tables }.forEach { sqlite.execSQL("DELETE FROM `$it`") }
+        (DERIVED_DELETE_ORDER + roomBackupTables().reversed()).filterNot { it in MediaQueueBackupPolicy.tables }.forEach { sqlite.execSQL("DELETE FROM `$it`") }
     }
 
     private fun insertPayload(payload: DatabaseBackupPayload) {
         val sqlite = database.openHelper.writableDatabase
-        backupTables().forEach { table ->
+        roomBackupTables().forEach { table ->
             val rows = if (table == "messages") {
                 sortMessagesParentFirst(payload.rows(table))
             } else {
@@ -2067,8 +2095,11 @@ class RoomBackupDataSource(
     private fun fingerprint(payload: DatabaseBackupPayload): String {
         val digest = MessageDigest.getInstance("SHA-256")
         backupTables().sorted().forEach { table ->
+            val rows = payload.rows(table)
+            // 旧备份补出的空段不参与摘要，保留旧 marker 的摘要输入。
+            if (table == SftpMountBackupPolicy.TABLE && rows.isEmpty()) return@forEach
             digest.update(table.toByteArray())
-            payload.rows(table).forEach { digest.update(canonicalRow(it).toByteArray()) }
+            rows.forEach { digest.update(canonicalRow(it).toByteArray()) }
         }
         return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
@@ -2526,7 +2557,7 @@ class RoomBackupDataSource(
         // 可移植数据包含向量与图谱；全文索引和即时抽取缓存仍由本地重建或失效。
         // 明确排除 FTS/JIT/vectorization_tasks/audit_logs/
         // tool_execution_ledger/file_versions，它们均为可重建派生数据、运行态账本或版本缓存。
-        // external_mounts/external_snapshots 依赖本机目录授权，不进入可移植备份。
+        // SFTP 挂载通过专用逻辑表备份，快照和其他挂载保留在本机。
         // workspaces 只是目录登记：恢复后目录不存在时由使用方显示不可用，不随备份携带目录内容。
         // agent_rule_revisions（提示词历史）不在本表中，由 backupTables() 归入核心层；旧包缺这张表时按空表恢复。
         val INSERT_ORDER = listOf(
@@ -2568,7 +2599,7 @@ class RoomBackupDataSource(
         )
         val DELETE_ORDER = INSERT_ORDER.reversed()
         val DERIVED_DELETE_ORDER = listOf(
-            "memory_embedding_cache", "external_snapshots",
+            "memory_embedding_cache",
             "mcp_tool_snapshots", "workspace_mutations", "tool_execution_ledger", "file_versions", "vectorization_tasks",
             "kg_jit_cache_sources", "kg_jit_cache", "vectors_fts", "audit_logs",
         )

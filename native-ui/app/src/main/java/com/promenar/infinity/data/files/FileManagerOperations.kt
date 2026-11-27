@@ -28,6 +28,15 @@ import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.storage.ExternalFolderException
 import com.promenar.infinity.domain.workspace.DirectoryFileOpException
 import com.promenar.infinity.share.core.AndroidSafContentSource
+import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.RemotePreviewCache
+import com.promenar.infinity.data.storage.RemotePreviewKey
+import com.promenar.infinity.data.storage.REMOTE_AUTO_PREVIEW_MAX_BYTES
+import com.promenar.infinity.data.storage.isSftpRemoteSource
+import com.promenar.infinity.data.storage.remotePreviewCanRead
+import com.promenar.infinity.data.storage.SftpDirectoryBudget
+import com.promenar.infinity.domain.storage.ExternalMount
+import com.promenar.infinity.domain.storage.SftpRemoteMountSpec
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -37,6 +46,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal class FileMutationGuard(
     private val gate: SessionExecutionGate,
@@ -66,6 +76,8 @@ internal class DefaultFileOperations(
     private val liveTasks: () -> List<VectorizationTask> = { emptyList() },
     /** 用户删除存储空间条目成功后回报被删文件的 id（目录含其下全部文件）。 */
     private val onFilesDeleted: (List<String>) -> Unit = {},
+    private val remotePreviewCache: RemotePreviewCache? = null,
+    private val remoteHostIdentity: suspend (ExternalMount) -> String? = { null },
 ) : FileOperations {
     private val importer = AndroidSafContentSource(context.contentResolver)
 
@@ -128,9 +140,18 @@ internal class DefaultFileOperations(
             return@io mapped.map { FileSearchHit(it, parentFilePath(it.ref.path)) }
         }
         val hits = mutableListOf<FileSearchHit>()
+        val remote = handle.mount?.isSftpRemoteSource == true
+        var directories = 0
+        var examined = 0
         suspend fun visit(path: String, depth: Int) {
-            if (depth >= MAX_DEPTH || hits.size >= limit) return
-            for (child in handle.backend.list(path)) {
+            if (depth >= (if (remote) 2 else MAX_DEPTH) || hits.size >= limit) return
+            if (remote && (directories >= 32 || examined >= 1000)) return
+            val children = if (remote) {
+                directories++
+                withContext(SftpDirectoryBudget(1000 - examined)) { handle.backend.list(path) }
+            } else handle.backend.list(path)
+            for (child in children) {
+                if (remote && examined++ >= 1000) break
                 currentCoroutineContext().ensureActive()
                 if (hits.size >= limit) break
                 val item = items(handle, listOf(child)).single()
@@ -144,9 +165,12 @@ internal class DefaultFileOperations(
                 if (item.isDirectory) visit(item.ref.path, depth + 1)
             }
         }
-        val parent = handle.backend.stat(within) ?: throw FileOpException(FileOpCode.NOT_FOUND)
-        if (!parent.isDirectory) throw FileOpException(FileOpCode.NOT_FOUND)
-        visit(within, 0)
+        suspend fun scan() {
+            val parent = handle.backend.stat(within) ?: throw FileOpException(FileOpCode.NOT_FOUND)
+            if (!parent.isDirectory) throw FileOpException(FileOpCode.NOT_FOUND)
+            visit(within, 0)
+        }
+        if (remote) withTimeoutOrNull(3_000) { scan() } else scan()
         hits
     }
 
@@ -314,6 +338,14 @@ internal class DefaultFileOperations(
         val handle = resolve(ref.locationId)
         val entry = requireEntry(handle.backend, ref.path)
         if (entry.isDirectory) throw FileOpException(FileOpCode.UNSUPPORTED)
+        val mount = handle.mount
+        if (mount?.isSftpRemoteSource == true) {
+            val remote = remotePreviewContext(mount, ref.path, entry)
+            val cached = remote.key?.let { remotePreviewCache?.lookup(it) }
+            if (!remotePreviewCanRead(entry.size, cached != null)) throw FileOpException(FileOpCode.TOO_LARGE)
+            if (cached == null) fetchRemotePreview(remote.key, handle.backend, ref.path, entry.size)
+            return@io remoteShareUri(remote.key, entry.name)
+        }
         if (entry.size > MAX_SHARE_BYTES) throw FileOpException(FileOpCode.TOO_LARGE)
         val dir = File(context.cacheDir, "workspace-media-share")
         if (!dir.exists() && !dir.mkdirs()) throw FileOpException(FileOpCode.IO)
@@ -328,17 +360,31 @@ internal class DefaultFileOperations(
         val handle = resolve(ref.locationId)
         val entry = requireEntry(handle.backend, ref.path)
         if (entry.isDirectory) return@io FilePreview.Unsupported
-        val type = classifyFile(entry.name, mimeFor(entry.name))
+        val mime = mimeFor(entry.name)
+        val type = classifyFile(entry.name, mime)
+        val mount = handle.mount
+        val remote = if (mount?.isSftpRemoteSource == true) remotePreviewContext(mount, ref.path, entry) else null
+        val cached = if (remote == null) null else {
+            val hit = remote.key?.let { remotePreviewCache?.lookup(it) }
+            if (!remotePreviewCanRead(entry.size, hit != null) || remote.key == null) return@io remote.details.copy(mimeType = mime)
+            hit ?: fetchRemotePreview(remote.key, handle.backend, ref.path, entry.size)
+                ?: return@io remote.details.copy(mimeType = mime)
+        }
+        suspend fun uri() = if (remote == null) shareUri(ref) else remoteShareUri(remote.key, entry.name)
+        suspend fun <T> input(consume: suspend (java.io.InputStream) -> T): T =
+            if (cached == null) handle.backend.readStream(ref.path, Long.MAX_VALUE, consume)
+            else cached.inputStream().use { consume(it) }
         when {
-            entry.name.endsWith(".zip", true) -> FileManagerArchives.preview(context.cacheDir, handle.backend, ref.path)
-            entry.name.endsWith(".pdf", true) || mimeFor(entry.name) == "application/pdf" -> FilePreview.Pdf(shareUri(ref), null)
-            type == FileTypeFilter.IMAGE -> FilePreview.Image(shareUri(ref))
-            type == FileTypeFilter.AUDIO -> FilePreview.Audio(shareUri(ref), null)
-            type == FileTypeFilter.VIDEO -> FilePreview.Video(shareUri(ref), null)
-            isTextFile(entry.name, mimeFor(entry.name)) -> {
+            entry.name.endsWith(".zip", true) -> if (cached == null) FileManagerArchives.preview(context.cacheDir, handle.backend, ref.path)
+                else FileManagerArchives.previewCached(cached)
+            entry.name.endsWith(".pdf", true) || mime == "application/pdf" -> FilePreview.Pdf(uri(), null)
+            type == FileTypeFilter.IMAGE -> FilePreview.Image(uri())
+            type == FileTypeFilter.AUDIO -> FilePreview.Audio(uri(), null)
+            type == FileTypeFilter.VIDEO -> FilePreview.Video(uri(), null)
+            isTextFile(entry.name, mime) -> {
                 if (maxTextBytes < 0 || maxTextBytes > MAX_PREVIEW_BYTES) throw FileOpException(FileOpCode.TOO_LARGE)
-                val encoding = DocumentTextEncoding.detectSuspending { check -> handle.backend.readStream(ref.path, Long.MAX_VALUE) { check(it) } }
-                val bytes = handle.backend.readStream(ref.path, Long.MAX_VALUE) { input -> readPreviewBytes(input, maxTextBytes + 1) }
+                val encoding = DocumentTextEncoding.detectSuspending { check -> input { check(it) } }
+                val bytes = input { readPreviewBytes(it, maxTextBytes + 1) }
                 val size = minOf(bytes.size, maxTextBytes)
                 val offset = minOf(size, encoding.skip)
                 val decoder = encoding.charset.newDecoder()
@@ -351,8 +397,34 @@ internal class DefaultFileOperations(
                 FilePreview.Text(chars.toString(), bytes.size > maxTextBytes,
                     entry.name.endsWith(".md", true) || entry.name.endsWith(".markdown", true))
             }
-            else -> FilePreview.Unsupported
+            else -> if (remote != null) remote.details.copy(mimeType = mime, cachedBytes = cached?.length()) else FilePreview.Unsupported
         }
+    }
+
+    private data class RemotePreviewContext(val details: FilePreview.RemoteDetails, val key: RemotePreviewKey?)
+
+    private suspend fun remotePreviewContext(mount: ExternalMount, path: String, entry: ExternalFolderEntry): RemotePreviewContext {
+        val spec = SftpRemoteMountSpec.decode(mount.sourceId) ?: throw FileOpException(FileOpCode.NOT_FOUND)
+        val relative = SftpRemoteMountSpec.canonicalPath(path)
+        val full = spec.rootPath.trimEnd('/') + relative
+        val details = FilePreview.RemoteDetails(mount.id, spec.hostAlias, full,
+            ExternalMountPaths.virtualPath(mount, relative), entry.size, entry.lastModified, null)
+        val identity = if (remotePreviewCache == null) null else remoteHostIdentity(mount)
+        return RemotePreviewContext(details, identity?.let { RemotePreviewKey(it, full, entry.size, entry.lastModified) })
+    }
+
+    private suspend fun fetchRemotePreview(key: RemotePreviewKey?, backend: ExternalFolderBackend, path: String, size: Long): File? {
+        if (key == null || size > REMOTE_AUTO_PREVIEW_MAX_BYTES) return null
+        return remotePreviewCache?.getOrFetch(key) { output ->
+            backend.readStream(path, size) { input -> copyExternalStream(input, output) }
+            val current = backend.stat(path)
+            if (current?.size != size || current.lastModified != key.modifiedAtMillis) throw FileOpException(FileOpCode.CONFLICT)
+        }
+    }
+
+    private suspend fun remoteShareUri(key: RemotePreviewKey?, name: String): String {
+        val file = key?.let { remotePreviewCache?.shareFile(it) } ?: throw FileOpException(FileOpCode.IO)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file, name).toString()
     }
 
     override suspend fun compress(sources: List<FileRef>, targetDirectory: FileRef, archiveName: String): FileItem = io {

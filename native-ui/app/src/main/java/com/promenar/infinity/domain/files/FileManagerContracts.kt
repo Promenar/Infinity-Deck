@@ -51,6 +51,12 @@ enum class FileLocationStorageKind {
 
     /** 本机 Alpine Linux 主目录。 */
     LINUX_HOME,
+    ;
+
+    companion object {
+        /** Wave 1 沿用现有位置分组；远程能力由 FileLocation 的远程字段提供。 */
+        val SFTP_REMOTE: FileLocationStorageKind get() = EXTERNAL_MOUNT
+    }
 }
 
 internal fun defaultStorageKind(kind: FileLocationKind): FileLocationStorageKind = when (kind) {
@@ -102,6 +108,10 @@ data class FileLocation(
     val referenceSessions: Int = 0,
     /** 引用该工作区的智能体数（仅工作区位置有效）。 */
     val referenceAgents: Int = 0,
+    val remoteHostAlias: String? = null,
+    val remoteRootPath: String? = null,
+    val remoteReadOnly: Boolean = false,
+    val remoteOnline: Boolean? = null,
 )
 
 /** 拼接当前位置的完整物理路径；SAF content URI 保持原串或补相对段说明。 */
@@ -199,13 +209,25 @@ data class FileSearchQuery(
 data class FileSearchHit(val item: FileItem, val parentPath: String)
 
 /** 文件预览来源；图片、音频、PDF 由界面用 [uri] 加载。 */
-sealed interface FilePreview {
+interface FilePreview {
     data class Text(val content: String, val truncated: Boolean, val markdown: Boolean) : FilePreview
     data class Image(val uri: String) : FilePreview
     data class Audio(val uri: String, val durationMs: Long?) : FilePreview
     data class Video(val uri: String, val durationMs: Long?) : FilePreview
     data class Pdf(val uri: String, val pageCount: Int?) : FilePreview
     data class Archive(val entries: List<String>, val totalEntries: Int) : FilePreview
+    data class RemoteDetails(
+        val mountId: String,
+        val hostAlias: String,
+        val remotePath: String,
+        val virtualPath: String,
+        val sizeBytes: Long,
+        val lastModified: Long,
+        val mimeType: String?,
+        val cachedUri: String? = null,
+        val cachedBytes: Long? = null,
+        val activeTransferId: String? = null,
+    ) : FilePreview
     data object Unsupported : FilePreview
 }
 

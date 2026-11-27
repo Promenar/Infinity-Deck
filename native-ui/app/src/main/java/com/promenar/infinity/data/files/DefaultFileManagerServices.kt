@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.data.storage.RemotePreviewCache
 import com.promenar.infinity.data.workspace.LinuxHomeAvailability
+import com.promenar.infinity.domain.storage.ExternalMount
 import com.promenar.infinity.data.workspace.LinuxHomeWorkspaceSource
 import com.promenar.infinity.domain.files.FileLocationsSource
 import com.promenar.infinity.domain.files.FileManagerServices
@@ -25,7 +27,15 @@ class DefaultFileManagerServices(
     override val pins: PinnedFolderStore,
 ) : FileManagerServices {
     companion object {
-        fun create(app: InfinityApplication, isSessionBusy: suspend (String) -> Boolean): DefaultFileManagerServices {
+        fun create(app: InfinityApplication, isSessionBusy: suspend (String) -> Boolean): DefaultFileManagerServices =
+            create(app, isSessionBusy, null)
+
+        fun create(
+            app: InfinityApplication,
+            isSessionBusy: suspend (String) -> Boolean,
+            remotePreviewCache: RemotePreviewCache?,
+            remoteHostIdentity: suspend (ExternalMount) -> String? = { null },
+        ): DefaultFileManagerServices {
             val sessions = app.database.sessionDao().observeAll()
             val home = LinuxHomeWorkspaceSource(app.linux.runtime)
             val ready = app.linux.runtime.state.map { state ->
@@ -64,7 +74,7 @@ class DefaultFileManagerServices(
                 onFilesDeleted = { ids ->
                     // 录音生成的资料文档与录音同 id；本机没有对应录音时不创建录音控制器。
                     if (hasRecordingSessions(app, ids)) app.recordings.deleteForDocuments(ids)
-                })
+                }, remotePreviewCache = remotePreviewCache, remoteHostIdentity = remoteHostIdentity)
             val validLocations = combine(locations.observeLibraryLocationIds(), sessions) { ids, rows ->
                 ids + rows.filter(::isPrivateSessionFolder).map { "session:${it.id}" }
             }

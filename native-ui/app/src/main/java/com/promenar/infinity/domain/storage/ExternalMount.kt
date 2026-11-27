@@ -37,6 +37,13 @@ interface IExternalFolderManager {
     suspend fun addKnowledgeBase(alias: String, sessionId: String, rootUuid: String): ExternalMount {
         throw ExternalFolderException("UNSUPPORTED", "该挂载管理器不支持知识库挂载")
     }
+    suspend fun addSftpRemote(alias: String, sessionId: String, spec: SftpRemoteMountSpec, readOnly: Boolean = true): ExternalMount =
+        unsupportedSftpMount()
+    suspend fun setMountReadOnly(mountId: String, readOnly: Boolean): ExternalMount = unsupportedSftpMount()
+    suspend fun updateSftpRemote(mountId: String, alias: String, spec: SftpRemoteMountSpec, readOnly: Boolean): ExternalMount =
+        unsupportedSftpMount()
+    suspend fun probeSftpRemote(hostAlias: String, remotePath: String): SftpRemoteProbeResult = unsupportedSftpMount()
+    suspend fun browseSftpDirectories(hostAlias: String, remotePath: String): List<SftpRemoteDirEntry> = unsupportedSftpMount()
     suspend fun remove(mountId: String)
     suspend fun reauthorize(mountId: String, treeUri: String, grantFlags: Int)
     suspend fun refresh(sessionId: String)
@@ -45,3 +52,5 @@ interface IExternalFolderManager {
     suspend fun importSnapshot(sessionId: String, workspaceRootUuid: String, virtualPath: String): String
     suspend fun snapshotChanged(sessionId: String, virtualPath: String): Boolean
 }
+
+private fun unsupportedSftpMount(): Nothing = throw ExternalFolderException("UNSUPPORTED", "该挂载管理器未配置 SFTP 远程挂载")

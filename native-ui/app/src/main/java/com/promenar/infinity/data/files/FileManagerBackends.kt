@@ -3,6 +3,7 @@ package com.promenar.infinity.data.files
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.data.branch.BranchWorktreeWorkspaceResolver
 import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.isSftpRemoteSource
 import com.promenar.infinity.data.storage.LinuxHomeExternalFolderBackend
 import com.promenar.infinity.data.workspace.LinuxHomeAvailability
 import com.promenar.infinity.data.workspace.LinuxHomeWorkspaceSource
@@ -62,7 +63,7 @@ internal class FileManagerBackends(private val app: InfinityApplication) {
             val record = app.database.externalMountDao().get(key.id) ?: throw FileOpException(FileOpCode.NOT_FOUND)
             val mount = app.externalFolderManager.visible(record.scopeKey).singleOrNull { it.id == key.id }
                 ?: throw FileOpException(FileOpCode.NOT_FOUND)
-            if (mount.unavailableReason != null) throw FileOpException(FileOpCode.PERMISSION_LOST)
+            if (mount.unavailableReason != null && !mount.isSftpRemoteSource) throw FileOpException(FileOpCode.PERMISSION_LOST)
             val backend = app.externalFolderManager.backend(mount.sessionId, mapOf(mount.alias to mount.id))
             FileBackendHandle(locationId, MountedBackend(backend, mount), if (ExternalMountPaths.isLibraryScope(mount.sessionId)) emptyList() else listOf(mount.sessionId),
                 !mount.readOnly && mount.sourceType != "knowledge_base", mount = mount)

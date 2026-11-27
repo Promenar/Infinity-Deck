@@ -72,6 +72,52 @@ class ExternalFolderManagerTest {
 
     @After fun cleanup() { directory.deleteRecursively() }
 
+    @Test fun 远程附挂继承只读并拒绝静默改绑() = runBlocking<Unit> {
+        val library = ExternalMountPaths.LIBRARY_SCOPE
+        val spec = SftpRemoteMountSpec("nas", "/资料")
+        memory.write("/note.txt", byteArrayOf(1))
+        val original = manager.addSftpRemote("remote", library, spec, readOnly = false)
+        val attached = manager.attachLibraryMount("session", original.id)
+        assertThat(attached.commandAccessible).isFalse()
+        assertThat(attached.readOnly).isFalse()
+        assertThat(SftpRemoteMountSpec.decode(attached.sourceId)?.libraryMountId).isEqualTo(original.id)
+        assertThat(manager.libraryMountReferences(original.id)).isEqualTo(1)
+        manager.setMountReadOnly(original.id, true)
+        assertThat(manager.visible("session").first { it.id == attached.id }.readOnly).isTrue()
+        assertThat(manager.observeMounts("session").first().first { it.id == attached.id }.readOnly).isTrue()
+        assertThat(manager.setMountReadOnly(attached.id, false).readOnly).isTrue()
+        assertThat((runCatching {
+            manager.write("session", "/mnt/remote/note.txt", byteArrayOf(2), null, false)
+        }.exceptionOrNull() as ExternalFolderException).code).isEqualTo("READ_ONLY")
+        assertThat(manager.read("session", "/mnt/remote/note.txt")).isEqualTo(byteArrayOf(1))
+        manager.updateSftpRemote(original.id, "remote", spec.copy(rootPath = "/其它"), false)
+        assertThat((runCatching { manager.read("session", "/mnt/remote/note.txt") }
+            .exceptionOrNull() as ExternalFolderException).code).isEqualTo("LIBRARY_SOURCE_CHANGED")
+        manager.remove(original.id)
+        assertThat((runCatching { manager.read("session", "/mnt/remote/note.txt") }
+            .exceptionOrNull() as ExternalFolderException).code).isEqualTo("LIBRARY_SOURCE_MISSING")
+    }
+
+    @Test fun 远程网络失败保留配置并在成功访问后清除状态() = runBlocking<Unit> {
+        var online = false
+        val remote = object : ExternalFolderBackend by memory {
+            override suspend fun stat(path: String): ExternalFolderEntry? {
+                if (!online) throw ExternalFolderException("TIMEOUT", "远程连接超时")
+                return memory.stat(path)
+            }
+        }
+        val testManager = ExternalFolderManager(context, dao, workspace, FileIndexEventSink.None, sftpBackendFactory = { _, _ -> remote })
+        val mount = testManager.addSftpRemote("remote", "session", SftpRemoteMountSpec("nas", "/资料"))
+        assertThat((runCatching { testManager.entry("session", "/mnt/remote") }.exceptionOrNull() as ExternalFolderException).code)
+            .isEqualTo("TIMEOUT")
+        assertThat(dao.get(mount.id)?.unavailableReason).isNull()
+        testManager.refresh("session")
+        assertThat(dao.get(mount.id)?.unavailableReason).isEqualTo("远程连接超时")
+        online = true
+        assertThat(testManager.entry("session", "/mnt/remote")?.isDirectory).isTrue()
+        assertThat(dao.get(mount.id)?.unavailableReason).isNull()
+    }
+
     @Test fun `存储空间挂载可新增访问并独立于会话删除`() = runBlocking {
         mockkObject(RealPathMountSupport)
         try {

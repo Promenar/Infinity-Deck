@@ -31,6 +31,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
@@ -60,6 +61,10 @@ class ExternalFolderManager(
     private val recordingAudioFile: ((String) -> File?)? = null,
     private val onRecordingDocumentsDeleted: (List<String>) -> Unit = {},
     private val onRecordingDocumentSaved: (suspend (docId: String, content: String, newHash: String) -> Unit)? = null,
+    private val sftpBackendFactory: ((ExternalMount, SftpRemoteMountSpec) -> ExternalFolderBackend)? = null,
+    private val sftpHostExists: (suspend (String) -> Boolean)? = null,
+    private val sftpProbe: (suspend (String, String) -> SftpRemoteProbeResult)? = null,
+    private val sftpBrowse: (suspend (String, String) -> List<SftpRemoteDirEntry>)? = null,
 ) : ExternalWorkspaceAccess {
     /** 兼容已有的尾随后端替身回调。 */
     constructor(
@@ -87,12 +92,18 @@ class ExternalFolderManager(
     )
     // filesDir 位于 /data/user/0 这一系统符号链接下，目录后端逐级拒绝符号链接，须先取真实路径。
     private val skillsDirectory by lazy { (userSkillsDirectory ?: File(context.filesDir, "agent_skills")).canonicalFile }
-    override fun observeMounts(sessionId: String) = dao.observeVisible(sessionId).map { it.map(ExternalMountEntity::model) }
+    override fun observeMounts(sessionId: String) =
+        if (ExternalMountPaths.isLibraryScope(sessionId)) dao.observeVisible(sessionId).map { it.map(ExternalMountEntity::model) }
+        else combine(dao.observeVisible(sessionId), dao.observeVisible(ExternalMountPaths.LIBRARY_SCOPE)) { rows, library ->
+            val sources = library.associate { it.id to it.model() }
+            rows.map { effectiveVisibleMount(it.model(), sources::get) }
+        }
     override suspend fun visible(sessionId: String) = withContext(Dispatchers.IO) {
         // 历史保留别名仍可在管理入口移除，但不作为工具可达路径列出。
         val library = ExternalMountPaths.isLibraryScope(sessionId)
         val models = dao.visible(sessionId).filterNot { it.alias == ExternalMountPaths.SKILLS_ALIAS }
-            .filter { !library || it.sourceType in setOf("saf_tree", "real_path") }.map(ExternalMountEntity::model) +
+            .filter { !library || ExternalMountPaths.isAttachableLibrarySource(it.sourceType) }
+            .map { effectiveVisibleMount(it.model()) { id -> dao.get(id)?.model() } } +
             if (library) emptyList() else listOf(skillsMount(sessionId))
         val bound = currentCoroutineContext()[ExternalMountOperationBindings]?.mountIds
         if (bound == null) models else models.filter { bound[it.alias] == it.id }
@@ -225,18 +236,110 @@ class ExternalFolderManager(
         }
     } }
 
+    override suspend fun addSftpRemote(alias: String, sessionId: String, spec: SftpRemoteMountSpec, readOnly: Boolean) =
+        withContext(Dispatchers.IO) { mutex.withLock {
+            requireSession(sessionId)
+            val direct = directSftpSpec(spec)
+            val mount = newMount(alias, SFTP_REMOTE_SOURCE_TYPE, SftpRemoteMountSpec.encode(direct), sessionId)
+                .copy(readOnly = readOnly)
+            checkAlias(mount)
+            dao.insert(mount.entity())
+            mount
+        } }
+
+    override suspend fun setMountReadOnly(mountId: String, readOnly: Boolean) = withContext(Dispatchers.IO) { mutex.withLock {
+        val old = dao.get(mountId)?.model() ?: fail("NOT_FOUND", "挂载点不存在")
+        if (!old.isSftpRemoteSource) fail("UNSUPPORTED", "该来源的挂载权限由其授权管理")
+        val updated = old.copy(readOnly = readOnly)
+        val effective = effectiveSftpMount(updated)
+        dao.update(updated.entity())
+        effective
+    } }
+
+    override suspend fun updateSftpRemote(mountId: String, alias: String, spec: SftpRemoteMountSpec, readOnly: Boolean) =
+        withContext(Dispatchers.IO) { mutex.withLock {
+            val old = dao.get(mountId)?.model() ?: fail("NOT_FOUND", "挂载点不存在")
+            if (!old.isSftpRemoteSource) fail("UNSUPPORTED", "该挂载点不是 SFTP 来源")
+            val oldSpec = sftpSpec(old)
+            val updatedSpec = if (oldSpec.libraryMountId != null) {
+                if (spec.normalized() != oldSpec) fail("CONFLICT", "请在资料页修改远程来源")
+                oldSpec
+            } else directSftpSpec(spec)
+            val mount = old.copy(
+                alias = ExternalMountPaths.validateAlias(alias), sourceId = SftpRemoteMountSpec.encode(updatedSpec),
+                readOnly = readOnly, unavailableReason = null,
+            )
+            checkAlias(mount)
+            val effective = effectiveSftpMount(mount)
+            dao.update(mount.entity())
+            effective
+        } }
+
+    override suspend fun probeSftpRemote(hostAlias: String, remotePath: String): SftpRemoteProbeResult = withContext(Dispatchers.IO) {
+        val spec = SftpRemoteMountSpec(hostAlias, remotePath).normalized()
+        sftpProbe?.invoke(spec.hostAlias, spec.rootPath) ?: fail("UNSUPPORTED", "未配置 SFTP 探测")
+    }
+
+    override suspend fun browseSftpDirectories(hostAlias: String, remotePath: String): List<SftpRemoteDirEntry> = withContext(Dispatchers.IO) {
+        val spec = SftpRemoteMountSpec(hostAlias, remotePath).normalized()
+        sftpBrowse?.invoke(spec.hostAlias, spec.rootPath) ?: fail("UNSUPPORTED", "未配置 SFTP 浏览")
+    }
+
+    private fun directSftpSpec(spec: SftpRemoteMountSpec): SftpRemoteMountSpec {
+        if (spec.libraryMountId != null) fail("INVALID_PATH", "请通过附挂接口引用资料页挂载")
+        return spec.normalized()
+    }
+
+    private fun sftpSpec(mount: ExternalMount): SftpRemoteMountSpec =
+        SftpRemoteMountSpec.decode(mount.sourceId) ?: fail("INVALID_MOUNT_SPEC", "远程挂载配置无效")
+
+    private suspend fun effectiveSftpMount(mount: ExternalMount): ExternalMount =
+        effectiveSftpMount(mount) { id -> dao.get(id)?.model() }
+
+    private suspend fun effectiveVisibleMount(mount: ExternalMount, source: suspend (String) -> ExternalMount?): ExternalMount {
+        if (!mount.isSftpRemoteSource) return mount
+        return try { effectiveSftpMount(mount, source) } catch (failure: ExternalFolderException) {
+            mount.copy(readOnly = true, unavailableReason = failure.message)
+        }
+    }
+
+    private suspend fun effectiveSftpMount(mount: ExternalMount, lookup: suspend (String) -> ExternalMount?): ExternalMount {
+        val spec = sftpSpec(mount)
+        val sourceId = spec.libraryMountId ?: return mount
+        val source = lookup(sourceId)
+        if (source == null || !source.isSftpRemoteSource || !ExternalMountPaths.isLibraryScope(source.sessionId)) {
+            fail("LIBRARY_SOURCE_MISSING", "资料页中的远程来源已移除，请重新附挂")
+        }
+        if (SftpRemoteMountSpec.decode(source.sourceId) != spec.copy(libraryMountId = null)) {
+            fail("LIBRARY_SOURCE_CHANGED", "资料页中的远程来源已变更，请重新附挂")
+        }
+        return mount.copy(readOnly = mount.readOnly || source.readOnly)
+    }
+
+    private suspend fun updateSftpAvailability(mount: ExternalMount, reason: String?) {
+        mutex.withLock {
+            val current = dao.get(mount.id)?.model() ?: return@withLock
+            if (current == mount && current.unavailableReason != reason) {
+                dao.update(current.copy(unavailableReason = reason).entity())
+            }
+        }
+    }
+
     override suspend fun attachLibraryMount(sessionId: String, libraryMountId: String, alias: String?) =
         withContext(Dispatchers.IO) { mutex.withLock {
             requireSession(sessionId)
             if (ExternalMountPaths.isLibraryScope(sessionId)) fail("INVALID_SESSION", "资料页不能引用自身的挂载")
             val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料页挂载不存在")
-            if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || source.sourceType !in setOf("saf_tree", "real_path")) {
+            if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || !ExternalMountPaths.isAttachableLibrarySource(source.sourceType)) {
                 fail("UNSUPPORTED", "只能引用资料页中的外部文件夹")
             }
-            requireDirectory(sourceBackend(source.model()).stat("/"))
-            dao.visible(sessionId).firstOrNull { it.sourceType == source.sourceType && it.sourceId == source.sourceId }
-                ?.let { return@withLock it.model() }
-            val mount = newMount(alias ?: source.alias, source.sourceType, source.sourceId, sessionId).copy(readOnly = source.readOnly)
+            val remote = source.model().isSftpRemoteSource
+            val sourceId = if (remote) SftpRemoteMountSpec.encode(sftpSpec(source.model()).copy(libraryMountId = source.id))
+                else source.sourceId
+            if (!remote) requireDirectory(sourceBackend(source.model()).stat("/"))
+            dao.visible(sessionId).firstOrNull { it.sourceType == source.sourceType && it.sourceId == sourceId }
+                ?.let { return@withLock if (remote) effectiveSftpMount(it.model()) else it.model() }
+            val mount = newMount(alias ?: source.alias, source.sourceType, sourceId, sessionId).copy(readOnly = source.readOnly)
             checkAlias(mount)
             dao.insert(mount.entity())
             mount
@@ -245,11 +348,13 @@ class ExternalFolderManager(
     override suspend fun libraryMountReferences(libraryMountId: String): Int = withContext(Dispatchers.IO) {
         mutex.withLock {
             val source = dao.get(libraryMountId) ?: fail("NOT_FOUND", "资料页挂载不存在")
-            if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || source.sourceType !in setOf("saf_tree", "real_path")) {
+            if (!ExternalMountPaths.isLibraryScope(source.scopeKey) || !ExternalMountPaths.isAttachableLibrarySource(source.sourceType)) {
                 fail("UNSUPPORTED", "只能查询资料页中的外部文件夹")
             }
             dao.all().count { it.scopeKey.isNotBlank() && !ExternalMountPaths.isLibraryScope(it.scopeKey) &&
-                it.sourceType == source.sourceType && it.sourceId == source.sourceId }
+                it.sourceType == source.sourceType && if (source.model().isSftpRemoteSource) {
+                    SftpRemoteMountSpec.decode(it.sourceId)?.libraryMountId == source.id
+                } else it.sourceId == source.sourceId }
         }
     }
 
@@ -278,11 +383,28 @@ class ExternalFolderManager(
 
     override suspend fun refresh(sessionId: String) = withContext(Dispatchers.IO) {
         visible(sessionId).forEach { mount ->
-            try { access(sessionId, ExternalMountPaths.virtualPath(mount, "/")) { _, backend, _ -> requireDirectory(backend.stat("/")) } }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* 可用性已由 access 写入，不把单个离线挂载扩散到整个面板。 */ }
+            val current = if (mount.isSftpRemoteSource) dao.get(mount.id)?.model() ?: return@forEach else mount
+            try {
+                access(sessionId, ExternalMountPaths.virtualPath(current, "/")) { _, backend, _ ->
+                    requireDirectory(backend.stat("/"))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                if (current.isSftpRemoteSource) updateSftpAvailability(current, sftpAvailabilityMessage(failure))
+            }
         }
     }
+
+    /** 传输入队和发布可通过稳定挂载 ID 重新校验范围、引用和读写能力。 */
+    suspend fun requireSftpTransferMount(mountId: String, scopeKey: String): Pair<ExternalMount, SftpRemoteMountSpec> =
+        withContext(Dispatchers.IO) {
+            val mount = dao.get(mountId)?.model()?.takeIf { it.sessionId == scopeKey && it.isSftpRemoteSource }
+                ?: fail("NOT_FOUND", "远程挂载已移除或不属于当前范围")
+            val effective = effectiveSftpMount(mount)
+            val spec = sftpSpec(effective)
+            if (sftpHostExists?.invoke(spec.hostAlias) == false) fail("SSH_HOST_MISSING", "SSH 主机配置缺失")
+            effective to spec
+        }
 
     override suspend fun list(sessionId: String, virtualPath: String): List<ExternalFolderEntry> = withContext(Dispatchers.IO) {
         if (!branchWorkspacePaths(sessionId) && ExternalFolderPaths.normalize(virtualPath) == "/mnt") return@withContext visible(sessionId).filterNot { it.isUserSkills }.map {
@@ -699,7 +821,7 @@ class ExternalFolderManager(
         if (ExternalMountPaths.isLibraryScope(sessionId) && alias == ExternalMountPaths.SKILLS_ALIAS) fail("NOT_FOUND", "资料页中没有该挂载")
         val mount = if (alias == ExternalMountPaths.SKILLS_ALIAS && !ExternalMountPaths.isLibraryScope(sessionId)) skillsMount(sessionId)
             else dao.visible(sessionId).singleOrNull { it.alias == alias }?.model() ?: fail("NOT_FOUND", "挂载点不属于当前会话或已被移除")
-        if (ExternalMountPaths.isLibraryScope(sessionId) && mount.sourceType !in setOf("saf_tree", "real_path")) fail("UNSUPPORTED", "资料页只支持外部文件夹")
+        if (ExternalMountPaths.isLibraryScope(sessionId) && !ExternalMountPaths.isAttachableLibrarySource(mount.sourceType)) fail("UNSUPPORTED", "资料页只支持外部文件夹")
         val bound = currentCoroutineContext()[ExternalMountOperationBindings]?.mountIds
         if (bound != null && bound[alias] != mount.id) fail("CONFLICT", "操作期间挂载身份发生变化，请重新读取目标")
         return mount to relative
@@ -717,11 +839,23 @@ class ExternalFolderManager(
             if (previous != null && previous != mount.id) fail("CONFLICT", "操作期间挂载身份发生变化，已取消后续访问")
         }
         try {
-            val result = block(mount, sourceBackend(mount, sessionId), relative)
+            val effective = if (mount.isSftpRemoteSource) effectiveSftpMount(mount) else mount
+            if (writing && effective.isSftpRemoteSource) effective.requireWritable()
+            val result = block(effective, sourceBackend(effective, sessionId), relative)
+            if (mount.isSftpRemoteSource) {
+                if (mount.unavailableReason != null) updateSftpAvailability(mount, null)
+                return result
+            }
             if (mount.unavailableReason != null && !mount.isWorkspaceRoot && !mount.isUserSkills && !mount.isKnowledgeBaseSource) dao.update(mount.copy(unavailableReason = null).entity())
             return result
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) {
+            if (mount.isSftpRemoteSource) {
+                if (failure is ExternalFolderException && failure.code in setOf("SSH_HOST_MISSING", "LIBRARY_SOURCE_MISSING", "LIBRARY_SOURCE_CHANGED", "INVALID_MOUNT_SPEC")) {
+                    updateSftpAvailability(mount, sftpAvailabilityMessage(failure))
+                }
+                throw failure
+            }
             val unavailable = failure is SecurityException || failure is ExternalFolderException && failure.code == "UNAVAILABLE"
             if (unavailable && mount.isUserSkills) fail("UNAVAILABLE", "用户级技能目录不可用，请检查应用存储")
             if (unavailable && mount.isWorkspaceRoot) {
@@ -735,6 +869,9 @@ class ExternalFolderManager(
             throw failure
         }
     }
+    private fun sftpAvailabilityMessage(failure: Exception): String =
+        (failure as? ExternalFolderException)?.message ?: "远程目录当前不可用，请刷新重试"
+
     private suspend fun sourceBackend(mount: ExternalMount, sessionId: String? = null): ExternalFolderBackend {
         fun guarded(backend: ExternalFolderBackend, physicalRoot: File? = null): ExternalFolderBackend {
             val startupGuard = if (sessionId == null || ExternalMountPaths.isLibraryScope(sessionId)) backend else com.promenar.infinity.startup.StartupGuardedExternalFolderBackend(backend, sessionId) { physicalRoot }
@@ -761,6 +898,13 @@ class ExternalFolderManager(
                 is SessionWorkspace.Unavailable -> fail("UNAVAILABLE", current.reason)
                 SessionWorkspace.Private -> fail("UNAVAILABLE", "工作区不可用")
             }
+        }
+        if (mount.isSftpRemoteSource) {
+            val spec = sftpSpec(mount)
+            if (sftpHostExists?.invoke(spec.hostAlias) == false) fail("SSH_HOST_MISSING", "SSH 主机配置缺失")
+            val backend = sftpBackendFactory?.invoke(mount, spec) ?: backendOverride?.invoke(mount)
+                ?: fail("UNSUPPORTED", "未配置 SFTP 挂载后端")
+            return guarded(backend)
         }
         backendOverride?.invoke(mount)?.let { return guarded(it, File(mount.sourceId).takeIf { mount.sourceType == "real_path" }) }
         if (mount.isUserSkills) {
