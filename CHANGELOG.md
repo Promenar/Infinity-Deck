@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.83.0-beta] - 2026-11-27
+
 - **聊天壁纸系统（[WallpaperSettingsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/WallpaperSettingsScreen.kt)、[ChatWallpaperModels.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/wallpaper/ChatWallpaperModels.kt)、[ChatWallpaperCanvas.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/wallpaper/ChatWallpaperCanvas.kt)、[WallpaperAssetStore.kt](native-ui/app/src/main/java/com/promenar/infinity/data/wallpaper/WallpaperAssetStore.kt)、[WallpaperImageProcessing.kt](native-ui/app/src/main/java/com/promenar/infinity/data/wallpaper/WallpaperImageProcessing.kt)、[ThemeScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ThemeScreen.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)、[PipelineBubble.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/PipelineBubble.kt)、[ImageLightbox.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/ImageLightbox.kt)）**：
   - 在「设置 → 外观」新增带实时缩略图的「聊天壁纸」工作室入口（默认关闭、不影响既有纯净主题与纯黑模式），并在全站看图灯箱（`ImageLightboxGallery`）底部操作栏新增一键「壁纸 / 设为聊天壁纸」，支持将 AI 生图与相册图片直接设为聊天背景；
   - 内置 6 套零包体程序化美学预设（极夜流光、黑曜星纹、青岚雾松、琥珀暮光、深海微澜、暖砂纸纹；浅色模式下自动前置暖砂纸纹）与免权限 `PickVisualMedia` 相册导入（EXIF 方向矫正、安全降采样 WebP 私有存储、后台整数 `StackBlur` 预烘焙缓存保障 120Hz 滑动流畅）；
