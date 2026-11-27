@@ -126,6 +126,28 @@ class PublishedModelCatalogTest {
         assertThat(result.diagnostics).isEmpty()
     }
 
+    @Test
+    fun `兼容线上目录旧版AUDIO类型按模型ID细分并拒绝未知workload`() {
+        val catalog = PublishedModelCatalog.fromJson(catalogJson("""
+            {"canonicalModelId":"google/gemini-2.5-flash-tts","displayName":"Gemini 2.5 Flash TTS","source":"MODELS_DEV","workload":"AUDIO"},
+            {"canonicalModelId":"google/lyria-3.5","displayName":"Lyria 3.5","source":"MODELS_DEV","workload":"AUDIO"},
+            {"canonicalModelId":"openai/gpt-realtime-whisper","displayName":"GPT Realtime Whisper","source":"MODELS_DEV","workload":"AUDIO"},
+            {"canonicalModelId":"google/gemini-3.5-transcribe-live","displayName":"Gemini 3.5 Transcribe Live","source":"MODELS_DEV","workload":"AUDIO"}
+        """))
+
+        val byId = catalog.records.associateBy { it.canonicalModelId }
+        assertThat(byId["google/gemini-2.5-flash-tts"]?.workload).isEqualTo(ModelWorkload.SPEECH)
+        assertThat(byId["google/lyria-3.5"]?.workload).isEqualTo(ModelWorkload.MUSIC)
+        assertThat(byId["openai/gpt-realtime-whisper"]?.workload).isEqualTo(ModelWorkload.REALTIME)
+        assertThat(byId["google/gemini-3.5-transcribe-live"]?.workload).isEqualTo(ModelWorkload.REALTIME)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            PublishedModelCatalog.fromJson(catalogJson(
+                """{"canonicalModelId":"a","displayName":"A","source":"MODELS_DEV","workload":"INVALID_TYPE"}""",
+            ))
+        }
+    }
+
     private fun catalogJson(records: String) = """
         {
           "schemaVersion":3,

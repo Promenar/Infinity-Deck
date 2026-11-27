@@ -142,6 +142,12 @@ internal class ModelCatalogUpdater(
                     _status.value = previous
                     throw error
                 }
+                runCatching {
+                    android.util.Log.w(
+                        "ModelCatalogUpdater",
+                        "模型规格库更新失败: ${error::class.java.simpleName}: ${error.message.orEmpty()}",
+                    )
+                }
                 // 缓存是崩溃恢复的提交点；投影失败明确显示并在下一次操作重新应用。
                 loaded = false
                 _status.value = committed?.toStatus(CatalogUpdatePhase.APPLY_FAILED)

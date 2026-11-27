@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.81.3-beta] - 2026-11-27
+
+- **修复线上模型规格库 `AUDIO` 类型枚举反序列化失败与诊断日志缺失（[PublishedModelCatalog.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/PublishedModelCatalog.kt)、[ModelCatalogUpdater.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/ModelCatalogUpdater.kt)、[PublishedModelCatalogTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/model/catalog/PublishedModelCatalogTest.kt)）**：
+  - 兼容线上 schema v3 目录发布的旧版 `"workload": "AUDIO"` 记录（按规范模型 ID 精确细分映射为 `REALTIME`、`MUSIC` 或 `SPEECH`，与内置快照规则对齐，并保持对未知非法枚举值的严格拒绝），根治音频拆分后客户端拉取并验签 18,175 条线上规格库仍在解析阶段抛出 `IllegalArgumentException` 的问题。
+  - 为 `ModelCatalogUpdater` 补充脱敏 `Log.w` 失败原因记录与回归单测。
+
 ## [0.81.2-beta] - 2026-11-27
 
 - **全面收口全站公网通道绕过内置代理问题并自动补刷模型规格库（[BuiltInProxyProxies.kt](native-ui/app/src/main/java/com/promenar/infinity/data/proxy/BuiltInProxyProxies.kt)、[ModelCatalogUpdater.kt](native-ui/app/src/main/java/com/promenar/infinity/data/model/catalog/ModelCatalogUpdater.kt)、[InfinityApplication.kt](native-ui/app/src/main/java/com/promenar/infinity/InfinityApplication.kt)、[GitRemoteHttpClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/git/remote/GitRemoteHttpClient.kt)、[AppUpdateChecker.kt](native-ui/app/src/main/java/com/promenar/infinity/data/update/AppUpdateChecker.kt)、[ModelDownloader.kt](native-ui/app/src/main/java/com/promenar/infinity/data/local/inference/ModelDownloader.kt)、[GeminiMediaGenerationBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/mediagen/cloud/GeminiMediaGenerationBackend.kt)、[RichContentHttpsFetcher.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/RichContentHttpsFetcher.kt)、[WebDavBackupClient.kt](native-ui/app/src/main/java/com/promenar/infinity/data/remote/webdav/WebDavBackupClient.kt)、[BackupRepository.kt](native-ui/app/src/main/java/com/promenar/infinity/data/repository/BackupRepository.kt)）**：

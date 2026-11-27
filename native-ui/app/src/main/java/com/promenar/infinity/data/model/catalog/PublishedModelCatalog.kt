@@ -76,7 +76,7 @@ class PublishedModelCatalog private constructor(records: List<ModelMetadataRecor
             if (source == MetadataSource.LITELLM || source == MetadataSource.OPENROUTER) {
                 require(providerScope != null) { "records[$index] 的 ${source.name} 记录必须声明 providerScope" }
             }
-            val workload = record.optionalEnum<ModelWorkload>("workload") ?: ModelWorkload.UNKNOWN
+            val workload = parsePublishedWorkload(record.optionalString("workload"), canonicalId)
             val capabilities = linkedMapOf<ModelCapability, SupportState>()
             if (workload == ModelWorkload.RERANK) {
                 capabilities[ModelCapability.CHAT_ENDPOINT] = SupportState.UNSUPPORTED
@@ -129,11 +129,25 @@ class PublishedModelCatalog private constructor(records: List<ModelMetadataRecor
 
         private fun Boolean.toSupportState() = if (this) SupportState.SUPPORTED else SupportState.UNSUPPORTED
 
+        private val liveSegmentPattern = Regex("""(?:^|[-_])live(?:$|[-_])""")
+
+        /** 兼容线上 schema v3 目录仍发布的旧版 AUDIO 类型，按规范 ID 细分至实时、音乐或语音。 */
+        private fun parsePublishedWorkload(raw: String?, canonicalId: String): ModelWorkload {
+            if (raw == null) return ModelWorkload.UNKNOWN
+            if (raw == "AUDIO") {
+                val id = canonicalId.lowercase().substringAfterLast('/')
+                return when {
+                    "realtime" in id || "native-audio" in id || liveSegmentPattern.containsMatchIn(id) ->
+                        ModelWorkload.REALTIME
+                    id.startsWith("lyria") || "music" in id -> ModelWorkload.MUSIC
+                    else -> ModelWorkload.SPEECH
+                }
+            }
+            return enumValueOf(raw)
+        }
+
         private inline fun <reified T : Enum<T>> JsonObject.requiredEnum(name: String): T =
             enumValueOf(requiredString(name))
-
-        private inline fun <reified T : Enum<T>> JsonObject.optionalEnum(name: String): T? =
-            optionalString(name)?.let { enumValueOf<T>(it) }
 
         private fun JsonObject.requiredArray(name: String): JsonArray = this[name] as? JsonArray
             ?: throw IllegalArgumentException("$name 必须是数组")
