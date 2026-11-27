@@ -1,8 +1,10 @@
 package com.promenar.infinity.ui.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +22,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +61,7 @@ fun InfinitySettingsPageLayout(
     onBack: (() -> Unit)? = null,
     horizontalContentPadding: Dp = InfinitySpacing.ScreenHorizontal,
     showTopBar: Boolean = true,
+    titleLeading: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     // 主标签页用自定义页头（如 [InfinityTabHeader]）替换标准顶栏；页头自行处理状态栏内边距。
     header: (@Composable () -> Unit)? = null,
@@ -114,10 +118,23 @@ fun InfinitySettingsPageLayout(
                     windowInsets = topBarInsets,
                 ) else TopAppBar(
                 title = {
-                    InfinityHeaderTitle(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    if (titleLeading != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            titleLeading()
+                            InfinityHeaderTitle(
+                                text = title,
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                        }
+                    } else {
+                        InfinityHeaderTitle(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
                 },
                 navigationIcon = {
                     val leading = LocalInfinitySettingsLeading.current

@@ -78,8 +78,8 @@ internal object GenericModelsEnvelopeParser {
             }
             else -> return null
         }
+        model.optionalReasoning()?.let { capabilities[ModelCapability.REASONING] = it.toState() }
         mapOf(
-            "reasoning" to ModelCapability.REASONING,
             "tool_call" to ModelCapability.TOOL_CALLING,
             "tool_calling" to ModelCapability.TOOL_CALLING,
             "structured_output" to ModelCapability.STRUCTURED_OUTPUT,
@@ -145,6 +145,24 @@ internal object GenericModelsEnvelopeParser {
         if (element is JsonNull) return null
         return (element as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull
             ?: throw IllegalArgumentException()
+    }
+
+    private fun JsonObject.optionalReasoning(): Boolean? {
+        val reasoning = this["reasoning"] as? JsonObject ?: return optionalBoolean("reasoning")
+        var supported: Boolean? = null
+        var hasKnownField = false
+        for (field in reasoning.keys) {
+            when (field) {
+                "supported" -> supported = requireNotNull(reasoning.requiredBoolean(field))
+                "mandatory", "default_enabled", "supports_max_tokens" -> reasoning.optionalBoolean(field)
+                "default_effort" -> reasoning.optionalString(field)
+                "supported_efforts" -> reasoning.optionalStringArray(field)?.let { require(it.isNotEmpty()) }
+                else -> continue
+            }
+            hasKnownField = true
+        }
+        require(hasKnownField)
+        return supported
     }
 
     private fun JsonObject.optionalTokenLimit(name: String): Int? {

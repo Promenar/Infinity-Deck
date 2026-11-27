@@ -345,6 +345,37 @@ class ProviderConnectionProbeTest {
     }
 
     @Test
+    fun `自定义网关的探针接受结构化推理配置的模型目录`() = runTest {
+        val body = """{
+          "data":[
+            {"id":"plain-model"},
+            {"id":"rekaai/reka-edge","supported_parameters":["temperature"],"reasoning":{"mandatory":false}},
+            {"id":"configured-model","reasoning":{"default_enabled":true,"supports_max_tokens":true}}
+          ],
+          "total_count":3,
+          "links":{}
+        }"""
+        val probe = ProviderConnectionProbe(
+            HttpClient(MockEngine { request ->
+                assertThat(request.method).isEqualTo(HttpMethod.Get)
+                assertThat(request.url.toString()).isEqualTo("https://gateway.example.test/api/v1/models")
+                respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+            }),
+        )
+
+        val result = probe.probe(
+            UnifiedProviderConfig(
+                protocolType = ProtocolType.Generic_OpenAI_Compat,
+                baseUrl = "https://gateway.example.test/api/v1",
+                apiKey = "fake-key",
+                defaultModel = "",
+            ),
+        )
+
+        assertThat(result).isEqualTo(ProviderConnectionProbeResult.Success)
+    }
+
+    @Test
     fun `probe failure never includes upstream body credentials or private key`() = runTest {
         val fixture = validCredentialJson()
         val upstreamMarker = "UPSTREAM-SECRET-MARKER"

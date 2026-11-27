@@ -34,6 +34,96 @@ class GenericModelsEnvelopeTest {
     }
 
     @Test
+    fun `模型列表接受混合推理配置且仅记录明确声明的推理能力`() = runTest {
+        val body = """
+            {
+              "data":[
+                {"id":"plain"},
+                {"id":"rekaai/reka-edge","supported_parameters":["temperature"],"reasoning":{"mandatory":false}},
+                {"id":"configured","reasoning":{
+                  "default_effort":"medium","default_enabled":true,"mandatory":true,
+                  "supported_efforts":["max","xhigh","high","medium","low","none"],
+                  "supports_max_tokens":true,"extension":{"mode":"auto"}
+                }},
+                {"id":"nullable","reasoning":{
+                  "mandatory":null,"default_enabled":null,"supports_max_tokens":null,
+                  "default_effort":null,"supported_efforts":null
+                }},
+                {"id":"null-field","reasoning":null},
+                {"id":"supported","reasoning":{"supported":true}},
+                {"id":"unsupported","reasoning":{"supported":false,"mandatory":true}},
+                {"id":"boolean-true","reasoning":true},
+                {"id":"boolean-false","reasoning":false}
+              ],
+              "total_count":9,
+              "links":{}
+            }
+        """.trimIndent()
+
+        val parsed = descriptors(body)
+        assertThat(parsed.map { it.id }).containsExactly(
+            "plain", "rekaai/reka-edge", "configured", "nullable", "null-field",
+            "supported", "unsupported", "boolean-true", "boolean-false",
+        ).inOrder()
+        assertThat(parsed.take(5).all { ModelCapability.REASONING !in it.metadata.capabilities }).isTrue()
+        assertThat(parsed.drop(5).map { it.metadata.capabilities[ModelCapability.REASONING] })
+            .containsExactly(
+                SupportState.SUPPORTED, SupportState.UNSUPPORTED,
+                SupportState.SUPPORTED, SupportState.UNSUPPORTED,
+            ).inOrder()
+    }
+
+    @Test
+    fun `推理配置保留嵌套能力且顶层思考声明保留既有优先级`() = runTest {
+        val parsed = descriptors(
+            """{"data":[
+              {"id":"nested","capabilities":{"reasoning":true},"reasoning":{"mandatory":false}},
+              {"id":"thinking","reasoning":{"supported":true},"thinking":false}
+            ]}""",
+        )
+
+        assertThat(parsed.map { it.metadata.capabilities[ModelCapability.REASONING] })
+            .containsExactly(SupportState.SUPPORTED, SupportState.UNSUPPORTED).inOrder()
+    }
+
+    @Test
+    fun `顶层推理字段形态非法时拒绝整包`() {
+        listOf(
+            """{}""",
+            """{"foo":"bar"}""",
+            """{"supported":null}""",
+            """{"supported":"true"}""",
+            """{"supported":true,"mandatory":"false"}""",
+            """{"default_enabled":1}""",
+            """{"supports_max_tokens":{}}""",
+            """{"default_effort":123}""",
+            """{"default_effort":" "}""",
+            """{"supported_efforts":[]}""",
+            """{"supported_efforts":[1]}""",
+            """{"supported_efforts":["medium"," "]}""",
+            """{"supported_efforts":[null]}""",
+            """"true"""",
+            "1",
+            "[]",
+        ).forEach { reasoning ->
+            val body = """{"data":[{"id":"valid"},{"id":"invalid","reasoning":$reasoning}]}"""
+            assertThat(GenericModelsEnvelopeParser.parseDescriptors(body)).isNull()
+        }
+    }
+
+    @Test
+    fun `合法推理配置与非法思考字段或额度同包时仍拒绝整包`() {
+        listOf(
+            """"thinking":{"supported":true}""",
+            """"max_tokens":-1""",
+            """"max_tokens":"8192"""",
+        ).forEach { invalidField ->
+            val body = """{"data":[{"id":"valid","reasoning":{"mandatory":false}},{"id":"invalid",$invalidField}]}"""
+            assertThat(GenericModelsEnvelopeParser.parseDescriptors(body)).isNull()
+        }
+    }
+
+    @Test
     fun `富模型列表保留raw id ownedBy scope额度和明确能力三态`() = runTest {
         val body = """{"data":[{
           "id":"Tenant::Model-X",

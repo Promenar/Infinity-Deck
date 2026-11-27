@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.84.1-beta] - 2026-11-27
+
+- **修复 OpenRouter `/api/v1/models` 模型清单拉取与测连返回空列表（[GenericModelsEnvelopeParser.kt](native-ui/app/src/main/java/com/promenar/infinity/data/remote/protocol/GenericModelsEnvelopeParser.kt)、[GenericModelsEnvelopeTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/remote/protocol/GenericModelsEnvelopeTest.kt)、[ProviderConnectionProbeTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/remote/provider/ProviderConnectionProbeTest.kt)）**：
+  - 针对 OpenRouter 等服务商在 `/models` 返回的顶层结构化 `"reasoning"` 配置对象（含 `mandatory`、`default_enabled`、`supports_max_tokens`、`default_effort`、`supported_efforts` 等键），在 `GenericModelsEnvelopeParser` 增加严格类型校验分支放行合法配置对象（仅在显式布尔值或对象内布尔 `supported` 时写入 `ModelCapability.REASONING`，避免误标非推理模型），同时保留空对象、未知垃圾对象、字段类型错误、对象型 `thinking` 与非法额度的整包 fail-closed 契约；同步恢复 `GenericOpenAICompatProtocol` 拉取全部 477 条 OpenRouter 模型与 `ProviderConnectionProbe` 连接探测。
+- **模型管理页顶栏品牌图标前置（[InfinitySettingsPageLayout.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinitySettingsPageLayout.kt)、[ProviderModelsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderModelsScreen.kt)）**：
+  - 为 `InfinitySettingsPageLayout` 新增可选 `titleLeading` 插槽，并在模型管理页顶栏提供商名称前展示与列表页同源的 `28dp` 品牌圆角方砖图标（按名称与主机名精确匹配品牌，自定义公网/Tailnet 中转回退中性网关矢量图标，窄屏超长名称自动右缘渐隐不挤压右侧操作按钮）。
+
 ## [0.84.0-beta] - 2026-11-27
 
 - **聊天壁纸工作室 v2：修复相册导图失败、内外屏独立交互构图、多图本地库管理与折叠屏设置双栏适配（[WallpaperAssetStore.kt](native-ui/app/src/main/java/com/promenar/infinity/data/wallpaper/WallpaperAssetStore.kt)、[ChatWallpaperModels.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/wallpaper/ChatWallpaperModels.kt)、[ChatWallpaperCanvas.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/wallpaper/ChatWallpaperCanvas.kt)、[WallpaperSettingsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/WallpaperSettingsScreen.kt)、[SettingsPane.kt](native-ui/app/src/main/java/com/promenar/infinity/navigation/SettingsPane.kt)、[ThemePreferenceStore.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/ThemePreferenceStore.kt)、[BackupPreferencePolicy.kt](native-ui/app/src/main/java/com/promenar/infinity/data/backup/BackupPreferencePolicy.kt)、[ImageLightbox.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/renderer/ImageLightbox.kt)、[Color.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/theme/Color.kt)）**：

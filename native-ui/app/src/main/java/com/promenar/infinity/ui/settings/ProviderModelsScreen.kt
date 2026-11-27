@@ -11,6 +11,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +44,8 @@ import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Sync
@@ -91,11 +94,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.catalog.ResolvedModelMetadata
 import com.promenar.infinity.data.model.toLegacyType
+import com.promenar.infinity.data.tailnet.TailnetEndpoints
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
@@ -117,11 +123,14 @@ import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
 import com.promenar.infinity.ui.common.InfinitySwitch
 import com.promenar.infinity.ui.common.InfinityTypographicFootnote
+import com.promenar.infinity.ui.common.ModelBrandIcon
+import com.promenar.infinity.ui.common.ModelBrandResolver
 import com.promenar.infinity.ui.common.ModelBrandTile
 import com.promenar.infinity.ui.common.ModelCapabilityBadges
 import com.promenar.infinity.ui.common.ProvideGroupedPress
 import com.promenar.infinity.ui.common.SnackbarType
 import com.promenar.infinity.ui.common.bettboxListGroupItem
+import com.promenar.infinity.ui.common.brandAccentColor
 import com.promenar.infinity.ui.common.infinityHorizontalWheelScroll
 import com.promenar.infinity.ui.common.infinityPointerHand
 import com.promenar.infinity.ui.common.status.NoticeSeverity
@@ -144,6 +153,9 @@ internal data class ProviderModelsScreenState(
     val catalogStatus: com.promenar.infinity.data.model.catalog.CatalogUpdateStatus? = null,
     /** 上次成功同步模型的时间；从未同步为 null。 */
     val lastSyncAtMillis: Long? = null,
+    /** 用于顶栏品牌图标按主机精确解析与中转网关回退。 */
+    val providerBaseUrl: String? = null,
+    val isTailnetProvider: Boolean = false,
 )
 
 internal data class ProviderModelsScreenActions(
@@ -172,7 +184,8 @@ fun ProviderModelsScreen(
     onNavigateToSecondary: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
-    val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(context.applicationContext as android.app.Application))
+    val app = context.applicationContext as InfinityApplication
+    val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(app))
     val models by viewModel.providerModels.collectAsState()
     val modelTestStates by viewModel.modelTestStates.collectAsState()
     val providers by viewModel.providers.collectAsState()
@@ -180,6 +193,7 @@ fun ProviderModelsScreen(
     val syncNotice by viewModel.modelSyncNotice.collectAsState()
     val catalogStatus by viewModel.modelCatalogStatus.collectAsState()
     val providerStatuses by viewModel.providerStatuses.collectAsState()
+    val tailnetState by app.tailnetManager.state.collectAsStateWithLifecycle()
 
     val provider = remember(providers, providerId) {
         providers.find { it.id == providerId }
@@ -195,6 +209,9 @@ fun ProviderModelsScreen(
     }
     val effectiveTitle = provider?.let { providerDisplayName(it.name, it.protocolType) }
         ?: providerDisplayName(providerName, protocol = null)
+    val isTailnetProvider = remember(provider?.baseUrl, tailnetState) {
+        provider != null && TailnetEndpoints.isTailnetEndpoint(provider.baseUrl, tailnetState)
+    }
 
     // 归属只依据稳定 providerId，禁止用可重名的展示名称猜测。
     val scopedModels = remember(models, providerId) {
@@ -210,6 +227,8 @@ fun ProviderModelsScreen(
         modelTestStates = modelTestStates,
         catalogStatus = catalogStatus,
         lastSyncAtMillis = providerStatuses[providerId]?.lastModelSyncAtMillis,
+        providerBaseUrl = provider?.baseUrl,
+        isTailnetProvider = isTailnetProvider,
     )
 
     val actions = ProviderModelsScreenActions(
@@ -425,6 +444,13 @@ private fun ProviderModelsListPage(
         title = state.providerName,
         onBack = onNavigateBack,
         modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_SCREEN_ROOT),
+        titleLeading = {
+            ProviderModelsHeaderIcon(
+                name = state.providerName,
+                baseUrl = state.providerBaseUrl,
+                onTailnet = state.isTailnetProvider,
+            )
+        },
         actions = {
             ProviderModelsTopActions(
                 onAdd = onAdd,
@@ -1289,5 +1315,45 @@ private fun UiStatusNotice.formatSyncMessage(unknownFallback: String): String {
         stringResource(template.resourceId)
     } else {
         stringResource(template.resourceId, *template.args.toTypedArray())
+    }
+}
+
+/** 顶栏提供商图标：28dp 圆角方砖，复用全站品牌解析与柔和品牌底托，未命中时回退中性网关矢量图标。 */
+@Composable
+private fun ProviderModelsHeaderIcon(
+    name: String,
+    baseUrl: String?,
+    onTailnet: Boolean = false,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val brand = remember(name, baseUrl) { ModelBrandResolver.brandKey(name, baseUrl) }
+    val accent = brandAccentColor(brand)
+    val bg = accent?.copy(alpha = 0.14f) ?: scheme.surfaceContainerHighest.copy(alpha = 0.90f)
+    val rim = accent?.copy(alpha = 0.24f) ?: scheme.outlineVariant.copy(alpha = 0.40f)
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .border(0.5.dp, rim, RoundedCornerShape(8.dp))
+            .testTag("provider_models_header_icon"),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (brand != null) {
+            ModelBrandIcon(
+                modelId = name.ifBlank { baseUrl },
+                modifier = Modifier.size(16.dp),
+                contentDescription = null,
+                fallbackTint = accent ?: scheme.onSurfaceVariant,
+                brandOverride = brand,
+            )
+        } else {
+            Icon(
+                imageVector = if (onTailnet) Icons.Rounded.Lan else Icons.Rounded.Hub,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp),
+            )
+        }
     }
 }
