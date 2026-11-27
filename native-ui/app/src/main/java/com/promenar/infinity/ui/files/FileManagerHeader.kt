@@ -207,6 +207,7 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
             FileHeaderTitle(state, actions, Modifier.weight(1f), inInspector = inInspector)
             // 内屏的合集信息在标题下的信息行里，外屏用小标签。
             host.folderBadge?.takeUnless { host.leading.isInnerScreen || inInspector }?.let { HostBadge(it) }
+            host.headerActions?.invoke(this)
             IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
                 Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.fm_search))
             }
@@ -306,6 +307,9 @@ internal fun plainFolderSubtitleRes(location: FileLocation): Int = when (locatio
     FileLocationStorageKind.EXTERNAL_MOUNT ->
         if (location.capabilities.writable) R.string.fm_source_external_folder
         else R.string.fm_source_external_folder_readonly
+    FileLocationStorageKind.SFTP_REMOTE ->
+        if (location.capabilities.writable) R.string.fm_source_sftp_remote
+        else R.string.fm_source_sftp_remote_readonly
     FileLocationStorageKind.SHARED_STORAGE -> R.string.fm_source_shared_storage
     FileLocationStorageKind.APP_PROJECT -> R.string.fm_source_project_workspace
     FileLocationStorageKind.RETAINED_SESSION -> R.string.fm_source_retained_workspace

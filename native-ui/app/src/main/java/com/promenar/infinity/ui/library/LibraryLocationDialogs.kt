@@ -8,8 +8,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
@@ -48,40 +51,60 @@ import com.promenar.infinity.ui.theme.breakableIdentifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-/** 资料页位置三分类结果：内置固定入口、应用内工作区、外部路径。 */
+/**
+ * 资料页位置三域归类结果：
+ * - [knowledgeDocs]：域一「知识与记忆」中的「知识文档」（原存储空间，`kb`）；
+ * - [localWorkspacesAndFiles]：域二「本机工作区与文件」（项目工作区、分支 worktree、会话文件与保留目录、Linux 主目录、本机挂载）；
+ * - [remoteSftpMounts]：域三「远程存储（SFTP）」中的所有 SFTP 挂载点；
+ * - [retainedSessionCount]：保留会话工作区数量，用于「会话文件」副标题提示。
+ */
 internal data class CategorizedLibraryLocations(
-    val builtin: List<FileLocation>,
-    val appWorkspaces: List<FileLocation>,
-    val externalPaths: List<FileLocation>,
+    val knowledgeDocs: FileLocation?,
+    val localWorkspacesAndFiles: List<FileLocation>,
+    val remoteSftpMounts: List<FileLocation>,
+    val retainedSessionCount: Int = 0,
 )
 
 /**
- * 将资料页位置严格分为三组（已固定快捷入口由独立的 `pins` 列表承载）：
- * - [CategorizedLibraryLocations.builtin]：存储空间、会话工作区、Linux 主目录（Linux 未就绪时数据源不产出）；
- * - [CategorizedLibraryLocations.appWorkspaces]：应用内项目工作区、保留的会话文件夹、分支 worktree；
- * - [CategorizedLibraryLocations.externalPaths]：手机共享存储工作区（KIND_SHARED）与外部授权挂载文件夹。
+ * 按资料库三域认知模型对所有位置归类（已固定快捷入口由独立的 `pins` 列表承载）：
+ * - 域一「知识与记忆」：`KNOWLEDGE_BASE`（`kb`）；
+ * - 域二「本机工作区与文件」：按「共享存储/应用工作区/分支 worktree → 会话文件 → 保留的会话目录 → Linux 主目录 → 本机外部挂载」稳定排序；
+ * - 域三「远程存储（SFTP）」：`SFTP_REMOTE`。
  */
 internal fun categorizeLibraryLocations(locations: List<FileLocation>): CategorizedLibraryLocations {
-    val builtin = mutableListOf<FileLocation>()
-    val appWorkspaces = mutableListOf<FileLocation>()
-    val externalPaths = mutableListOf<FileLocation>()
+    var knowledgeDocs: FileLocation? = null
+    val workspaces = mutableListOf<FileLocation>()
+    val sessions = mutableListOf<FileLocation>()
+    val retained = mutableListOf<FileLocation>()
+    val linux = mutableListOf<FileLocation>()
+    val localMounts = mutableListOf<FileLocation>()
+    val remoteSftp = mutableListOf<FileLocation>()
+
     locations.forEach { location ->
         when (location.storageKind) {
-            FileLocationStorageKind.BUILTIN,
-            FileLocationStorageKind.LINUX_HOME,
-            -> builtin += location
-
-            FileLocationStorageKind.APP_PROJECT,
-            FileLocationStorageKind.RETAINED_SESSION,
-            FileLocationStorageKind.BRANCH_WORKTREE,
-            -> appWorkspaces += location
-
+            FileLocationStorageKind.BUILTIN -> {
+                if (location.kind == com.promenar.infinity.domain.files.FileLocationKind.KNOWLEDGE_BASE) {
+                    knowledgeDocs = location
+                } else {
+                    sessions += location
+                }
+            }
             FileLocationStorageKind.SHARED_STORAGE,
-            FileLocationStorageKind.EXTERNAL_MOUNT,
-            -> externalPaths += location
+            FileLocationStorageKind.APP_PROJECT,
+            FileLocationStorageKind.BRANCH_WORKTREE,
+            -> workspaces += location
+            FileLocationStorageKind.RETAINED_SESSION -> retained += location
+            FileLocationStorageKind.LINUX_HOME -> linux += location
+            FileLocationStorageKind.EXTERNAL_MOUNT -> localMounts += location
+            FileLocationStorageKind.SFTP_REMOTE -> remoteSftp += location
         }
     }
-    return CategorizedLibraryLocations(builtin, appWorkspaces, externalPaths)
+    return CategorizedLibraryLocations(
+        knowledgeDocs = knowledgeDocs,
+        localWorkspacesAndFiles = workspaces + sessions + retained + linux + localMounts,
+        remoteSftpMounts = remoteSftp,
+        retainedSessionCount = retained.size,
+    )
 }
 
 internal sealed interface LibraryLocationDialog {
@@ -97,6 +120,7 @@ internal class LibraryLocationActions(
     private val viewModel: LibraryViewModel,
     private val navigator: LibraryNavigator,
     private val scope: CoroutineScope,
+    private val onEditSftpMount: (mountId: String) -> Unit = {},
 ) {
     var dialog by mutableStateOf<LibraryLocationDialog?>(null)
         private set
@@ -111,6 +135,14 @@ internal class LibraryLocationActions(
 
     fun openRenameWorkspace(workspaceId: String, currentName: String) {
         dialog = LibraryLocationDialog.RenameWorkspace(workspaceId, currentName)
+    }
+
+    fun editSftpMount(mountId: String) {
+        onEditSftpMount(mountId)
+    }
+
+    fun toggleSftpReadOnly(mountId: String, currentlyReadOnly: Boolean) {
+        viewModel.setSftpMountReadOnly(mountId, !currentlyReadOnly)
     }
 
     fun requestRemoveLocation(location: FileLocation) {
@@ -163,9 +195,12 @@ internal class LibraryLocationActions(
 internal fun rememberLibraryLocationActions(
     viewModel: LibraryViewModel,
     navigator: LibraryNavigator,
+    onEditSftpMount: (mountId: String) -> Unit = {},
 ): LibraryLocationActions {
     val scope = rememberCoroutineScope()
-    return remember(viewModel, navigator, scope) { LibraryLocationActions(viewModel, navigator, scope) }
+    return remember(viewModel, navigator, scope, onEditSftpMount) {
+        LibraryLocationActions(viewModel, navigator, scope, onEditSftpMount)
+    }
 }
 
 /** 一级位置或已固定项的长按菜单内容（复用全站 L3 黑曜石 InfinityDropdownMenu）。 */
@@ -201,6 +236,37 @@ internal fun ColumnScope.LibraryLocationContextMenuItems(
     }
     val target = location ?: return
     val workspaceId = target.workspaceId
+    val sftpMountId = target.mountId?.takeIf { target.storageKind == FileLocationStorageKind.SFTP_REMOTE }
+    if (sftpMountId != null) {
+        InfinityMenuItem(
+            text = { Text(stringResource(R.string.sftp_mount_action_edit)) },
+            leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp)) },
+            onClick = {
+                dismiss()
+                actions.editSftpMount(sftpMountId)
+            },
+        )
+        InfinityMenuItem(
+            text = {
+                Text(
+                    stringResource(
+                        if (target.remoteReadOnly) R.string.sftp_mount_action_toggle_rw else R.string.sftp_mount_action_toggle_ro,
+                    ),
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    if (target.remoteReadOnly) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+            onClick = {
+                dismiss()
+                actions.toggleSftpReadOnly(sftpMountId, target.remoteReadOnly)
+            },
+        )
+    }
     if (workspaceId != null) {
         InfinityMenuItem(
             text = { Text(stringResource(R.string.library_location_action_rename)) },

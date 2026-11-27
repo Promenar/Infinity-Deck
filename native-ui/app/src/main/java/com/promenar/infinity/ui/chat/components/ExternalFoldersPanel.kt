@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
 import androidx.compose.material.icons.automirrored.rounded.LibraryBooks
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -99,6 +100,10 @@ import com.promenar.infinity.domain.storage.ExternalFolderEntry
 import com.promenar.infinity.domain.storage.ExternalMount
 import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.data.storage.isKnowledgeBaseSource
+import com.promenar.infinity.data.storage.isSftpRemoteSource
+import com.promenar.infinity.domain.storage.SftpRemoteMountSpec
+import com.promenar.infinity.ui.production.ProductionStatusChip
+import com.promenar.infinity.ui.production.ProductionTone
 import com.promenar.infinity.ui.workspace.KnowledgeReadOnlyTag
 import com.promenar.infinity.ui.workspace.KnowledgeReadWriteTag
 import com.promenar.infinity.ui.workspace.SharedFolderPicker
@@ -637,11 +642,13 @@ internal fun ExternalMountManagerContent(
             .padding(top = InfinitySpacing.Small)
             .testTag("external_mounts_list"),
     ) {
+        val hasSftpMounted = mounts.any { it.isSftpRemoteSource }
         InfinitySettingsSection(
             title = stringResource(R.string.mount_section_mounted),
             footer = when {
                 libraryScope -> stringResource(R.string.library_mounts_empty_hint)
                 mounts.isEmpty() && !loading -> stringResource(R.string.mount_empty_hint)
+                hasSftpMounted -> stringResource(R.string.mount_sftp_security_footer)
                 else -> null
             },
         ) {
@@ -666,13 +673,29 @@ internal fun ExternalMountManagerContent(
             ) {
                 libraryChoices.forEach { library ->
                     key(library.id) {
+                        val sftpSpec = remember(library.sourceType, library.sourceId) {
+                            if (library.isSftpRemoteSource) SftpRemoteMountSpec.decode(library.sourceId) else null
+                        }
+                        val attachSubtitle = if (sftpSpec != null) {
+                            val modeLabel = stringResource(
+                                if (library.readOnly) R.string.library_remote_readonly else R.string.library_remote_archivable,
+                            )
+                            stringResource(R.string.library_mounts_attach_sftp_desc, sftpSpec.hostAlias, modeLabel, library.alias)
+                        } else {
+                            stringResource(R.string.library_mounts_attach_desc, library.alias)
+                        }
                         InfinitySettingsItem(
                             title = library.alias,
-                            subtitle = stringResource(R.string.library_mounts_attach_desc, library.alias),
+                            subtitle = attachSubtitle,
+                            subtitleMaxLines = 2,
                             onClick = { onAttachLibrary(library) },
                             enabled = !busy && library.unavailableReason == null,
                             leadingContent = {
-                                Icon(Icons.AutoMirrored.Rounded.LibraryBooks, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Icon(
+                                    if (sftpSpec != null) Icons.Rounded.Cloud else Icons.AutoMirrored.Rounded.LibraryBooks,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
                             },
                             modifier = Modifier.testTag("external_mount_attach_library_${library.id}"),
                         )
@@ -763,13 +786,27 @@ private fun ExternalMountRow(
     val unavailable = mount.unavailableReason != null
     val unavailableLabel = stringResource(R.string.mount_unavailable)
     val knowledgeBase = mount.isKnowledgeBaseSource
+    val sftpRemote = mount.isSftpRemoteSource
+    val sftpSpec = remember(mount.sourceType, mount.sourceId) {
+        if (sftpRemote) SftpRemoteMountSpec.decode(mount.sourceId) else null
+    }
     val readOnlyKnowledge = knowledgeBase && (mount.readOnly || mount.sourceType == ExternalMountPaths.KNOWLEDGE_BASE_SOURCE)
     val stackKnowledgeTag = knowledgeBase && androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.05f
-    val sourceLabel = stringResource(if (mount.sourceType == "real_path") R.string.mount_source_real_path else R.string.mount_source_saf)
+    val sourceLabel = stringResource(
+        when {
+            sftpRemote -> R.string.mount_source_sftp
+            mount.sourceType == "real_path" -> R.string.mount_source_real_path
+            else -> R.string.mount_source_saf
+        },
+    )
     val primaryVolumeLabel = stringResource(R.string.workspace_picker_shared_volume)
     val meta = if (libraryScope) listOfNotNull(
         mountSourceLocationLabel(mount.sourceType, mount.sourceId, primaryVolumeLabel),
         sourceLabel,
+    ) else if (sftpRemote) listOfNotNull(
+        "/mnt/" + mount.alias + "/",
+        sftpSpec?.hostAlias,
+        stringResource(R.string.mount_sftp_files_and_archive_only),
     ) else listOfNotNull(
         "/mnt/" + mount.alias,
         sourceLabel.takeUnless { knowledgeBase },
@@ -779,21 +816,41 @@ private fun ExternalMountRow(
             else -> R.string.agent_reach_mount_files_only
         }),
     )
+    val sftpChipText = if (sftpRemote) {
+        stringResource(if (mount.readOnly) R.string.mount_sftp_chip_ro else R.string.mount_sftp_chip_rw)
+    } else null
     InfinitySettingsItem(
         title = mount.alias,
         subtitle = unavailableLabel.takeIf { unavailable },
-        subtitleSegments = meta.takeUnless { unavailable || stackKnowledgeTag },
-        subtitleContent = if (!unavailable && stackKnowledgeTag) ({
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                InfinityMetaLine(
-                    segments = meta,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                )
-                if (readOnlyKnowledge) KnowledgeReadOnlyTag() else KnowledgeReadWriteTag()
-            }
-        }) else null,
+        subtitleSegments = meta.takeUnless { unavailable || stackKnowledgeTag || sftpRemote },
+        subtitleContent = when {
+            !unavailable && stackKnowledgeTag -> ({
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    InfinityMetaLine(
+                        segments = meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                    )
+                    if (readOnlyKnowledge) KnowledgeReadOnlyTag() else KnowledgeReadWriteTag()
+                }
+            })
+            !unavailable && sftpRemote && sftpChipText != null -> ({
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ProductionStatusChip(
+                        text = sftpChipText,
+                        tone = if (mount.readOnly) ProductionTone.NEUTRAL else ProductionTone.INFO,
+                    )
+                    InfinityMetaLine(
+                        segments = meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                    )
+                }
+            })
+            else -> null
+        },
         // 分段排版放不下时整段省略，放宽到三行让访问方式始终可见。
         subtitleMaxLines = if (unavailable) 2 else 3,
         // 不可用的挂载点按后直接给出重新授权或移除等操作。
@@ -802,7 +859,11 @@ private fun ExternalMountRow(
         modifier = Modifier.semantics { if (unavailable) stateDescription = unavailableLabel },
         leadingContent = {
             Icon(
-                if (unavailable) Icons.Rounded.ErrorOutline else Icons.Rounded.Folder,
+                when {
+                    unavailable -> Icons.Rounded.ErrorOutline
+                    sftpRemote -> Icons.Rounded.Cloud
+                    else -> Icons.Rounded.Folder
+                },
                 contentDescription = null,
                 tint = if (unavailable) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
             )

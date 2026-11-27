@@ -15,7 +15,7 @@ description: 管理或创建技能、编辑技能文件、管理智能体规则�
 | `python_exec` | 打包 Python 3.14，可安装纯 Python 包 | Alpine `python3`，可通过宿主工具桥调用 APK 原生工具 |
 | `git_exec` | Sideload arm64 原生 Git，cwd 为授权真实路径 | 同一原生 Git，cwd 为本会话授权挂载路径 |
 | 文件工具与工作区 | 统一用真实 Android 路径（同 `$INFINITY_WORKSPACE`）；工作区内可用无前导 `/` 相对路径，禁用 `/skills`、`/session` 等旧虚拟前缀 | 普通 `/workspace`，私有另有 `/home/session`；Linux/分支目录用绑定路径 |
-| 外部挂载与资料库 | 真实挂载共用设备真实路径；无 POSIX 路径的 `/mnt/knowledge`、SAF `/mnt/<别名>` 仅文件工具可访问 | 文件工具见真实路径与 `/mnt/knowledge`；shell 仅见真实路径，资料用 `copy_knowledge_to_linux` 拷入 `/home/session/inbox` |
+| 外部挂载与资料库 | 真实挂载共用设备真实路径；无 POSIX 路径的 `/mnt/knowledge`、SAF 与远程 SFTP `/mnt/<别名>` 仅文件工具可访问（远程写入走 `remote_mount_*`） | 文件工具见真实路径、`/mnt/knowledge` 与 SFTP `/mnt/<别名>`；shell 仅见真实路径，资料用 `copy_knowledge_to_linux` 拷入 `/home/session/inbox`，远程 SFTP 不绑定 proot |
 | 用户级技能 | 真实目录 `files/agent_skills/<名称>`（同 `$INFINITY_SKILLS/<名称>`） | 文件工具与命令 `/mnt/skills/<名称>`（`INFINITY_SKILLS=/mnt/skills`） |
 | 项目级技能 | 目录工作区 `<工作区真实路径>/.agents/skills/<名称>`（相对 `.agents/skills/<名称>`） | `<工作区>/.agents/skills/<名称>`（普通工作区为 `/workspace/.agents/skills/<名称>`） |
 | 技能读取工具 | `activate_skill`/`read_skill_file` 按名或虚拟路径 `/skills/<名称>`、`/.agents/skills/<名称>` 选技能 | 同左（仅作技能选择标识，非文件工具磁盘路径） |
@@ -61,6 +61,11 @@ Sideload arm64 已预置 10 项原生工具，Linux 经宿主桥加速，日常�
 | `move_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 | `patch_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 | `python_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
+| `remote_mount_archive` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `remote_mount_delete` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `remote_mount_download` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
+| `remote_mount_mkdir` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
+| `remote_mount_rename` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `request_knowledge_access` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `resolve_startup_issue` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
 | `schedule_create` | 逐次审批 | 逐次审批 | 逐次审批 | 逐次审批 | 无 |
@@ -79,7 +84,7 @@ Sideload arm64 已预置 10 项原生工具，Linux 经宿主桥加速，日常�
 | `termux_exec` | 逐次审批 | 自由 | 逐次审批 | 自由 | 无 |
 | `write_file` | 自由 | 自由 | 自由 | 自由 | 技能目录=批,批,批,批;工作区外=批,免,免,免;Linux根目录=免,免,批,免 |
 
-按风险审批档对 `shell_exec` 和 `git_exec` 的零副作用只读命令免批。禁止用命令绕过技能目录审批，改项目技能前说明目标。`sftp_write` 免批，`sftp_download` 写入技能目录直接拒绝。首次主机信任、指纹变更与秘密输入由用户处理。
+按风险审批档对 `shell_exec` 和 `git_exec` 的零副作用只读命令免批。禁止用命令绕过技能目录审批，改项目技能前说明目标。`sftp_write` 免批，`sftp_download` 写入技能目录直接拒绝；远程挂载写入（`remote_mount_archive`/`mkdir`/`rename`/`delete`）两档均须逐次一次性审批且不可限时免批，`remote_mount_download` 在按风险审批档逐次审批，`remote_mount_transfer_status` 免批。首次主机信任、指纹变更与秘密输入由用户处理。
 
 MCP 工具由已连服务器动态提供：SCHEDULE/ACCESS_GRANT/AGENT_CONFIG 须逐次审批，其余按目标与会话规则判定。自定义数据库/脚本 Skill 不暴露执行。`request_secret`/`show_secret` 免审批，勿让用户把秘密贴进聊天；`capture_secret` 是命令参数机制。
 
@@ -122,75 +127,29 @@ SSH 主机配置存在 `ssh_host_save`、`ssh_host_delete`、`ssh_host_install_k
 
 ## 创建与编辑技能
 
-先确定作用域和目标目录，不要搜索或修改第三方 CLI 的技能目录。用户级技能对所有智能体和会话可见；项目级技能只对绑定该目录工作区的会话可见。读取与启用状态由应用目录扫描管理，不由 Agent 或会话的自定义工具选择替代。目录工作区根目录的 `AGENTS.md`、`CLAUDE.md` 由应用自动作为项目规则放入系统提示，不需要另行读取。
+先定作用域与目录，勿碰第三方 CLI 技能目录。用户级全局可见，项目级仅对绑定目录工作区的会话可见；读取与启用由目录扫描管理，不由自定义工具选择替代。工作区根目录的 `AGENTS.md`/`CLAUDE.md` 会自动注入系统提示，无需另读。
 
-目录结构示例：
+示例结构：`my-skill/{SKILL.md, references/guide.md, scripts/helper.py, agents/openai.yaml}`。`SKILL.md` 须为 UTF-8，以 `---` 包裹 frontmatter：`name` 必填且与目录名一致（1–64 字符，仅小写字母、数字和单连字符），`description` 必填（最多 1024 字符）；可选 `license`/`allowed-tools` 仅元数据，不授权限。
 
-```text
-my-skill/
-  SKILL.md
-  references/guide.md
-  scripts/helper.py
-  agents/openai.yaml
-```
+附带文件用相对路径，禁止绝对路径、`.`、`..`、`.infinity*`/`.nexara*` 或符号链接，忽略 `.git/`。包上限 1000 文件、单文件 8 MiB、合计 32 MiB；读取工具每次最多 256 KiB UTF-8 文本，大资料拆附带文件按需读。ZIP 导入要求 `SKILL.md` 在根目录或唯一顶层目录。
 
-`SKILL.md` 必须是 UTF-8 文本，第一行为 `---`，frontmatter 用 `---` 结束。`name` 必填且与目录名相同，长度 1–64，只含小写英文字母、数字及单个连字符，不得首尾连字符或连续连字符（例如 `my-skill`）。`description` 必填、非空、最多 1024 字符，说明何时应调用。可选 `license`、`allowed-tools` 只是元数据，不能授予工具权限或跳过审批。正文写成独立、当前有效的执行说明。
+可选 `agents/openai.yaml` 支持 `interface.{display_name, short_description}` 与 `policy.allow_implicit_invocation`（默认 true；false 仅禁自动匹配，仍可用 `$name`/`/name` 点名，非权限边界，无效 YAML 回退默认）。
 
-```markdown
----
-name: my-skill
-description: 当用户需要某项具体任务时，读取并遵循此技能。
----
+流程：1) 查现有来源与状态并选作用域；2) 安装或整包替换用户技能用 `install_skill`（提供完整 `files`，替换设 `overwrite=true` 并保留附带文件），审批后自动启用，原手动停用者保持停用，勿用命令改用户技能；3) 局部修改用文件工具先 `read_file` 取 Hash，再带 `expectedHash`/`expected_sha256` 写回；4) 文件工具新建的用户技能默认未启用，提示用户到“设置 → 技能包”启用；项目级信任界面暂未接入，仅说明限制并建议用户级，勿直接改状态文件；已启用用户技能变更仍加载并提示确认；5) 后续轮次重扫目录，不追溯替换已加载正文。
 
-# 任务说明
-
-定义目标、输入、步骤和验收条件。
-```
-
-附带文件使用包内相对路径；不得使用绝对路径、`.`、`..`、`.infinity*` / `.nexara*` 保留名或符号链接，扫描也不提供 `.git/`。包最多 1000 个文件、单文件最多 8 MiB、合计最多 32 MiB；技能读取工具每次只读最多 256 KiB 的 UTF-8 文本。正文需要更大资料时拆成附带文件并按需读取。ZIP 导入要求 SKILL.md 在根目录或唯一顶层目录内，名称和体积沿用相同校验。
-
-`agents/openai.yaml` 可选，应用支持下列两层标量；展示名与短描述用于列表，`policy.allow_implicit_invocation` 缺省为 true：
-
-```yaml
-interface:
-  display_name: "展示名"
-  short_description: "适用场景摘要"
-policy:
-  allow_implicit_invocation: false
-```
-
-false 表示不自动匹配调用，仍可由用户 `$my-skill` 或 `/my-skill` 点名；它不是工具权限。未知字段不产生额外权限，无法解析的界面 YAML 使用默认展示与隐式策略，因此不要依赖错误 YAML 禁止调用。
-
-完整操作：
-
-1. 检查目标技能是否存在、来源与启用状态，选择用户级或项目级。
-2. 安装或整包替换用户技能时调用 `install_skill`：`files` 提供完整技能包的相对路径与内容（文本用 `text`，二进制用 `base64`），必须包含有效 SKILL.md；替换已有技能时设置 `overwrite=true`，并带入需要保留的全部附带文件。用户在审批卡批准这份快照后技能自动启用，用户此前手动停用的技能保持停用。不要用命令创建或修改用户技能。
-3. 局部修改已有技能时使用文件工具：编辑前 `read_file` 获取当前内容与 Hash；用 `write_file` 或 `patch_file` 带 `expectedHash`（或 `expected_sha256`）防止覆盖其它修改。脚本和其它附带文件的修改也属于技能内容变化。
-4. 通过文件工具直接创建的用户技能默认未加入启用名单，请用户到“设置 → 技能包”核对并启用，因此新装技能优先用 `install_skill`；设置页新建或导入会自动启用，界面编辑保留原启用状态。项目技能首次出现或任何内容变化进入待信任，项目级信任组件尚未接入可达界面，因此无法在当前界面完成项目技能信任；说明限制并建议使用用户级技能，不直接修改信任状态文件。已启用用户技能内容变化仍可加载，但显示“内容变化需确认”，由用户确认当前内容或停用；不能声称它已经阻断加载。
-5. 后续模型请求/技能工具调用重新扫描目录；元数据与状态进入下一次构建的目录，正文按激活时文件读取。同一轮已加载的正文和历史工具结果不会被追溯替换。用户级状态为全局，项目级信任与停用按工作区记录。
-
-内置 `infinity-deck` 保存在 APK assets，虚拟目录为 `/.infinity/builtin-skills/infinity-deck`。它与上述 `references/` 附带文件只通过技能读取工具访问，没有 shell 目录；文件写入工具拒绝该路径，命令创建同名文件不能改变内置正文。它不提供编辑、删除、启停或信任操作，更新只能随应用版本打包。同名用户/项目技能仍独立存在，但 `activate_skill(name="infinity-deck")` 和用户点名优先内置；其它来源必须明确指定 `/skills/infinity-deck` 或 `/.agents/skills/infinity-deck`。
+内置 `infinity-deck` 位于 APK assets（虚拟目录 `/.infinity/builtin-skills/infinity-deck`），仅经技能读取工具访问，无 shell 路径、不可写删启停；同名覆盖须显式指定 `/skills/infinity-deck` 或 `/.agents/skills/infinity-deck`。
 
 ## 智能体规则与会话规则
 
-主会话可用 `agents_read` 免审批读取配置，`target` 为 `agents`（智能体概要）、`agent`（智能体可写字段与提示词全文）、`sessions`（某智能体的主会话列表）、`session`（会话配置）。`id` 省略取当前智能体或会话，`sessions` 的 `agentId` 省略取当前智能体。读取结果只含配置；子代理与分支会话不提供这两个配置工具。
-
-`agents_write` 每次都需用户审批，不可限时免审批。先读现值，再提交 `op`、`fields` 与非空 `reason`；修改对象的 `id` 可省略为当前对象。可写范围如下：
+主会话可用 `agents_read` 免批读配置（`target`: `agents`/`agent`/`sessions`/`session`，省略 `id`/`agentId` 取当前对象；子代理与分支不提供）。`agents_write` 每次须审批且不可限时免批：先读现值再传 `op`、`fields` 与非空 `reason`，批准后若现值变动则拒写。
 
 | 操作 | fields |
 |---|---|
-| 新建智能体（`op` 为 `create_agent`） | `name` 必填；可写 `description`、`systemPrompt`、`modelId`、`temperature`、`topP`、`maxTokens`、`topK`、`frequencyPenalty`、`presencePenalty`、`repetitionPenalty`、`reasoningEffort`、`mcpServerIds`、`defaultWorkspaceId`、`toolsEnabledByDefault` |
-| 修改智能体（`op` 为 `update_agent`） | 与 create_agent 相同的字段，按需提供；id 省略取当前智能体 |
-| 新建会话（`op` 为 `create_session`） | `agentId`、`title`、`customPrompt`、`modelId`；agentId 省略取当前智能体，工作区继承该智能体默认值；只创建会话，不发起对话或切换界面 |
-| 修改会话（`op` 为 `update_session`） | `title`、`customPrompt`、`modelId`、`inferenceParams`、`activeSkillIds`、`activeMcpServerIds`；id 省略取当前会话 |
+| 新建/修改智能体（`create_agent` / `update_agent`） | `name`（新建必填）、`description`、`systemPrompt`、`modelId`、`temperature`、`topP`、`maxTokens`、`topK`、`frequencyPenalty`、`presencePenalty`、`repetitionPenalty`、`reasoningEffort`、`mcpServerIds`、`defaultWorkspaceId`、`toolsEnabledByDefault` |
+| 新建会话（`create_session`） | `agentId`、`title`、`customPrompt`、`modelId`（仅创建会话，工作区继承智能体默认，不切页或发起对话） |
+| 修改会话（`update_session`） | `title`、`customPrompt`、`modelId`、`inferenceParams`、`activeSkillIds`、`activeMcpServerIds` |
 
-字符串使用 string，采样参数使用 number，maxTokens / topK 使用整数，技能与 MCP id 使用字符串数组，toolsEnabledByDefault 使用 boolean。可空字段可用 null 清空并恢复默认；inferenceParams 只允许上述采样参数与 reasoningEffort，按提供的子字段合并；传 null 只清空这些可写参数，保留上下文轮数等界面设置。reasoningEffort 使用模型支持的 wireName。模型、技能、MCP 与默认工作区必须已经登记；无效参数在审批前返回错误。审批绑定本次涉及字段的现值，批准后现值变化会拒绝写入，需要重新读取后再提交。
-
-智能体提示词作用于该智能体的会话；会话提示词作用于指定会话。系统提示按“智能体提示词 → Session Instructions → 固定运行环境和权限说明”拼接。配置修改从下一轮生效，同一轮的工具循环沿用轮次开始时构建的系统提示。Agent 提示词修改前的版本可在“智能体 → 编辑 → 历史版本”恢复，每个 Agent 保留最近 20 版；会话提示词不保留历史。
-
-权限档、运行模式、当前会话工作区绑定、头像和删除由用户在界面操作，入口见上表。Agent 默认工作区可通过 defaultWorkspaceId 设置，供新建会话继承。Agent.skills 运行时未启用，不能通过配置工具写入。
-
-用户要求长期改变回答规则时，依据其目标选择智能体提示词或会话提示词，说明影响并提交审批。主动记忆按本会话设置使用共享池或本会话隔离池，每轮作为资料进入上下文，适合保存用户要求记住的事实与偏好。
+可空字段传 null 恢复默认；`inferenceParams` 仅合并上述采样参数与 `reasoningEffort`（用模型 wireName），传 null 保留上下文轮数等界面设置。引用的模型、技能、MCP 与默认工作区须已登记。系统提示按“智能体提示词 → Session Instructions → 固定运行环境与权限”拼接，配置修改下轮生效；Agent 提示词保留最近 20 版（智能体 → 编辑 → 历史版本），会话提示词不留历史。权限档、运行模式、工作区绑定、头像与删除见上表界面入口；长期偏好也可存主动记忆。
 
 ## 审批被拒后的做法
 

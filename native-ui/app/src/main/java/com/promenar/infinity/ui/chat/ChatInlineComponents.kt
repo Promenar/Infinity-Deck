@@ -653,6 +653,8 @@ data class ApprovalDisplayCall(
     val knowledgeAccess: KnowledgeAccessApproval? = null,
     /** sftp_upload / sftp_download 的方向与两端路径；存在时替代参数文本。 */
     val transfer: SftpTransferApprovalPreview? = null,
+    /** remote_mount_* 远程挂载归档/下载/目录管理的结构化审批预览；存在时替代参数文本。 */
+    val remoteMount: RemoteMountApprovalPreview? = null,
     /** 可限时免审批的类别名称（如“技能目录变更”）；为空时卡片不提供 10 分钟免审批。 */
     val timedGrantLabel: String? = null,
     /** 每次都需批准、不可限时免审批的调用（如 `agents_write`）：菜单只有“仅批准这一次”与说明。 */
@@ -732,6 +734,11 @@ internal fun approvalToolTitle(name: String): String = when {
     name == REQUEST_KNOWLEDGE_ACCESS_TOOL -> stringResource(R.string.chat_approval_title_knowledge_access)
     name == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE -> stringResource(R.string.agent_config_title_generic)
     name == "production_update" -> stringResource(R.string.production_lock_approval_title)
+    name == "remote_mount_archive" -> stringResource(R.string.remote_mount_approval_title_archive)
+    name == "remote_mount_download" -> stringResource(R.string.remote_mount_approval_title_download)
+    name == "remote_mount_mkdir" -> stringResource(R.string.remote_mount_approval_title_mkdir)
+    name == "remote_mount_rename" -> stringResource(R.string.remote_mount_approval_title_rename)
+    name == "remote_mount_delete" -> stringResource(R.string.remote_mount_approval_title_delete)
     else -> toolFriendlyName(name)
 }
 
@@ -764,6 +771,7 @@ internal fun ApprovalKindBand(
     val backend = CommandToolClassification.backendFor(toolName, ToolExecutionTargets.runsInLinux(executionTarget))
     val label = approvalKindLabel(toolName, executionTarget)
     val transfer = sftpTransferDirection(toolName) != null
+    val remoteMount = com.promenar.infinity.domain.tool.RemoteMountOperation.fromTool(toolName) != null
     val productionLock = toolName == "production_update" &&
         com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(executionTarget)
     val comfyOverride = isComfyFixedOverride(toolName, executionTarget)
@@ -790,6 +798,7 @@ internal fun ApprovalKindBand(
         Icon(
             imageVector = when {
                 transfer -> Icons.Rounded.ImportExport
+                remoteMount -> Icons.Rounded.CloudUpload
                 backend != null -> Icons.Rounded.Terminal
                 toolName == REQUEST_KNOWLEDGE_ACCESS_TOOL -> Icons.Rounded.Key
                 productionLock -> Icons.Rounded.Movie
@@ -896,6 +905,7 @@ private fun isComfyManagementTool(toolName: String): Boolean =
  */
 internal fun approvalKindLabel(toolName: String, executionTarget: String?): Int =
     if (sftpTransferDirection(toolName) != null) R.string.chat_approval_kind_file_transfer
+    else if (com.promenar.infinity.domain.tool.RemoteMountOperation.fromTool(toolName) != null) R.string.remote_mount_approval_kind
     else if (toolName == "production_update" && com.promenar.infinity.data.production.ProductionLockApprovalPlanner.isLockTarget(executionTarget)) {
         R.string.production_lock_approval_where
     } else if (isComfyFixedOverride(toolName, executionTarget)) {
@@ -1048,6 +1058,8 @@ private fun ApprovalCallBody(call: ApprovalDisplayCall, description: String, pen
         ApprovalReason(description)
         if (call.schedule != null) {
             ScheduleApprovalBlock(call.schedule)
+        } else if (call.remoteMount != null) {
+            RemoteMountApprovalBlock(call.remoteMount)
         } else if (call.transfer != null) {
             SftpTransferApprovalBlock(call.transfer)
         } else if (preview == null) {
@@ -1297,6 +1309,8 @@ fun ApprovalCard(
                         }
                         when {
                             knowledgeApprove != null -> knowledgeApprove
+                            currentCall?.name == "remote_mount_archive" -> stringResource(R.string.remote_mount_approval_approve_archive)
+                            currentCall?.name == "remote_mount_download" -> stringResource(R.string.remote_mount_approval_approve_download)
                             isProductionLock -> stringResource(R.string.production_lock_approval_approve_btn)
                             isComfyOverride -> stringResource(R.string.comfy_override_approval_approve_btn)
                             isComfyMgmt -> stringResource(R.string.comfy_management_approval_approve_btn)

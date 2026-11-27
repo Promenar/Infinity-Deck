@@ -316,6 +316,7 @@ internal fun locationOriginText(location: FileLocation): String = when (location
     FileLocationStorageKind.BRANCH_WORKTREE -> stringResource(R.string.fm_info_origin_branch_worktree)
     FileLocationStorageKind.SHARED_STORAGE -> stringResource(R.string.fm_info_origin_shared_storage)
     FileLocationStorageKind.EXTERNAL_MOUNT -> stringResource(R.string.fm_info_origin_external_mount)
+    FileLocationStorageKind.SFTP_REMOTE -> stringResource(R.string.fm_info_origin_sftp_remote)
     FileLocationStorageKind.LINUX_HOME -> stringResource(R.string.fm_info_origin_linux_home)
 }
 

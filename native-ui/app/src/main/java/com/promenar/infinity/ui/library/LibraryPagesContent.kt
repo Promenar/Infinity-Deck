@@ -21,7 +21,23 @@ import androidx.compose.animation.AnimatedContent
 import android.app.Application
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import com.promenar.infinity.data.storage.REMOTE_PREVIEW_CACHE_MAX_BYTES
+import com.promenar.infinity.domain.storage.RemoteTransferDirection
+import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.files.formatFileSize
+import com.promenar.infinity.ui.theme.infinityDomainColors
+import kotlinx.coroutines.flow.flowOf
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -164,6 +180,7 @@ internal fun LibraryPageContent(
         is LibraryPage.Browse -> LibraryBrowsePage(page.ref, host, leading)
         LibraryPage.Graph -> LibraryGraphPage(host, leading)
         LibraryPage.Memory -> LibraryMemoryPage(host, title, leading, crumbs)
+        LibraryPage.Transfers -> LibraryTransfersPage(leading, crumbs, host.remoteTransfers)
         is LibraryPage.Document -> LibraryDocumentPage(page.documentId, host, title, leading, crumbs)
         is LibraryPage.FragmentSession -> LibraryFragmentSessionPage(page.sessionId, host, title, leading, crumbs)
         else -> LibraryPageFrame(title, leading, crumbs, Modifier.testTag(LibraryTags.page(page.javaClass.simpleName)), actions = actions) { padding ->
@@ -192,6 +209,7 @@ internal fun libraryPageTitle(page: LibraryPage, host: LibraryPageHost): String 
     LibraryPage.Fragments -> stringResource(R.string.library_page_fragments)
     LibraryPage.Graph -> stringResource(R.string.library_page_graph)
     LibraryPage.Files -> stringResource(R.string.library_page_files)
+    LibraryPage.Transfers -> stringResource(R.string.library_page_transfers)
     LibraryPage.Ask -> stringResource(R.string.library_page_ask)
     is LibraryPage.Document -> {
         val recent by host.viewModel.recent.collectAsStateWithLifecycle()
@@ -246,11 +264,25 @@ private fun libraryContentPadding(): PaddingValues = PaddingValues(
 // ---------------------------------------------------------------------------------------------
 // 外屏首页与概览
 
-/** 外屏首页：问资料、四张入口卡与概览。 */
+/** 外屏首页：问资料、三域统一入口（已固定、知识与记忆、本机工作区与文件、远程存储 SFTP）与概览入口。 */
 @Composable
 internal fun LibraryHome(host: LibraryPageHost, addMenu: @Composable () -> Unit) {
+    val transferSummary by remember(host.remoteTransfers) {
+        host.remoteTransfers?.summary ?: flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val overview by host.viewModel.overview.collectAsStateWithLifecycle()
+    val groups = rememberLibraryNavGroups(host)
+    val locationActions = host.locationActions
+
     Column(Modifier.fillMaxSize().testTag(LibraryTags.page("home"))) {
-        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { addMenu() }
+        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) {
+            RemoteTransferHeaderButton(
+                activeCount = transferSummary?.activeCount ?: 0,
+                onClick = { host.navigator.push(LibraryPageKeys.TRANSFERS) },
+            )
+            Spacer(Modifier.width(4.dp))
+            addMenu()
+        }
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,
@@ -258,8 +290,71 @@ internal fun LibraryHome(host: LibraryPageHost, addMenu: @Composable () -> Unit)
             modifier = Modifier.padding(horizontal = InfinitySpacing.ScreenHorizontal, vertical = InfinitySpacing.Small),
             onFocused = host.ask.onOpen,
         )
-        Box(Modifier.weight(1f)) {
-            LibraryOverviewContent(host, libraryContentPadding(), entryCards = true)
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = libraryContentPadding(),
+            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+        ) {
+            groups.forEach { group ->
+                val entries = if (group.kind == LibraryNavGroupKind.KNOWLEDGE_AND_MEMORY) {
+                    group.entries.filterNot { it.key == LibraryPageKeys.OVERVIEW }
+                } else {
+                    group.entries
+                }
+                if (entries.isEmpty() && group.action == null) return@forEach
+                item(key = "home-group-${group.kind}") {
+                    InfinitySettingsSection(title = group.title, footer = group.footer) {
+                        entries.forEach { entry ->
+                            val enrichedSubtitle = entry.subtitle ?: when (entry.key) {
+                                LibraryPageKeys.MEMORY -> overview?.let { o ->
+                                    if (o.newLongTermMemories > 0) stringResource(R.string.library_compact_memory_subtitle_new, o.longTermMemories, o.newLongTermMemories)
+                                    else stringResource(R.string.library_compact_memory_subtitle, o.longTermMemories)
+                                }
+                                LibraryPageKeys.FRAGMENTS -> overview?.let { stringResource(R.string.library_compact_fragments_subtitle, it.fragments) }
+                                LibraryPageKeys.GRAPH -> overview?.let { stringResource(R.string.library_compact_graph_subtitle, it.graphEntities, it.graphRelations) }
+                                else -> null
+                            }
+                            val hasContextMenu = locationActions != null && (entry.location != null || entry.pinRef != null)
+                            var menuOpen by remember(entry.key) { mutableStateOf(false) }
+                            Box(Modifier.fillMaxWidth()) {
+                                InfinitySettingsItem(
+                                    icon = entry.icon,
+                                    title = entry.title,
+                                    subtitle = enrichedSubtitle,
+                                    onClick = { host.navigator.push(entry.key) },
+                                    onLongClick = if (hasContextMenu) ({ menuOpen = true }) else null,
+                                    showChevron = true,
+                                    modifier = Modifier.testTag(LibraryTags.navItem(entry.key)),
+                                )
+                                if (hasContextMenu) {
+                                    InfinityDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                        LibraryLocationContextMenuItems(
+                                            entryTitle = entry.title,
+                                            location = entry.location,
+                                            pinRef = entry.pinRef,
+                                            actions = locationActions,
+                                            dismiss = { menuOpen = false },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        group.action?.let { action ->
+                            InfinitySettingsItem(
+                                icon = action.icon,
+                                title = action.title,
+                                titleColor = MaterialTheme.colorScheme.primary,
+                                onClick = group.onAction,
+                                showChevron = true,
+                                modifier = Modifier.testTag(LibraryTags.navItem(action.key)),
+                            )
+                        }
+                    }
+                }
+            }
+            item(key = "home-overview-remote") {
+                LibraryRemoteStatusCard(host)
+            }
         }
     }
 }
@@ -301,6 +396,9 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
                     if (entryCards) host.navigator.push(entry) else host.navigator.openSection(section)
                 }
             }
+            item(key = "remote-status") {
+                LibraryRemoteStatusCard(host)
+            }
             if (wide) {
                 item(key = "columns") {
                     LibraryOverviewColumns(pending = pendingCard, cited = { RecentCitedCard(host) }, recent = recentCard)
@@ -309,6 +407,147 @@ internal fun LibraryOverviewContent(host: LibraryPageHost, padding: PaddingValue
                 item(key = "pending") { pendingCard() }
                 item(key = "recent") { recentCard() }
                 item(key = "cited") { RecentCitedCard(host) }
+            }
+        }
+    }
+}
+
+/** 概览「远程传输与存储」态势卡：一眼看清当前传输进度、SFTP 挂载数与 256 MB 预览缓存占用。 */
+@Composable
+private fun LibraryRemoteStatusCard(host: LibraryPageHost) {
+    val tasks by remember(host.remoteTransfers) {
+        host.remoteTransfers?.tasks ?: flowOf(emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val summary by remember(host.remoteTransfers) {
+        host.remoteTransfers?.summary ?: flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val cacheStats by remember(host.remoteCacheStats) {
+        host.remoteCacheStats ?: flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val locations by host.viewModel.locations.collectAsStateWithLifecycle()
+    val sftpMounts = remember(locations.locations) {
+        locations.locations.filter { it.storageKind == com.promenar.infinity.domain.files.FileLocationStorageKind.SFTP_REMOTE }
+    }
+    val activeTask = remember(tasks) {
+        tasks.firstOrNull { it.state.isActiveTransfer() }
+            ?: tasks.firstOrNull { it.state == com.promenar.infinity.domain.storage.RemoteTransferState.PAUSED }
+    }
+    val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
+
+    LibraryCard(
+        title = stringResource(R.string.library_overview_remote_title),
+        onViewAll = { host.navigator.openSection(LibraryPageKeys.TRANSFERS) },
+        actionLabel = stringResource(R.string.library_overview_manage_transfers),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.Small),
+            verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
+        ) {
+            if (activeTask != null) {
+                val progress = transferProgressFraction(activeTask.bytesTransferred, activeTask.bytesTotal)
+                val upload = activeTask.direction == RemoteTransferDirection.UPLOAD
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
+                ) {
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(domain.infoContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            if (upload) Icons.Rounded.CloudUpload else Icons.Rounded.CloudDownload,
+                            contentDescription = null,
+                            tint = domain.onInfoContainer,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = activeTask.fileName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = scheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            progress?.let { p ->
+                                Spacer(Modifier.width(8.dp))
+                                Text("${(p * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = scheme.primary)
+                            }
+                        }
+                        if (progress != null) {
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+                                strokeCap = StrokeCap.Round,
+                                drawStopIndicator = {},
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+                                strokeCap = StrokeCap.Round,
+                            )
+                        }
+                        val dirHost = stringResource(
+                            when (activeTask.direction) {
+                                RemoteTransferDirection.UPLOAD -> R.string.sftp_transfers_upload_to
+                                RemoteTransferDirection.DOWNLOAD -> R.string.sftp_transfers_download_from
+                                RemoteTransferDirection.PREVIEW_CACHE -> R.string.sftp_transfers_caching_from
+                            },
+                            activeTask.hostAlias,
+                        )
+                        val otherActive = ((summary?.activeCount ?: 0) - 1).coerceAtLeast(0)
+                        InfinityMetaLine(
+                            segments = listOfNotNull(
+                                dirHost,
+                                if (activeTask.bytesTotal > 0L) "${formatFileSize(activeTask.bytesTransferred)} / ${formatFileSize(activeTask.bytesTotal)}" else null,
+                                formatTransferSpeed(activeTask.bytesPerSecond),
+                                if (otherActive > 0) stringResource(R.string.library_transfers_more_queued, otherActive) else null,
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 2,
+                        )
+                    }
+                }
+                HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.35f))
+            } else if (sftpMounts.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.library_overview_remote_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                )
+                InfinityPillButton(
+                    text = stringResource(R.string.library_remote_add_mount),
+                    icon = Icons.Rounded.CloudUpload,
+                    onClick = host.onAddRemoteMount,
+                    tone = InfinityPillTone.NEUTRAL,
+                    compact = true,
+                )
+            }
+
+            if (sftpMounts.isNotEmpty() || activeTask != null) {
+                val usedBytes = cacheStats?.usedBytes ?: 0L
+                val maxBytes = cacheStats?.maxBytes ?: REMOTE_PREVIEW_CACHE_MAX_BYTES
+                InfinityMetaLine(
+                    segments = listOf(
+                        stringResource(R.string.library_overview_remote_mounts_count, sftpMounts.size),
+                        stringResource(
+                            R.string.library_overview_preview_cache,
+                            formatFileSize(usedBytes),
+                            formatFileSize(maxBytes),
+                        ),
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
             }
         }
     }
@@ -485,12 +724,13 @@ internal fun LibraryCard(
     count: Int? = null,
     onViewAll: (() -> Unit)? = null,
     titleStyle: TextStyle? = null,
+    actionLabel: String? = null,
     content: @Composable () -> Unit,
 ) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.animateContentSize(InfinityMotion.contentSizeSpec()).padding(vertical = InfinitySpacing.Small)) {
             Row(
-                Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).padding(start = InfinitySpacing.Large, end = InfinitySpacing.XSmall),
+                Modifier.fillMaxWidth().heightIn(min = InfinitySpacing.MinimumTouchTarget).padding(start = InfinitySpacing.Large, end = InfinitySpacing.Medium),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(title, style = titleStyle ?: MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
@@ -498,7 +738,14 @@ internal fun LibraryCard(
                     Text(it.toString(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.width(InfinitySpacing.Small))
                 }
-                onViewAll?.let { TextButton(onClick = it) { Text(stringResource(R.string.library_view_all), maxLines = 1) } }
+                onViewAll?.let {
+                    InfinityPillButton(
+                        text = actionLabel ?: stringResource(R.string.library_view_all),
+                        onClick = it,
+                        tone = InfinityPillTone.NEUTRAL,
+                        compact = true,
+                    )
+                }
             }
             content()
         }

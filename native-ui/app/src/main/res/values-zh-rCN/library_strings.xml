@@ -92,7 +92,7 @@
 
     <string name="library_notice_retry_done">已重新开始解析</string>
     <string name="library_notice_rebuild_done">已开始重建索引</string>
-    <string name="library_notice_import_done">已导入到存储空间</string>
+    <string name="library_notice_import_done">已导入到知识文档</string>
     <string name="library_notice_note_done">笔记已保存</string>
     <string name="library_notice_clear_done">已清除该会话的对话片段</string>
     <string name="library_notice_retry_failed">重试失败</string>

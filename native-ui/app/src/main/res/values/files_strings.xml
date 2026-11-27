@@ -84,9 +84,11 @@
     <string name="fm_source_retained_workspace">Retained workspace</string>
     <string name="fm_source_external_folder">External folder</string>
     <string name="fm_source_external_folder_readonly">External folder · Read-only</string>
+    <string name="fm_source_sftp_remote">Remote SFTP · Archivable</string>
+    <string name="fm_source_sftp_remote_readonly">Remote SFTP · Read-only</string>
     <string name="fm_source_shared_storage">Shared storage</string>
     <string name="fm_source_linux_home">Linux home</string>
-    <string name="fm_source_storage">Storage</string>
+    <string name="fm_source_storage">Knowledge docs</string>
     <string name="fm_source_worktree">Branch worktree</string>
     <string name="fm_source_local_folder">Local folder</string>
 
@@ -174,6 +176,7 @@
     <string name="fm_info_origin_branch_worktree">Git branch worktree workspace</string>
     <string name="fm_info_origin_shared_storage">Device shared storage workspace</string>
     <string name="fm_info_origin_external_mount">Mounted external folder</string>
+    <string name="fm_info_origin_sftp_remote">Remote SFTP mount (non-local POSIX)</string>
     <string name="fm_info_origin_linux_home">Alpine Linux home directory</string>
     <string name="fm_copy_path">Copy path</string>
     <string name="fm_path_copied">Copied</string>

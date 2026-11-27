@@ -1580,7 +1580,8 @@ fun ChatScreenContent(
                                             timedGrantLabel = call.grantCategory?.let { timedGrantLabel(it) },
                                             oneShotOnly = call.toolName == com.promenar.infinity.domain.agentconfig.AgentConfigTools.WRITE ||
                                                 isComfyOverride ||
-                                                isComfyManagement,
+                                                isComfyManagement ||
+                                                com.promenar.infinity.domain.tool.RemoteMountOperation.fromTool(call.toolName) != null,
                                             preview = remember(call, request.assistantMessageId, uiState.messages) {
                                                 ApprovalPreview.forCall(call, uiState.messages, request.assistantMessageId)
                                             },
@@ -1614,6 +1615,10 @@ fun ChatScreenContent(
                                             transfer = remember(call, request.assistantMessageId, uiState.messages) {
                                                 ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)
                                                     ?.let { sftpTransferApprovalPreview(call.toolName, it) }
+                                            },
+                                            remoteMount = remember(call, request.assistantMessageId, uiState.messages) {
+                                                ApprovalPreview.arguments(call, uiState.messages, request.assistantMessageId)
+                                                    ?.let { remoteMountApprovalPreview(call.toolName, it, call.executionTarget) }
                                             },
                                             knowledgeAccess = if (call.toolName != REQUEST_KNOWLEDGE_ACCESS_TOOL) null else {
                                                 remember(call, request.assistantMessageId, uiState.messages) {

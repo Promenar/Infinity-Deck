@@ -59,6 +59,7 @@ sealed interface LibraryNotice {
         WORKSPACE_DELETED,
         WORKSPACE_REMOVED,
         PIN_REMOVED,
+        SFTP_PERMISSION_UPDATED,
     }
 }
 
@@ -83,6 +84,7 @@ class LibraryViewModel(
     private val citations: KnowledgeCitationRepository,
     private val workspaceLibrary: WorkspaceLibrary? = null,
     private val removeExternalMountAction: (suspend (String) -> Unit)? = null,
+    private val setMountReadOnlyAction: (suspend (String, Boolean) -> Unit)? = null,
 ) : ViewModel() {
 
     val overview: StateFlow<LibraryOverview?> = knowledge.observeOverview()
@@ -299,6 +301,14 @@ class LibraryViewModel(
         }
     }
 
+    fun setSftpMountReadOnly(mountId: String, readOnly: Boolean) {
+        val updater = setMountReadOnlyAction ?: return
+        launchNotice(LibraryNotice.Kind.SFTP_PERMISSION_UPDATED) {
+            updater(mountId, readOnly)
+            null
+        }
+    }
+
     fun unpinFolder(ref: FileRef) {
         launchNotice(LibraryNotice.Kind.PIN_REMOVED) {
             files.pins.unpin(ref)
@@ -354,6 +364,9 @@ class LibraryViewModel(
                 removeExternalMountAction = { mountId ->
                     application.externalFolderManager.remove(mountId)
                     application.fileManagerServices.pins.unpinLocation("external:$mountId")
+                },
+                setMountReadOnlyAction = { mountId, readOnly ->
+                    application.externalFolderManager.setMountReadOnly(mountId, readOnly)
                 },
             ) as T
         }

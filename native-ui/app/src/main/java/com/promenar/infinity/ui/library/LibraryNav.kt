@@ -35,23 +35,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.AccountTree
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.CloudOff
+import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.FolderShared
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.PushPin
-import androidx.compose.material.icons.rounded.ReportProblem
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.SdStorage
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Start
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material3.Badge
@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
@@ -97,17 +98,17 @@ import com.promenar.infinity.ui.files.gitLabel
 import com.promenar.infinity.ui.files.state.FileCrumb
 import com.promenar.infinity.ui.common.keepsFocusOnTap
 import com.promenar.infinity.ui.theme.InfinitySpacing
+import com.promenar.infinity.ui.theme.infinityDomainColors
 import com.promenar.infinity.ui.theme.onSelectionIndicator
 import com.promenar.infinity.ui.theme.selectionIndicator
+import kotlinx.coroutines.flow.flowOf
 
-/** 左列与外屏文件页的导航分组语义。 */
+/** 左列与外屏文件页的三域导航分组语义（另含可折叠的「已固定」快捷入口）。 */
 internal enum class LibraryNavGroupKind {
-    VIEWS,
-    BUILTIN_LOCATIONS,
-    APP_WORKSPACES,
-    EXTERNAL_PATHS,
     PINS,
-    REMEMBERED,
+    KNOWLEDGE_AND_MEMORY,
+    LOCAL_FILES,
+    REMOTE_STORAGE,
 }
 
 /** 左列与图标条的一项。 */
@@ -118,6 +119,8 @@ internal data class LibraryNavEntry(
     val title: String,
     val subtitle: String? = null,
     val badge: String? = null,
+    val statusDotColor: Color? = null,
+    val accentAction: Boolean = false,
     val location: FileLocation? = null,
     val pinRef: FileRef? = null,
 )
@@ -129,17 +132,18 @@ internal data class LibraryNavGroup(
     val entries: List<LibraryNavEntry>,
     val foldable: Boolean = false,
     val footer: String? = null,
-    /** 组末的操作行（例如“添加外部文件夹”），不随折叠隐藏，点按执行 [onAction] 而不是打开页面。 */
+    /** 组末的操作行（例如“管理本机挂载目录”“添加远程目录”），不随折叠隐藏，点按执行 [onAction] 而不是打开页面。 */
     val action: LibraryNavEntry? = null,
     val onAction: () -> Unit = {},
 )
 
 /** 左列超过这个数量的位置折叠起来。 */
-private const val VISIBLE_LOCATIONS = 6
+private const val VISIBLE_LOCATIONS = 8
 
 internal fun FileLocation.navIcon(): ImageVector = when (storageKind) {
     FileLocationStorageKind.SHARED_STORAGE -> Icons.Rounded.SdStorage
     FileLocationStorageKind.EXTERNAL_MOUNT -> Icons.Rounded.FolderOpen
+    FileLocationStorageKind.SFTP_REMOTE -> if (accessLost || remoteOnline == false) Icons.Rounded.CloudOff else Icons.Rounded.Cloud
     FileLocationStorageKind.BRANCH_WORKTREE -> Icons.Rounded.AccountTree
     FileLocationStorageKind.LINUX_HOME -> Icons.Rounded.Terminal
     FileLocationStorageKind.APP_PROJECT, FileLocationStorageKind.RETAINED_SESSION -> Icons.Rounded.Work
@@ -153,8 +157,8 @@ internal fun FileLocation.navIcon(): ImageVector = when (storageKind) {
 internal fun pinTitle(ref: FileRef): String = ref.path.trimEnd('/').substringAfterLast('/').ifEmpty { ref.path }
 
 /**
- * 固定文件夹在侧栏的标题与副标题。会话文件夹不在位置列表里：会话根以会话名为标题、“会话工作区”为副标题；
- * 子文件夹的副标题为“会话工作区 · 会话名”。
+ * 固定文件夹在侧栏的标题与副标题。会话文件夹不在位置列表里：会话根以会话名为标题、“会话文件”为副标题；
+ * 子文件夹的副标题为“会话文件 · 会话名”。
  */
 internal fun pinLabels(ref: FileRef, locations: LibraryLocations): Pair<String, String?> {
     val listed = locations.locations.firstOrNull { it.id == ref.locationId }
@@ -170,11 +174,31 @@ internal fun pinLabels(ref: FileRef, locations: LibraryLocations): Pair<String, 
 }
 
 @Composable
-private fun FileLocation.navSubtitle(accessLostText: String): String? {
+private fun FileLocation.navSubtitle(accessLostText: String, retainedSessionCount: Int = 0): String? {
+    if (storageKind == FileLocationStorageKind.SFTP_REMOTE) {
+        if (accessLost) return stringResource(R.string.library_remote_host_missing)
+        val mode = stringResource(if (remoteReadOnly) R.string.library_remote_readonly else R.string.library_remote_archivable)
+        val status = when (remoteOnline) {
+            true -> stringResource(R.string.library_remote_online)
+            false -> stringResource(R.string.library_remote_offline)
+            null -> null
+        }
+        return listOfNotNull(remoteHostAlias, mode, status)
+            .joinToString(" · ") // wrap-check: allow 单行省略号副标题
+            .takeIf { it.isNotBlank() }
+    }
     if (accessLost) return accessLostText
     val git = gitLabel()
     val originAndName = when (storageKind) {
-        FileLocationStorageKind.BUILTIN, FileLocationStorageKind.LINUX_HOME -> null
+        FileLocationStorageKind.BUILTIN -> when (kind) {
+            FileLocationKind.SESSION_WORKSPACE -> if (retainedSessionCount > 0) {
+                stringResource(R.string.library_sessions_subtitle_retained, retainedSessionCount)
+            } else {
+                stringResource(R.string.library_sessions_subtitle_active)
+            }
+            else -> null
+        }
+        FileLocationStorageKind.LINUX_HOME -> null
         FileLocationStorageKind.RETAINED_SESSION -> listOfNotNull(
             git ?: stringResource(R.string.library_location_retained_session),
             storageName,
@@ -184,81 +208,79 @@ private fun FileLocation.navSubtitle(accessLostText: String): String? {
             storageName?.takeIf { it != title || git != null },
         ).joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
         FileLocationStorageKind.BRANCH_WORKTREE -> git ?: stringResource(R.string.library_location_branch_worktree)
-        FileLocationStorageKind.SHARED_STORAGE -> listOfNotNull(git, storageName)
-            .joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
+        FileLocationStorageKind.SHARED_STORAGE -> listOfNotNull(
+            stringResource(R.string.library_location_shared_storage),
+            git ?: storageName,
+        ).joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
         FileLocationStorageKind.EXTERNAL_MOUNT -> listOfNotNull(
             git,
             storageName ?: stringResource(R.string.library_location_external_mount),
         ).joinToString(" · ").takeIf { it.isNotBlank() } // wrap-check: allow 单行横滑副标题
+        FileLocationStorageKind.SFTP_REMOTE -> null
     }
     return originAndName ?: git
 }
 
-/** 左列与外屏文件页共用的分组导航：内置位置、应用内工作区、外部路径、已固定四分明晰。 */
+/** 左列与外屏文件页共用的三域分组导航：已固定、域一知识与记忆、域二本机工作区与文件、域三远程存储（SFTP）。 */
 @Composable
 internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGroup> {
     val pending by host.viewModel.pending.collectAsStateWithLifecycle()
     val overview by host.viewModel.overview.collectAsStateWithLifecycle()
     val locations by host.viewModel.locations.collectAsStateWithLifecycle()
+    val transferSummary by remember(host.remoteTransfers) {
+        host.remoteTransfers?.summary ?: flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val domain = MaterialTheme.infinityDomainColors
     val newBadge = overview?.newLongTermMemories?.takeIf { it > 0 }?.toString()
     val accessLost = stringResource(R.string.library_location_access_lost)
     val categorized = remember(locations.locations) { categorizeLibraryLocations(locations.locations) }
 
     @Composable
-    fun toEntry(location: FileLocation) = LibraryNavEntry(
-        key = LibraryPageKeys.browse(FileRef(location.id, "/")),
-        icon = location.navIcon(),
-        title = location.title,
-        subtitle = location.navSubtitle(accessLost),
-        location = location,
-    )
+    fun toEntry(location: FileLocation): LibraryNavEntry {
+        val statusDot = if (location.storageKind == FileLocationStorageKind.SFTP_REMOTE) {
+            when {
+                location.accessLost || location.remoteOnline == false -> domain.signalPending
+                else -> domain.signalOn
+            }
+        } else null
+        return LibraryNavEntry(
+            key = LibraryPageKeys.browse(FileRef(location.id, "/")),
+            icon = location.navIcon(),
+            title = location.title,
+            subtitle = location.navSubtitle(accessLost, categorized.retainedSessionCount),
+            statusDotColor = statusDot,
+            location = location,
+        )
+    }
 
-    val builtinEntries = categorized.builtin.map { toEntry(it) }
-    val appWorkspaceEntries = categorized.appWorkspaces.map { toEntry(it) }
-    val externalEntries = categorized.externalPaths.map { toEntry(it) }
+    val kbLocation = categorized.knowledgeDocs
+    val kbSubtitle = overview?.let { o ->
+        if (pending.isEmpty()) stringResource(R.string.library_kb_subtitle_ready, o.indexedDocuments)
+        else stringResource(R.string.library_kb_subtitle_pending, o.indexedDocuments, pending.size)
+    }
+    val localEntries = categorized.localWorkspacesAndFiles.map { toEntry(it) }
+    val remoteMountEntries = categorized.remoteSftpMounts.map { toEntry(it) }
+    val activeTransfers = transferSummary?.activeCount ?: 0
+    val pausedTransfers = transferSummary?.pausedCount ?: 0
+    val speedText = transferSummary?.aggregateBytesPerSecond?.let(::formatTransferSpeed)
+    val transferSubtitle = when {
+        activeTransfers > 0 -> listOfNotNull(
+            stringResource(R.string.library_transfers_active_summary, activeTransfers),
+            speedText,
+        ).joinToString(" · ") // wrap-check: allow 单行省略号副标题
+        pausedTransfers > 0 -> stringResource(R.string.library_transfers_paused_summary, pausedTransfers)
+        else -> stringResource(R.string.library_transfers_idle_summary)
+    }
+    val transferEntry = LibraryNavEntry(
+        key = LibraryPageKeys.TRANSFERS,
+        icon = Icons.Rounded.SwapVert,
+        title = stringResource(R.string.library_page_transfers),
+        subtitle = transferSubtitle,
+        badge = activeTransfers.takeIf { it > 0 }?.toString(),
+    )
     val locationById = remember(locations.locations) { locations.locations.associateBy { it.id } }
 
     return listOf(
-        LibraryNavGroup(
-            kind = LibraryNavGroupKind.VIEWS,
-            title = stringResource(R.string.library_group_views),
-            entries = listOf(
-                LibraryNavEntry(LibraryPageKeys.OVERVIEW, Icons.Rounded.Dashboard, stringResource(R.string.library_page_overview)),
-                LibraryNavEntry(LibraryPageKeys.RECENT, Icons.Rounded.Schedule, stringResource(R.string.library_page_recent)),
-                LibraryNavEntry(LibraryPageKeys.CITED, Icons.Rounded.Insights, stringResource(R.string.library_page_cited)),
-                LibraryNavEntry(
-                    LibraryPageKeys.PENDING,
-                    Icons.Rounded.ReportProblem,
-                    stringResource(R.string.library_page_pending),
-                    badge = pending.size.takeIf { it > 0 }?.toString(),
-                ),
-            ),
-        ),
-        LibraryNavGroup(
-            kind = LibraryNavGroupKind.BUILTIN_LOCATIONS,
-            title = stringResource(R.string.library_group_builtin_locations),
-            entries = builtinEntries,
-        ),
-        LibraryNavGroup(
-            kind = LibraryNavGroupKind.APP_WORKSPACES,
-            title = stringResource(R.string.library_group_app_workspaces),
-            entries = appWorkspaceEntries,
-            foldable = true,
-            footer = stringResource(R.string.library_group_app_workspaces_footer),
-        ),
-        LibraryNavGroup(
-            kind = LibraryNavGroupKind.EXTERNAL_PATHS,
-            title = stringResource(R.string.library_group_external_paths),
-            entries = externalEntries,
-            foldable = true,
-            // 资料页级外部文件夹：挂在资料页上，不随会话删除。
-            action = LibraryNavEntry(
-                key = LIBRARY_MOUNTS_ACTION_KEY,
-                icon = Icons.Rounded.CreateNewFolder,
-                title = stringResource(R.string.library_mounts_entry),
-            ),
-            onAction = host.onManageMounts,
-        ),
         LibraryNavGroup(
             kind = LibraryNavGroupKind.PINS,
             title = stringResource(R.string.library_group_pins),
@@ -275,22 +297,61 @@ internal fun rememberLibraryNavGroups(host: LibraryPageHost): List<LibraryNavGro
             },
         ),
         LibraryNavGroup(
-            kind = LibraryNavGroupKind.REMEMBERED,
-            title = stringResource(R.string.library_group_remembered),
-            entries = listOf(
-                LibraryNavEntry(LibraryPageKeys.MEMORY, Icons.Rounded.Psychology, stringResource(R.string.library_page_memory), badge = newBadge),
-                LibraryNavEntry(LibraryPageKeys.FRAGMENTS, Icons.Rounded.Forum, stringResource(R.string.library_page_fragments)),
-                LibraryNavEntry(LibraryPageKeys.GRAPH, Icons.Rounded.Hub, stringResource(R.string.library_page_graph)),
+            kind = LibraryNavGroupKind.KNOWLEDGE_AND_MEMORY,
+            title = stringResource(R.string.library_group_knowledge_memory),
+            entries = buildList {
+                add(LibraryNavEntry(LibraryPageKeys.OVERVIEW, Icons.Rounded.Dashboard, stringResource(R.string.library_page_overview)))
+                add(
+                    LibraryNavEntry(
+                        key = LibraryPageKeys.browse(FileRef(LIBRARY_LOCATION_ID, "/")),
+                        icon = Icons.Rounded.LocalLibrary,
+                        title = kbLocation?.title ?: stringResource(R.string.file_manager_location_library),
+                        subtitle = kbSubtitle,
+                        badge = pending.size.takeIf { it > 0 }?.toString(),
+                        location = kbLocation,
+                    ),
+                )
+                add(LibraryNavEntry(LibraryPageKeys.MEMORY, Icons.Rounded.Psychology, stringResource(R.string.library_page_memory), badge = newBadge))
+                add(LibraryNavEntry(LibraryPageKeys.FRAGMENTS, Icons.Rounded.Forum, stringResource(R.string.library_page_fragments)))
+                add(LibraryNavEntry(LibraryPageKeys.GRAPH, Icons.Rounded.Hub, stringResource(R.string.library_page_graph)))
+            },
+        ),
+        LibraryNavGroup(
+            kind = LibraryNavGroupKind.LOCAL_FILES,
+            title = stringResource(R.string.library_group_local_files),
+            entries = localEntries,
+            foldable = true,
+            action = LibraryNavEntry(
+                key = LIBRARY_MOUNTS_ACTION_KEY,
+                icon = Icons.Rounded.CreateNewFolder,
+                title = stringResource(R.string.library_local_manage_mounts),
+                accentAction = true,
             ),
+            onAction = host.onManageMounts,
+        ),
+        LibraryNavGroup(
+            kind = LibraryNavGroupKind.REMOTE_STORAGE,
+            title = stringResource(R.string.library_group_remote_storage),
+            entries = remoteMountEntries + transferEntry,
+            action = LibraryNavEntry(
+                key = LIBRARY_REMOTE_MOUNT_ACTION_KEY,
+                icon = Icons.Rounded.CloudUpload,
+                title = stringResource(R.string.library_remote_add_mount),
+                accentAction = true,
+            ),
+            onAction = host.onAddRemoteMount,
         ),
     ).filter { it.entries.isNotEmpty() || it.action != null }
 }
 
-/** 内屏左列：标题、添加入口、问资料与四组导航。 */
+/** 内屏左列：标题、传输管理入口、添加入口、问资料与三域导航。 */
 @Composable
 internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> Unit) {
     val groups = rememberLibraryNavGroups(host)
     val selected = libraryRootKey(host.navigator.stack)
+    val transferSummary by remember(host.remoteTransfers) {
+        host.remoteTransfers?.summary ?: flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
     var locationsExpanded by rememberSaveable { mutableStateOf(false) }
     Column(
         Modifier
@@ -298,7 +359,14 @@ internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> 
             .background(MaterialTheme.colorScheme.surface)
             .testTag(LibraryTags.NAV_COLUMN),
     ) {
-        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) { addMenu() }
+        InfinityTabHeader(title = stringResource(R.string.nav_tab_library)) {
+            RemoteTransferHeaderButton(
+                activeCount = transferSummary?.activeCount ?: 0,
+                onClick = { host.navigator.openRoot(LibraryPageKeys.TRANSFERS) },
+            )
+            Spacer(Modifier.width(4.dp))
+            addMenu()
+        }
         LibraryAskField(
             query = host.askQuery,
             onQueryChange = host.ask.onQueryChange,
@@ -313,7 +381,6 @@ internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> 
                 item(key = "group-${group.kind}") { LibraryNavGroupTitle(group.title) }
                 val folded = group.foldable && !locationsExpanded && group.entries.size > VISIBLE_LOCATIONS
                 val visible = if (folded) group.entries.take(VISIBLE_LOCATIONS) else group.entries
-                // 同组只要有一项带第二行（如 Git 分支），整组都按双行高排版。
                 val twoLine = group.entries.any { it.subtitle != null }
                 items(visible, key = { "nav-${group.kind}-${it.key}" }) { entry ->
                     val locationActions = host.locationActions
@@ -323,7 +390,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> 
                         LibraryNavRow(
                             entry,
                             selected = entry.key == selected,
-                            twoLine = twoLine,
+                            twoLine = twoLine && entry.subtitle != null,
                             onClick = { host.navigator.openRoot(entry.key) },
                             onLongClick = if (hasContextMenu) ({ menuOpen = true }) else null,
                         )
@@ -344,7 +411,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> 
                     item(key = "fold-${group.kind}") {
                         LibraryFoldRow(
                             modifier = Modifier.animateItem(),
-                            twoLine = twoLine,
+                            twoLine = false,
                             text = if (locationsExpanded) {
                                 stringResource(R.string.library_locations_less)
                             } else {
@@ -357,7 +424,7 @@ internal fun LibraryNavColumn(host: LibraryPageHost, addMenu: @Composable () -> 
                 }
                 group.action?.let { action ->
                     item(key = "action-${group.kind}") {
-                        LibraryNavRow(action, selected = false, twoLine = twoLine, onClick = group.onAction, modifier = Modifier.animateItem())
+                        LibraryNavRow(action, selected = false, twoLine = false, onClick = group.onAction, modifier = Modifier.animateItem())
                     }
                 }
             }
@@ -397,7 +464,11 @@ internal fun LibraryNavRow(
         label = "nav-row-container",
     )
     val content by animateColorAsState(
-        if (selected) MaterialTheme.colorScheme.onSelectionIndicator else MaterialTheme.colorScheme.onSurface,
+        when {
+            selected -> MaterialTheme.colorScheme.onSelectionIndicator
+            entry.accentAction -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.onSurface
+        },
         tween(InfinityMotion.DurationShort),
         label = "nav-row-content",
     )
@@ -419,7 +490,20 @@ internal fun LibraryNavRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Medium),
     ) {
-        Icon(entry.icon, contentDescription = null, tint = content, modifier = Modifier.size(InfinitySpacing.RowIconSize))
+        Box(contentAlignment = Alignment.BottomEnd) {
+            Icon(entry.icon, contentDescription = null, tint = content, modifier = Modifier.size(InfinitySpacing.RowIconSize))
+            entry.statusDotColor?.let { dotColor ->
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(container)
+                        .padding(1.5.dp)
+                        .clip(CircleShape)
+                        .background(dotColor),
+                )
+            }
+        }
         Column(Modifier.weight(1f)) {
             Text(entry.title, style = MaterialTheme.typography.bodyLarge, color = content, maxLines = 1, overflow = TextOverflow.Ellipsis)
             entry.subtitle?.let {
@@ -460,16 +544,16 @@ private fun LibraryFoldRow(text: String, expanded: Boolean, onClick: () -> Unit,
     }
 }
 
-/** 展开后的图标条：浏览、首个内置位置与智能体记住的。 */
+/** 展开后的图标条：知识与记忆核心入口与传输管理。 */
 @Composable
 internal fun LibraryStrip(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)
     val selected = libraryRootKey(host.navigator.stack)
     val entries = groups.flatMap { group ->
         when (group.kind) {
-            LibraryNavGroupKind.VIEWS, LibraryNavGroupKind.REMEMBERED -> group.entries
-            LibraryNavGroupKind.BUILTIN_LOCATIONS -> group.entries.take(1)
-            LibraryNavGroupKind.APP_WORKSPACES, LibraryNavGroupKind.EXTERNAL_PATHS, LibraryNavGroupKind.PINS -> emptyList()
+            LibraryNavGroupKind.KNOWLEDGE_AND_MEMORY -> group.entries
+            LibraryNavGroupKind.REMOTE_STORAGE -> group.entries.filter { it.key == LibraryPageKeys.TRANSFERS }
+            LibraryNavGroupKind.LOCAL_FILES, LibraryNavGroupKind.PINS -> emptyList()
         }
     }
     Column(
@@ -613,16 +697,15 @@ internal fun LibraryPageHeader(
     }
 }
 
-/** 外屏“文件”页的分类位置与已固定项：四分组圆角列表，行尾保持小三角箭头，长按条目打开黑曜石管理菜单。 */
+/** 外屏“文件”页的分类位置与已固定项：本机工作区与文件、远程存储（SFTP）与已固定快捷入口，长按条目打开黑曜石管理菜单。 */
 @Composable
 internal fun LibraryLocationRows(host: LibraryPageHost) {
     val groups = rememberLibraryNavGroups(host)
     val locationActions = host.locationActions
     groups.filter {
         it.kind in setOf(
-            LibraryNavGroupKind.BUILTIN_LOCATIONS,
-            LibraryNavGroupKind.APP_WORKSPACES,
-            LibraryNavGroupKind.EXTERNAL_PATHS,
+            LibraryNavGroupKind.LOCAL_FILES,
+            LibraryNavGroupKind.REMOTE_STORAGE,
             LibraryNavGroupKind.PINS,
         )
     }.forEach { group ->
@@ -666,8 +749,11 @@ internal fun LibraryLocationRows(host: LibraryPageHost) {
     }
 }
 
-/** 位置分组末“外部文件夹”操作行的标识，只用于测试标签。 */
+/** 位置分组末“管理本机挂载目录”操作行的标识，只用于测试标签。 */
 internal const val LIBRARY_MOUNTS_ACTION_KEY = "action:mounts"
+
+/** 远程存储分组末“添加远程目录”操作行的标识，只用于测试标签。 */
+internal const val LIBRARY_REMOTE_MOUNT_ACTION_KEY = "action:remote_mounts"
 
 /** 导航行高：单行为最小触控高度；双行为标题加一行小字再加上下内边距。 */
 private fun navRowHeight(twoLine: Boolean) = if (twoLine) NAV_ROW_TWO_LINE_HEIGHT else InfinitySpacing.MinimumTouchTarget

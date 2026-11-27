@@ -18,6 +18,7 @@ class LibraryNavigationTest {
         assertThat(LibraryPageKeys.parse(LibraryPageKeys.document("d1"))).isEqualTo(LibraryPage.Document("d1"))
         assertThat(LibraryPageKeys.parse(LibraryPageKeys.fragmentSession("s1"))).isEqualTo(LibraryPage.FragmentSession("s1"))
         assertThat(LibraryPageKeys.parse(LibraryPageKeys.MEMORY)).isEqualTo(LibraryPage.Memory)
+        assertThat(LibraryPageKeys.parse(LibraryPageKeys.TRANSFERS)).isEqualTo(LibraryPage.Transfers)
         assertThat(LibraryPageKeys.parse("browse:|/x")).isEqualTo(LibraryPage.Overview)
         assertThat(LibraryPageKeys.parse("unknown")).isEqualTo(LibraryPage.Overview)
         assertThat(LibraryPageKeys.parse("trash")).isEqualTo(LibraryPage.Overview)

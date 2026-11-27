@@ -28,17 +28,30 @@ class ExternalFoldersPanelStateTest {
     }
 
     @Test
-    fun `会话可引用的存储空间文件夹排除已挂同源且 Linux 会话只列真实路径`() {
+    fun `会话可引用的资料库目录排除已挂同源且 Linux 会话同时允许真实路径与远程 SFTP`() {
         val saf = mount("lib-saf", "__library__")
         val attached = mount("lib-attached", "__library__")
         val real = mount("lib-real", "__library__").copy(sourceType = "real_path", sourceId = "/storage/emulated/0/Notes")
-        // 会话里已有与 attached 同源的一行（另一个 id），不应再列出。
-        val session = listOf(attached.copy(id = "session-copy", sessionId = "session-a"))
+        val sftpSpec = com.promenar.infinity.domain.storage.SftpRemoteMountSpec.encode(
+            com.promenar.infinity.domain.storage.SftpRemoteMountSpec("fnos", "/vol1/1000/Codex-Assets"),
+        )
+        val sftp = mount("lib-sftp", "__library__").copy(sourceType = "sftp_remote", sourceId = sftpSpec)
+        val sftpAttached = mount("lib-sftp-attached", "__library__").copy(sourceType = "sftp_remote", sourceId = sftpSpec)
+        val sessionSftpRefSpec = com.promenar.infinity.domain.storage.SftpRemoteMountSpec.encode(
+            com.promenar.infinity.domain.storage.SftpRemoteMountSpec("fnos", "/vol1/1000/Codex-Assets", libraryMountId = "lib-sftp-attached"),
+        )
+        // 会话里已有与 attached 同源或已引用 lib-sftp-attached 的行，不应再列出。
+        val session = listOf(
+            attached.copy(id = "session-copy", sessionId = "session-a"),
+            sftpAttached.copy(id = "session-sftp-copy", sessionId = "session-a", sourceId = sessionSftpRefSpec),
+        )
 
-        assertThat(libraryMountChoices(listOf(saf, attached, real), session, linuxSession = false).map { it.id })
-            .containsExactly("lib-saf", "lib-real").inOrder()
-        assertThat(libraryMountChoices(listOf(saf, attached, real), session, linuxSession = true).map { it.id })
-            .containsExactly("lib-real")
+        assertThat(libraryMountChoices(listOf(saf, attached, real, sftp, sftpAttached), session, linuxSession = false).map { it.id })
+            .containsExactly("lib-saf", "lib-real", "lib-sftp").inOrder()
+        assertThat(libraryMountChoices(listOf(saf, attached, real, sftp, sftpAttached), session, linuxSession = true).map { it.id })
+            .containsExactly("lib-real", "lib-sftp").inOrder()
+        assertThat(mountSourceLocationLabel("sftp_remote", sftpSpec, "内部存储"))
+            .isEqualTo("fnos:/vol1/1000/Codex-Assets")
     }
 
     @Test

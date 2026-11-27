@@ -23,24 +23,43 @@ class LibraryLocationManagementTest {
     private val writable = FileLocationCapabilities(writable = true, deletable = true, archive = true)
 
     @Test
-    fun `资料页位置严格划分为内置位置应用内工作区外部路径三组且Linux按安装状态显隐`() {
-        val kb = FileLocation("kb", FileLocationKind.KNOWLEDGE_BASE, "存储空间", writable, storageKind = FileLocationStorageKind.BUILTIN)
-        val sessions = FileLocation("sessions", FileLocationKind.SESSION_WORKSPACE, "会话工作区", writable, storageKind = FileLocationStorageKind.BUILTIN)
+    fun `资料页位置按三域归类为知识文档本机工作区与文件及远程SFTP且Linux按安装状态显隐`() {
+        val kb = FileLocation("kb", FileLocationKind.KNOWLEDGE_BASE, "知识文档", writable, storageKind = FileLocationStorageKind.BUILTIN)
+        val sessions = FileLocation("sessions", FileLocationKind.SESSION_WORKSPACE, "会话文件", writable, storageKind = FileLocationStorageKind.BUILTIN)
         val linux = FileLocation("linux:home", FileLocationKind.LINUX_HOME, "Linux 主目录", writable, storageKind = FileLocationStorageKind.LINUX_HOME, displayPath = "/root")
         val retained = FileLocation("workspace:w1", FileLocationKind.PROJECT, "执行测试文件操作", writable, storageKind = FileLocationStorageKind.RETAINED_SESSION, workspaceId = "w1")
         val branch = FileLocation("workspace:branch:s1", FileLocationKind.BRANCH_WORKTREE, "分支", writable, storageKind = FileLocationStorageKind.BRANCH_WORKTREE)
         val shared = FileLocation("workspace:w2", FileLocationKind.PROJECT, "Personal-Archive", writable, storageKind = FileLocationStorageKind.SHARED_STORAGE, workspaceId = "w2")
         val ext = FileLocation("external:m1", FileLocationKind.EXTERNAL_FOLDER, "文档", writable, storageKind = FileLocationStorageKind.EXTERNAL_MOUNT, mountId = "m1")
+        val sftp = FileLocation(
+            id = "external:sftp1",
+            kind = FileLocationKind.EXTERNAL_FOLDER,
+            title = "personal-archive-assets",
+            capabilities = writable,
+            storageKind = FileLocationStorageKind.SFTP_REMOTE,
+            mountId = "sftp1",
+            remoteHostAlias = "fnos",
+            remoteRootPath = "/vol1/1000/Codex-Assets",
+        )
 
-        val withLinux = categorizeLibraryLocations(listOf(kb, sessions, retained, branch, shared, linux, ext))
-        assertThat(withLinux.builtin.map { it.id }).containsExactly("kb", "sessions", "linux:home").inOrder()
-        assertThat(withLinux.appWorkspaces.map { it.id }).containsExactly("workspace:w1", "workspace:branch:s1").inOrder()
-        assertThat(withLinux.externalPaths.map { it.id }).containsExactly("workspace:w2", "external:m1").inOrder()
+        val withLinux = categorizeLibraryLocations(listOf(kb, sessions, retained, branch, shared, linux, ext, sftp))
+        assertThat(withLinux.knowledgeDocs?.id).isEqualTo("kb")
+        assertThat(withLinux.localWorkspacesAndFiles.map { it.id }).containsExactly(
+            "workspace:branch:s1",
+            "workspace:w2",
+            "sessions",
+            "workspace:w1",
+            "linux:home",
+            "external:m1",
+        ).inOrder()
+        assertThat(withLinux.retainedSessionCount).isEqualTo(1)
+        assertThat(withLinux.remoteSftpMounts.map { it.id }).containsExactly("external:sftp1")
 
         val withoutLinux = categorizeLibraryLocations(listOf(kb, sessions, shared))
-        assertThat(withoutLinux.builtin.map { it.id }).containsExactly("kb", "sessions").inOrder()
-        assertThat(withoutLinux.appWorkspaces).isEmpty()
-        assertThat(withoutLinux.externalPaths.map { it.id }).containsExactly("workspace:w2")
+        assertThat(withoutLinux.knowledgeDocs?.id).isEqualTo("kb")
+        assertThat(withoutLinux.localWorkspacesAndFiles.map { it.id }).containsExactly("workspace:w2", "sessions").inOrder()
+        assertThat(withoutLinux.retainedSessionCount).isEqualTo(0)
+        assertThat(withoutLinux.remoteSftpMounts).isEmpty()
     }
 
     @Test
@@ -100,15 +119,15 @@ class LibraryLocationManagementTest {
     }
 
     @Test
-    fun `资料页提示在独立协程作用域展示，避免 consumeNotice 触发首帧取消`() {
+    fun `资料页提示统一经全局顶部悬浮通知胶囊展示且不保留页底 SnackbarHost`() {
         val rel = "main/java/com/promenar/infinity/ui/library/LibraryScreen.kt"
         val file = listOf("src/$rel", "app/src/$rel", "native-ui/app/src/$rel")
             .map { java.io.File(it) }
             .first { it.exists() }
         val source = file.readText()
+        assertThat(source).doesNotContain("SnackbarHost(")
         val body = source.substringAfter("private fun LibraryNoticeEffect(")
-        assertThat(body).contains("rememberCoroutineScope()")
-        assertThat(body).contains("noticeScope.launch")
-        assertThat(body).contains("snackbar.showSnackbar(")
+        assertThat(body).contains("LocalInfinityNoticeController.current")
+        assertThat(body).contains("noticeController?.show(")
     }
 }

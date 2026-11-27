@@ -47,12 +47,14 @@ class TransientNoticeCapsuleRoutingContractTest {
     @Test
     fun `提供商表单底栏测试与保存失败终态改走顶部悬浮胶囊并保持测试按钮独立加载态`() {
         val source = readSource("settings/ProviderFormScreen.kt")
+        val route = source.substringBefore("fun ProviderFormContent(")
         val actions = source.substringAfter("private fun ProviderFormActionsSection(")
             .substringBefore("private fun ProviderFormNotice(")
 
+        assertThat(route).contains("val routeGlobalNotice = LocalInfinityNoticeController.current")
+        assertThat(route).contains("host.showStatus(kind, message)")
         assertThat(actions).contains("val globalNotice = LocalInfinityNoticeController.current")
         assertThat(actions).contains("state.connectionTestState == ProviderConnectionTestState.Testing")
-        assertThat(actions).contains("host.showStatus(kind, message)")
         assertThat(actions).contains("if (globalNotice == null)")
         assertThat(actions).contains("InfinityStatusStrip(")
     }

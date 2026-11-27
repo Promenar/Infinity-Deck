@@ -1,12 +1,36 @@
 package com.promenar.infinity.ui.library
 
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.rounded.CleaningServices
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.UploadFile
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.promenar.infinity.domain.storage.RemoteOverwritePolicy
+import com.promenar.infinity.domain.storage.RemoteTransferRequest
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
+import java.io.File
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -96,10 +120,117 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
     val deleteWorkspaceLabel = stringResource(R.string.library_location_action_delete_workspace)
     val removeListLabel = stringResource(R.string.library_location_action_remove_list)
     val resources = LocalContext.current.resources
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val noticeController = LocalInfinityNoticeController.current
+    val transferSummary by remember(host.remoteTransfers) {
+        host.remoteTransfers?.summary ?: flowOf(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
     val folderName = fm.path.trimEnd('/').substringAfterLast('/')
     val atLocationRoot = fm.path.trimEnd('/').isEmpty()
     val currentLocation = fm.location
     val locationActions = host.locationActions
+    val isSftpRemote = currentLocation?.storageKind == FileLocationStorageKind.SFTP_REMOTE
+    val uploadQueuedNotice = stringResource(R.string.sftp_mount_notice_upload_queued)
+    val uploadFailedNotice = stringResource(R.string.sftp_mount_notice_upload_failed)
+    val cacheClearedNotice = stringResource(R.string.sftp_mount_notice_cache_cleared)
+    val sftpUploadLabel = stringResource(R.string.sftp_mount_action_upload_archive)
+    val sftpEditLabel = stringResource(R.string.sftp_mount_action_edit)
+    val sftpToggleRoLabel = stringResource(R.string.sftp_mount_action_toggle_ro)
+    val sftpToggleRwLabel = stringResource(R.string.sftp_mount_action_toggle_rw)
+    val sftpClearCacheLabel = stringResource(R.string.sftp_mount_action_clear_cache)
+    val sftpBadgeText = stringResource(
+        if (currentLocation?.remoteReadOnly == true) R.string.mount_sftp_chip_ro else R.string.mount_sftp_chip_rw,
+    )
+
+    val uploadArchiveLauncher = if (LocalActivityResultRegistryOwner.current != null) {
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            val picked = uri ?: return@rememberLauncherForActivityResult
+            val loc = fm.location ?: return@rememberLauncherForActivityResult
+            val mountId = loc.mountId ?: return@rememberLauncherForActivityResult
+            val hostAlias = loc.remoteHostAlias ?: return@rememberLauncherForActivityResult
+            val rootPath = loc.remoteRootPath ?: return@rememberLauncherForActivityResult
+            val currentDir = fm.path
+            scope.launch {
+                try {
+                    val staged = withContext(Dispatchers.IO) {
+                        val fileName = resolvePickedDocumentName(context, picked)
+                        val stagingDir = File(context.cacheDir, "remote-upload-staging/${UUID.randomUUID()}")
+                        check(stagingDir.mkdirs())
+                        val outFile = File(stagingDir, fileName)
+                        context.contentResolver.openInputStream(picked)?.use { input ->
+                            outFile.outputStream().use { output -> input.copyTo(output) }
+                        } ?: error("Cannot open selected document")
+                        fileName to outFile
+                    }
+                    val (fileName, outFile) = staged
+                    val relPath = (currentDir.trimEnd('/') + "/" + fileName).let { if (it.startsWith("/")) it else "/$it" }
+                    val remoteFull = rootPath.trimEnd('/') + relPath
+                    app.remoteTransferManager.enqueueUpload(
+                        RemoteTransferRequest(
+                            mountId = mountId,
+                            hostAlias = hostAlias,
+                            mountVirtualPath = "/mnt/${loc.title}$relPath",
+                            remoteFullPath = remoteFull,
+                            localPath = outFile.absolutePath,
+                            sourceLabel = fileName,
+                            targetLabel = "$hostAlias:$remoteFull",
+                            overwritePolicy = RemoteOverwritePolicy.REFUSE_DIFFERING,
+                            sessionId = null,
+                        ),
+                    )
+                    noticeController?.show(InfinityNoticeSeverity.SUCCESS, uploadQueuedNotice)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    noticeController?.show(
+                        InfinityNoticeSeverity.ERROR,
+                        error.message ?: uploadFailedNotice,
+                    )
+                }
+            }
+        }
+    } else {
+        null
+    }
+
+    val sftpFolderActions = buildList {
+        if (isSftpRemote && currentLocation != null) {
+            val mountId = currentLocation.mountId
+            if (currentLocation.capabilities.writable && uploadArchiveLauncher != null) {
+                add(
+                    FileFolderAction("library-sftp-upload", Icons.Rounded.UploadFile, sftpUploadLabel) { _, _ ->
+                        uploadArchiveLauncher.launch(arrayOf("*/*"))
+                    },
+                )
+            }
+            if (mountId != null) {
+                add(
+                    FileFolderAction("library-sftp-edit", Icons.Rounded.Edit, sftpEditLabel) { _, _ ->
+                        host.onEditSftpMount(mountId)
+                    },
+                )
+                add(
+                    FileFolderAction(
+                        id = "library-sftp-toggle-rw",
+                        icon = if (currentLocation.remoteReadOnly) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                        label = if (currentLocation.remoteReadOnly) sftpToggleRwLabel else sftpToggleRoLabel,
+                    ) { _, _ ->
+                        host.viewModel.setSftpMountReadOnly(mountId, !currentLocation.remoteReadOnly)
+                    },
+                )
+            }
+            add(
+                FileFolderAction("library-sftp-clear-cache", Icons.Rounded.CleaningServices, sftpClearCacheLabel) { _, _ ->
+                    scope.launch {
+                        app.remotePreviewCache.clear()
+                        noticeController?.show(InfinityNoticeSeverity.SUCCESS, cacheClearedNotice)
+                    }
+                },
+            )
+        }
+    }
+
     val rootManagementActions = buildList {
         if (atLocationRoot && currentLocation != null && locationActions != null) {
             val wsId = currentLocation.workspaceId
@@ -144,7 +275,39 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                         onClickLabel = settingsLabel,
                         onClick = { settingsFolder = current.folderId to folderName },
                     )
+                } ?: if (isSftpRemote && currentLocation != null) {
+                    val hostPath = listOfNotNull(
+                        currentLocation.remoteHostAlias?.let { alias ->
+                            val base = currentLocation.remoteRootPath.orEmpty().trimEnd('/')
+                            val rel = fm.path.takeUnless { it == "/" }.orEmpty()
+                            "$alias:$base$rel"
+                        },
+                        sftpBadgeText,
+                    ).joinToString(" · ") // wrap-check: allow 无障碍描述
+                    FileHeaderBadge(
+                        text = sftpBadgeText,
+                        description = hostPath,
+                        icon = Icons.Rounded.Cloud,
+                    )
+                } else {
+                    null
                 },
+                headerActions = if (isSftpRemote) {
+                    {
+                        RemoteTransferHeaderButton(
+                            activeCount = transferSummary?.activeCount ?: 0,
+                            onClick = { host.navigator.openSection(LibraryPageKeys.TRANSFERS) },
+                        )
+                        if (currentLocation?.capabilities?.writable == true && uploadArchiveLauncher != null) {
+                            IconButton(onClick = { uploadArchiveLauncher.launch(arrayOf("*/*")) }) {
+                                Icon(Icons.Rounded.UploadFile, contentDescription = sftpUploadLabel)
+                            }
+                        }
+                    }
+                } else {
+                    null
+                },
+                onOpenTransfers = { host.navigator.openSection(LibraryPageKeys.TRANSFERS) },
                 folderActions = buildList {
                     current?.let { folder ->
                         add(
@@ -158,6 +321,7 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                             },
                         )
                     }
+                    addAll(sftpFolderActions)
                     addAll(rootManagementActions)
                 },
                 hostActions = listOf(
@@ -307,4 +471,18 @@ private fun rememberCurrentFolderCollection(
         }
     }
     return current
+}
+
+private fun resolvePickedDocumentName(context: android.content.Context, uri: Uri): String {
+    val display = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }.getOrNull()?.trim()
+    val raw = display?.takeIf { it.isNotBlank() }
+        ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+        ?: "upload.bin"
+    val sanitized = raw.map { if (it == '/' || it == '\\' || it.isISOControl()) '_' else it }.joinToString("").trim()
+    return sanitized.takeUnless { it.isBlank() || it == "." || it == ".." || it.startsWith(".infinity-part-") }
+        ?: "upload-${System.currentTimeMillis()}.bin"
 }

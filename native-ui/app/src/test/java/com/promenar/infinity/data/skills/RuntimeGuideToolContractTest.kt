@@ -56,7 +56,7 @@ class RuntimeGuideToolContractTest {
         }
         // 工厂自行枚举动态工具名；注册入口增加工厂时必须给本测试补上构造方法。
         val factories = Regex("(?m)^ {12}(?:[\\w]+\\.)*([a-z]\\w*Tools)\\(").findAll(registrations).map { it.groupValues[1] }.toSet()
-        assertThat(factories).containsExactly("startupDiagnosticTools", "longTermMemoryTools", "sshTools", "sshHostManagementTools", "browserTools", "backgroundJobTools", "comfyTools")
+        assertThat(factories).containsExactly("startupDiagnosticTools", "longTermMemoryTools", "sshTools", "remoteMountTools", "sshHostManagementTools", "browserTools", "backgroundJobTools", "comfyTools")
         assertThat(Regex("forEach\\(::register\\)").findAll(registrations).count()).isEqualTo(factories.size)
         val registry = app.substringAfter("private fun createSkillRegistry(").substringBefore("private fun knowledgeConfigForTools")
             .substringAfter("listOf(").substringBefore("\n            )")
@@ -65,7 +65,9 @@ class RuntimeGuideToolContractTest {
         val operations = Regex("listOf\\(([^)]*)\\)\\.forEach \\{ operation ->").find(registrations)!!.groupValues[1]
         val sessionTools = Regex("\"([^\"]+)\"").findAll(operations).map { SessionSubagentSkill(it.groupValues[1], emptyList()) }.toList()
         return static + sessionTools + startupDiagnosticTools(mockk()) + longTermMemoryTools(mockk(), mockk()) +
-            sshTools(mockk(relaxed = true), null) + sshHostManagementTools(mockk(), mockk(), mockk()) { true } +
+            sshTools(mockk(relaxed = true), null) +
+            remoteMountTools(mockk(relaxed = true), { mockk(relaxed = true) }, { _, _ -> mockk(relaxed = true) }) +
+            sshHostManagementTools(mockk(), mockk(), mockk()) { true } +
             browserTools(mockk(), mockk()) + backgroundJobTools(mockk()) + comfyTools(mockk()) +
             scheduleSkillRegistry(mockk()).getAllSkills() + AgentSkillToolRegistry(mockk()).getAllSkills()
     }

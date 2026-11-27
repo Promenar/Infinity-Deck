@@ -998,6 +998,30 @@ fun ProviderFormScreen(
         }
     }
 
+    val routeGlobalNotice = LocalInfinityNoticeController.current
+    val currentNoticeKey = Triple(saveFailed, connectionTestState, connectionTestFailureMessage)
+    var lastNoticeKey by remember { mutableStateOf<Triple<Boolean, ProviderConnectionTestState, String?>?>(null) }
+    LaunchedEffect(currentNoticeKey, routeGlobalNotice) {
+        val previous = lastNoticeKey
+        lastNoticeKey = currentNoticeKey
+        val host = routeGlobalNotice ?: return@LaunchedEffect
+        if (previous == currentNoticeKey) return@LaunchedEffect
+        val terminalNotice: Pair<InfinityStatusKind, String>? = when {
+            saveFailed -> InfinityStatusKind.Error to resources.getString(R.string.provider_form_save_failed)
+            else -> when (connectionTestState) {
+                ProviderConnectionTestState.Idle, ProviderConnectionTestState.Testing -> null
+                ProviderConnectionTestState.Success ->
+                    InfinityStatusKind.Success to resources.getString(R.string.provider_form_connection_ok)
+                ProviderConnectionTestState.Unavailable ->
+                    InfinityStatusKind.Info to resources.getString(R.string.provider_form_connection_unavailable)
+                ProviderConnectionTestState.Error -> InfinityStatusKind.Error to
+                    (connectionTestFailureMessage ?: resources.getString(R.string.common_cd_failed))
+            }
+        }
+        val (kind, message) = terminalNotice ?: return@LaunchedEffect
+        host.showStatus(kind, message)
+    }
+
     ProviderFormContent(
         state = ProviderFormUiState(
             isEditing = providerId != null,
@@ -1954,19 +1978,7 @@ private fun ProviderFormActionsSection(
                 (state.connectionTestFailureMessage ?: stringResource(R.string.common_cd_failed))
         }
     }
-    // 进行中状态由“测试”按钮自带加载圈承担；终态结果与保存失败改走顶部悬浮胶囊，避免底栏高度跳动。
-    val terminalNotice: Pair<InfinityStatusKind, String>? =
-        strip?.takeUnless { !state.saveFailed && state.connectionTestState == ProviderConnectionTestState.Testing }
-    val currentNoticeKey = Triple(state.saveFailed, state.connectionTestState, state.connectionTestFailureMessage)
-    var lastNoticeKey by remember { mutableStateOf<Triple<Boolean, ProviderConnectionTestState, String?>?>(null) }
-    LaunchedEffect(currentNoticeKey, globalNotice) {
-        val previous = lastNoticeKey
-        lastNoticeKey = currentNoticeKey
-        val host = globalNotice ?: return@LaunchedEffect
-        if (previous == currentNoticeKey) return@LaunchedEffect
-        val (kind, message) = terminalNotice ?: return@LaunchedEffect
-        host.showStatus(kind, message)
-    }
+    // 进行中状态由“测试”按钮自带加载圈承担；终态结果与保存失败在路由层发往全局悬浮胶囊，纯内容区仅在无全局胶囊时回退显示状态条。
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
         if (globalNotice == null) {
             AnimatedVisibility(visible = strip != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {

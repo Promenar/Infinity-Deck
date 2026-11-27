@@ -49,14 +49,11 @@ enum class FileLocationStorageKind {
     /** 外部授权或实路径挂载文件夹（ExternalMount）。 */
     EXTERNAL_MOUNT,
 
+    /** 远程 SFTP 挂载目录（ExternalMount，sourceType = sftp_remote）。 */
+    SFTP_REMOTE,
+
     /** 本机 Alpine Linux 主目录。 */
     LINUX_HOME,
-    ;
-
-    companion object {
-        /** Wave 1 沿用现有位置分组；远程能力由 FileLocation 的远程字段提供。 */
-        val SFTP_REMOTE: FileLocationStorageKind get() = EXTERNAL_MOUNT
-    }
 }
 
 internal fun defaultStorageKind(kind: FileLocationKind): FileLocationStorageKind = when (kind) {
@@ -209,7 +206,7 @@ data class FileSearchQuery(
 data class FileSearchHit(val item: FileItem, val parentPath: String)
 
 /** 文件预览来源；图片、音频、PDF 由界面用 [uri] 加载。 */
-interface FilePreview {
+sealed interface FilePreview {
     data class Text(val content: String, val truncated: Boolean, val markdown: Boolean) : FilePreview
     data class Image(val uri: String) : FilePreview
     data class Audio(val uri: String, val durationMs: Long?) : FilePreview

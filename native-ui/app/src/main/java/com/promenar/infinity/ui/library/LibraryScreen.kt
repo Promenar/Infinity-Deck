@@ -12,23 +12,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -44,7 +38,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.R
+import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.RemotePreviewCacheStats
+import com.promenar.infinity.domain.storage.RemoteTransferController
+import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.domain.library.ChunkLocator
 import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.recording.recordingIntent
@@ -54,7 +54,6 @@ import com.promenar.infinity.ui.hub.HubListPaneWidth
 import com.promenar.infinity.ui.hub.HubStripWidth
 import com.promenar.infinity.ui.rag.RagViewModel
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 
 /** 资料页的测试标签（与 UiTags 分开，避免与资源管理器组件的标签段冲突）。 */
 object LibraryTags {
@@ -126,6 +125,11 @@ fun LibraryScreen(
     val ragViewModel: RagViewModel = viewModel(factory = RagViewModel.factory(app))
     val askViewModel: LibraryAskViewModel = viewModel(factory = LibraryAskViewModel.factory(app))
     var mountsOpen by rememberSaveable { mutableStateOf(false) }
+    var sftpAddOpen by rememberSaveable { mutableStateOf(false) }
+    var editingSftpMountId by rememberSaveable { mutableStateOf<String?>(null) }
+    val libraryMounts by remember(app) {
+        app.externalFolderManager.observeMounts(ExternalMountPaths.LIBRARY_SCOPE)
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
     LibraryScreenContent(
         state = state,
         layout = layout,
@@ -136,8 +140,30 @@ fun LibraryScreen(
         onNavigateToSecondary = onNavigateToSecondary,
         onOpenSession = onOpenSession,
         onManageMounts = { mountsOpen = true },
+        onAddRemoteMount = {
+            editingSftpMountId = null
+            sftpAddOpen = true
+        },
+        onEditSftpMount = { mountId ->
+            sftpAddOpen = false
+            editingSftpMountId = mountId
+        },
+        remoteTransfers = app.remoteTransferManager,
+        remoteCacheStats = app.remotePreviewCache.stats,
     )
     if (mountsOpen) LibraryMountsSheet(onDismiss = { mountsOpen = false })
+    val editingMount = editingSftpMountId?.let { id -> libraryMounts.firstOrNull { it.id == id } }
+    if (sftpAddOpen || editingMount != null) {
+        SftpMountSheet(
+            editingMount = editingMount,
+            existingAliases = libraryMounts.map { it.alias },
+            onOpenSshSettings = { onNavigateToSecondary(NavDestinations.SSH_CONFIG) },
+            onDismiss = {
+                sftpAddOpen = false
+                editingSftpMountId = null
+            },
+        )
+    }
 }
 
 /**
@@ -155,12 +181,15 @@ internal fun LibraryScreenContent(
     onNavigateToSecondary: (String) -> Unit,
     onOpenSession: (String) -> Unit,
     onManageMounts: () -> Unit,
+    onAddRemoteMount: () -> Unit = {},
+    onEditSftpMount: (String) -> Unit = {},
+    remoteTransfers: RemoteTransferController? = null,
+    remoteCacheStats: StateFlow<RemotePreviewCacheStats>? = null,
 ) {
     val twoPane = layout is LibraryLayout.TwoPane
     val navigator = remember(state, twoPane) { LibraryNavigator(state, twoPane) }
-    val locationActions = rememberLibraryLocationActions(viewModel, navigator)
+    val locationActions = rememberLibraryLocationActions(viewModel, navigator, onEditSftpMount = onEditSftpMount)
     val askState by askViewModel.state.collectAsStateWithLifecycle()
-    val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     var noteOpen by rememberSaveable { mutableStateOf(false) }
     val importFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -209,7 +238,7 @@ internal fun LibraryScreenContent(
     }
 
     BackHandler(enabled = navigator.handlesBack) { navigator.handleBack() }
-    LibraryNoticeEffect(viewModel, snackbar)
+    LibraryNoticeEffect(viewModel)
     LibraryGraphConfirmDialog(viewModel)
     LibraryLocationActionDialogHost(locationActions)
     if (noteOpen) {
@@ -234,6 +263,10 @@ internal fun LibraryScreenContent(
         onOpenSession = onOpenSession,
         chunkLocator = com.promenar.infinity.data.library.ask.DefaultChunkLocator,
         onManageMounts = onManageMounts,
+        onAddRemoteMount = onAddRemoteMount,
+        onEditSftpMount = onEditSftpMount,
+        remoteTransfers = remoteTransfers,
+        remoteCacheStats = remoteCacheStats,
         locationActions = locationActions,
     )
 
@@ -244,7 +277,6 @@ internal fun LibraryScreenContent(
                     LibraryLayout.Single -> LibrarySingleLayout(host, addMenu)
                     is LibraryLayout.TwoPane -> LibraryTwoPaneLayout(host, layout, addMenu)
                 }
-                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
             }
         }
     }
@@ -303,8 +335,16 @@ internal class LibraryPageHost(
     val chunkLocator: ChunkLocator,
     /** 从对话引用打开的文档页要定位的段落；资料页内导航为 null。 */
     val locateRequest: DocumentLocateRequest? = null,
-    /** 打开资料页级外部文件夹的管理面板。 */
+    /** 打开资料页级本机挂载目录的管理面板。 */
     val onManageMounts: () -> Unit = {},
+    /** 打开添加 SFTP 远程目录面板。 */
+    val onAddRemoteMount: () -> Unit = {},
+    /** 打开编辑已有 SFTP 远程目录面板。 */
+    val onEditSftpMount: (String) -> Unit = {},
+    /** 全局远程传输队列控制器。 */
+    val remoteTransfers: RemoteTransferController? = null,
+    /** 全局远程预览 LRU 缓存统计流。 */
+    val remoteCacheStats: StateFlow<RemotePreviewCacheStats>? = null,
     /** 资料页位置与快捷固定管理动作（长按菜单与目录页右上角共用）。 */
     val locationActions: LibraryLocationActions? = null,
 )
@@ -434,7 +474,8 @@ private fun LibraryGraphConfirmDialog(viewModel: LibraryViewModel) {
 }
 
 @Composable
-private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarHostState) {
+private fun LibraryNoticeEffect(viewModel: LibraryViewModel) {
+    val noticeController = LocalInfinityNoticeController.current
     val notice by viewModel.notice.collectAsStateWithLifecycle()
     val doneTexts = mapOf(
         LibraryNotice.Kind.RETRY to stringResource(R.string.library_notice_retry_done),
@@ -447,6 +488,7 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
         LibraryNotice.Kind.WORKSPACE_DELETED to stringResource(R.string.library_notice_workspace_deleted),
         LibraryNotice.Kind.WORKSPACE_REMOVED to stringResource(R.string.library_notice_workspace_removed),
         LibraryNotice.Kind.PIN_REMOVED to stringResource(R.string.library_notice_pin_removed),
+        LibraryNotice.Kind.SFTP_PERMISSION_UPDATED to stringResource(R.string.sftp_mount_notice_permission_updated),
     )
     val failedTexts = mapOf(
         LibraryNotice.Kind.RETRY to stringResource(R.string.library_notice_retry_failed),
@@ -460,12 +502,12 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
         LibraryNotice.Kind.WORKSPACE_DELETED to stringResource(R.string.library_notice_workspace_action_failed),
         LibraryNotice.Kind.WORKSPACE_REMOVED to stringResource(R.string.library_notice_workspace_action_failed),
         LibraryNotice.Kind.PIN_REMOVED to stringResource(R.string.library_notice_workspace_action_failed),
+        LibraryNotice.Kind.SFTP_PERMISSION_UPDATED to stringResource(R.string.library_notice_workspace_action_failed),
     )
     val refBoth = stringResource(R.string.library_workspace_referenced_sessions_agents)
     val refSessions = stringResource(R.string.library_workspace_referenced_sessions)
     val refAgents = stringResource(R.string.library_workspace_referenced_agents)
     val withReason = stringResource(R.string.library_notice_with_reason)
-    val noticeScope = rememberCoroutineScope()
     LaunchedEffect(notice) {
         val current = notice ?: return@LaunchedEffect
         viewModel.consumeNotice()
@@ -482,12 +524,11 @@ private fun LibraryNoticeEffect(viewModel: LibraryViewModel, snackbar: SnackbarH
                 else -> refAgents.format(current.agents)
             }
         } ?: return@LaunchedEffect
-        val duration = if (current is LibraryNotice.ActionDone) SnackbarDuration.Short else SnackbarDuration.Long
-        // 在独立组合作用域内展示提示：consumeNotice() 将 key 置空后，LaunchedEffect(notice) 会在下一帧取消，
-        // 不能直接在 LaunchedEffect 协程里挂起等待 showSnackbar，否则提示会首帧闪消。
-        noticeScope.launch {
-            snackbar.currentSnackbarData?.dismiss()
-            snackbar.showSnackbar(message = text, duration = duration)
+        val severity = when (current) {
+            is LibraryNotice.ActionDone -> InfinityNoticeSeverity.SUCCESS
+            is LibraryNotice.WorkspaceReferenced -> InfinityNoticeSeverity.WARNING
+            is LibraryNotice.ActionFailed -> InfinityNoticeSeverity.ERROR
         }
+        noticeController?.show(severity = severity, message = text)
     }
 }

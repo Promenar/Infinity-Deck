@@ -92,6 +92,8 @@ data class FileManagerHostSpec(
     val onOpenGit: (() -> Unit)? = null,
     val folderHeader: (@Composable (FileFolderHeaderScope) -> Unit)? = null,
     val folderBadge: FileHeaderBadge? = null,
+    val headerActions: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
+    val onOpenTransfers: (() -> Unit)? = null,
     val settingsPage: Boolean = false,
 )
 

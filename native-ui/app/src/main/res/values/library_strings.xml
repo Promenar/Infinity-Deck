@@ -92,7 +92,7 @@
 
     <string name="library_notice_retry_done">Parsing again</string>
     <string name="library_notice_rebuild_done">Rebuilding the index</string>
-    <string name="library_notice_import_done">Imported to Storage</string>
+    <string name="library_notice_import_done">Imported to Knowledge docs</string>
     <string name="library_notice_note_done">Note saved</string>
     <string name="library_notice_clear_done">Snippets from this conversation cleared</string>
     <string name="library_notice_retry_failed">Retry failed</string>

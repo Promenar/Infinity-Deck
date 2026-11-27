@@ -21,6 +21,9 @@ object LibraryPageKeys {
     /** 外屏“文件”页：列出位置与固定的文件夹。 */
     const val FILES = "files"
 
+    /** 远程存储专用传输管理页。 */
+    const val TRANSFERS = "transfers"
+
     /** 问资料结果，压在当前页上；弹出即清空查询。 */
     const val ASK = "ask"
 
@@ -43,6 +46,7 @@ object LibraryPageKeys {
         key == FRAGMENTS -> LibraryPage.Fragments
         key == GRAPH -> LibraryPage.Graph
         key == FILES -> LibraryPage.Files
+        key == TRANSFERS -> LibraryPage.Transfers
         key == ASK -> LibraryPage.Ask
         key.startsWith(FRAGMENT_SESSION_PREFIX) -> LibraryPage.FragmentSession(key.removePrefix(FRAGMENT_SESSION_PREFIX))
         key.startsWith(DOCUMENT_PREFIX) -> LibraryPage.Document(key.removePrefix(DOCUMENT_PREFIX))
@@ -69,6 +73,7 @@ sealed interface LibraryPage {
     data class FragmentSession(val sessionId: String) : LibraryPage
     data object Graph : LibraryPage
     data object Files : LibraryPage
+    data object Transfers : LibraryPage
     data object Ask : LibraryPage
     data class Document(val documentId: String) : LibraryPage
     data class Browse(val ref: FileRef) : LibraryPage
