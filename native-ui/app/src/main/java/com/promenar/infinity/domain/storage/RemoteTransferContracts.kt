@@ -60,6 +60,25 @@ data class RemoteTransferSummary(
     val aggregateBytesPerSecond: Long,
 )
 
+/** 会话工具批准的本地落点，供进程恢复后再次验证。 */
+@Serializable
+data class RemoteTransferWorkspaceBinding(
+    val path: String,
+    val identity: String,
+    val revision: String,
+    val privateRootUuid: String?,
+)
+
+data class RemoteTransferAuthorization(
+    val hostId: String,
+    val hostIdentity: String,
+    val mountRoot: String,
+    val mountSource: String,
+    val workspace: RemoteTransferWorkspaceBinding,
+    val bytesTotal: Long?,
+    val remoteSourceRevision: String? = null,
+)
+
 /** 调用方在入队前确认本地授权，管理器在每次启动时重新校验挂载身份与权限。 */
 data class RemoteTransferRequest(
     val mountId: String,
@@ -71,6 +90,7 @@ data class RemoteTransferRequest(
     val targetLabel: String = "",
     val overwritePolicy: RemoteOverwritePolicy = RemoteOverwritePolicy.REFUSE_DIFFERING,
     val sessionId: String? = null,
+    val authorization: RemoteTransferAuthorization? = null,
 )
 
 interface RemoteTransferController {

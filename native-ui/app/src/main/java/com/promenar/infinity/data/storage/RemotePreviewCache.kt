@@ -124,8 +124,13 @@ class RemotePreviewCache(
         if (!validFile(source, key.sizeBytes)) return@withLock null
         val temporary = File(root, "${UUID.randomUUID()}.part")
         try {
-            // 管理器的暂存与缓存均在应用内部存储，硬链接避免二次写入。
-            Files.createLink(temporary.toPath(), source.toPath())
+            // 保留传输检查点直到缓存提交；Android 存储可能禁止硬链接。
+            try {
+                Files.createLink(temporary.toPath(), source.toPath())
+            } catch (_: java.io.IOException) {
+                Files.copy(source.toPath(), temporary.toPath(), NOFOLLOW_LINKS)
+            }
+            if (!validFile(temporary, key.sizeBytes) || sha256File(temporary) != expectedSha256) return@withLock null
             pending.remove(digest)
             deleteShares(digest)
             install(digest, key.sizeBytes, temporary)

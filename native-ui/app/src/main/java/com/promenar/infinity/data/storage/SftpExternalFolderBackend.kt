@@ -1,5 +1,6 @@
 package com.promenar.infinity.data.storage
 
+import com.promenar.infinity.data.ssh.RemoteSha256Receipt
 import com.promenar.infinity.data.ssh.SftpChunkDirective
 import com.promenar.infinity.data.ssh.SftpDetailedEntry
 import com.promenar.infinity.data.ssh.SftpMountTransport
@@ -124,6 +125,39 @@ class SftpExternalFolderBackend(
         renameNoReplace(source.fullPath, target.fullPath)
     }
 
+    suspend fun computeFileSha256(path: String): RemoteSha256Receipt = call {
+        sha256(checked(path).requireRegular().fullPath)
+    }
+
+    internal suspend fun renameFileWithSha256(
+        sourcePath: String,
+        targetPath: String,
+        expectedSha256: String,
+        beforeMutation: suspend () -> Unit,
+    ) = writeCall {
+        beforeMutation()
+        val source = checked(sourcePath, modifying = true).requireRegular()
+        val target = checked(targetPath, modifying = true)
+        if (target.entry != null) throw SshFailure("TARGET_CONFLICT")
+        requireFileSha256(source, expectedSha256, beforeMutation)
+        renameNoReplace(source.fullPath, target.fullPath)
+    }
+
+    internal suspend fun deleteFileWithSha256(path: String, expectedSha256: String, beforeMutation: suspend () -> Unit) = writeCall {
+        beforeMutation()
+        val target = checked(path, modifying = true).requireRegular()
+        requireFileSha256(target, expectedSha256, beforeMutation)
+        removeFile(target.fullPath)
+    }
+
+    private suspend fun SftpMountTransport.requireFileSha256(
+        target: Target, expectedSha256: String, beforeMutation: suspend () -> Unit,
+    ) {
+        if (sha256(target.fullPath).sha256 != expectedSha256) throw SshFailure("TARGET_CONFLICT")
+        beforeMutation()
+        if (safeStat(target.fullPath) != target.entry) throw SshFailure("TARGET_CONFLICT")
+    }
+
     override suspend fun validateTree(path: String) = call {
         if (checked(path).entry == null) throw SshFailure("NOT_FOUND")
     }
@@ -187,7 +221,10 @@ class SftpExternalFolderBackend(
 }
 
 private fun SftpDetailedEntry.toEntry(relative: String) =
-    ExternalFolderEntry(relative, name, isDirectory, size, modifiedAtMillis, identity = "$fullPath:$size:$modifiedAtMillis")
+    ExternalFolderEntry(relative, name, isDirectory, size, modifiedAtMillis, identity = sftpMountEntryIdentity(fullPath, size, modifiedAtMillis))
+
+internal fun sftpMountEntryIdentity(fullPath: String, size: Long, modifiedAtMillis: Long): String =
+    "$fullPath:$size:$modifiedAtMillis"
 
 internal fun sftpFolderFailure(failure: SshFailure): ExternalFolderException {
     val code = when (failure.code) {

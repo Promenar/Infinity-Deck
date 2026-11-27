@@ -10,6 +10,7 @@ import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.data.storage.ExternalDirectoryDiagnostics
 import com.promenar.infinity.data.storage.externalStreamHash
 import com.promenar.infinity.data.storage.isKnowledgeBaseSource
+import com.promenar.infinity.data.storage.isSftpRemoteSource
 import com.promenar.infinity.startup.StartupWriteBarrier
 import com.promenar.infinity.data.workspace.SessionPrivateWorkspacePaths
 import com.promenar.infinity.data.workspace.SessionPrivateWorkspaceRepository
@@ -91,7 +92,8 @@ class MountedWorkspaceSkill(
             }
             fun String.external() = (linuxPaths || !SessionPrivateWorkspacePaths.contains(this)) && (rooted || isMounted())
             suspend fun aliasOf(path: String) = if (linuxPaths && namespaceAccess != null) namespaceAccess.aliasOf(context.sessionId, path) else ExternalMountPaths.aliasOf(path, rooted)
-            val visibleMountIds = mounts.visible(context.sessionId).associate { it.alias to it.id } +
+            val visibleMounts = mounts.visible(context.sessionId)
+            val visibleMountIds = visibleMounts.associate { it.alias to it.id } +
                 listOfNotNull(workspaceMount).associate { it.alias to it.id }
             val approvedMountIds = context.approvedExecutionTarget?.let {
                 (Json.parseToJsonElement(it) as? JsonArray)?.lastOrNull() as? JsonObject
@@ -107,12 +109,29 @@ class MountedWorkspaceSkill(
                 }
                 val routedArgs = JsonObject(normalized)
                 val repository = MountedWorkspaceRepository(workspace, mounts, context.sessionId, rooted, linuxPaths, privateReader)
+                val writeMounts = if (ToolExecutionTargets.isPathMutation(original.id)) visibleMounts + listOfNotNull(workspaceMount) else emptyList()
+                val remoteAliases = writeMounts.filter { it.isSftpRemoteSource }.map { it.alias }.toSet()
                 val statOnly = original.id == "read_file" && routedArgs.stringArgument("mode") == "stat"
-                val sourcePath = if (statOnly) null else pathArgument(routedArgs, context, repository, "uuid", "path")
+                val sourcePath = if (statOnly) null else pathArgument(routedArgs, context, repository, "uuid", "path", remoteAliases)
                 // 根工作区的新建默认落在 `/`，与挂载目录同样走外部写入而不是私有工作区的 Room 事务。
-                val parentPath = pathArgument(routedArgs, context, repository, "parentUuid", "parentPath")
+                val parentPath = pathArgument(routedArgs, context, repository, "parentUuid", "parentPath", remoteAliases)
                     ?: "/".takeIf { rooted && original.id in setOf("create_file", "create_directory") }
-                val destinationParent = pathArgument(routedArgs, context, repository, "newParentUuid", "newParentPath")
+                val destinationParent = pathArgument(routedArgs, context, repository, "newParentUuid", "newParentPath", remoteAliases)
+                if (remoteAliases.isNotEmpty()) {
+                    val childPath = when (original.id) {
+                        "create_file", "create_directory" -> routedArgs.stringArgument("name")?.let { "${(parentPath ?: "/").trimEnd('/')}/${it.trim()}" }
+                        "move_file" -> sourcePath?.let { source ->
+                            val parent = destinationParent ?: source.substringBeforeLast('/')
+                            val name = routedArgs.stringArgument("newName")?.trim()?.takeIf(String::isNotEmpty) ?: source.substringAfterLast('/')
+                            "${parent.trimEnd('/')}/$name"
+                        }
+                        else -> null
+                    }
+                    if ((listOfNotNull(sourcePath, parentPath, destinationParent).any { aliasOf(it) in remoteAliases } ||
+                        childPath?.let { runCatching { aliasOf(it) }.getOrNull() in remoteAliases } == true)) {
+                        throw sftpGenericMutationDenied()
+                    }
+                }
                 val sourceMounted = sourcePath?.let { (linuxPaths || !SessionPrivateWorkspacePaths.contains(it)) && rooted } == true || (args.stringArgument("uuid")?.takeIf(String::isNotBlank)?.let { it.startsWith("external:") }
                     ?: (sourcePath?.isMounted() == true))
                 val parentMounted = parentPath?.let { (linuxPaths || !SessionPrivateWorkspacePaths.contains(it)) && rooted } == true || (args.stringArgument("parentUuid")?.takeIf(String::isNotBlank)?.let { it.startsWith("external:") }
@@ -141,7 +160,6 @@ class MountedWorkspaceSkill(
                     if (usedAliases.any { it !in approvedMountIds }) fail("CONFLICT", "批准目标缺少挂载或工作区身份，请重新审批")
                 }
                 val knowledgeManager = namespaceAccess?.knowledgeManager ?: mounts as? ExternalFolderManager
-                val writeMounts = if (ToolExecutionTargets.isPathMutation(original.id)) mounts.visible(context.sessionId) + listOfNotNull(workspaceMount) else emptyList()
                 val knowledgeSource = sourceMounted && sourcePath != null && writeMounts.any { it.alias == aliasOf(sourcePath) && it.isKnowledgeBaseSource }
                 val canEditRecording = original.id in setOf("write_file", "patch_file")
                 var recordingPath: String? = null
@@ -358,9 +376,22 @@ class MountedWorkspaceSkill(
         return ToolResult("mount_move", "已复制、校验并移动 / Copied, verified and moved：$source → $destination" + if (indexed) "" else "；文件已保存，索引等待重试")
     }
 
-    private suspend fun pathArgument(args: JsonObject, context: SkillExecutionContext, repository: IWorkspaceRepository, uuidKey: String, pathKey: String): String? {
+    private suspend fun pathArgument(
+        args: JsonObject, context: SkillExecutionContext, repository: IWorkspaceRepository,
+        uuidKey: String, pathKey: String, remoteAliases: Set<String>,
+    ): String? {
         val uuid = args.stringArgument(uuidKey)?.trim()?.takeIf(String::isNotEmpty)
-        return if (uuid != null) repository.getByUuid(context.workspaceRootUuid, uuid)?.materializedPath
+        return if (uuid != null) {
+            if (remoteAliases.isNotEmpty() && uuid.startsWith("external:")) {
+                val path = mounts.resolveUuid(context.sessionId, uuid)
+                val alias = path?.let {
+                    if (linuxPaths && mounts is SessionNamespaceWorkspaceAccess) mounts.aliasOf(context.sessionId, it)
+                    else ExternalMountPaths.parse(it)?.first
+                }
+                if (alias in remoteAliases) return path
+            }
+            repository.getByUuid(context.workspaceRootUuid, uuid)?.materializedPath
+        }
         else args.stringArgument(pathKey)?.takeIf(String::isNotBlank)?.let {
             if (linuxPaths && mounts is SessionNamespaceWorkspaceAccess) mounts.validatePath(context.sessionId, it)
             else normalizeWorkspaceToolPath(it)

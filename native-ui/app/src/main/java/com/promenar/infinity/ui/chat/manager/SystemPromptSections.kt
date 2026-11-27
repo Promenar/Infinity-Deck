@@ -5,6 +5,8 @@ import com.promenar.infinity.data.skills.DiscoveredSkill
 import com.promenar.infinity.data.skills.SkillStatus
 import com.promenar.infinity.data.storage.isUserSkills
 import com.promenar.infinity.data.storage.isKnowledgeBaseSource
+import com.promenar.infinity.data.storage.isSftpRemoteSource
+import com.promenar.infinity.domain.storage.SftpRemoteMountSpec
 import com.promenar.infinity.domain.linux.LinuxRuntimeState
 import com.promenar.infinity.domain.tool.LinuxExecRouting
 import com.promenar.infinity.domain.model.SessionRunMode
@@ -197,6 +199,10 @@ object SystemPromptSections {
         if (toolNames.any { it == "sftp_upload" || it == "sftp_download" }) {
             appendLine("- 二进制或大文件用 sftp_upload/sftp_download（最多 4 GiB），文本小改动用 sftp_read/sftp_write；local_scope 默认 workspace，Play 版及非 Linux 会话不可用 linux 范围。")
         }
+        if ("remote_mount_archive" in toolNames || "remote_mount_download" in toolNames) {
+            val tools = listOf("remote_mount_archive", "remote_mount_download").filter { it in toolNames }.joinToString("、")
+            appendLine("- 使用 $tools 在本地工作区与 `/mnt/<alias>/...` 之间传输文件，使用 remote_mount_transfer_status 查询进度和校验回执。")
+        }
         if ("artifact_publish" in toolNames) appendLine("- 交付文件完成后调用 artifact_publish 声明。" + if ("canvas_create" in toolNames) "页面与原型使用画布工具。" else "")
         if ("generate_image" in toolNames || "image_generation" in toolNames) {
             appendLine("- 云端生图使用默认图像模型，ComfyUI 独立可用。编辑输入与输出使用工作区路径，按返回路径用 ![说明](路径) 展示" +
@@ -240,7 +246,7 @@ object SystemPromptSections {
             appendLine("- Prefer `patch_file` for local edits and `write_file` for full rewrites of existing files. Create new files with `create_file` and folders with `create_directory`.")
             appendLine("- `move_file` moves or renames; `delete_file` permanently deletes items (requires approval in risk-approval mode; runs without approval in no-approval mode except for skill directories).")
         }
-        if (toolNames.any { it in WORKSPACE_TOOLS || it in WORKSPACE_PROCESS_TOOLS }) {
+        if (toolNames.any { it in WORKSPACE_TOOLS || it in WORKSPACE_PROCESS_TOOLS || it.startsWith("remote_mount_") }) {
             currentWorkspace(workspace, usesLinux, builtinWorkspacePath)?.let {
                 appendLine()
                 append(it)
@@ -326,16 +332,22 @@ object SystemPromptSections {
     /** 挂载别名与设备路径都由用户输入，截断后写入提示，避免挤占上下文。 */
     private fun mountedFolders(mounts: List<com.promenar.infinity.domain.storage.ExternalMount>, usesLinux: Boolean): String? {
         val visible = mounts.filterNot { it.isUserSkills || usesLinux && it.sourceType != "real_path" &&
-            !it.isKnowledgeBaseSource }.sortedBy { it.alias }
+            !it.isKnowledgeBaseSource && !it.isSftpRemoteSource }.sortedBy { it.alias }
         if (visible.isEmpty()) return null
         return buildString {
             appendLine("### Mounted Folders")
             if (usesLinux) appendLine("- 文件工具与 Linux 命令通过 `/mnt/<alias>/` 访问会话真实路径挂载，资料库使用 `/mnt/<alias>/`。")
-            else appendLine("- 真实路径挂载在文件工具与命令中统一直接使用设备真实路径；无 POSIX 路径的逻辑挂载（知识库、SAF）仅文件工具通过 `/mnt/<alias>/` 访问。")
+            else appendLine("- 真实路径挂载在文件工具与命令中统一直接使用设备真实路径；无 POSIX 路径的逻辑挂载（知识库、SAF、远程 SFTP）仅文件工具通过 `/mnt/<alias>/` 访问。")
             visible.forEach { mount ->
                 val alias = mount.alias.take(64)
                 val realPath = runCatching { com.promenar.infinity.data.storage.ExternalMountPaths.commandAccess(mount).realPath }.getOrNull()
+                val remoteSpec = mount.takeIf { it.isSftpRemoteSource }?.let { SftpRemoteMountSpec.decode(it.sourceId) }
+                val hostAlias = remoteSpec?.hostAlias.orEmpty()
                 appendLine(when {
+                    mount.isSftpRemoteSource && remoteSpec == null -> "- `/mnt/$alias/`：远程 SFTP 配置不可用，请用户检查挂载和 SSH 主机设置。"
+                    remoteSpec != null && mount.unavailableReason != null -> "- `/mnt/$alias/`：远程 SFTP（主机 `$hostAlias`），当前不可用；请用户检查 SSH 主机配置或网络连接。"
+                    remoteSpec != null && mount.readOnly -> "- `/mnt/$alias/`：远程 SFTP（主机 `$hostAlias` · 只读 · 非本地 Linux 路径）。列目录/读小文本用文件工具，下载大文件到工作区用 `remote_mount_download`。"
+                    remoteSpec != null -> "- `/mnt/$alias/`：远程 SFTP（主机 `$hostAlias` · 可归档 · 非本地 Linux 路径）。列目录/读小文本用文件工具，归档上传用 `remote_mount_archive`（返回远端校验 `sha256` 与 `size_bytes` 回执），下载/建目录/重命名/删除用对应 `remote_mount_*` 工具；写入均需逐次审批且默认拒绝覆盖已有不同文件。"
                     mount.unavailableReason != null -> "- `/mnt/$alias/`: currently unavailable; ask the user to check or re-authorize it."
                     mount.isKnowledgeBaseSource && mount.readOnly -> "- `/mnt/$alias/`：只读知识库。普通资料和原始录音 .wav 可读取；录音整理稿 .md 可带 expectedHash 版本化编辑并同步录音工作台。仅文件工具可访问，命令无法访问知识库挂载。"
                     mount.isKnowledgeBaseSource -> "- `/mnt/$alias/`：知识库读写。文件工具可创建、编辑、在库内移动与经审批删除资料文档并同步索引；录音整理稿 .md 同步录音工作台，原始录音 .wav 只读。仅文件工具可访问。"

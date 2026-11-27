@@ -12,6 +12,8 @@ import com.promenar.infinity.data.remote.protocol.ProtocolTool
 import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.data.storage.ExternalFolderManager
 import com.promenar.infinity.data.storage.isKnowledgeBaseSource
+import com.promenar.infinity.data.storage.isSftpRemoteSource
+import com.promenar.infinity.data.storage.resolveRemoteMountLocalFile
 import com.promenar.infinity.data.storage.ExternalTreeTransfer
 import com.promenar.infinity.data.storage.externalSnapshotMime
 import com.promenar.infinity.data.storage.isUserSkills
@@ -86,6 +88,36 @@ class LinuxSessionExternalWorkspaceAccess(
     }
 
     override suspend fun workingDirectory(sessionId: String): String = namespace(sessionId).workingDirectory
+
+    internal suspend fun remoteMountLocalFile(sessionId: String, rawPath: String, writing: Boolean) = operation {
+        if (com.promenar.infinity.data.ssh.isSftpProtectedLocalPath(rawPath)) {
+            fail("ACCESS_DENIED", "技能与受保护路径不可用于远程挂载传输")
+        }
+        val current = namespace(sessionId)
+        val path = normalize(current, rawPath)
+        val routed = route(current, path)
+        val selected = current.workspace as? SessionWorkspace.Directory
+        val branchDirectory = current.branch?.commandWorkspace?.workingDirectory
+        val branchRelative = branchDirectory?.takeIf { path.startsWith("$it/") }?.let { path.removePrefix(it) }
+        val root = when (routed.kind) {
+            LinuxSessionPathKind.PRIVATE -> File(current.root.physicalRootPath)
+            LinuxSessionPathKind.WORKSPACE -> current.workspaceOverride?.baseRoot
+                ?: selected?.root ?: fail("WORKSPACE_UNAVAILABLE", "当前工作区目录不可用")
+            LinuxSessionPathKind.ROOTFS -> selected?.takeIf {
+                branchRelative != null && it.kind == com.promenar.infinity.data.branch.BranchWorktreeWorkspaceResolver.KIND
+            }?.root
+            else -> null
+        } ?: fail("ACCESS_DENIED", "本地传输路径须位于 /workspace、/home/session 或当前已登记的 Linux 工作目录")
+        val privateRoot = when {
+            routed.kind == LinuxSessionPathKind.PRIVATE -> current.root.uuid
+            routed.kind == LinuxSessionPathKind.WORKSPACE && current.workspaceOverride == null ->
+                selected?.workspace?.takeIf { it.kind == "branch_shared" }?.location
+            else -> null
+        }
+        if (writing) requireWritable(sessionId, current, path)
+        val relative = if (routed.kind == LinuxSessionPathKind.ROOTFS) requireNotNull(branchRelative) else routed.path
+        resolveRemoteMountLocalFile(sessionId, current.mount.id, root, relative, path, privateRoot, writing)
+    }
 
     override suspend fun searchRoots(sessionId: String): List<String> {
         val cwd = workingDirectory(sessionId)
@@ -356,6 +388,10 @@ class LinuxSessionExternalWorkspaceAccess(
         }
         if ((tuple.firstOrNull() as? JsonPrimitive)?.content !in setOf("path", "move")) return@operation target
         val paths = tuple.drop(1).map { (it as? JsonPrimitive)?.content ?: return@operation null }
+        if (ToolExecutionTargets.isPathMutation(tool.function.name)) {
+            val aliases = visible(sessionId).filter { it.isSftpRemoteSource }.map { it.alias }.toSet()
+            if (paths.any { LinuxSessionPaths.aliasOf(it) in aliases }) throw sftpGenericMutationDenied()
+        }
         paths.forEach { validatePath(sessionId, it) }
         val ids = visible(sessionId).associate { it.alias to it.id } + ("" to current.mount.id)
         val aliases = paths.map(LinuxSessionPaths::aliasOf).toSet() + ""
@@ -494,7 +530,7 @@ class LinuxSessionExternalWorkspaceAccess(
             requireWritable(sessionId, current, path)
             true
         } catch (failure: ExternalFolderException) {
-            if (failure.code !in setOf("READ_ONLY", "ACCESS_DENIED")) throw failure
+            if (failure.code !in setOf("READ_ONLY", "ACCESS_DENIED", SFTP_USE_REMOTE_MOUNT_TOOL)) throw failure
             false
         } catch (_: com.promenar.infinity.startup.StartupIsolationException) {
             false
@@ -546,7 +582,10 @@ class LinuxSessionExternalWorkspaceAccess(
         val target = route(current, path)
         if (target.kind == LinuxSessionPathKind.EXTERNAL) {
             val alias = ExternalMountPaths.parse(target.path)?.first
-            visible(sessionId).singleOrNull { it.alias == alias }?.requireWritable()
+            visible(sessionId).singleOrNull { it.alias == alias }?.let { mount ->
+                if (mount.isSftpRemoteSource) throw sftpGenericMutationDenied()
+                mount.requireWritable()
+            }
         }
         com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = sessionId, rootId = current.root.uuid,
             path = current.root.physicalRootPath)
@@ -695,7 +734,7 @@ class LinuxSessionExternalWorkspaceAccess(
         // 目录工作区可能位于共享存储（FUSE 不支持用户属性），不向用户目录写 nonce；与工作区 id、路径一起只取 inode，不含设备号。
         return com.promenar.infinity.data.repository.PersistentFileIdentity.inode(attributes.fileKey())
     }
-    private fun allowed(mount: ExternalMount) = mount.sourceType == "real_path" || mount.isKnowledgeBaseSource || mount.isUserSkills
+    private fun allowed(mount: ExternalMount) = mount.sourceType == "real_path" || mount.isKnowledgeBaseSource || mount.isUserSkills || mount.isSftpRemoteSource
     private fun directory(path: String) = ExternalFolderEntry(path, path.substringAfterLast('/'), true, 0, 0)
     private fun parent(path: String) = path.substringBeforeLast('/').ifEmpty { "/" }
     private fun child(path: String, name: String) = path.trimEnd('/') + "/$name"

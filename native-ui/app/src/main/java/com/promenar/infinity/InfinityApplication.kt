@@ -1,5 +1,23 @@
 package com.promenar.infinity
 
+import com.promenar.infinity.data.generation.ResolvedRemoteMount
+import com.promenar.infinity.data.generation.remoteMountTargetResolver
+import com.promenar.infinity.data.ssh.RemoteSha256Receipt
+import com.promenar.infinity.data.ssh.SftpMountTransport
+import com.promenar.infinity.data.ssh.SshFailure
+import com.promenar.infinity.data.storage.ExternalFolderManager
+import com.promenar.infinity.data.storage.ExternalMountPaths
+import com.promenar.infinity.data.storage.RemotePreviewCache
+import com.promenar.infinity.data.storage.RemoteTransferEndpoint
+import com.promenar.infinity.data.storage.RemoteTransferJournal
+import com.promenar.infinity.data.storage.RemoteTransferManager
+import com.promenar.infinity.data.storage.SftpExternalFolderBackend
+import com.promenar.infinity.domain.storage.ExternalMount
+import com.promenar.infinity.domain.storage.RemoteTransferDirection
+import com.promenar.infinity.domain.storage.SftpRemoteDirEntry
+import com.promenar.infinity.domain.storage.SftpRemoteMountSpec
+import com.promenar.infinity.domain.tool.SshExecutionIdentity
+import com.promenar.infinity.ui.chat.manager.skills.remoteMountTools
 import androidx.room.withTransaction
 import com.promenar.infinity.startup.*
 import kotlinx.serialization.encodeToString
@@ -1539,9 +1557,91 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
 
+    val remotePreviewCache: RemotePreviewCache by lazy { RemotePreviewCache(cacheDir) }
+
+    val remoteTransferManager: RemoteTransferManager by lazy {
+        RemoteTransferManager(
+            journal = RemoteTransferJournal(noBackupFilesDir),
+            resolveEndpoint = { task ->
+                val scope = task.sessionId ?: ExternalMountPaths.LIBRARY_SCOPE
+                if (task.direction != RemoteTransferDirection.PREVIEW_CACHE && task.sessionId != null) {
+                    com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = task.sessionId)
+                }
+                val binding = try {
+                    requireRemoteMount(task.mountId, scope)
+                } catch (failure: com.promenar.infinity.domain.storage.ExternalFolderException) {
+                    when (failure.code) {
+                        "SSH_HOST_MISSING" -> throw SshFailure("HOST_AUTHORIZATION_CHANGED")
+                        "LIBRARY_SOURCE_MISSING", "LIBRARY_SOURCE_CHANGED" -> throw SshFailure("CONFLICT")
+                        else -> throw failure
+                    }
+                }
+                if (binding.spec.hostAlias != task.hostAlias) throw SshFailure("HOST_AUTHORIZATION_CHANGED")
+                RemoteTransferEndpoint(
+                    bindRemoteMount("remote-transfer:${task.id}", binding.spec.hostAlias, binding.identity),
+                    binding.identity.digest, binding.spec.rootPath, binding.mount.readOnly,
+                    hostId = binding.identity.hostId, mountSource = binding.sourceIdentity, mountAlias = binding.mount.alias,
+                )
+            },
+            previewCache = remotePreviewCache,
+            registerActivity = { key, active ->
+                sshRuntime.registerExternalPersistentSource("remote-transfer:$key", active) {
+                    remoteTransferManager.pauseFromService(key)
+                }
+            },
+            validateWorkspace = { task, approved, localPath, checkRevision ->
+                val sessionId = task.sessionId ?: throw SshFailure("LOCAL_AUTHORIZATION_CHANGED")
+                val session = sessionRepository.getById(sessionId) ?: throw SshFailure("LOCAL_AUTHORIZATION_CHANGED")
+                val writing = task.direction == RemoteTransferDirection.DOWNLOAD
+                com.promenar.infinity.startup.StartupWriteBarrier.requireWritable(sessionId = sessionId)
+                val current = if (session.runMode == com.promenar.infinity.domain.model.SessionRunMode.LINUX)
+                    linuxSessionFiles.remoteMountLocalFile(sessionId, approved.path, writing)
+                else builtinSessionFiles.remoteMountLocalFile(sessionId, approved.path, writing)
+                if (current.identity != approved.identity || current.file.path != localPath ||
+                    current.privateRootUuid != approved.privateRootUuid
+                ) throw SshFailure("LOCAL_AUTHORIZATION_CHANGED")
+                if (checkRevision && current.revision != approved.revision) {
+                    throw SshFailure(if (writing) "TARGET_CONFLICT" else "SOURCE_CHANGED")
+                }
+            },
+            refreshWorkspaceIndex = { task, rootId ->
+                (workspaceRepository as WorkspaceRepository).reconcileSessionWorkspace(rootId, task.sessionId)
+            },
+            secureLocalFiles = true,
+        )
+    }
+
+    private suspend fun requireRemoteMount(mountId: String, scopeKey: String): ResolvedRemoteMount {
+        val (mount, spec) = externalFolderManager.requireSftpTransferMount(mountId, scopeKey)
+        val host = sshHostStore.find(spec.hostAlias) ?: throw SshFailure("HOST_AUTHORIZATION_CHANGED")
+        return ResolvedRemoteMount(mount, spec, host.executionIdentity())
+    }
+
+    private suspend fun bindRemoteMount(owner: String, alias: String, identity: SshExecutionIdentity): SftpMountTransport {
+        val host = sshHostStore.find(alias) ?: throw SshFailure("HOST_AUTHORIZATION_CHANGED")
+        if (host.executionIdentity() != identity) throw SshFailure("HOST_AUTHORIZATION_CHANGED")
+        return sshRuntime.withHostSnapshot(host) { sshRuntime.bindSftpMountTransport(owner, alias) }
+    }
+
+    private fun remoteMountBackend(mount: ExternalMount, spec: SftpRemoteMountSpec, connect: suspend () -> SftpMountTransport) =
+        SftpExternalFolderBackend(mount, spec, File(cacheDir, "remote-mount-staging"), connect)
+
+    /** 校验当前范围内的远程普通文件，返回服务端计算的摘要。 */
+    suspend fun computeRemoteFileSha256(mountId: String, scopeKey: String, relativePath: String): RemoteSha256Receipt {
+        val binding = requireRemoteMount(mountId, scopeKey)
+        return remoteMountBackend(binding.mount, binding.spec) {
+            bindRemoteMount("ui", binding.spec.hostAlias, binding.identity)
+        }.computeFileSha256(if (relativePath.startsWith('/')) relativePath else "/$relativePath")
+    }
+
     /** 统一资源管理器的位置、文件操作与固定文件夹。 */
     val fileManagerServices: com.promenar.infinity.domain.files.FileManagerServices by lazy {
-        com.promenar.infinity.data.files.DefaultFileManagerServices.create(this, ::isSessionBusyForUserFileOps)
+        com.promenar.infinity.data.files.DefaultFileManagerServices.create(
+            this, ::isSessionBusyForUserFileOps, remotePreviewCache,
+            remoteHostIdentity = { mount ->
+                SftpRemoteMountSpec.decode(mount.sourceId)?.hostAlias?.let { sshHostStore.find(it)?.executionIdentity()?.digest }
+            },
+        )
     }
 
     val workspaceRepository: com.promenar.infinity.domain.repository.IWorkspaceRepository by lazy {
@@ -1851,9 +1951,21 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         )
     }
 
-    val externalFolderManager: com.promenar.infinity.domain.storage.ExternalWorkspaceAccess by lazy {
-        com.promenar.infinity.data.storage.ExternalFolderManager(
+    val externalFolderManager: ExternalFolderManager by lazy {
+        ExternalFolderManager(
             this, database.externalMountDao(), workspaceRepository, pendingDocumentIndexCoordinator,
+            sftpBackendFactory = { mount, spec ->
+                remoteMountBackend(mount, spec) {
+                    val owner = if (ExternalMountPaths.isLibraryScope(mount.sessionId)) "ui" else "agent:${mount.sessionId}"
+                    sshRuntime.bindSftpMountTransport(owner, spec.hostAlias)
+                }
+            },
+            sftpHostExists = { alias -> sshHostStore.find(alias) != null },
+            sftpProbe = { alias, path -> sshRuntime.sftpMountProbe("ui", alias, path) },
+            sftpBrowse = { alias, path ->
+                sshRuntime.sftpMountList("ui", alias, path).filter { it.isDirectory && !it.isSymlink }
+                    .map { SftpRemoteDirEntry(it.name, it.fullPath, true) }
+            },
             workspaces = sessionWorkspaceResolver,
             userSkillsDirectory = skillCatalog.userRoot,
             // 每次知识库挂载访问都会核验根，只查根列，不加载会话实体。
@@ -2152,6 +2264,15 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
                     linux = linux.files,
                     linuxAvailable = { BuildConfig.DISTRIBUTION == "sideload" && com.promenar.infinity.domain.tool.LinuxExecRouting.available },
                 ),
+            ).forEach(::register)
+            remoteMountTools(
+                resolver = remoteMountTargetResolver(externalFolderManager, sshHostStore, builtinSessionFiles, linuxSessionFiles),
+                transfers = { remoteTransferManager },
+                backend = { sessionId, binding ->
+                    remoteMountBackend(binding.mount, binding.spec) {
+                        bindRemoteMount("agent:$sessionId", binding.spec.hostAlias, binding.identity)
+                    }
+                },
             ).forEach(::register)
             com.promenar.infinity.ui.chat.manager.skills.sshHostManagementTools(
                 store = sshHostStore,

@@ -7,11 +7,10 @@ import com.promenar.infinity.domain.storage.*
 import com.promenar.infinity.domain.storage.RemoteTransferDirection.*
 import com.promenar.infinity.domain.storage.RemoteTransferState.*
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -26,6 +25,9 @@ data class RemoteTransferEndpoint(
     val hostIdentityDigest: String,
     val rootPath: String,
     val readOnly: Boolean,
+    val hostId: String? = null,
+    val mountSource: String? = null,
+    val mountAlias: String? = null,
 )
 
 /** 由应用进程持有一个实例，用 noBackupFilesDir 中的检查点恢复任务。 */
@@ -35,7 +37,13 @@ class RemoteTransferManager(
     private val previewCache: RemotePreviewCache? = null,
     private val registerActivity: suspend (key: String, active: Boolean) -> Unit = { _, _ -> },
     private val timeMillis: () -> Long = System::currentTimeMillis,
+    private val validateWorkspace: suspend (RemoteTransferTask, RemoteTransferWorkspaceBinding, String, Boolean) -> Unit = { _, _, _, _ ->
+        throw SshFailure("LOCAL_AUTHORIZATION_CHANGED")
+    },
+    private val refreshWorkspaceIndex: suspend (RemoteTransferTask, String) -> Unit = { _, _ -> },
+    secureLocalFiles: Boolean = false,
 ) : RemoteTransferController, AutoCloseable {
+    private val localIo = RemoteTransferLocalIo(secureLocalFiles)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Mutex()
     private val records = journal.load().associateByTo(linkedMapOf()) { it.task.id }
@@ -63,16 +71,22 @@ class RemoteTransferManager(
         if (name.startsWith(".infinity-part-")) throw SshFailure("INVALID_REMOTE_PATH")
         if (direction == UPLOAD && request.overwritePolicy == RemoteOverwritePolicy.ALLOW_OVERWRITE) throw SshFailure("UNSUPPORTED_OVERWRITE")
         val local = if (direction == PREVIEW_CACHE) null else validateLocalPath(request.localPath)
+        val authorization = request.authorization
         val timestamp = timeMillis()
         val id = UUID.randomUUID().toString()
         val task = RemoteTransferTask(
             id, direction, QUEUED, request.mountId, request.hostAlias, name, request.sourceLabel, request.targetLabel,
             request.mountVirtualPath, remote, if (direction == DOWNLOAD) local else null,
-            0, 0, 0, null, request.overwritePolicy, true, null, null, null,
+            authorization?.bytesTotal ?: 0, 0, 0, null, request.overwritePolicy, true, null, null, null,
             request.sessionId, timestamp, timestamp,
         )
         lock.withLock {
-            set(Record(task, localSourcePath = if (direction == UPLOAD) local else null))
+            set(Record(
+                task, localSourcePath = if (direction == UPLOAD) local else null,
+                hostIdentity = authorization?.hostIdentity, mountRoot = authorization?.mountRoot,
+                hostId = authorization?.hostId, mountSource = authorization?.mountSource, workspace = authorization?.workspace,
+                remoteSourceRevision = authorization?.remoteSourceRevision,
+            ))
             schedule()
         }
         task
@@ -213,6 +227,7 @@ class RemoteTransferManager(
             if (initial.task.state == PAUSED) return
             val endpoint = resolveEndpoint(initial.task)
             validateEndpoint(initial, endpoint)
+            revalidateWorkspace(initial, checkRevision = initial.task.state != RECONCILING)
             if (initial.task.state == RECONCILING) {
                 edit(id) { it.state(RECONCILING) }
                 reconcile(id, endpoint)
@@ -244,6 +259,7 @@ class RemoteTransferManager(
                 val code = when (failure) {
                     is SshFailure -> failure.code
                     is ExternalFolderException -> failure.code
+                    is com.promenar.infinity.startup.StartupIsolationException -> "READ_ONLY"
                     else -> "IO_FAILED"
                 }
                 edit(id) { current ->
@@ -279,8 +295,10 @@ class RemoteTransferManager(
         val initial = record(id)
         val task = initial.task
         val file = File(requireNotNull(initial.localSourcePath))
+        val expected = localIo.attributes(file)
         val source = localSource(file)
         requireUnchanged(initial.source, source)
+        revalidateWorkspace(initial, checkRevision = true)
         bind(id, endpoint, source)
         val transport = endpoint.transport
         val temp = sftpPartPath(task.remoteFullPath, id)
@@ -289,8 +307,10 @@ class RemoteTransferManager(
         }?.size }
         if (!record(id).ownsTemporary) createTemporary(id) { transport.createTemporary(temp) }
         advance(id, TRANSFERRING)
-        val out = transport.sftpResumableUploadChunked(temp, file, source.size, record(id).task.bytesTransferred,
-            { directive(id) }, progress(id))
+        val out = localIo.withFile(file, writing = false, expected = expected) { pinned ->
+            transport.sftpResumableUploadChunked(temp, pinned, source.size, record(id).task.bytesTransferred,
+                { directive(id) }, progress(id))
+        }
         if (out.paused) throw PauseTransfer()
         advance(id, VERIFYING)
         requireUnchanged(source, localSource(file))
@@ -311,24 +331,29 @@ class RemoteTransferManager(
         val epoch = cache?.generationToken()
         val transport = endpoint.transport
         val source = remoteSource(transport, task.remoteFullPath)
+        if (initial.remoteSourceRevision != null &&
+            initial.remoteSourceRevision != sftpMountEntryIdentity(task.remoteFullPath, source.size, source.modifiedAt)
+        ) throw SshFailure("SOURCE_CHANGED")
         if (cache != null && source.size > cache.stats.value.maxBytes) throw SshFailure("TOO_LARGE")
         requireUnchanged(initial.source, source)
         bind(id, endpoint, source)
         val part = localPart(task)
-        resumePart(id, endpoint) { if (Files.exists(part.toPath(), NOFOLLOW_LINKS)) localAttributes(part).size() else null }
-        if (!record(id).ownsTemporary) createTemporary(id) { Files.createFile(part.toPath()) }
+        resumePart(id, endpoint) { if (localIo.exists(part)) localIo.attributes(part).size() else null }
+        if (!record(id).ownsTemporary) createTemporary(id) { localIo.create(part) }
         advance(id, TRANSFERRING)
-        val out = transport.sftpResumableDownloadChunked(task.remoteFullPath, part, source.size, record(id).task.bytesTransferred,
-            { directive(id) }, progress(id))
+        val out = localIo.withFile(part, writing = true, expected = localIo.attributes(part)) { pinned ->
+            transport.sftpResumableDownloadChunked(task.remoteFullPath, pinned, source.size, record(id).task.bytesTransferred,
+                { directive(id) }, progress(id))
+        }
         if (out.paused) throw PauseTransfer()
         advance(id, VERIFYING)
         requireUnchanged(source, remoteSource(transport, task.remoteFullPath))
         val remoteHash = transport.sha256(task.remoteFullPath)
-        if (remoteHash.sha256 != sha256File(part)) throw SshFailure("CHECKSUM_MISMATCH")
+        val verifiedPart = verifyLocalPart(part, source.size, remoteHash.sha256, "CHECKSUM_MISMATCH")
         requireUnchanged(source, remoteSource(transport, task.remoteFullPath))
         revalidateEndpoint(id, endpoint, writing = false)
         prepareCommit(id, remoteHash)
-        val deduplicated = commitDownload(record(id), endpoint, part, epoch)
+        val deduplicated = commitDownload(record(id), endpoint, part, verifiedPart, epoch)
         success(id, deduplicated)
         clearTemporary(id)
     }
@@ -387,6 +412,7 @@ class RemoteTransferManager(
                 } else {
                     if (endpoint.readOnly) throw SshFailure("READ_ONLY")
                     requireUnchanged(current.source, localSource(File(requireNotNull(current.localSourcePath))))
+                    revalidateEndpoint(id, endpoint, writing = true)
                     transport.publish(sftpPartPath(task.remoteFullPath, id), task.remoteFullPath, hash).alreadyExistedSameHash
                 }
             }
@@ -398,9 +424,12 @@ class RemoteTransferManager(
             }
             DOWNLOAD -> {
                 val target = localTarget(task)
-                if (Files.exists(target.toPath(), NOFOLLOW_LINKS) && localAttributes(target).size() == task.bytesTotal && sha256File(target) == hash) {
+                if (localIo.exists(target) && localIo.attributes(target).size() == task.bytesTotal && localIo.sha256(target) == hash) {
                     true
-                } else commitVerifiedDownload(current, endpoint, hash)
+                } else {
+                    revalidateWorkspace(current, checkRevision = true)
+                    commitVerifiedDownload(current, endpoint, hash)
+                }
             }
         }
         success(id, deduplicated)
@@ -409,13 +438,24 @@ class RemoteTransferManager(
 
     private suspend fun commitVerifiedDownload(record: Record, endpoint: RemoteTransferEndpoint, hash: String): Boolean {
         val part = localPart(record.task)
-        if (localAttributes(part).size() != record.task.bytesTotal || sha256File(part) != hash) throw SshFailure("CHECKPOINT_INVALID")
+        val verified = verifyLocalPart(part, record.task.bytesTotal, hash, "CHECKPOINT_INVALID")
         requireUnchanged(record.source, remoteSource(endpoint.transport, record.task.remoteFullPath))
         if (endpoint.transport.sha256(record.task.remoteFullPath).sha256 != hash) throw SshFailure("SOURCE_CHANGED")
-        return commitDownload(record, endpoint, part, previewCache?.generationToken())
+        revalidateEndpoint(record.task.id, endpoint, writing = false)
+        return commitDownload(record, endpoint, part, verified, previewCache?.generationToken())
     }
 
-    private suspend fun commitDownload(record: Record, endpoint: RemoteTransferEndpoint, part: File, epoch: Long?): Boolean {
+    private suspend fun verifyLocalPart(part: File, size: Long, hash: String, error: String): BasicFileAttributes {
+        val before = localIo.attributes(part)
+        if (before.size() != size || localIo.sha256(part) != hash || !localIo.sameRevision(before, localIo.attributes(part))) {
+            throw SshFailure(error)
+        }
+        return before
+    }
+
+    private suspend fun commitDownload(
+        record: Record, endpoint: RemoteTransferEndpoint, part: File, verifiedPart: BasicFileAttributes, epoch: Long?,
+    ): Boolean {
         val task = record.task
         val hash = requireNotNull(record.verifiedSha256)
         if (task.direction == PREVIEW_CACHE) {
@@ -425,16 +465,19 @@ class RemoteTransferManager(
         }
 
         val target = localTarget(task)
+        revalidateWorkspace(record, checkRevision = true)
         try {
-            Files.createLink(target.toPath(), part.toPath())
-            return false
+            localIo.publishNew(part, target, verifiedPart)
+        } catch (_: AtomicMoveNotSupportedException) {
+            throw SshFailure("ATOMIC_LOCAL_COMMIT_UNSUPPORTED")
         } catch (_: FileAlreadyExistsException) {
-            val attributes = localAttributes(target)
-            if (attributes.size() == task.bytesTotal && sha256File(target) == hash) return true
+            val attributes = localIo.attributes(target)
+            if (attributes.size() == task.bytesTotal && localIo.sha256(target) == hash) return true
             if (task.overwritePolicy != RemoteOverwritePolicy.ALLOW_OVERWRITE) throw SshFailure("TARGET_CONFLICT")
-            Files.move(part.toPath(), target.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
-            return false
+            revalidateWorkspace(record, checkRevision = true)
+            localIo.publishReplacing(part, target, verifiedPart, attributes)
         }
+        return false
     }
 
     private fun previewKey(record: Record, endpoint: RemoteTransferEndpoint): RemotePreviewKey {
@@ -461,11 +504,13 @@ class RemoteTransferManager(
                     endpoint.transport.removeFile(path)
                 }
             } else {
-                val path = localPart(task).toPath()
-                if (Files.exists(path, NOFOLLOW_LINKS) && (!Files.isRegularFile(path, NOFOLLOW_LINKS) ||
-                        (!current.ownsTemporary && Files.size(path) != 0L))
-                ) throw SshFailure("INVALID_TEMPORARY_FILE")
-                Files.deleteIfExists(path)
+                revalidateWorkspace(current, checkRevision = false)
+                val part = localPart(task)
+                if (localIo.exists(part)) {
+                    val attributes = localIo.attributes(part)
+                    if (!current.ownsTemporary && attributes.size() != 0L) throw SshFailure("INVALID_TEMPORARY_FILE")
+                    localIo.delete(part)
+                }
             }
             lock.withLock {
                 val latest = records.getValue(id)
@@ -487,21 +532,33 @@ class RemoteTransferManager(
             throw SshFailure("MOUNT_CONFIGURATION_CHANGED")
         }
         if (writing && latest.readOnly) throw SshFailure("READ_ONLY")
+        revalidateWorkspace(current, checkRevision = true)
     }
 
     private fun validateEndpoint(record: Record, endpoint: RemoteTransferEndpoint) {
         val root = SftpRemoteMountSpec.canonicalPath(endpoint.rootPath)
-        if (record.mountRoot != null && record.mountRoot != root) throw SshFailure("MOUNT_CONFIGURATION_CHANGED")
+        if (record.mountRoot != null && record.mountRoot != root ||
+            record.mountSource != null && record.mountSource != endpoint.mountSource
+        ) throw SshFailure(if (record.workspace != null) "CONFLICT" else "MOUNT_CONFIGURATION_CHANGED")
         val path = record.task.remoteFullPath
         if (!path.startsWith(root.trimEnd('/') + "/") || path == root) throw SshFailure("INVALID_REMOTE_PATH")
         val relative = path.removePrefix(root.trimEnd('/')).removePrefix("/")
+        if (record.workspace != null && (endpoint.mountAlias == null ||
+            record.task.mountVirtualPath != "/mnt/${endpoint.mountAlias}/$relative")
+        ) throw SshFailure("CONFLICT")
         relative.split('/').forEach {
             ExternalFolderPaths.validateName(it)
             if (it.startsWith(".infinity-part-")) throw SshFailure("INVALID_REMOTE_PATH")
         }
-        if (endpoint.hostIdentityDigest.isBlank() || (record.hostIdentity != null && record.hostIdentity != endpoint.hostIdentityDigest)) {
-            throw SshFailure("HOST_CONFIGURATION_CHANGED")
-        }
+        if (endpoint.hostIdentityDigest.isBlank() || record.hostIdentity != null && record.hostIdentity != endpoint.hostIdentityDigest ||
+            record.hostId != null && record.hostId != endpoint.hostId
+        ) throw SshFailure(if (record.workspace != null) "HOST_AUTHORIZATION_CHANGED" else "HOST_CONFIGURATION_CHANGED")
+    }
+
+    private suspend fun revalidateWorkspace(record: Record, checkRevision: Boolean) {
+        val workspace = record.workspace ?: return
+        val path = record.localSourcePath ?: record.task.localTargetPath ?: throw SshFailure("INVALID_LOCAL_PATH")
+        validateWorkspace(record.task, workspace, path, checkRevision)
     }
 
     private suspend fun bind(id: String, endpoint: RemoteTransferEndpoint, source: Source) = edit(id) {
@@ -514,12 +571,18 @@ class RemoteTransferManager(
         it.state(COMMITTING).copy(verifiedSha256 = receipt.sha256, verificationMethod = receipt.verificationMethod)
     }
 
-    private suspend fun success(id: String, deduplicated: Boolean) = edit(id) {
-        val task = it.task
-        val receipt = RemoteTransferReceipt(task.mountVirtualPath, task.remoteFullPath, task.bytesTotal,
-            requireNotNull(it.verifiedSha256), requireNotNull(it.verificationMethod), task.id, deduplicated)
-        val done = it.state(SUCCEEDED)
-        done.copy(cleanupPending = it.hasTemporary, task = done.task.copy(receipt = receipt, bytesTransferred = task.bytesTotal))
+    private suspend fun success(id: String, deduplicated: Boolean) {
+        val current = record(id)
+        if (current.task.direction == DOWNLOAD) current.workspace?.privateRootUuid?.let {
+            refreshWorkspaceIndex(current.task, it)
+        }
+        edit(id) {
+            val task = it.task
+            val receipt = RemoteTransferReceipt(task.mountVirtualPath, task.remoteFullPath, task.bytesTotal,
+                requireNotNull(it.verifiedSha256), requireNotNull(it.verificationMethod), task.id, deduplicated)
+            val done = it.state(SUCCEEDED)
+            done.copy(cleanupPending = it.hasTemporary, task = done.task.copy(receipt = receipt, bytesTransferred = task.bytesTotal))
+        }
     }
 
     private fun progress(id: String): suspend (Long) -> Unit {
@@ -585,7 +648,7 @@ class RemoteTransferManager(
     private fun Record.state(state: RemoteTransferState, code: String? = null) = copy(task = task.copy(
         state = state, bytesPerSecond = 0, etaSeconds = null, errorCode = code,
         errorMessage = code?.let { "远程传输失败（$it）" },
-        canResume = state !in setOf(CANCELLED, SUCCEEDED) && code !in setOf("SOURCE_CHANGED", "HOST_CONFIGURATION_CHANGED"),
+        canResume = state !in setOf(CANCELLED, SUCCEEDED) && code !in setOf("SOURCE_CHANGED", "HOST_CONFIGURATION_CHANGED", "HOST_AUTHORIZATION_CHANGED", "MOUNT_CONFIGURATION_CHANGED", "LOCAL_AUTHORIZATION_CHANGED"),
         updatedAt = timeMillis(),
     ))
 
@@ -605,15 +668,11 @@ class RemoteTransferManager(
         return file.path
     }
 
-    private fun localAttributes(file: File): BasicFileAttributes =
-        Files.readAttributes(file.toPath(), BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-            .also { if (!it.isRegularFile) throw SshFailure("UNSUPPORTED_FILE_TYPE") }
-
-    private fun localSource(file: File): Source {
+    private suspend fun localSource(file: File): Source {
         validateLocalPath(file.path)
-        val before = localAttributes(file)
-        val hash = sha256File(file)
-        val after = localAttributes(file)
+        val before = localIo.attributes(file)
+        val hash = localIo.sha256(file)
+        val after = localIo.attributes(file)
         if (before.size() != after.size() || before.lastModifiedTime() != after.lastModifiedTime() || before.fileKey() != after.fileKey()) throw SshFailure("SOURCE_CHANGED")
         return Source(before.size(), before.lastModifiedTime().toMillis(), hash)
     }
@@ -635,7 +694,8 @@ class RemoteTransferManager(
     private class PauseTransfer : Exception()
     private companion object {
         val finished = setOf(CANCELLED, SUCCEEDED, FAILED)
-        val knownPublishFailures = setOf("TARGET_CONFLICT", "ATOMIC_PUBLISH_UNSUPPORTED", "CHECKSUM_MISMATCH",
-            "INVALID_TEMPORARY_FILE", "ACCESS_DENIED", "NOT_FOUND", "PREVIEW_CACHE_UNAVAILABLE")
+        val knownPublishFailures = setOf("TARGET_CONFLICT", "ATOMIC_PUBLISH_UNSUPPORTED", "ATOMIC_LOCAL_COMMIT_UNSUPPORTED", "CHECKSUM_MISMATCH",
+            "INVALID_TEMPORARY_FILE", "CHECKPOINT_INVALID", "ACCESS_DENIED", "NOT_FOUND", "PREVIEW_CACHE_UNAVAILABLE",
+            "HOST_AUTHORIZATION_CHANGED", "CONFLICT", "READ_ONLY")
     }
 }

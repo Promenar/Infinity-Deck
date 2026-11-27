@@ -9,6 +9,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /** 完整授权目标使用 JSON 元组编码；显示格式不参与授权比较。 */
 object ToolExecutionTargets {
@@ -28,6 +30,10 @@ object ToolExecutionTargets {
             if (!tool.runtimeToolId.startsWith(prefix)) return null
             val remoteName = tool.runtimeToolId.removePrefix(prefix).takeIf(String::isNotBlank) ?: return null
             return tuple("mcp", serverId, remoteName)
+        }
+        val remoteMount = RemoteMountOperation.fromTool(tool.function.name)
+        if (remoteMount != null && tool.sourceId == "builtin") {
+            return remoteMountTarget(remoteMount, args, resolvedPaths, sshIdentities)
         }
         if (tool.function.name == "ssh_session_send") {
             val id = args.string("session_id") ?: return null
@@ -213,7 +219,7 @@ object ToolExecutionTargets {
             "path", "host", "tool", "ssh_host" -> parts.getOrNull(1)?.takeIf { parts.size == 2 }
             "move" -> parts.takeIf { it.size == 3 }?.let { "${it[1]} → ${it[2]}" }
             "mcp" -> parts.takeIf { it.size == 3 }?.let { "${it[1]} / ${it[2]}" }
-            "process", "remote_path" -> parts.takeIf { it.size == 3 }?.let { "${it[1]} · ${it[2]}" }
+            "process", "remote_path", "remote_mount" -> parts.takeIf { it.size == 3 }?.let { "${it[1]} · ${it[2]}" }
             else -> null
         } ?: target
         // 换行与制表符显示为可见符号，多行命令不会被拼成看似不同的单行；其它控制与双向格式字符剥离。
@@ -235,6 +241,50 @@ object ToolExecutionTargets {
             if (limit > 0 && Character.isHighSurrogate(safe[limit - 1])) limit - 1 else limit
         }
         return safe.substring(0, end) + "…"
+    }
+
+    private fun remoteMountTarget(
+        operation: RemoteMountOperation,
+        arguments: JsonObject,
+        paths: Map<String, String>,
+        identities: Map<String, SshExecutionIdentity>,
+    ): String? {
+        val args = runCatching { RemoteMountArguments.parse(operation, arguments) }.getOrNull() ?: return null
+        val path = args.path ?: return null
+        val mountId = paths["mountId"] ?: return null
+        val host = paths["host"] ?: return null
+        val root = paths["mountRoot"] ?: return null
+        val source = paths["mountSource"] ?: return null
+        val ssh = identities[host] ?: return null
+        if (ssh.hostId.isBlank() || ssh.digest.isBlank()) return null
+        val local = if (operation.transfers) paths["localPath"] ?: return null else null
+        if (local != null && com.promenar.infinity.data.ssh.isSftpProtectedLocalPath(local)) return null
+        if (operation == RemoteMountOperation.DOWNLOAD && com.promenar.infinity.data.ssh.isSftpProtectedLocalPath(requireNotNull(args.workspacePath))) return null
+        val metadata = buildJsonObject {
+            put("oneShot", true)
+            put("operation", operation.toolName)
+            put("mountId", mountId)
+            put("mountRoot", root)
+            put("mountSource", source)
+            put("host", host)
+            put("sshHostId", ssh.hostId)
+            put("sshIdentity", ssh.digest)
+            put("mountPath", path.virtual)
+            put("remotePath", path.under(root))
+            args.targetPath?.let {
+                put("targetMountPath", it.virtual)
+                put("targetRemotePath", it.under(root))
+            }
+            args.expectedSha256?.let { put("expectedSha256", it) }
+            if (local != null) {
+                put("localPath", local)
+                put("workspace_path", requireNotNull(args.workspacePath))
+                put("localIdentity", paths["localIdentity"] ?: return null)
+                put("localRevision", paths["localRevision"] ?: return null)
+                put("overwrite", args.overwrite)
+            }
+        }
+        return JsonArray(listOf(JsonPrimitive("remote_mount"), JsonPrimitive(host), JsonPrimitive(path.virtual), metadata)).toString()
     }
 
     private fun moveTarget(args: JsonObject, resolvedPaths: Map<String, String>): String? {

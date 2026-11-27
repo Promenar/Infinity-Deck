@@ -13,6 +13,8 @@ import com.promenar.infinity.data.storage.ExternalFolderManager
 import com.promenar.infinity.data.storage.ExternalMountPaths
 import com.promenar.infinity.data.storage.externalSnapshotMime
 import com.promenar.infinity.data.storage.isKnowledgeBaseSource
+import com.promenar.infinity.data.storage.isSftpRemoteSource
+import com.promenar.infinity.data.storage.resolveRemoteMountLocalFile
 import com.promenar.infinity.data.storage.isUserSkills
 import com.promenar.infinity.data.storage.requireWritable
 import com.promenar.infinity.data.workspace.BuiltinHostPathBackend
@@ -51,7 +53,7 @@ import java.util.UUID
  * 内置模式真实路径命名空间：
  * - 文件工具与 shell/python 共享同一套真实 Android 规范路径；
  * - 私有会话目录继续走 Room 事务、版本历史与向量索引；
- * - 仅物理上不存在 POSIX 路径的逻辑源（`/mnt/knowledge`、`/mnt/<saf-alias>`）保留虚拟前缀；
+ * - 仅物理上不存在 POSIX 路径的逻辑源（资料库、SAF、远程 SFTP）保留虚拟前缀；
  * - 关键运行时数据目录开放只读自诊断、硬拒文件工具写删，加密密钥存储读写全拒；
  * - 用户技能目录（`files/agent_skills`）与项目 `.agents/skills` 的写删改始终强制 L2 审批；
  * - 工作区外的其它合法真实路径写入归入 L1 `OUTSIDE_WORKSPACE` 审批。
@@ -91,6 +93,27 @@ class BuiltinRealPathWorkspaceAccess(
     suspend fun privateWorkspacePath(sessionId: String): String = namespace(sessionId).ctx.privatePath
 
     val userSkillsRealPath: String get() = BuiltinRealPathContext.canonicalOrAbs(userSkillsDir)
+
+    internal suspend fun remoteMountLocalFile(sessionId: String, rawPath: String, writing: Boolean) = operation {
+        if (com.promenar.infinity.data.ssh.isSftpProtectedLocalPath(rawPath)) {
+            fail("ACCESS_DENIED", "技能与受保护路径不可用于远程挂载传输")
+        }
+        val current = namespace(sessionId)
+        if (current.workspace is SessionWorkspace.Unavailable && !rawPath.trim().startsWith('/')) {
+            fail("WORKSPACE_UNAVAILABLE", "当前工作区不可用，请检查目录与授权")
+        }
+        val routed = route(current, rawPath)
+        val selected = current.workspace as? SessionWorkspace.Directory
+        val private = routed.kind == BuiltinRealPathKind.PRIVATE
+        val root = when {
+            private -> File(current.root.physicalRootPath)
+            routed.kind == BuiltinRealPathKind.WORKSPACE && selected != null -> selected.root
+            else -> fail("ACCESS_DENIED", "本地传输路径须位于当前工作区")
+        }
+        if (writing) requireMutableTarget(sessionId, current, rawPath)
+        resolveRemoteMountLocalFile(sessionId, current.mount.id, root, routed.relativePath, routed.canonicalPath,
+            if (private) current.root.uuid else selected?.workspace?.takeIf { it.kind == "branch_shared" }?.location, writing)
+    }
 
     override suspend fun searchRoots(sessionId: String): List<String> = operation {
         val ctx = namespace(sessionId).ctx
@@ -384,6 +407,7 @@ class BuiltinRealPathWorkspaceAccess(
         val paths = tuple.drop(1).map { (it as? JsonPrimitive)?.content ?: return@operation null }
         val routes = paths.map { route(current, it) }
         val isMutation = ToolExecutionTargets.isPathMutation(tool.function.name)
+        if (isMutation && routes.any { it.mount?.isSftpRemoteSource == true }) throw sftpGenericMutationDenied()
         if (routes.any { it.kind == BuiltinRealPathKind.RUNTIME_DATA_SECRET }) {
             fail("ACCESS_DENIED", "加密密钥存储文件不可通过文件工具访问")
         }
@@ -509,7 +533,7 @@ class BuiltinRealPathWorkspaceAccess(
             BuiltinRealPathKind.VIRTUAL_MOUNTS_ROOT, BuiltinRealPathKind.RUNTIME_DATA_SECRET, BuiltinRealPathKind.RUNTIME_DATA_PROTECTED -> false
             BuiltinRealPathKind.VIRTUAL_MOUNT -> if (routed.mount?.isKnowledgeBaseSource == true) {
                 withOriginalBindings(current) { knowledgeManager?.isKnowledgePathWritable(sessionId, routed.canonicalPath) ?: false }
-            } else routed.mount?.readOnly == false
+            } else routed.mount?.let { !it.isSftpRemoteSource && !it.readOnly } == true
             BuiltinRealPathKind.HOST_REAL_PATH -> hostBackend.isWritable(routed.canonicalPath)
             else -> try {
                 requireMutableTarget(sessionId, current, routed.canonicalPath)
@@ -533,7 +557,7 @@ class BuiltinRealPathWorkspaceAccess(
         val visibleMounts = original.visible(sessionId)
         val realMounts = visibleMounts.filter { it.sourceType == "real_path" && !it.isUserSkills }
             .map { it to File(it.sourceId) }
-        val virtualMounts = visibleMounts.filter { it.isKnowledgeBaseSource || it.sourceType == "saf_tree" }
+        val virtualMounts = visibleMounts.filter { it.isKnowledgeBaseSource || it.sourceType == "saf_tree" || it.isSftpRemoteSource }
         val ctx = BuiltinRealPathContext(
             primaryRoot = primaryDir,
             primaryIsDirectory = current is SessionWorkspace.Directory,
@@ -564,6 +588,7 @@ class BuiltinRealPathWorkspaceAccess(
 
     private suspend fun requireMutableTarget(sessionId: String, current: Namespace, path: String): BuiltinRealPathRoute {
         val routed = route(current, path)
+        if (routed.mount?.isSftpRemoteSource == true) throw sftpGenericMutationDenied()
         when (routed.kind) {
             BuiltinRealPathKind.RUNTIME_DATA_SECRET ->
                 fail("ACCESS_DENIED", "加密密钥存储文件不可通过文件工具访问：${routed.canonicalPath}")

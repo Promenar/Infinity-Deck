@@ -74,7 +74,7 @@ object ToolExecutionPolicy {
         resolvedTarget: String? = null,
         usesLinux: Boolean = false,
     ): Boolean = !isHardBlockedTarget(resolvedTarget) && (
-        (toolName == "browser_eval" && mode == ExecutionMode.WORKSPACE) ||
+        (toolName in setOf("browser_eval", "remote_mount_download") && mode == ExecutionMode.WORKSPACE) ||
             requiresNonGrantableApproval(toolName, risk, resolvedTarget) ||
             grantCategory(mode, toolName, risk, arguments, resolvedTarget, usesLinux) != null
         )
@@ -89,7 +89,7 @@ object ToolExecutionPolicy {
     ): ApprovalGrantCategory? {
         if (isHardBlockedTarget(resolvedTarget)) return null
         // 页面脚本在风险审批档逐次确认，不受命令的限时授权影响。
-        if (toolName == "browser_eval") return null
+        if (toolName in setOf("browser_eval", "remote_mount_download")) return null
         if (requiresNonGrantableApproval(toolName, risk, resolvedTarget)) return null
         val target = resolvedTarget ?: ToolExecutionTargets.extract(
             com.promenar.infinity.data.remote.protocol.ProtocolTool(

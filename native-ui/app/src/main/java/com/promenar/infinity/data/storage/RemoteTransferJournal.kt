@@ -2,6 +2,7 @@ package com.promenar.infinity.data.storage
 
 import com.promenar.infinity.domain.storage.RemoteTransferState
 import com.promenar.infinity.domain.storage.RemoteTransferTask
+import com.promenar.infinity.domain.storage.RemoteTransferWorkspaceBinding
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -29,6 +30,10 @@ class RemoteTransferJournal(noBackupFilesDir: File) {
         val verifiedSha256: String? = null,
         val verificationMethod: String? = null,
         val hidden: Boolean = false,
+        val hostId: String? = null,
+        val mountSource: String? = null,
+        val workspace: RemoteTransferWorkspaceBinding? = null,
+        val remoteSourceRevision: String? = null,
     )
 
     @Serializable

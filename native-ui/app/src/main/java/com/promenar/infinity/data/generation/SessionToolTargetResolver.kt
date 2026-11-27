@@ -35,6 +35,14 @@ suspend fun resolveSessionToolTarget(
     var sftpLocal: com.promenar.infinity.data.ssh.SftpLocalFile? = null
     try {
         val usesLinux = session.runMode == SessionRunMode.LINUX
+        val remoteMountOperation = com.promenar.infinity.domain.tool.RemoteMountOperation.fromTool(tool.function.name)
+        if (remoteMountOperation != null && tool.sourceId == "builtin" && tool.mcpServerId == null) {
+            if (remoteMountOperation == com.promenar.infinity.domain.tool.RemoteMountOperation.STATUS) return null
+            val resolver = remoteMountTargetResolver(mounts ?: return null, sshHostStore ?: return null, builtinFiles, linuxFiles)
+            val parsed = com.promenar.infinity.domain.tool.RemoteMountArguments.parse(remoteMountOperation, args)
+            val binding = resolver.binding(session.id, requireNotNull(parsed.path), remoteMountOperation.writesRemote)
+            return resolver.resolve(session.id, session.runMode, tool, remoteMountOperation, args, parsed, binding).target
+        }
         if (tool.function.name in setOf("sftp_upload", "sftp_download") && tool.mcpServerId == null && tool.sourceId == "builtin") {
             val scope = (args["local_scope"] as? JsonPrimitive)?.content ?: "workspace"
             if (scope == "linux") {
@@ -56,13 +64,19 @@ suspend fun resolveSessionToolTarget(
             return knowledgeLinuxCopyTarget(session, args, repository, mounts)
         if (usesLinux && tool.mcpServerId == null && tool.sourceId == "builtin" &&
             tool.function.name in setOf("read_file", "write_file", "patch_file", "diff_file", "delete_file", "create_file", "create_directory", "move_file", "list_files", "search_files")
-        ) return linuxFiles?.executionTarget(session.id, tool, args)
+        ) return try {
+            linuxFiles?.executionTarget(session.id, tool, args)
+        } catch (denied: com.promenar.infinity.domain.storage.ExternalFolderException) {
+            if (denied.code == com.promenar.infinity.ui.chat.manager.skills.SFTP_USE_REMOTE_MOUNT_TOOL)
+                com.promenar.infinity.domain.tool.ToolExecutionPolicy.hardBlockedTarget(denied.code)
+            else null
+        }
         if (!usesLinux && builtinFiles != null && tool.mcpServerId == null && tool.sourceId == "builtin" &&
             tool.function.name in setOf("read_file", "write_file", "patch_file", "diff_file", "delete_file", "create_file", "create_directory", "move_file", "list_files", "search_files")
         ) return try {
             builtinFiles.executionTarget(session.id, tool, args)
         } catch (denied: com.promenar.infinity.domain.storage.ExternalFolderException) {
-            if (denied.code in setOf("ACCESS_DENIED", "PROTECTED_RUNTIME_DATA")) {
+            if (denied.code in setOf("ACCESS_DENIED", "PROTECTED_RUNTIME_DATA", com.promenar.infinity.ui.chat.manager.skills.SFTP_USE_REMOTE_MOUNT_TOOL)) {
                 com.promenar.infinity.domain.tool.ToolExecutionPolicy.hardBlockedTarget(denied.code)
             } else {
                 null
