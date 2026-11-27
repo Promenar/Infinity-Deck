@@ -59,6 +59,8 @@ data class InfinityThemePreferences(
     val touchLockUnlock: TouchLockUnlock = TouchLockUnlock.HOLD,
     /** 输入框浮岛、生成状态指示与空会话三处动效的样式，颜色都跟随主题色。 */
     val motion: InfinityMotionStyles = InfinityMotionStyles(),
-    /** 自定义取色最近用过的颜色（ARGB，最新在前）。 */
+    /** 最近用过的自定义取色（ARGB，最新在前）。 */
     val recentCustomColors: List<Int> = emptyList(),
+    /** 聊天壁纸配置；默认关闭，开启后自动提供模糊、遮罩与可选助手半透阅读衬底。 */
+    val wallpaper: com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig = com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig(),
 )

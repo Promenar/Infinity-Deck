@@ -27,6 +27,13 @@ class ThemePreferenceStore(context: Context) {
         const val COMPOSER_SURFACE_KEY = "motion_composer_surface"
         const val GLASS_LIGHT_INFILTRATION_KEY = "motion_glass_light_infiltration"
         const val RECENT_CUSTOM_COLORS_KEY = "theme_recent_custom_colors"
+        const val WALLPAPER_KIND_KEY = "wallpaper_kind"
+        const val WALLPAPER_PRESET_KEY = "wallpaper_preset"
+        const val WALLPAPER_IMAGE_FILE_KEY = "wallpaper_image_file"
+        const val WALLPAPER_ACCENT_ARGB_KEY = "wallpaper_accent_argb"
+        const val WALLPAPER_BLUR_DP_KEY = "wallpaper_blur_dp"
+        const val WALLPAPER_DIM_FRACTION_KEY = "wallpaper_dim_fraction"
+        const val WALLPAPER_ASSISTANT_CARD_KEY = "wallpaper_assistant_card"
         /** 主色键里表示“内置淡紫配色”的值：显式写入，和从未选择过（缺键，走冰蓝默认）区分开。 */
         const val BUILT_IN_PRIMARY_COLOR = 0L
         /** 最近使用的自定义色最多保留几个。 */
@@ -52,6 +59,13 @@ class ThemePreferenceStore(context: Context) {
             COMPOSER_SURFACE_KEY,
             GLASS_LIGHT_INFILTRATION_KEY,
             RECENT_CUSTOM_COLORS_KEY,
+            WALLPAPER_KIND_KEY,
+            WALLPAPER_PRESET_KEY,
+            WALLPAPER_IMAGE_FILE_KEY,
+            WALLPAPER_ACCENT_ARGB_KEY,
+            WALLPAPER_BLUR_DP_KEY,
+            WALLPAPER_DIM_FRACTION_KEY,
+            WALLPAPER_ASSISTANT_CARD_KEY,
         )
     }
 
@@ -170,6 +184,45 @@ class ThemePreferenceStore(context: Context) {
         preferences.edit().putString(RECENT_CUSTOM_COLORS_KEY, encodeRecentColors(recent)).apply()
     }
 
+    /** 原子写入完整聊天壁纸配置。 */
+    fun setWallpaper(config: com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig) {
+        val normalized = config.copy(
+            blurDp = config.clampedBlurDp,
+            dimFraction = config.clampedDimFraction,
+        )
+        _state.value = _state.value.copy(wallpaper = normalized)
+        preferences.edit().apply {
+            when (val source = normalized.source) {
+                com.promenar.infinity.ui.wallpaper.WallpaperSource.None -> {
+                    putString(WALLPAPER_KIND_KEY, com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.KIND_NONE)
+                    remove(WALLPAPER_PRESET_KEY)
+                    remove(WALLPAPER_IMAGE_FILE_KEY)
+                    remove(WALLPAPER_ACCENT_ARGB_KEY)
+                }
+                is com.promenar.infinity.ui.wallpaper.WallpaperSource.Preset -> {
+                    putString(WALLPAPER_KIND_KEY, com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.KIND_PRESET)
+                    putString(WALLPAPER_PRESET_KEY, source.id.storageKey)
+                    remove(WALLPAPER_IMAGE_FILE_KEY)
+                    remove(WALLPAPER_ACCENT_ARGB_KEY)
+                }
+                is com.promenar.infinity.ui.wallpaper.WallpaperSource.Image -> {
+                    putString(WALLPAPER_KIND_KEY, com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.KIND_IMAGE)
+                    remove(WALLPAPER_PRESET_KEY)
+                    putString(WALLPAPER_IMAGE_FILE_KEY, source.fileName)
+                    if (source.extractedAccentArgb != null) putInt(WALLPAPER_ACCENT_ARGB_KEY, source.extractedAccentArgb)
+                    else remove(WALLPAPER_ACCENT_ARGB_KEY)
+                }
+            }
+            putInt(WALLPAPER_BLUR_DP_KEY, normalized.clampedBlurDp)
+            putFloat(WALLPAPER_DIM_FRACTION_KEY, normalized.clampedDimFraction)
+            putBoolean(WALLPAPER_ASSISTANT_CARD_KEY, normalized.assistantReadingCard)
+        }.apply()
+    }
+
+    fun resetWallpaper() {
+        setWallpaper(com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig())
+    }
+
     private fun readPreferences(): InfinityThemePreferences = InfinityThemePreferences(
         mode = InfinityThemeMode.fromPreferenceValue(preferences.getString(MODE_KEY, null)),
         colorSource = InfinityColorSource.fromPreferenceValue(
@@ -213,6 +266,34 @@ class ThemePreferenceStore(context: Context) {
             scopeDigits = !preferences.contains(SCOPE_DIGITS_KEY) || preferences.getBoolean(SCOPE_DIGITS_KEY, true),
         ),
         recentCustomColors = decodeRecentColors(preferences.getString(RECENT_CUSTOM_COLORS_KEY, null)),
+        wallpaper = com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.fromPersisted(
+            kind = preferences.getString(WALLPAPER_KIND_KEY, null),
+            presetKey = preferences.getString(WALLPAPER_PRESET_KEY, null),
+            imageFileName = preferences.getString(WALLPAPER_IMAGE_FILE_KEY, null),
+            extractedAccentArgb = if (preferences.contains(WALLPAPER_ACCENT_ARGB_KEY)) {
+                preferences.getInt(WALLPAPER_ACCENT_ARGB_KEY, 0)
+            } else {
+                null
+            },
+            blurDp = if (preferences.contains(WALLPAPER_BLUR_DP_KEY)) {
+                preferences.getInt(
+                    WALLPAPER_BLUR_DP_KEY,
+                    com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.DEFAULT_PRESET_BLUR_DP,
+                )
+            } else {
+                com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.DEFAULT_PRESET_BLUR_DP
+            },
+            dimFraction = if (preferences.contains(WALLPAPER_DIM_FRACTION_KEY)) {
+                preferences.getFloat(
+                    WALLPAPER_DIM_FRACTION_KEY,
+                    com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.DEFAULT_PHOTO_DIM_DARK,
+                )
+            } else {
+                com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.DEFAULT_PHOTO_DIM_DARK
+            },
+            assistantReadingCard = !preferences.contains(WALLPAPER_ASSISTANT_CARD_KEY) ||
+                preferences.getBoolean(WALLPAPER_ASSISTANT_CARD_KEY, true),
+        ),
     )
 }
 

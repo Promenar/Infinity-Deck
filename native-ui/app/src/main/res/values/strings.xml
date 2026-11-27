@@ -1021,6 +1021,50 @@
     <string name="theme_text_scale">Custom text size</string>
     <string name="theme_text_scale_desc">Scales text only, not the layout</string>
 
+    <!-- Chat Wallpaper -->
+    <string name="wallpaper_title">Chat Wallpaper</string>
+    <string name="wallpaper_entry_off">Off · Pure background</string>
+    <string name="wallpaper_entry_active_badge">Active</string>
+    <string name="wallpaper_entry_custom_label">Custom photo</string>
+    <string name="wallpaper_meta_blur">Blur %1$ddp</string>
+    <string name="wallpaper_meta_scrim">Scrim %1$d%%</string>
+    <string name="wallpaper_action_reset">Reset</string>
+    <string name="wallpaper_action_replace_photo">Change photo</string>
+    <string name="wallpaper_action_apply_accent">Apply</string>
+    <string name="wallpaper_section_source">Wallpaper source</string>
+    <string name="wallpaper_section_readability">Readability</string>
+    <string name="wallpaper_section_theme_sync">Theme sync</string>
+    <string name="wallpaper_source_none">Clean</string>
+    <string name="wallpaper_source_gallery">Photos</string>
+    <string name="wallpaper_source_custom_photo">Photo</string>
+    <string name="wallpaper_preset_aurora">Aurora</string>
+    <string name="wallpaper_preset_obsidian_topo">Obsidian</string>
+    <string name="wallpaper_preset_pine_mist">Pine Mist</string>
+    <string name="wallpaper_preset_amber_dusk">Amber Dusk</string>
+    <string name="wallpaper_preset_abyssal_wave">Deep Sea</string>
+    <string name="wallpaper_preset_warm_paper">Warm Paper</string>
+    <string name="wallpaper_preview_title">Live preview</string>
+    <string name="wallpaper_preview_chat_title">Studio Notes</string>
+    <string name="wallpaper_preview_user_msg">Can I still read code clearly with this wallpaper?</string>
+    <string name="wallpaper_preview_assistant_card_msg">Readability backdrop and scrim keep prose, code blocks, and approval cards crisp.</string>
+    <string name="wallpaper_preview_assistant_plain_msg">With the backdrop off, replies float directly over subtle ambient gradients.</string>
+    <string name="wallpaper_preview_composer_hint">Message...</string>
+    <string name="wallpaper_blur_label">Background blur</string>
+    <string name="wallpaper_blur_value">%1$ddp</string>
+    <string name="wallpaper_scrim_dark_label">Dark scrim</string>
+    <string name="wallpaper_scrim_light_label">Soft veil</string>
+    <string name="wallpaper_scrim_value">%1$d%%</string>
+    <string name="wallpaper_assistant_card_title">Assistant reading backdrop</string>
+    <string name="wallpaper_assistant_card_desc">Add a frosted surface behind assistant replies so text stays legible over busy photos</string>
+    <string name="wallpaper_extract_accent_title">Match accent color to wallpaper</string>
+    <string name="wallpaper_extract_accent_desc">Sample the dominant tone and sync buttons and highlights across the app</string>
+    <string name="wallpaper_footnote">When enabled, chat wallpaper replaces the pure black canvas while code blocks, tool cards, and approvals retain solid contrast. Blurred images are cached locally for smooth scrolling.</string>
+    <string name="wallpaper_notice_accent_applied">Accent color synced from wallpaper</string>
+    <string name="wallpaper_notice_set_success">Set as chat wallpaper</string>
+    <string name="wallpaper_notice_import_failed">Unable to load selected image</string>
+    <string name="media_lightbox_action_wallpaper">Wallpaper</string>
+    <string name="media_action_set_wallpaper">Set as chat wallpaper</string>
+
 
     <!-- TokenUsageScreen -->
     <string name="token_title">Usage Management</string>

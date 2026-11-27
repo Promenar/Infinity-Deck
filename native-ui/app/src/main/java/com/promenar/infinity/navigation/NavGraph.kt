@@ -97,6 +97,7 @@ object NavDestinations {
     const val KEYCHAIN_EDIT = "keychain_edit?ref={ref}"
     const val BACKGROUND_ACTIVITY = "background_activity"
     const val THEME_CONFIG = "theme_config"
+    const val WALLPAPER_SETTINGS = "wallpaper_settings"
     const val PET_SETTINGS = "pet_settings"
     const val BACKUP_SETTINGS = "backup_settings"
     const val LOCAL_MODELS = "local_models"
@@ -907,7 +908,16 @@ internal fun NavGraphBuilder.settingsDestinations(
     composablePage(NavDestinations.THEME_CONFIG) { entry ->
         navigator.Page(entry) {
             ThemeScreen(
-                onNavigateBack = { navigator.back() }
+                onNavigateBack = { navigator.back() },
+                onOpenWallpaper = { navigator.open(NavDestinations.WALLPAPER_SETTINGS) },
+            )
+        }
+    }
+
+    composablePage(NavDestinations.WALLPAPER_SETTINGS) { entry ->
+        navigator.Page(entry) {
+            com.promenar.infinity.ui.settings.WallpaperSettingsScreen(
+                onNavigateBack = { navigator.back() },
             )
         }
     }

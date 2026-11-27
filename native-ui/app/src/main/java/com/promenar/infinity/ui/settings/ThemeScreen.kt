@@ -8,12 +8,14 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.Brush
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -81,7 +85,10 @@ import com.promenar.infinity.ui.theme.InfinitySchemeStyle
 import kotlin.math.roundToInt
 
 @Composable
-fun ThemeScreen(onNavigateBack: () -> Unit) {
+fun ThemeScreen(
+    onNavigateBack: () -> Unit,
+    onOpenWallpaper: () -> Unit = {},
+) {
     val context = LocalContext.current.applicationContext as InfinityApplication
     val viewModel: ThemeViewModel = viewModel(
         factory = ThemeViewModel.provideFactory(context.themePreferenceStore),
@@ -93,6 +100,7 @@ fun ThemeScreen(onNavigateBack: () -> Unit) {
         onModeSelect = viewModel::setThemeMode,
         onColorSourceSelect = viewModel::setColorSource,
         onNavigateBack = onNavigateBack,
+        onOpenWallpaper = onOpenWallpaper,
         onPrimaryColorSelect = viewModel::setPrimaryColor,
         onPureBlackChange = viewModel::setPureBlack,
         onTextScaleEnabledChange = viewModel::setTextScaleEnabled,
@@ -119,6 +127,7 @@ fun ThemeScreenContent(
     onModeSelect: (InfinityThemeMode) -> Unit,
     onColorSourceSelect: (InfinityColorSource) -> Unit,
     onNavigateBack: () -> Unit,
+    onOpenWallpaper: () -> Unit = {},
     onPrimaryColorSelect: (Long?) -> Unit = {},
     onPureBlackChange: (Boolean) -> Unit = {},
     onTextScaleEnabledChange: (Boolean) -> Unit = {},
@@ -151,6 +160,10 @@ fun ThemeScreenContent(
                     ThemeModeSelector(
                         selectedMode = preferences.mode,
                         onModeSelect = onModeSelect,
+                    )
+                    ThemeWallpaperEntryRow(
+                        config = preferences.wallpaper,
+                        onClick = onOpenWallpaper,
                     )
                 }
             }
@@ -324,6 +337,88 @@ private fun ThemeModeSelector(
                 modifier = Modifier.testTag("theme_mode_${mode.name.lowercase()}"),
             )
         }
+    }
+}
+
+/** 外观设置中的「聊天壁纸」缩略图入口行：实时反映当前壁纸预览与开关状态。 */
+@Composable
+private fun ThemeWallpaperEntryRow(
+    config: com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val dark = scheme.background.luminance() < 0.5f
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .testTag("theme_wallpaper_entry"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 40.dp, height = 52.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .border(
+                    width = 0.8.dp,
+                    color = if (dark) Color.White.copy(alpha = 0.16f) else scheme.outlineVariant.copy(alpha = 0.65f),
+                    shape = RoundedCornerShape(10.dp),
+                )
+                .background(if (dark) Color(0xFF0B0D12) else scheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (config.isActive) {
+                com.promenar.infinity.ui.wallpaper.ChatWallpaperLayer(
+                    config = config.copy(blurDp = 0, dimFraction = (config.clampedDimFraction * 0.65f).coerceAtMost(0.45f)),
+                    dark = dark,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.Wallpaper,
+                    contentDescription = null,
+                    tint = scheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.wallpaper_title),
+                style = MaterialTheme.typography.bodyLarge,
+                color = scheme.onSurface,
+            )
+            com.promenar.infinity.ui.common.InfinityMetaLine(
+                segments = config.summarySegments(),
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        if (config.isActive) {
+            Surface(
+                shape = CircleShape,
+                color = scheme.primaryContainer.copy(alpha = if (dark) 0.45f else 0.72f),
+            ) {
+                Text(
+                    text = stringResource(R.string.wallpaper_entry_active_badge),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (dark) scheme.primary else scheme.onPrimaryContainer,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                )
+            }
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

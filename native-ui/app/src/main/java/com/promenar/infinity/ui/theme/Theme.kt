@@ -116,6 +116,7 @@ fun InfinityTheme(
         LocalInfinityThemePreferences provides preferences,
         LocalInfinityDomainColors provides domainColors,
         LocalInfinityMotionStyles provides (preferences?.motion ?: InfinityMotionStyles()),
+        com.promenar.infinity.ui.wallpaper.LocalChatWallpaperConfig provides (preferences?.wallpaper ?: com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig()),
         LocalDensity provides scaledDensity,
         com.promenar.infinity.ui.common.LocalInfinityHaptics provides haptics,
         // 长按菜单、文本选择等组件内置的触感同样服从应用开关。

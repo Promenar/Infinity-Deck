@@ -46,6 +46,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -1274,19 +1275,35 @@ fun ChatScreenContent(
             // 会话区延伸到毛玻璃顶栏后方：列表以顶栏高度作上留白，其余居中层单独让出顶栏。
             val topBarInset = padding.calculateTopPadding()
             val layoutDirection = LocalLayoutDirection.current
+            val wallpaperConfig = com.promenar.infinity.ui.wallpaper.LocalChatWallpaperConfig.current
+            val wallpaperDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+            val chatContentPaddingModifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = padding.calculateStartPadding(layoutDirection),
+                    end = padding.calculateEndPadding(layoutDirection),
+                    bottom = padding.calculateBottomPadding(),
+                )
+                .padding(end = chatEndReserved)
+                .imePadding()
             Box(Modifier.fillMaxSize()) {
+            // 开启聊天壁纸时把背景来源提升至壁纸 + 列表整层，让毛玻璃顶栏、输入浮岛与悬浮检视器实时折射壁纸，同时避免输入框自录制递归。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(
-                        start = padding.calculateStartPadding(layoutDirection),
-                        end = padding.calculateEndPadding(layoutDirection),
-                        bottom = padding.calculateBottomPadding(),
-                    )
-                    .padding(end = chatEndReserved)
-                    .imePadding()
-                    .then(if (showWordmark) Modifier.trackWordmarkPointer(wordmarkPointer) else Modifier),
+                    .then(if (wallpaperConfig.isActive) Modifier.composerBackdropSource(chatBackdrop) else Modifier),
             ) {
+                if (wallpaperConfig.isActive) {
+                    com.promenar.infinity.ui.wallpaper.ChatWallpaperLayer(
+                        config = wallpaperConfig,
+                        dark = wallpaperDark,
+                        modifier = Modifier.fillMaxSize().testTag("CHAT_WALLPAPER_LAYER"),
+                    )
+                }
+                Box(
+                    modifier = chatContentPaddingModifier
+                        .then(if (showWordmark) Modifier.trackWordmarkPointer(wordmarkPointer) else Modifier),
+                ) {
             // 空会话的粒子字标画在列表下层，不拦截触摸；有了第一条消息就淡出并离开组合，粒子循环随之停止。
             AnimatedVisibility(
                 visible = showWordmark,
@@ -1312,11 +1329,11 @@ fun ChatScreenContent(
                 label = "chat_generating_bottom",
             )
             val focusManager = LocalFocusManager.current
-            // 毛玻璃顶栏与浮岛：列表把自己录进背景来源，两者在自身范围内模糊后垫在底下。
+            // 毛玻璃顶栏与浮岛：未开壁纸时由列表独立录进背景来源，开启壁纸后由外层壁纸+列表容器统一录制。
             LazyColumn(
                 state = listState,
                 modifier = Modifier
-                    .composerBackdropSource(chatBackdrop)
+                    .then(if (!wallpaperConfig.isActive) Modifier.composerBackdropSource(chatBackdrop) else Modifier)
                     .align(Alignment.Center)
                     .fillMaxHeight()
                     .widthIn(max = InfinitySpacing.ChatMaxWidth)
@@ -1638,8 +1655,11 @@ fun ChatScreenContent(
                     ).afterDp.dp))
                 }
             }
+                }
+            }
 
-            // ── Skeleton 与其他 Overlay 需在 LazyColumn 之上但独立于输入框 ──
+            // ── Skeleton 与其他 Overlay 及悬浮输入框位于背景来源之外，避免自我录制递归 ──
+            Box(modifier = chatContentPaddingModifier) {
             AnimatedVisibility(
                 visible = uiState.isLoading && uiState.messages.isEmpty(),
                 enter = fadeIn(),

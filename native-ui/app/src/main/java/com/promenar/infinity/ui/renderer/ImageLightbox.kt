@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.RotateRight
 import androidx.compose.material.icons.rounded.SaveAlt
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -74,6 +75,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -112,6 +114,8 @@ data class ImageLightboxActions(
     val onOpenWith: (() -> Unit)? = null,
     /** 进画板标注这张图；为 null 时不显示。 */
     val onAnnotate: (() -> Unit)? = null,
+    /** 设为聊天壁纸；未提供时使用全站内置默认实现。 */
+    val onSetAsWallpaper: (() -> Unit)? = null,
 )
 
 /** 多图大图查看器的一页数据。 */
@@ -410,12 +414,39 @@ fun ImageLightboxGallery(
                             ),
                         )
                     }
+                    val wallpaperOkMsg = stringResource(R.string.wallpaper_notice_set_success)
+                    val wallpaperFailMsg = stringResource(R.string.wallpaper_notice_import_failed)
+                    val darkForWallpaper = scheme.background.luminance() < 0.5f
+                    add(
+                        LightboxActionItem(
+                            icon = Icons.Rounded.Wallpaper,
+                            shortLabel = stringResource(R.string.media_lightbox_action_wallpaper),
+                            description = stringResource(R.string.media_action_set_wallpaper),
+                            testTag = "IMAGE_LIGHTBOX_SET_WALLPAPER",
+                            onClick = {
+                                val customHandler = currentActions?.onSetAsWallpaper
+                                if (customHandler != null) {
+                                    customHandler()
+                                } else {
+                                    scope.launch {
+                                        applyLightboxImageAsWallpaper(
+                                            context = context,
+                                            model = currentPage.model ?: currentPage.imageUrl,
+                                            dark = darkForWallpaper,
+                                            successMessage = wallpaperOkMsg,
+                                            failureMessage = wallpaperFailMsg,
+                                        )
+                                    }
+                                }
+                            },
+                        ),
+                    )
                 }
                 LightboxBottomBar(
                     currentIndex = currentIndex,
                     pageCount = pages.size,
                     actions = actionItems,
-                    compactLabels = compactLabels,
+                    compactLabels = compactLabels || actionItems.size >= 6,
                 )
             }
 
@@ -732,18 +763,57 @@ private fun LightboxBottomBar(
     }
 }
 
-private suspend fun loadImageBitmap(context: Context, url: String): Bitmap? {
+private suspend fun loadImageBitmap(context: Context, model: Any): Bitmap? {
     return withContext(Dispatchers.IO) {
         try {
             val loader = ImageLoader(context)
             val request = ImageRequest.Builder(context)
-                .data(url)
+                .data(model)
                 .allowHardware(false)
                 .build()
             val result = loader.execute(request)
             result.image?.toBitmap()
         } catch (_: Exception) {
             null
+        }
+    }
+}
+
+private suspend fun applyLightboxImageAsWallpaper(
+    context: Context,
+    model: Any,
+    dark: Boolean,
+    successMessage: String,
+    failureMessage: String,
+) {
+    val app = context.applicationContext as? com.promenar.infinity.InfinityApplication
+    val bitmap = loadImageBitmap(context, model)
+    if (app == null || bitmap == null) {
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, failureMessage, Toast.LENGTH_SHORT).show()
+        }
+        return
+    }
+    val imported = try {
+        app.wallpaperAssetStore.importFromBitmap(bitmap)
+    } finally {
+        bitmap.recycle()
+    }
+    imported.onSuccess { result ->
+        val config = com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.forImportedImage(
+            fileName = result.fileName,
+            extractedAccentArgb = result.extractedAccentArgb,
+            dark = dark,
+        )
+        app.themePreferenceStore.setWallpaper(config)
+        app.wallpaperAssetStore.resolveDisplayFile(result.fileName, config.clampedBlurDp)
+        app.wallpaperAssetStore.pruneUnused(keepFileName = result.fileName)
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, successMessage, Toast.LENGTH_SHORT).show()
+        }
+    }.onFailure {
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, failureMessage, Toast.LENGTH_SHORT).show()
         }
     }
 }

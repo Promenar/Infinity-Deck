@@ -22,6 +22,7 @@ internal object BackupPreferencePolicy {
         "settings" to setOf(
             "comfy_configuration_v1",
             "language", "theme_mode", "theme_color_source", "haptic_enabled", "haptic_status_enabled", "loop_limit", "user_name", "user_avatar", "profile_show_brand",
+            "wallpaper_kind", "wallpaper_preset", "wallpaper_blur_dp", "wallpaper_dim_fraction", "wallpaper_assistant_card",
             "task_token_limit", "tool_loop_repeat_limit", "stream_retry_limit",
             "extra_providers_count", "extra_providers_ids", "all_models", "enabled_models", "all_models_order",
             "preset_summary_model", "preset_image_model", "preset_video_model", "preset_audio_model", "preset_speech_model", "preset_music_model", "preset_embedding_model", "preset_rerank_model",
@@ -95,6 +96,8 @@ internal object BackupPreferencePolicy {
             "skill_store_last_checked",
             "rolled_back_summary_usage_v1", "embedding_setup_hint_shown",
             "pet_dismissed", "pet_dismiss_hint_count", "pet_perch_x_fraction", "pet_perch_y_dp", "pet_mood_value", "pet_mood_at_millis",
+            // 本机相册导入的自定义壁纸文件及其采样主色依赖设备私有目录，不随纯偏好备份迁移。
+            "wallpaper_image_file", "wallpaper_accent_argb",
             // 资料页长期记忆“新”标记的上次查看时间与侧栏固定文件夹（引用本机位置 id）只描述当前设备。
             "library_memories_last_seen", "file_manager_pins", "legacy_recycle_cleanup_complete",
         ),

@@ -251,6 +251,9 @@ open class InfinityApplication : Application(), SingletonImageLoader.Factory,
         com.promenar.infinity.data.network.PublicNetworkMonitor(this)
     }
     val themePreferenceStore: ThemePreferenceStore by lazy { ThemePreferenceStore(this) }
+    val wallpaperAssetStore: com.promenar.infinity.data.wallpaper.WallpaperAssetStore by lazy {
+        com.promenar.infinity.data.wallpaper.WallpaperAssetStore(this)
+    }
     internal val recordings by lazy { com.promenar.infinity.recording.RecordingController(this) }
     val petMemoryStore: com.promenar.infinity.data.pet.PetMemoryStore by lazy { com.promenar.infinity.data.pet.PetMemoryStore(this) }
 

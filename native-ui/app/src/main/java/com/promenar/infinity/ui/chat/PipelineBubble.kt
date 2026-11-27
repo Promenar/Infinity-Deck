@@ -60,6 +60,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
@@ -377,7 +378,12 @@ fun PipelineBubble(
         ?: allSteps.filterIsInstance<PipelineStep.Content>().lastOrNull { it.content.isNotBlank() }
     val replyCopyText = remember(allSteps, collapsePlan) { collapsePlan?.finalCopyText ?: pipelineReplyCopyText(allSteps) }
     val allProcessCopyText = remember(collapsePlan) { collapsePlan?.distinctProcessCopyText() }
-    Column(modifier = modifier.fillMaxWidth()) {
+    val wallpaper = com.promenar.infinity.ui.wallpaper.LocalChatWallpaperConfig.current
+    val useReadingCard = wallpaper.effectiveAssistantCard &&
+        (allSteps.isNotEmpty() || hasRagContent || collapsePlan != null || isGenerating)
+    val darkSurface = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val turnBody: @Composable () -> Unit = {
+    Column(modifier = if (useReadingCard) Modifier.fillMaxWidth() else modifier.fillMaxWidth()) {
         ragContent()
         if (collapsePlan != null) {
             // 实时生成刚结束进入收起态时，摘要行随过程收起同步平滑展开；翻看历史时首帧直接呈现。
@@ -606,6 +612,26 @@ fun PipelineBubble(
                 }
             }
         }
+    }
+    }
+    if (useReadingCard) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = if (darkSurface) InfinityObsidianDialogContainer.copy(alpha = 0.78f)
+            else Color.White.copy(alpha = 0.82f),
+            border = BorderStroke(
+                0.6.dp,
+                if (darkSurface) Color.White.copy(alpha = 0.09f)
+                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+            ),
+            modifier = modifier.fillMaxWidth().testTag("CHAT_ASSISTANT_WALLPAPER_CARD"),
+        ) {
+            Box(Modifier.padding(horizontal = 15.dp, vertical = 13.dp)) {
+                turnBody()
+            }
+        }
+    } else {
+        turnBody()
     }
 
     // ── 错误信息 ──
@@ -2626,15 +2652,38 @@ fun UserMessageBubble(
                         if (legacyAttachments.isNotEmpty()) LegacyAttachmentSummary(legacyAttachments)
                         UserMessageQuotes(message.quotes.orEmpty(), maxWidth = bubbleMaxWidth, fontSize = fontSize)
                         if (message.content.isNotBlank()) {
+                            val wallpaper = com.promenar.infinity.ui.wallpaper.LocalChatWallpaperConfig.current
+                            val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                            val bubbleColor = if (wallpaper.isActive) {
+                                if (dark) MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.86f)
+                                else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.90f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            }
+                            val bubbleTextColor = if (wallpaper.isActive && !dark) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                            val bubbleBorder = if (wallpaper.isActive) {
+                                BorderStroke(
+                                    0.5.dp,
+                                    if (dark) Color.White.copy(alpha = 0.12f)
+                                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f),
+                                )
+                            } else {
+                                null
+                            }
                             Surface(
                                 shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                color = bubbleColor,
+                                border = bubbleBorder,
                                 modifier = Modifier.widthIn(max = bubbleMaxWidth).testTag("CHAT_USER_BUBBLE"),
                             ) {
                                 Text(
                                     text = message.content,
                                     style = InfinityTypography.bodyLarge.copy(fontSize = fontSize.sp, lineHeight = (fontSize * 1.5).sp).forReading(),
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = bubbleTextColor,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                 )
                             }

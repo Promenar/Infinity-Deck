@@ -1022,6 +1022,50 @@
     <string name="theme_text_scale">自定义文字大小</string>
     <string name="theme_text_scale_desc">只放大文字，不改变布局</string>
 
+    <!-- Chat Wallpaper -->
+    <string name="wallpaper_title">聊天壁纸</string>
+    <string name="wallpaper_entry_off">未开启 · 纯净背景</string>
+    <string name="wallpaper_entry_active_badge">已开启</string>
+    <string name="wallpaper_entry_custom_label">自定义图片</string>
+    <string name="wallpaper_meta_blur">模糊 %1$ddp</string>
+    <string name="wallpaper_meta_scrim">遮罩 %1$d%%</string>
+    <string name="wallpaper_action_reset">重置</string>
+    <string name="wallpaper_action_replace_photo">更换图片</string>
+    <string name="wallpaper_action_apply_accent">应用</string>
+    <string name="wallpaper_section_source">壁纸来源</string>
+    <string name="wallpaper_section_readability">可读性调节</string>
+    <string name="wallpaper_section_theme_sync">主题联动</string>
+    <string name="wallpaper_source_none">纯净</string>
+    <string name="wallpaper_source_gallery">相册导入</string>
+    <string name="wallpaper_source_custom_photo">相册图片</string>
+    <string name="wallpaper_preset_aurora">极夜流光</string>
+    <string name="wallpaper_preset_obsidian_topo">黑曜星纹</string>
+    <string name="wallpaper_preset_pine_mist">青岚雾松</string>
+    <string name="wallpaper_preset_amber_dusk">琥珀暮光</string>
+    <string name="wallpaper_preset_abyssal_wave">深海微澜</string>
+    <string name="wallpaper_preset_warm_paper">暖砂纸纹</string>
+    <string name="wallpaper_preview_title">实时对话效果</string>
+    <string name="wallpaper_preview_chat_title">建筑摄影与材质笔记</string>
+    <string name="wallpaper_preview_user_msg">把这张图设为壁纸后，正文和代码还能看清吗？</string>
+    <string name="wallpaper_preview_assistant_card_msg">已开启半透阅读衬底与遮罩护航，正文、代码块与审批卡片均维持高对比度。</string>
+    <string name="wallpaper_preview_assistant_plain_msg">关闭衬底后正文直接悬浮于极简底纹之上，适合低干扰渐变预设。</string>
+    <string name="wallpaper_preview_composer_hint">输入消息...</string>
+    <string name="wallpaper_blur_label">背景模糊</string>
+    <string name="wallpaper_blur_value">%1$ddp</string>
+    <string name="wallpaper_scrim_dark_label">压暗遮罩</string>
+    <string name="wallpaper_scrim_light_label">柔光遮罩</string>
+    <string name="wallpaper_scrim_value">%1$d%%</string>
+    <string name="wallpaper_assistant_card_title">助手正文半透衬底</string>
+    <string name="wallpaper_assistant_card_desc">为回复正文叠加毛玻璃阅读底板，复杂照片下也能保持清晰</string>
+    <string name="wallpaper_extract_accent_title">提取壁纸主色为强调色</string>
+    <string name="wallpaper_extract_accent_desc">自动从当前壁纸取色并同步全局按钮与光效</string>
+    <string name="wallpaper_footnote">开启壁纸后会话底板将替换纯黑背景；代码块、工具卡与审批卡片维持高对比实底。模糊效果将在本地预烘焙缓存，不影响滑动帧率。</string>
+    <string name="wallpaper_notice_accent_applied">已按壁纸主色更新强调色</string>
+    <string name="wallpaper_notice_set_success">已设为聊天壁纸</string>
+    <string name="wallpaper_notice_import_failed">无法读取所选图片</string>
+    <string name="media_lightbox_action_wallpaper">壁纸</string>
+    <string name="media_action_set_wallpaper">设为聊天壁纸</string>
+
 
     <!-- TokenUsageScreen -->
     <string name="token_title">用量管理</string>
