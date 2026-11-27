@@ -119,6 +119,7 @@ import kotlinx.coroutines.launch
 private val CardShape = RoundedCornerShape(20.dp)
 private val KnowledgeStripShape = RoundedCornerShape(14.dp)
 private const val ArchiveEntryLimit = 100
+private const val REMOTE_AUTO_PREVIEW_THRESHOLD_BYTES = 8L * 1024L * 1024L
 
 /** 双栏右栏：有预览条目时显示预览，否则显示当前文件夹概要。 */
 @Composable
@@ -603,18 +604,30 @@ private fun RemoteLargeFileDetailSection(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            val exceedsAutoPreview = details.sizeBytes > REMOTE_AUTO_PREVIEW_THRESHOLD_BYTES
+            val isCachedLocally = details.cachedBytes != null && (cacheStats == null || cacheStats!!.usedBytes > 0L)
             com.promenar.infinity.ui.common.InfinityTagScrollRow(spacing = 8.dp) {
                 ProductionStatusChip(formatFileSize(details.sizeBytes), ProductionTone.NEUTRAL)
                 ProductionStatusChip(
                     text = stringResource(
-                        if (details.cachedBytes != null) R.string.sftp_remote_cached_badge else R.string.sftp_remote_large_badge,
+                        when {
+                            isCachedLocally -> R.string.sftp_remote_cached_badge
+                            exceedsAutoPreview -> R.string.sftp_remote_large_badge
+                            else -> R.string.sftp_remote_small_badge
+                        },
                     ),
-                    tone = if (details.cachedBytes != null) ProductionTone.SUCCESS else ProductionTone.INFO,
+                    tone = if (isCachedLocally) ProductionTone.SUCCESS else ProductionTone.INFO,
                 )
                 ProductionStatusChip(stringResource(R.string.sftp_remote_resumable_badge), ProductionTone.SUCCESS)
             }
             Text(
-                text = stringResource(R.string.sftp_remote_large_hint),
+                text = stringResource(
+                    when {
+                        isCachedLocally -> R.string.sftp_remote_cached_no_preview_hint
+                        exceedsAutoPreview -> R.string.sftp_remote_large_hint
+                        else -> R.string.sftp_remote_unsupported_hint
+                    },
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -774,7 +787,11 @@ private fun RemoteLargeFileDetailSection(
                 is RemoteShaCheckState.Verified -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Icon(Icons.Rounded.VerifiedUser, contentDescription = null, tint = domain.success, modifier = Modifier.size(14.dp))
-                        Text(currentSha.method, style = MaterialTheme.typography.labelSmall, color = domain.success)
+                        Text(
+                            com.promenar.infinity.ui.library.formatRemoteChecksumMethod(currentSha.method),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = domain.success,
+                        )
                     }
                     Text(
                         text = currentSha.sha256.breakableIdentifier(),

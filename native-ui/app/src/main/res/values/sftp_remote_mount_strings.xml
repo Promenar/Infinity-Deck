@@ -80,9 +80,12 @@
 
     <!-- Remote Large File Detail & LRU Cache -->
     <string name="sftp_remote_large_badge">Remote large file · Not auto-downloaded</string>
+    <string name="sftp_remote_small_badge">Remote file</string>
     <string name="sftp_remote_cached_badge">Cached locally</string>
     <string name="sftp_remote_resumable_badge">Resumable transfer</string>
     <string name="sftp_remote_large_hint">This file exceeds the 8 MB auto-preview limit. Only metadata was loaded to save bandwidth. Use the transfer queue to cache a preview or download it to a local workspace.</string>
+    <string name="sftp_remote_cached_no_preview_hint">Cached locally, but this file format cannot be previewed inline. Download it to a local workspace or verify its server-side SHA-256.</string>
+    <string name="sftp_remote_unsupported_hint">This file format cannot be previewed inline. Download it to a local workspace or verify its server-side SHA-256 on demand.</string>
     <string name="sftp_remote_action_cache_preview">Cache preview</string>
     <string name="sftp_remote_action_download_workspace">Download to workspace</string>
     <string name="sftp_remote_action_view_transfer">View transfer</string>

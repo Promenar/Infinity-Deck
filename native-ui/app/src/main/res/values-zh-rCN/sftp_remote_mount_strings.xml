@@ -21,7 +21,7 @@
     <string name="library_overview_manage_transfers">管理传输</string>
     <string name="library_overview_remote_mounts_count">%1$d 个 SFTP 挂载</string>
     <string name="library_overview_preview_cache">预览缓存 %1$s / %2$s</string>
-    <string name="library_overview_remote_empty">尚未挂载远程 SFTP 目录。添加后可直接浏览 NAS / 服务器并归档大文件。</string>
+    <string name="library_overview_remote_empty">尚未挂载远程 SFTP 目录，添加后可直接浏览 NAS 与归档大文件。</string>
     <string name="library_transfers_active_summary">%1$d 项进行中</string>
     <string name="library_transfers_paused_summary">%1$d 项已暂停</string>
     <string name="library_transfers_idle_summary">当前无活跃传输</string>
@@ -80,9 +80,12 @@
 
     <!-- 远程大文件详情与 256 MB LRU 缓存 -->
     <string name="sftp_remote_large_badge">远端大文件 · 未自动下载</string>
+    <string name="sftp_remote_small_badge">远端文件</string>
     <string name="sftp_remote_cached_badge">已本地缓存</string>
     <string name="sftp_remote_resumable_badge">支持断点续传</string>
     <string name="sftp_remote_large_hint">该文件超过 8 MB 自动预览阈值，仅读取元数据，不会后台拉取。可通过传输队列按需下载到本机工作区或临时缓存预览。</string>
+    <string name="sftp_remote_cached_no_preview_hint">该文件已缓存至本地预览区，当前格式暂不支持应用内直接阅读。可直接下载到本机工作区或按需校验远端 SHA-256。</string>
+    <string name="sftp_remote_unsupported_hint">当前格式暂不支持应用内直接阅读，可按需下载到本机工作区或校验服务端 SHA-256。</string>
     <string name="sftp_remote_action_cache_preview">缓存预览</string>
     <string name="sftp_remote_action_download_workspace">下载到工作区</string>
     <string name="sftp_remote_action_view_transfer">查看传输进度</string>

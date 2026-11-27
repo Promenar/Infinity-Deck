@@ -98,4 +98,12 @@ class RemoteTransferManagerUiTest {
         val statusArgs = Json.parseToJsonElement("""{"transfer_id":"t1"}""").jsonObject
         assertThat(remoteMountApprovalPreview("remote_mount_transfer_status", statusArgs, null)).isNull()
     }
+
+    @Test
+    fun `远端校验工具名格式化去除内部前缀`() {
+        assertThat(formatRemoteChecksumMethod("ssh_exec_sha256sum")).isEqualTo("sha256sum")
+        assertThat(formatRemoteChecksumMethod("ssh_exec_python3")).isEqualTo("python3")
+        assertThat(formatRemoteChecksumMethod("ssh_exec_shasum")).isEqualTo("shasum")
+        assertThat(formatRemoteChecksumMethod("sha256sum")).isEqualTo("sha256sum")
+    }
 }

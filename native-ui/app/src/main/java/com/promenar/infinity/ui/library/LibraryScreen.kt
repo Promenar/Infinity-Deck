@@ -45,6 +45,7 @@ import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityNoticeSeverity
 import com.promenar.infinity.ui.common.LocalInfinityNoticeController
+import com.promenar.infinity.ui.common.ReportInfinityNoticeHorizontalClearance
 import com.promenar.infinity.domain.library.ChunkLocator
 import com.promenar.infinity.navigation.InfinityPageStack
 import com.promenar.infinity.recording.recordingIntent
@@ -407,6 +408,7 @@ private fun LibraryTwoPaneLayout(host: LibraryPageHost, layout: LibraryLayout.Tw
             }
         }
         val contentStart = lerp(twoPaneContentStart.value, HubStripWidth.value, expansion.value).dp
+        ReportInfinityNoticeHorizontalClearance(startOffset = contentStart, enabled = true)
         val divider = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         Box(
             Modifier

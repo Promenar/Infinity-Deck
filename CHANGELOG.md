@@ -14,6 +14,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.85.1-beta] - 2026-11-28
+
+- **SFTP 远程挂载与资料库三域真机实测视觉与交互精修（[FileManagerPreview.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/files/FileManagerPreview.kt)、[SftpMountSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/SftpMountSheet.kt)、[LibraryScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryScreen.kt)）**：
+  - 修正远端文件详情卡对 `<= 8 MiB` 不可内联阅读文件与已本地缓存文件的徽章及提示语（不再误显「超过 8 MB」），并在点击「一键清理」后即时同步更新缓存徽章状态；
+  - 将「添加/编辑远程目录」第 2 节标题统一为 `SettingsSectionHeader` 主色排版，测试连接返回结果时自动平滑滚至探针状态卡，并将服务端校验工具标识统一格式化为 `sha256sum`/`python3`/`shasum`；
+  - 为宽屏双栏 `LibraryTwoPaneLayout` 接入 `ReportInfinityNoticeHorizontalClearance`，使资料库顶部悬浮通知胶囊居中于右侧详情列并随展开/折叠平滑联动，同步精简概览空远程卡中文提示消除单字孤行。
+
 ## [0.85.0-beta] - 2026-11-28
 
 - **完整 SFTP 远程目录挂载、独立传输管理器与资料库三域信息架构重构（[SftpExternalFolderBackend.kt](native-ui/app/src/main/java/com/promenar/infinity/data/storage/SftpExternalFolderBackend.kt)、[RemoteTransferManager.kt](native-ui/app/src/main/java/com/promenar/infinity/data/storage/RemoteTransferManager.kt)、[RemotePreviewCache.kt](native-ui/app/src/main/java/com/promenar/infinity/data/storage/RemotePreviewCache.kt)、[RemoteMountSkills.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/manager/skills/RemoteMountSkills.kt)、[SftpMountSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/SftpMountSheet.kt)、[RemoteTransferManagerScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/RemoteTransferManagerScreen.kt)、[LibraryNav.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryNav.kt)、[LibraryPagesContent.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryPagesContent.kt)、[FileManagerPreview.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/files/FileManagerPreview.kt)、[ExternalFoldersPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/components/ExternalFoldersPanel.kt)、[AgentApprovalPreviews.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/AgentApprovalPreviews.kt)）**：

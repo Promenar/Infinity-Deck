@@ -312,6 +312,13 @@ private fun SftpMountFormBody(
     }
     val canProbe = !busy && validHost && validPath
     val canSave = !busy && validHost && validPath && validAlias
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(probeResult, errorMessage) {
+        if (probeResult != null || !errorMessage.isNullOrBlank()) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
 
     Column(Modifier.fillMaxSize().testTag("sftp_mount_sheet_form")) {
         Row(
@@ -337,7 +344,7 @@ private fun SftpMountFormBody(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Large),
         ) {
             // 1. 选择 SSH 主机（直接复用设置 -> SSH）
@@ -392,10 +399,9 @@ private fun SftpMountFormBody(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(InfinitySpacing.Small),
                 ) {
-                    Text(
-                        text = stringResource(R.string.sftp_mount_section_path),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = scheme.onSurfaceVariant,
+                    com.promenar.infinity.ui.common.SettingsSectionHeader(
+                        title = stringResource(R.string.sftp_mount_section_path),
+                        titleStyle = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.weight(1f),
                     )
                     InfinityPillButton(
@@ -469,7 +475,7 @@ private fun SftpMountFormBody(
                     add(stringResource(if (probeResult.writable) R.string.sftp_mount_probe_caps_writable else R.string.sftp_mount_probe_caps_readonly))
                     if (probeResult.supportsHardlink) add(stringResource(R.string.sftp_mount_probe_caps_hardlink))
                     probeResult.checksumTool?.takeIf { it.isNotBlank() }?.let { tool ->
-                        add(stringResource(R.string.sftp_mount_probe_caps_checksum, tool))
+                        add(stringResource(R.string.sftp_mount_probe_caps_checksum, formatRemoteChecksumMethod(tool)))
                     }
                 }
                 Surface(
@@ -547,6 +553,14 @@ private fun SftpMountFormBody(
             }
         }
     }
+}
+
+/** 将后端校验方法标识格式化为面向用户的简洁工具名。 */
+internal fun formatRemoteChecksumMethod(raw: String): String = when (raw.trim()) {
+    "ssh_exec_sha256sum" -> "sha256sum"
+    "ssh_exec_python3" -> "python3"
+    "ssh_exec_shasum" -> "shasum"
+    else -> raw.trim().removePrefix("ssh_exec_")
 }
 
 @Composable
