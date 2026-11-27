@@ -85,6 +85,7 @@ internal val SettingsPaneRoots: List<String> = listOf(
  * 技能商店的技能详情是商店页内的状态，随商店页留在右列；SKILL.md 是商店页弹出的底部面板，不另设路由。
  */
 private val SettingsPaneRouteBases: Set<String> = SettingsPaneRoots.toSet() + setOf(
+    NavDestinations.WALLPAPER_SETTINGS,
     NavDestinations.RAG_VECTOR_STATS,
     NavDestinations.SKILL_STORE,
     NavDestinations.SKILL_STORE_SOURCES,

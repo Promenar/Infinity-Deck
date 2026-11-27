@@ -63,6 +63,7 @@ internal fun OnboardingRoute(
     val linuxState = linuxViewModel?.uiState?.collectAsState()?.value
     val providerModels by settings.providerModels.collectAsState()
     val fetchingModels by settings.isFetchingModels.collectAsState()
+    val proxyState by app.builtInProxyManager.state.collectAsState()
     val scope = rememberCoroutineScope()
 
     var busy by remember { mutableStateOf(false) }
@@ -114,8 +115,8 @@ internal fun OnboardingRoute(
             connect = OnboardingConnectStatus.Problem(outcome)
         }
     }
-    val save: OnboardingProviderSave = { existing, protocol, baseUrl, credential, model, name ->
-        saveProviderConfiguration(app, existing, protocol, baseUrl, credential, model, name)
+    val save: OnboardingProviderSave = { existing, protocol, baseUrl, credential, model, name, useBuiltInProxy ->
+        saveProviderConfiguration(app, existing, protocol, baseUrl, credential, model, name, useBuiltInProxy)
     }
 
     val actions = OnboardingActions(
@@ -185,6 +186,7 @@ internal fun OnboardingRoute(
             }
         },
         onOpenLocalModels = { navController.navigate(NavDestinations.LOCAL_MODELS) },
+        onOpenBuiltInProxy = { navController.navigate(NavDestinations.BUILT_IN_PROXY) },
         onBackToProvider = {
             if (!busy) {
                 connect = OnboardingConnectStatus.Idle
@@ -255,6 +257,7 @@ internal fun OnboardingRoute(
             step = onboarding.step,
             linux = linuxState?.let { OnboardingLinuxStatus(it.runtime, it.installPackages, linuxHidden) },
             localInferenceAvailable = app.localInferenceRuntimeGate.isAvailable,
+            builtInProxyRunning = proxyState.running,
             connect = connect,
             models = candidates,
             hiddenModelCount = hiddenCount.coerceAtLeast(0),

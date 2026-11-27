@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 明确中立的地域/能力预设分组 -->
+    <string name="provider_preset_region_oauth">一键授权（OAuth）</string>
+    <string name="provider_preset_region_china">中国提供商</string>
+    <string name="provider_preset_region_global">海外提供商</string>
+    <string name="provider_preset_region_custom_local">自定义与本地</string>
+    <string name="provider_preset_region_custom_only">自定义接口</string>
+
+    <!-- 提供商本地化名称 -->
+    <string name="provider_preset_siliconflow">硅基流动</string>
+    <string name="provider_preset_modelscope">魔搭社区</string>
+
+    <!-- 预设名称后置紧凑权益小徽章 -->
+    <string name="provider_badge_one_click">一键登录</string>
+    <string name="provider_badge_free_models">含免费模型</string>
+    <string name="provider_badge_free_tier">免费额度</string>
+    <string name="provider_badge_free_daily">每日免费</string>
+    <string name="provider_badge_free_trial">新客试用</string>
+    <string name="provider_badge_starter_credit">送额度</string>
+    <string name="provider_badge_payg">按量直连</string>
+
+    <!-- OpenRouter OAuth PKCE 与设置复用 -->
+    <string name="oauth_openrouter_card_title">一键授权登录 OpenRouter</string>
+    <string name="oauth_openrouter_card_subtitle">浏览器一键授权，自动写入个人 API 密钥</string>
+    <string name="oauth_openrouter_btn_signin">登录</string>
+    <string name="oauth_openrouter_btn_primary">使用 OpenRouter 一键登录</string>
+    <string name="oauth_openrouter_btn_manual">改用手动粘贴 API 密钥</string>
+    <string name="oauth_openrouter_btn_back_oauth">切回 OpenRouter 一键登录</string>
+    <string name="oauth_openrouter_waiting_title">等待 OpenRouter 授权返回…</string>
+    <string name="oauth_openrouter_waiting_desc">已在浏览器中打开授权确认页，同意后将自动返回并加密保存密钥。</string>
+    <string name="oauth_openrouter_exchanging_title">正在完成授权并写入密钥…</string>
+    <string name="oauth_openrouter_btn_reopen">重新打开</string>
+    <string name="oauth_openrouter_privacy_note">直连 OpenRouter 官方授权页，不触碰账号密码，不经第三方中转。</string>
+    <string name="oauth_openrouter_proxy_title">海外提供商 · 中国大陆建议配合代理</string>
+    <string name="oauth_openrouter_proxy_desc">授权换取密钥与调用海外模型自动走内置代理或系统代理</string>
+    <string name="oauth_openrouter_proxy_action">内置代理</string>
+    <string name="oauth_openrouter_proxy_running">内置代理已开启</string>
+    <string name="oauth_openrouter_err_network_title">连接 openrouter.ai 超时或受阻</string>
+    <string name="oauth_openrouter_err_network_desc">当前网络无法直连海外授权接口，可开启应用内置代理后重试，或切换其它提供商。</string>
+    <string name="oauth_openrouter_err_rejected">授权码已过期或被拒绝，请重新发起一键登录。</string>
+    <string name="oauth_openrouter_err_state">授权安全校验未通过，请重新发起登录。</string>
+    <string name="oauth_openrouter_err_browser">未找到可用浏览器打开授权页面。</string>
+    <string name="oauth_openrouter_success_filled">已通过 OpenRouter 一键授权填入个人 API 密钥</string>
+
+    <!-- 新手引导 v2 领 Key 与剪贴板助手 -->
+    <string name="provider_form_get_key_console">去官网获取</string>
+    <string name="provider_form_manual_key_hint">或手动粘贴 API 密钥</string>
+    <string name="provider_form_console_helper_label">还没有官方控制台密钥？</string>
+    <string name="onboarding_v2_title">选择 AI 提供商</string>
+    <string name="onboarding_v2_desc">下拉选择任意中国或海外提供商预设，免填接口地址即可开始对话。</string>
+    <string name="onboarding_v2_step1_console">去 %1$s 官网领取 API 密钥</string>
+    <string name="onboarding_v2_open_console">打开控制台领取密钥</string>
+    <string name="onboarding_v2_step1_hint">登录控制台 → 新建 API 密钥 → 复制后返回本应用</string>
+    <string name="onboarding_v2_step2_paste">粘贴密钥（接口地址已自动配置）</string>
+    <string name="onboarding_v2_clipboard_title">检测到剪贴板密钥</string>
+    <string name="onboarding_v2_clipboard_fill">一键填入</string>
+    <string name="onboarding_v2_advanced_toggle">高级地址与名称</string>
+    <string name="onboarding_v2_switch_preset">切换提供商</string>
+    <string name="onboarding_v2_region_tag_china">中国提供商</string>
+    <string name="onboarding_v2_region_tag_global">海外提供商</string>
+    <string name="onboarding_v2_region_tag_oauth">OAuth 一键登录</string>
+    <string name="onboarding_v2_region_tag_custom">自定义接口</string>
+</resources>

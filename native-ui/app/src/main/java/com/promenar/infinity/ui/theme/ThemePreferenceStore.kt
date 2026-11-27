@@ -34,6 +34,8 @@ class ThemePreferenceStore(context: Context) {
         const val WALLPAPER_BLUR_DP_KEY = "wallpaper_blur_dp"
         const val WALLPAPER_DIM_FRACTION_KEY = "wallpaper_dim_fraction"
         const val WALLPAPER_ASSISTANT_CARD_KEY = "wallpaper_assistant_card"
+        const val WALLPAPER_COMPACT_FRAMING_KEY = "wallpaper_compact_framing"
+        const val WALLPAPER_WIDE_FRAMING_KEY = "wallpaper_wide_framing"
         /** 主色键里表示“内置淡紫配色”的值：显式写入，和从未选择过（缺键，走冰蓝默认）区分开。 */
         const val BUILT_IN_PRIMARY_COLOR = 0L
         /** 最近使用的自定义色最多保留几个。 */
@@ -66,6 +68,8 @@ class ThemePreferenceStore(context: Context) {
             WALLPAPER_BLUR_DP_KEY,
             WALLPAPER_DIM_FRACTION_KEY,
             WALLPAPER_ASSISTANT_CARD_KEY,
+            WALLPAPER_COMPACT_FRAMING_KEY,
+            WALLPAPER_WIDE_FRAMING_KEY,
         )
     }
 
@@ -189,6 +193,8 @@ class ThemePreferenceStore(context: Context) {
         val normalized = config.copy(
             blurDp = config.clampedBlurDp,
             dimFraction = config.clampedDimFraction,
+            compactFraming = config.compactFraming.normalized(),
+            wideFraming = config.wideFraming.normalized(),
         )
         _state.value = _state.value.copy(wallpaper = normalized)
         preferences.edit().apply {
@@ -198,12 +204,16 @@ class ThemePreferenceStore(context: Context) {
                     remove(WALLPAPER_PRESET_KEY)
                     remove(WALLPAPER_IMAGE_FILE_KEY)
                     remove(WALLPAPER_ACCENT_ARGB_KEY)
+                    remove(WALLPAPER_COMPACT_FRAMING_KEY)
+                    remove(WALLPAPER_WIDE_FRAMING_KEY)
                 }
                 is com.promenar.infinity.ui.wallpaper.WallpaperSource.Preset -> {
                     putString(WALLPAPER_KIND_KEY, com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.KIND_PRESET)
                     putString(WALLPAPER_PRESET_KEY, source.id.storageKey)
                     remove(WALLPAPER_IMAGE_FILE_KEY)
                     remove(WALLPAPER_ACCENT_ARGB_KEY)
+                    remove(WALLPAPER_COMPACT_FRAMING_KEY)
+                    remove(WALLPAPER_WIDE_FRAMING_KEY)
                 }
                 is com.promenar.infinity.ui.wallpaper.WallpaperSource.Image -> {
                     putString(WALLPAPER_KIND_KEY, com.promenar.infinity.ui.wallpaper.ChatWallpaperConfig.KIND_IMAGE)
@@ -211,6 +221,8 @@ class ThemePreferenceStore(context: Context) {
                     putString(WALLPAPER_IMAGE_FILE_KEY, source.fileName)
                     if (source.extractedAccentArgb != null) putInt(WALLPAPER_ACCENT_ARGB_KEY, source.extractedAccentArgb)
                     else remove(WALLPAPER_ACCENT_ARGB_KEY)
+                    putString(WALLPAPER_COMPACT_FRAMING_KEY, normalized.compactFraming.encode())
+                    putString(WALLPAPER_WIDE_FRAMING_KEY, normalized.wideFraming.encode())
                 }
             }
             putInt(WALLPAPER_BLUR_DP_KEY, normalized.clampedBlurDp)
@@ -293,6 +305,8 @@ class ThemePreferenceStore(context: Context) {
             },
             assistantReadingCard = !preferences.contains(WALLPAPER_ASSISTANT_CARD_KEY) ||
                 preferences.getBoolean(WALLPAPER_ASSISTANT_CARD_KEY, true),
+            compactFramingEncoded = preferences.getString(WALLPAPER_COMPACT_FRAMING_KEY, null),
+            wideFramingEncoded = preferences.getString(WALLPAPER_WIDE_FRAMING_KEY, null),
         ),
     )
 }

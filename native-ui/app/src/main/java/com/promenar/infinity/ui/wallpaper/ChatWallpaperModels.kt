@@ -3,6 +3,8 @@ package com.promenar.infinity.ui.wallpaper
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import kotlin.math.abs
+import java.util.Locale
 
 /**
  * 内置零包体程序化壁纸预设。
@@ -33,6 +35,50 @@ enum class WallpaperPresetId(
             listOf(AURORA, OBSIDIAN_TOPO, PINE_MIST, AMBER_DUSK, ABYSSAL_WAVE, WARM_PAPER)
         } else {
             listOf(WARM_PAPER, AURORA, OBSIDIAN_TOPO, PINE_MIST, AMBER_DUSK, ABYSSAL_WAVE)
+        }
+    }
+}
+
+/**
+ * 图片壁纸单画幅构图参数（归一化坐标，天然适配任意分辨率与预烘焙模糊缓存）：
+ * - [scale]：额外缩放倍率（`1.0f..3.0f`），在 `ContentScale.Crop` 铺满基础上放大；
+ * - [offsetX] / [offsetY]：焦点偏移（`-1.0f..1.0f`），`+1f` 向右/向下拖动露出左/上边缘，严守零黑边。
+ */
+@Immutable
+data class WallpaperFraming(
+    val scale: Float = DEFAULT_SCALE,
+    val offsetX: Float = 0f,
+    val offsetY: Float = 0f,
+) {
+    val isDefault: Boolean
+        get() = abs(scale - DEFAULT_SCALE) < 0.005f && abs(offsetX) < 0.005f && abs(offsetY) < 0.005f
+
+    fun normalized(): WallpaperFraming = WallpaperFraming(
+        scale = if (scale.isFinite()) scale.coerceIn(MIN_SCALE, MAX_SCALE) else DEFAULT_SCALE,
+        offsetX = if (offsetX.isFinite()) offsetX.coerceIn(-1f, 1f) else 0f,
+        offsetY = if (offsetY.isFinite()) offsetY.coerceIn(-1f, 1f) else 0f,
+    )
+
+    fun encode(): String {
+        val n = normalized()
+        return String.format(Locale.US, "%.3f,%.3f,%.3f", n.scale, n.offsetX, n.offsetY)
+    }
+
+    companion object {
+        const val MIN_SCALE = 1f
+        const val MAX_SCALE = 3f
+        const val DEFAULT_SCALE = 1f
+
+        val Default = WallpaperFraming()
+
+        fun decode(raw: String?): WallpaperFraming {
+            if (raw.isNullOrBlank()) return Default
+            val parts = raw.split(',')
+            if (parts.size != 3) return Default
+            val s = parts[0].trim().toFloatOrNull() ?: return Default
+            val x = parts[1].trim().toFloatOrNull() ?: return Default
+            val y = parts[2].trim().toFloatOrNull() ?: return Default
+            return WallpaperFraming(s, x, y).normalized()
         }
     }
 }
@@ -73,6 +119,10 @@ data class ChatWallpaperConfig(
     val dimFraction: Float = DEFAULT_PHOTO_DIM_DARK,
     /** 开启后为助手回复正文叠加半透毛玻璃阅读衬底，保证复杂照片下高可读。 */
     val assistantReadingCard: Boolean = true,
+    /** 外屏 / 手机竖屏构图参数（缩放与焦点偏移）。 */
+    val compactFraming: WallpaperFraming = WallpaperFraming.Default,
+    /** 折叠屏展开内屏 / 横屏宽画幅构图参数（缩放与焦点偏移）。 */
+    val wideFraming: WallpaperFraming = WallpaperFraming.Default,
 ) {
     val isActive: Boolean get() = source != WallpaperSource.None
 
@@ -82,6 +132,14 @@ data class ChatWallpaperConfig(
     val clampedBlurDp: Int get() = blurDp.coerceIn(MIN_BLUR_DP, MAX_BLUR_DP)
 
     val clampedDimFraction: Float get() = dimFraction.coerceIn(MIN_DIM_FRACTION, MAX_DIM_FRACTION)
+
+    fun framingFor(wide: Boolean): WallpaperFraming =
+        (if (wide) wideFraming else compactFraming).normalized()
+
+    fun withFraming(wide: Boolean, framing: WallpaperFraming): ChatWallpaperConfig {
+        val normalized = framing.normalized()
+        return if (wide) copy(wideFraming = normalized) else copy(compactFraming = normalized)
+    }
 
     /** 供「提取壁纸主色为强调色」使用的推荐 ARGB 种子色。 */
     fun recommendedAccentArgb(): Int? = when (val s = source) {
@@ -123,6 +181,8 @@ data class ChatWallpaperConfig(
             blurDp = DEFAULT_PHOTO_BLUR_DP,
             dimFraction = if (dark) DEFAULT_PHOTO_DIM_DARK else DEFAULT_PHOTO_DIM_LIGHT,
             assistantReadingCard = true,
+            compactFraming = WallpaperFraming.Default,
+            wideFraming = WallpaperFraming.Default,
         )
 
         /** 校验单段安全文件名，防止路径穿越或损坏偏好残留。 */
@@ -141,6 +201,8 @@ data class ChatWallpaperConfig(
             blurDp: Int,
             dimFraction: Float,
             assistantReadingCard: Boolean,
+            compactFramingEncoded: String? = null,
+            wideFramingEncoded: String? = null,
         ): ChatWallpaperConfig {
             val source = when (kind?.lowercase()) {
                 KIND_PRESET -> WallpaperPresetId.fromStorageKey(presetKey)
@@ -159,6 +221,8 @@ data class ChatWallpaperConfig(
                 blurDp = blurDp.coerceIn(MIN_BLUR_DP, MAX_BLUR_DP),
                 dimFraction = if (dimFraction.isFinite()) dimFraction.coerceIn(MIN_DIM_FRACTION, MAX_DIM_FRACTION) else DEFAULT_PHOTO_DIM_DARK,
                 assistantReadingCard = assistantReadingCard,
+                compactFraming = WallpaperFraming.decode(compactFramingEncoded),
+                wideFraming = WallpaperFraming.decode(wideFramingEncoded),
             )
         }
     }

@@ -100,6 +100,36 @@ internal val InfinityStarWarm = Color(0xFFFFD6AA)
 /** 浅色主题下 LED 面板底板：极淡的墨绿灰，衬出熄灭的灯位。 */
 internal val InfinityLedFaceplateLight = Color(0x12141E19)
 
+/** 聊天壁纸程序化预设画布与浅色压暗遮罩色板（统一收口于主题 token 文件）。 */
+internal val InfinityWallpaperLightScrim = Color(0xFFF8F7F5)
+internal val InfinityWallpaperAuroraBase = Color(0xFF060913)
+internal val InfinityWallpaperAuroraBlueCore = Color(0x883B82F6)
+internal val InfinityWallpaperAuroraBlueMid = Color(0x222563EB)
+internal val InfinityWallpaperAuroraTealCore = Color(0x702DD4BF)
+internal val InfinityWallpaperAuroraTealMid = Color(0x1814B8A6)
+internal val InfinityWallpaperAuroraViolet = Color(0x557C3AED)
+internal val InfinityWallpaperTopoStart = Color(0xFF0B0D14)
+internal val InfinityWallpaperTopoMid = Color(0xFF111522)
+internal val InfinityWallpaperTopoEnd = Color(0xFF090B10)
+internal val InfinityWallpaperTopoContour = Color(0xFF94A3B8)
+internal val InfinityWallpaperPineBase = Color(0xFF071316)
+internal val InfinityWallpaperPineTeal = Color(0x7714B8A6)
+internal val InfinityWallpaperPineDeep = Color(0x660F766E)
+internal val InfinityWallpaperAmberBase = Color(0xFF120B08)
+internal val InfinityWallpaperAmberGlow = Color(0x78D97706)
+internal val InfinityWallpaperAmberMid = Color(0x2292400E)
+internal val InfinityWallpaperAmberRose = Color(0x55BE185D)
+internal val InfinityWallpaperAbyssStart = Color(0xFF060E21)
+internal val InfinityWallpaperAbyssMid = Color(0xFF0C1C3D)
+internal val InfinityWallpaperAbyssEnd = Color(0xFF050A18)
+internal val InfinityWallpaperAbyssWave = Color(0xFF3B82F6)
+internal val InfinityWallpaperPaperStart = Color(0xFFF7F2EA)
+internal val InfinityWallpaperPaperMid = Color(0xFFEFE7DC)
+internal val InfinityWallpaperPaperEnd = Color(0xFFF6F1EA)
+internal val InfinityWallpaperPaperWarm = Color(0x66E7C9A9)
+internal val InfinityWallpaperPaperMist = Color(0x50CBD5E1)
+internal val InfinityWallpaperPaperFiber = Color(0xFF9C7E63)
+
 internal val InfinityDarkDomainColors = InfinityDomainColors(
     success = Color(0xFF4ADE80),
     onSuccess = Color(0xFF003914),

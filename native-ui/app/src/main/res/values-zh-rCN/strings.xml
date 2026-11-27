@@ -1063,6 +1063,22 @@
     <string name="wallpaper_notice_accent_applied">已按壁纸主色更新强调色</string>
     <string name="wallpaper_notice_set_success">已设为聊天壁纸</string>
     <string name="wallpaper_notice_import_failed">无法读取所选图片</string>
+    <string name="wallpaper_notice_deleted">已删除壁纸图片</string>
+    <string name="wallpaper_aspect_outer">外屏竖屏</string>
+    <string name="wallpaper_aspect_inner">内屏展开</string>
+    <string name="wallpaper_preview_pure_framing">纯构图</string>
+    <string name="wallpaper_preview_show_bubbles">显气泡</string>
+    <string name="wallpaper_framing_center">居中</string>
+    <string name="wallpaper_framing_hint">双指缩放与拖动构图 · 内外屏独立记忆</string>
+    <string name="wallpaper_preview_short_user_msg">换一张自定义照片试试效果</string>
+    <string name="wallpaper_preview_short_assistant_card_msg">叠加轻雾衬底，复杂照片下依然清晰。</string>
+    <string name="wallpaper_preview_short_assistant_plain_msg">关闭衬底后正文直接悬浮于柔和背景之上。</string>
+    <string name="wallpaper_action_delete_current">删除当前图</string>
+    <string name="wallpaper_action_delete_photo_cd">删除第 %1$d 张已导入壁纸</string>
+    <string name="wallpaper_saved_photo_label">我的图 %1$d</string>
+    <string name="wallpaper_delete_dialog_title">删除这张已导入壁纸？</string>
+    <string name="wallpaper_delete_dialog_message">将从本机壁纸库移除该图片及其模糊缓存；如正在使用，聊天背景将自动切换为纯净模式。</string>
+    <string name="wallpaper_delete_dialog_confirm">确认删除</string>
     <string name="media_lightbox_action_wallpaper">壁纸</string>
     <string name="media_action_set_wallpaper">设为聊天壁纸</string>
 
@@ -1769,7 +1785,7 @@
     <string name="network_proxy_disabled">未启用</string>
     <string name="network_proxy_missing">未包含</string>
     <string name="provider_proxy_toggle_title">经内置代理连接</string>
-    <string name="provider_proxy_toggle_desc_off">默认直连，适合国内或无需代理的服务商</string>
+    <string name="provider_proxy_toggle_desc_off">默认直连，适合可直连或无需代理的服务商</string>
     <string name="provider_proxy_toggle_desc_on">仅该服务商的对话、模型与测连经内置代理</string>
     <string name="provider_proxy_status_running">内置代理运行中</string>
     <string name="provider_proxy_status_off">内置代理未开启</string>

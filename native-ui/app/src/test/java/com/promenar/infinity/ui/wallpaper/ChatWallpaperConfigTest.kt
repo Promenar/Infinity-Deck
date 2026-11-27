@@ -139,7 +139,37 @@ class ChatWallpaperConfigTest {
 
         assertThat(policy.isAllowed("settings", "wallpaper_image_file")).isFalse()
         assertThat(policy.isAllowed("settings", "wallpaper_accent_argb")).isFalse()
+        assertThat(policy.isAllowed("settings", "wallpaper_compact_framing")).isFalse()
+        assertThat(policy.isAllowed("settings", "wallpaper_wide_framing")).isFalse()
         assertThat(policy.isKnown("settings", "wallpaper_image_file")).isTrue()
         assertThat(policy.isKnown("settings", "wallpaper_accent_argb")).isTrue()
+        assertThat(policy.isKnown("settings", "wallpaper_compact_framing")).isTrue()
+        assertThat(policy.isKnown("settings", "wallpaper_wide_framing")).isTrue()
+    }
+
+    @Test
+    fun `双画幅构图参数编码解码与边界钳制互不干扰`() {
+        val raw = WallpaperFraming(scale = 5.5f, offsetX = -2.4f, offsetY = 0.42f).normalized()
+        assertThat(raw.scale).isEqualTo(WallpaperFraming.MAX_SCALE)
+        assertThat(raw.offsetX).isEqualTo(-1f)
+        assertThat(raw.offsetY).isWithin(0.001f).of(0.42f)
+
+        val decoded = WallpaperFraming.decode(raw.encode())
+        assertThat(decoded.scale).isWithin(0.002f).of(WallpaperFraming.MAX_SCALE)
+        assertThat(decoded.offsetX).isWithin(0.002f).of(-1f)
+        assertThat(decoded.offsetY).isWithin(0.002f).of(0.42f)
+
+        assertThat(WallpaperFraming.decode("bad")).isEqualTo(WallpaperFraming.Default)
+        assertThat(WallpaperFraming(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).normalized())
+            .isEqualTo(WallpaperFraming.Default)
+
+        val config = ChatWallpaperConfig.forImportedImage("wp-a.webp", 0xFF123456.toInt(), dark = true)
+            .withFraming(wide = false, WallpaperFraming(1.35f, 0.25f, -0.15f))
+            .withFraming(wide = true, WallpaperFraming(1.10f, -0.30f, 0.10f))
+        assertThat(config.framingFor(wide = false).scale).isWithin(0.001f).of(1.35f)
+        assertThat(config.framingFor(wide = true).scale).isWithin(0.001f).of(1.10f)
+        assertThat(isWideWallpaperViewport(390f, 844f)).isFalse()
+        assertThat(isWideWallpaperViewport(818f, 760f)).isTrue()
+        assertThat(isWideWallpaperViewport(500f, 520f)).isTrue()
     }
 }

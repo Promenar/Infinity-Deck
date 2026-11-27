@@ -25,7 +25,8 @@ class SettingsPaneTest {
     @Test
     fun `右列只承载设置页与 Linux 文件页，终端图谱与会话交给主导航`() {
         listOf(
-            NavDestinations.THEME_CONFIG, NavDestinations.providerForm("extra_1"), NavDestinations.providerForm(),
+            NavDestinations.THEME_CONFIG, NavDestinations.WALLPAPER_SETTINGS,
+            NavDestinations.providerForm("extra_1"), NavDestinations.providerForm(),
             NavDestinations.providerModels("default"), NavDestinations.SSH_CONFIG, NavDestinations.LINUX_ENVIRONMENT,
             NavDestinations.LINUX_PACKAGES, NavDestinations.RAG_ADVANCED_KG, NavDestinations.TAILSCALE_CONFIG,
         ).forEach { assertThat(isSettingsPaneRoute(it)).isTrue() }

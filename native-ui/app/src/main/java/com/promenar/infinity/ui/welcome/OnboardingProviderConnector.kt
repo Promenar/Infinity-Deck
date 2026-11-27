@@ -17,9 +17,10 @@ internal data class OnboardingProviderDraft(
     val baseUrl: String,
     val secret: String,
     val name: String?,
+    val useBuiltInProxy: Boolean = false,
 ) {
     override fun toString(): String =
-        "OnboardingProviderDraft(protocol=$protocol, hasSecret=${secret.isNotBlank()})"
+        "OnboardingProviderDraft(protocol=$protocol, hasSecret=${secret.isNotBlank()}, useBuiltInProxy=$useBuiltInProxy)"
 }
 
 internal sealed interface OnboardingConnectOutcome {
@@ -44,6 +45,7 @@ internal typealias OnboardingProviderSave = suspend (
     credential: CredentialUpdate,
     model: String,
     name: String?,
+    useBuiltInProxy: Boolean,
 ) -> String
 
 /**
@@ -73,6 +75,7 @@ internal suspend fun connectOnboardingProvider(
             serviceAccountJson = if (usesVertex) secret else "",
             projectId = "",
             location = VERTEX_DEFAULT_LOCATION,
+            useBuiltInProxy = draft.useBuiltInProxy,
         ),
     )
     if (probeResult is ProviderConnectionProbeResult.Failure) {
@@ -86,7 +89,7 @@ internal suspend fun connectOnboardingProvider(
             model = "",
             name = draft.name?.takeIf(String::isNotBlank),
             onSave = { protocol, url, credential, model, name ->
-                save(existingProviderId, protocol, url, credential, model, name)
+                save(existingProviderId, protocol, url, credential, model, name, draft.useBuiltInProxy)
             },
             readSummary = readSummary,
         )
@@ -101,7 +104,7 @@ internal suspend fun connectOnboardingLocalProvider(
 ): OnboardingConnectOutcome {
     val model = models.firstOrNull(String::isNotBlank) ?: return OnboardingConnectOutcome.LocalModelMissing
     return savingOutcome {
-        save(existingProviderId, ProtocolType.Local, "", CredentialUpdate.Preserve, model, null)
+        save(existingProviderId, ProtocolType.Local, "", CredentialUpdate.Preserve, model, null, false)
     }
 }
 

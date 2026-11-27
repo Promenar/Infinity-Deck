@@ -28,10 +28,11 @@ class ProtocolTypeLabelTest {
             "OpenAI", "DeepSeek", "Anthropic", "Gemini", "Vertex AI", "Kimi",
             "通义千问", "智谱", "豆包", "MiniMax", "xAI", "百川", "Mistral",
             "OpenCode Go", "OpenCode Zen", "百炼 Coding Plan", "智谱 Coding Plan",
-            "MiniMax Token Plan", "Kimi Coding Plan", "方舟 Coding Plan", "OpenRouter", "SiliconFlow",
+            "MiniMax Token Plan", "Kimi Coding Plan", "方舟 Coding Plan", "OpenRouter", "SiliconFlow", "ModelScope",
             "Local", "Custom",
         ).inOrder()
         assertThat(PROVIDER_PRESETS.first { it.name == "豆包" }.label(resources)).isEqualTo("Volcano Ark")
+        assertThat(PROVIDER_PRESETS.first { it.name == "ModelScope" }.label(resources)).isEqualTo("ModelScope")
     }
 
     @Test
@@ -41,6 +42,8 @@ class ProtocolTypeLabelTest {
         assertThat(ProtocolType.Generic_OpenAI_Compat.label(resources)).isEqualTo("OpenAI 兼容（通用）")
         assertThat(PROVIDER_PRESETS.first { it.name == "Custom" }.label(resources)).isEqualTo("自定义")
         assertThat(PROVIDER_PRESETS.first { it.name == "豆包" }.label(resources)).isEqualTo("火山方舟")
+        assertThat(PROVIDER_PRESETS.first { it.name == "SiliconFlow" }.label(resources)).isEqualTo("硅基流动")
+        assertThat(PROVIDER_PRESETS.first { it.name == "ModelScope" }.label(resources)).isEqualTo("魔搭社区")
     }
 
     @Test

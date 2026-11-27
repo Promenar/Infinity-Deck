@@ -123,6 +123,16 @@
                 <data android:pathSuffix=".markdown" />
                 <data android:pathSuffix=".MARKDOWN" />
             </intent-filter>
+            <!-- OpenRouter OAuth 2.0 PKCE 授权完成深链：将应用切回前台。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="infinitydeck"
+                    android:host="oauth"
+                    android:pathPrefix="/openrouter" />
+            </intent-filter>
         </activity>
 
         <receiver

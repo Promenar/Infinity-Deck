@@ -28,8 +28,12 @@ class TagWrapContractTest {
         "settings/AgentSkillsSection.kt",
         // 模型编辑页仅含 9 项固定枚举类型（两行全可见防横向裁切）与至多 9 项固定能力微标摘要。
         "settings/ModelEditorScreen.kt",
+        // 提供商下拉预设行与已选摘要行仅含品牌名与至多 2 枚固定权益微标，窄屏大字号下自动折行防挤压。
+        "settings/ProviderFormScreen.kt",
         "settings/TailscalePeerPath.kt",
         "settings/ThemeScreen.kt",
+        // 新手引导下拉预设行与已选摘要行复用同等至多 2 枚固定权益微标。
+        "welcome/OnboardingProviderStep.kt",
         "workspace/AgentReachSheet.kt",
         "workspace/WorkspaceKindTags.kt",
         "workspace/WorkspaceSwitchStatus.kt",

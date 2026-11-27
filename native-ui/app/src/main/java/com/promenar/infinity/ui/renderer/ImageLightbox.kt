@@ -807,7 +807,7 @@ private suspend fun applyLightboxImageAsWallpaper(
         )
         app.themePreferenceStore.setWallpaper(config)
         app.wallpaperAssetStore.resolveDisplayFile(result.fileName, config.clampedBlurDp)
-        app.wallpaperAssetStore.pruneUnused(keepFileName = result.fileName)
+        app.wallpaperAssetStore.enforceLibraryLimit(keepFileName = result.fileName)
         withContext(Dispatchers.Main) {
             Toast.makeText(context, successMessage, Toast.LENGTH_SHORT).show()
         }

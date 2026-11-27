@@ -3,18 +3,22 @@ package com.promenar.infinity.ui.wallpaper
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -25,16 +29,47 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.promenar.infinity.InfinityApplication
 import com.promenar.infinity.ui.theme.InfinityObsidianGlassTint
+import com.promenar.infinity.ui.theme.InfinityWallpaperAbyssEnd
+import com.promenar.infinity.ui.theme.InfinityWallpaperAbyssMid
+import com.promenar.infinity.ui.theme.InfinityWallpaperAbyssStart
+import com.promenar.infinity.ui.theme.InfinityWallpaperAbyssWave
+import com.promenar.infinity.ui.theme.InfinityWallpaperAmberBase
+import com.promenar.infinity.ui.theme.InfinityWallpaperAmberGlow
+import com.promenar.infinity.ui.theme.InfinityWallpaperAmberMid
+import com.promenar.infinity.ui.theme.InfinityWallpaperAmberRose
+import com.promenar.infinity.ui.theme.InfinityWallpaperAuroraBase
+import com.promenar.infinity.ui.theme.InfinityWallpaperAuroraBlueCore
+import com.promenar.infinity.ui.theme.InfinityWallpaperAuroraBlueMid
+import com.promenar.infinity.ui.theme.InfinityWallpaperAuroraTealCore
+import com.promenar.infinity.ui.theme.InfinityWallpaperAuroraTealMid
+import com.promenar.infinity.ui.theme.InfinityWallpaperAuroraViolet
+import com.promenar.infinity.ui.theme.InfinityWallpaperLightScrim
+import com.promenar.infinity.ui.theme.InfinityWallpaperPaperEnd
+import com.promenar.infinity.ui.theme.InfinityWallpaperPaperFiber
+import com.promenar.infinity.ui.theme.InfinityWallpaperPaperMid
+import com.promenar.infinity.ui.theme.InfinityWallpaperPaperMist
+import com.promenar.infinity.ui.theme.InfinityWallpaperPaperStart
+import com.promenar.infinity.ui.theme.InfinityWallpaperPaperWarm
+import com.promenar.infinity.ui.theme.InfinityWallpaperPineBase
+import com.promenar.infinity.ui.theme.InfinityWallpaperPineDeep
+import com.promenar.infinity.ui.theme.InfinityWallpaperPineTeal
+import com.promenar.infinity.ui.theme.InfinityWallpaperTopoContour
+import com.promenar.infinity.ui.theme.InfinityWallpaperTopoEnd
+import com.promenar.infinity.ui.theme.InfinityWallpaperTopoMid
+import com.promenar.infinity.ui.theme.InfinityWallpaperTopoStart
 import java.io.File
 import kotlin.math.PI
 import kotlin.math.sin
 
-private val LightWallpaperScrimColor = Color(0xFFF8F7F5)
+/** 判断容器是否属于折叠屏展开内屏或宽画幅，用于自动选用对应构图参数。 */
+internal fun isWideWallpaperViewport(widthDp: Float, heightDp: Float): Boolean =
+    widthDp >= 600f || (heightDp > 0f && widthDp / heightDp >= 0.88f)
 
 /**
  * 全站复用的聊天壁纸渲染层（对话底板、壁纸工作室实时预览、外观入口缩略图共用）。
  * - 预设壁纸通过零体积 Canvas 程序化绘制；
  * - 图片壁纸通过 [WallpaperAssetStore] 读取本地预烘焙模糊缓存文件，保证滑动帧率；
+ * - 自动按视口画幅（外屏竖屏 / 展开内屏）应用独立构图参数，确保零畸变且无黑边；
  * - 未来扩展动态着色器、循环视频或宠物场景时，直接在此处扩展 [WallpaperSource] 分支即可。
  */
 @Composable
@@ -44,12 +79,16 @@ fun ChatWallpaperLayer(
     modifier: Modifier = Modifier,
     applyScrim: Boolean = true,
     customImageFileOverride: File? = null,
+    framingOverride: WallpaperFraming? = null,
 ) {
     if (!config.isActive) return
     val blurDp = config.clampedBlurDp
     val dim = config.clampedDimFraction
 
-    Box(modifier = modifier.clearAndSetSemantics {}) {
+    BoxWithConstraints(modifier = modifier.clipToBounds().clearAndSetSemantics {}) {
+        val wideViewport = isWideWallpaperViewport(maxWidth.value, maxHeight.value)
+        val framing = (framingOverride ?: config.framingFor(wideViewport)).normalized()
+
         when (val source = config.source) {
             WallpaperSource.None -> Unit
 
@@ -88,7 +127,19 @@ fun ChatWallpaperLayer(
                             .build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        alignment = BiasAlignment(
+                            horizontalBias = -framing.offsetX,
+                            verticalBias = -framing.offsetY,
+                        ),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val z = framing.scale
+                                scaleX = z
+                                scaleY = z
+                                translationX = framing.offsetX * size.width * (z - 1f) * 0.5f
+                                translationY = framing.offsetY * size.height * (z - 1f) * 0.5f
+                            },
                     )
                 } else {
                     ProceduralWallpaperPresetArtwork(
@@ -101,7 +152,7 @@ fun ChatWallpaperLayer(
 
         if (applyScrim && dim > 0f) {
             val scrimColor = if (dark) InfinityObsidianGlassTint.copy(alpha = dim)
-            else LightWallpaperScrimColor.copy(alpha = dim)
+            else InfinityWallpaperLightScrim.copy(alpha = dim)
             Box(Modifier.fillMaxSize().background(scrimColor))
         }
     }
@@ -118,10 +169,10 @@ fun ProceduralWallpaperPresetArtwork(
         val h = size.height
         when (preset) {
             WallpaperPresetId.AURORA -> {
-                drawRect(Color(0xFF060913))
+                drawRect(InfinityWallpaperAuroraBase)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x883B82F6), Color(0x222563EB), Color.Transparent),
+                        colors = listOf(InfinityWallpaperAuroraBlueCore, InfinityWallpaperAuroraBlueMid, Color.Transparent),
                         center = Offset(w * 0.20f, h * 0.18f),
                         radius = w * 0.85f,
                     ),
@@ -130,7 +181,7 @@ fun ProceduralWallpaperPresetArtwork(
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x702DD4BF), Color(0x1814B8A6), Color.Transparent),
+                        colors = listOf(InfinityWallpaperAuroraTealCore, InfinityWallpaperAuroraTealMid, Color.Transparent),
                         center = Offset(w * 0.86f, h * 0.46f),
                         radius = w * 0.78f,
                     ),
@@ -139,7 +190,7 @@ fun ProceduralWallpaperPresetArtwork(
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x557C3AED), Color.Transparent),
+                        colors = listOf(InfinityWallpaperAuroraViolet, Color.Transparent),
                         center = Offset(w * 0.32f, h * 0.85f),
                         radius = w * 0.72f,
                     ),
@@ -151,7 +202,7 @@ fun ProceduralWallpaperPresetArtwork(
             WallpaperPresetId.OBSIDIAN_TOPO -> {
                 drawRect(
                     brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFF0B0D14), Color(0xFF111522), Color(0xFF090B10)),
+                        colors = listOf(InfinityWallpaperTopoStart, InfinityWallpaperTopoMid, InfinityWallpaperTopoEnd),
                     ),
                 )
                 for (i in 0..8) {
@@ -169,17 +220,17 @@ fun ProceduralWallpaperPresetArtwork(
                     }
                     drawPath(
                         path = wave,
-                        color = Color(0xFF94A3B8).copy(alpha = 0.085f),
+                        color = InfinityWallpaperTopoContour.copy(alpha = 0.085f),
                         style = Stroke(width = 1.2f, cap = StrokeCap.Round),
                     )
                 }
             }
 
             WallpaperPresetId.PINE_MIST -> {
-                drawRect(Color(0xFF071316))
+                drawRect(InfinityWallpaperPineBase)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x7714B8A6), Color.Transparent),
+                        colors = listOf(InfinityWallpaperPineTeal, Color.Transparent),
                         center = Offset(w * 0.78f, h * 0.22f),
                         radius = w * 0.82f,
                     ),
@@ -188,7 +239,7 @@ fun ProceduralWallpaperPresetArtwork(
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x660F766E), Color.Transparent),
+                        colors = listOf(InfinityWallpaperPineDeep, Color.Transparent),
                         center = Offset(w * 0.18f, h * 0.78f),
                         radius = w * 0.78f,
                     ),
@@ -198,10 +249,10 @@ fun ProceduralWallpaperPresetArtwork(
             }
 
             WallpaperPresetId.AMBER_DUSK -> {
-                drawRect(Color(0xFF120B08))
+                drawRect(InfinityWallpaperAmberBase)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x78D97706), Color(0x2292400E), Color.Transparent),
+                        colors = listOf(InfinityWallpaperAmberGlow, InfinityWallpaperAmberMid, Color.Transparent),
                         center = Offset(w * 0.76f, h * 0.24f),
                         radius = w * 0.80f,
                     ),
@@ -210,7 +261,7 @@ fun ProceduralWallpaperPresetArtwork(
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x55BE185D), Color.Transparent),
+                        colors = listOf(InfinityWallpaperAmberRose, Color.Transparent),
                         center = Offset(w * 0.20f, h * 0.80f),
                         radius = w * 0.72f,
                     ),
@@ -222,7 +273,7 @@ fun ProceduralWallpaperPresetArtwork(
             WallpaperPresetId.ABYSSAL_WAVE -> {
                 drawRect(
                     brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFF060E21), Color(0xFF0C1C3D), Color(0xFF050A18)),
+                        colors = listOf(InfinityWallpaperAbyssStart, InfinityWallpaperAbyssMid, InfinityWallpaperAbyssEnd),
                     ),
                 )
                 for (layer in 0..3) {
@@ -238,19 +289,19 @@ fun ProceduralWallpaperPresetArtwork(
                         lineTo(0f, h)
                         close()
                     }
-                    drawPath(p, Color(0xFF3B82F6).copy(alpha = 0.08f + layer * 0.03f))
+                    drawPath(p, InfinityWallpaperAbyssWave.copy(alpha = 0.08f + layer * 0.03f))
                 }
             }
 
             WallpaperPresetId.WARM_PAPER -> {
                 drawRect(
                     brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFFF7F2EA), Color(0xFFEFE7DC), Color(0xFFF6F1EA)),
+                        colors = listOf(InfinityWallpaperPaperStart, InfinityWallpaperPaperMid, InfinityWallpaperPaperEnd),
                     ),
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x66E7C9A9), Color.Transparent),
+                        colors = listOf(InfinityWallpaperPaperWarm, Color.Transparent),
                         center = Offset(w * 0.82f, h * 0.18f),
                         radius = w * 0.76f,
                     ),
@@ -259,7 +310,7 @@ fun ProceduralWallpaperPresetArtwork(
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x50CBD5E1), Color.Transparent),
+                        colors = listOf(InfinityWallpaperPaperMist, Color.Transparent),
                         center = Offset(w * 0.16f, h * 0.78f),
                         radius = w * 0.74f,
                     ),
@@ -272,7 +323,7 @@ fun ProceduralWallpaperPresetArtwork(
                         moveTo(0f, yBase)
                         cubicTo(w * 0.35f, yBase - 14f, w * 0.7f, yBase + 16f, w, yBase - 4f)
                     }
-                    drawPath(line, Color(0xFF9C7E63).copy(alpha = 0.09f), style = Stroke(width = 1.1f))
+                    drawPath(line, InfinityWallpaperPaperFiber.copy(alpha = 0.09f), style = Stroke(width = 1.1f))
                 }
             }
         }

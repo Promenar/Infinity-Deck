@@ -105,6 +105,7 @@ import com.promenar.infinity.ui.common.obsidianTopGlint
 import com.promenar.infinity.ui.theme.InfinityObsidianDialogChip
 import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
 import com.promenar.infinity.ui.theme.InfinityObsidianSolidContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.InfinityTypography
 import com.promenar.infinity.ui.theme.infinityDomainColors
@@ -618,10 +619,10 @@ fun PipelineBubble(
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = if (darkSurface) InfinityObsidianDialogContainer.copy(alpha = 0.78f)
-            else Color.White.copy(alpha = 0.82f),
+            else InfinityPureWhite.copy(alpha = 0.82f),
             border = BorderStroke(
                 0.6.dp,
-                if (darkSurface) Color.White.copy(alpha = 0.09f)
+                if (darkSurface) InfinityPureWhite.copy(alpha = 0.09f)
                 else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
             ),
             modifier = modifier.fillMaxWidth().testTag("CHAT_ASSISTANT_WALLPAPER_CARD"),
@@ -2668,7 +2669,7 @@ fun UserMessageBubble(
                             val bubbleBorder = if (wallpaper.isActive) {
                                 BorderStroke(
                                     0.5.dp,
-                                    if (dark) Color.White.copy(alpha = 0.12f)
+                                    if (dark) InfinityPureWhite.copy(alpha = 0.12f)
                                     else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f),
                                 )
                             } else {

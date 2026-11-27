@@ -21,12 +21,21 @@ class OnboardingProviderConnectorTest {
             return probeResult
         }
 
-        suspend fun save(existing: String?, protocol: ProtocolType, baseUrl: String, credential: CredentialUpdate, model: String, name: String?): String {
+        suspend fun save(
+            existing: String?,
+            protocol: ProtocolType,
+            baseUrl: String,
+            credential: CredentialUpdate,
+            model: String,
+            name: String?,
+            useBuiltInProxy: Boolean,
+        ): String {
             saved += Triple(existing, protocol, credential)
             val id = existing ?: "default"
             summaries[id] = ProviderSummary(id, name ?: protocol.legacyDisplayName, protocol, baseUrl, model,
                 hasApiKey = credential is CredentialUpdate.Replace && protocol !is ProtocolType.Google_VertexAI,
-                hasVertexCredentials = credential is CredentialUpdate.Replace && protocol is ProtocolType.Google_VertexAI)
+                hasVertexCredentials = credential is CredentialUpdate.Replace && protocol is ProtocolType.Google_VertexAI,
+                useBuiltInProxy = useBuiltInProxy)
             return id
         }
     }
@@ -142,5 +151,24 @@ class OnboardingProviderConnectorTest {
             .isEqualTo(OnboardingConnectOutcome.Connected("default"))
         assertThat(fakes.saved.single().second).isEqualTo(ProtocolType.Local)
         assertThat(fakes.probed).isEmpty()
+    }
+
+    @Test
+    fun `新手引导预设分组排除本地模型并区分中英文默认预设`() {
+        val groups = onboardingServiceGroups()
+        val allNames = groups.flatMap { it.second }.map { it.name }
+        assertThat(allNames).doesNotContain("Local")
+        assertThat(allNames).containsAtLeast("OpenRouter", "SiliconFlow", "ModelScope", "DeepSeek", "Gemini", "OpenAI", "Custom")
+        assertThat(defaultOnboardingPresetName("zh-CN")).isEqualTo("SiliconFlow")
+        assertThat(defaultOnboardingPresetName("en-US")).isEqualTo("OpenRouter")
+    }
+
+    @Test
+    fun `引导启用内置代理时探测与保存均透传代理标记`() = runTest {
+        val fakes = Fakes()
+        val outcome = fakes.connect(openAi.copy(useBuiltInProxy = true))
+        assertThat(outcome).isEqualTo(OnboardingConnectOutcome.Connected("default"))
+        assertThat(fakes.probed.single().useBuiltInProxy).isTrue()
+        assertThat(fakes.summaries["default"]?.useBuiltInProxy).isTrue()
     }
 }

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Neutral geographic / capability provider preset groups -->
+    <string name="provider_preset_region_oauth">One-Click OAuth</string>
+    <string name="provider_preset_region_china">China Providers</string>
+    <string name="provider_preset_region_global">Global Providers</string>
+    <string name="provider_preset_region_custom_local">Custom &amp; Local</string>
+    <string name="provider_preset_region_custom_only">Custom Endpoint</string>
+
+    <!-- Localized provider preset display names -->
+    <string name="provider_preset_siliconflow">SiliconFlow</string>
+    <string name="provider_preset_modelscope">ModelScope</string>
+
+    <!-- Compact inline provider benefit badges -->
+    <string name="provider_badge_one_click">One-Click</string>
+    <string name="provider_badge_free_models">Free models</string>
+    <string name="provider_badge_free_tier">Free tier</string>
+    <string name="provider_badge_free_daily">Free daily</string>
+    <string name="provider_badge_free_trial">Free trial</string>
+    <string name="provider_badge_starter_credit">Starter credit</string>
+    <string name="provider_badge_payg">Pay-as-you-go</string>
+
+    <!-- OpenRouter OAuth PKCE & Settings reuse -->
+    <string name="oauth_openrouter_card_title">Sign in with OpenRouter</string>
+    <string name="oauth_openrouter_card_subtitle">One-tap browser sign-in, saves your personal API key automatically</string>
+    <string name="oauth_openrouter_btn_signin">Sign in</string>
+    <string name="oauth_openrouter_btn_primary">Sign in with OpenRouter</string>
+    <string name="oauth_openrouter_btn_manual">Or paste API key manually</string>
+    <string name="oauth_openrouter_btn_back_oauth">Switch back to one-click sign-in</string>
+    <string name="oauth_openrouter_waiting_title">Waiting for OpenRouter…</string>
+    <string name="oauth_openrouter_waiting_desc">Approve access in your browser to return automatically and encrypt your key locally.</string>
+    <string name="oauth_openrouter_exchanging_title">Completing sign-in…</string>
+    <string name="oauth_openrouter_btn_reopen">Reopen browser</string>
+    <string name="oauth_openrouter_privacy_note">OAuth 2.0 PKCE · Direct to openrouter.ai, key stored locally in Android Keystore.</string>
+    <string name="oauth_openrouter_proxy_title">Global provider · Proxy recommended in China</string>
+    <string name="oauth_openrouter_proxy_desc">OAuth key exchange and global models automatically use Built-In Proxy or system proxy.</string>
+    <string name="oauth_openrouter_proxy_action">Built-In Proxy</string>
+    <string name="oauth_openrouter_proxy_running">Built-In Proxy active</string>
+    <string name="oauth_openrouter_err_network_title">Unable to reach openrouter.ai</string>
+    <string name="oauth_openrouter_err_network_desc">Your network could not reach OpenRouter directly. Enable Built-In Proxy and retry, or switch presets.</string>
+    <string name="oauth_openrouter_err_rejected">Authorization expired or rejected. Please try signing in again.</string>
+    <string name="oauth_openrouter_err_state">Authorization verification failed. Please retry.</string>
+    <string name="oauth_openrouter_err_browser">No browser available to open the sign-in page.</string>
+    <string name="oauth_openrouter_success_filled">OpenRouter API key filled via OAuth</string>
+
+    <!-- Onboarding v2 beginner key helper -->
+    <string name="provider_form_get_key_console">Get key</string>
+    <string name="provider_form_manual_key_hint">Or paste API key manually</string>
+    <string name="provider_form_console_helper_label">Need a key from the official console?</string>
+    <string name="onboarding_v2_title">Choose an AI provider</string>
+    <string name="onboarding_v2_desc">Pick a preset from Global or China providers, or sign in with one tap via OpenRouter.</string>
+    <string name="onboarding_v2_step1_console">Get an API key from %1$s</string>
+    <string name="onboarding_v2_open_console">Open console to get API key</string>
+    <string name="onboarding_v2_step1_hint">Sign in to console → Create API key → Copy and return here</string>
+    <string name="onboarding_v2_step2_paste">Paste API key (endpoint pre-filled)</string>
+    <string name="onboarding_v2_clipboard_title">API key detected in clipboard</string>
+    <string name="onboarding_v2_clipboard_fill">Paste</string>
+    <string name="onboarding_v2_advanced_toggle">Advanced URL &amp; name</string>
+    <string name="onboarding_v2_switch_preset">Switch preset</string>
+    <string name="onboarding_v2_region_tag_china">China</string>
+    <string name="onboarding_v2_region_tag_global">Global</string>
+    <string name="onboarding_v2_region_tag_oauth">OAuth</string>
+    <string name="onboarding_v2_region_tag_custom">Custom</string>
+</resources>

@@ -4,6 +4,7 @@ import com.promenar.infinity.ui.theme.InfinityMotion
 import android.content.res.Resources
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,10 +12,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,15 +37,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Login
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
@@ -116,22 +123,51 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
 import com.promenar.infinity.ui.common.InfinityOptionIconBadge
 import com.promenar.infinity.ui.common.InfinityOptionItem
 import com.promenar.infinity.ui.common.InfinityOptionSectionHeader
 import com.promenar.infinity.ui.common.InfinityPopoverSpec
 import com.promenar.infinity.ui.common.InfinitySegment
 import com.promenar.infinity.ui.common.InfinitySegmentedControl
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.ModelBrandResolver
+import com.promenar.infinity.ui.common.OpenRouterOAuthFailureKind
+import com.promenar.infinity.ui.common.OpenRouterOAuthUiState
+import com.promenar.infinity.ui.common.ProviderPresetBadgeChip
 import com.promenar.infinity.ui.common.brandAccentColor
 import com.promenar.infinity.ui.common.infinityPopoverAnchor
+import com.promenar.infinity.ui.common.openExternalBrowserUrl
 import com.promenar.infinity.ui.common.rememberInfinityPopoverAnchor
+import com.promenar.infinity.ui.common.rememberOpenRouterOAuthController
+import com.promenar.infinity.ui.theme.infinityDomainColors
 
 /** 预设分组：主流官方云、订阅与聚合网关、本地与自定义。 */
-enum class ProviderPresetCategory(@StringRes val titleRes: Int) {
+enum class ProviderPresetCategory(@param:StringRes val titleRes: Int) {
     OFFICIAL_CLOUD(R.string.provider_preset_cat_official),
     SUBSCRIPTION_GATEWAY(R.string.provider_preset_cat_subscription),
     LOCAL_CUSTOM(R.string.provider_preset_cat_custom),
+}
+
+/** 明确中立的地域/授权能力分组（供设置与新手引导下拉预设弹层共用）。 */
+enum class ProviderPresetRegion(@param:StringRes val titleRes: Int) {
+    OAUTH_ONE_CLICK(R.string.provider_preset_region_oauth),
+    CHINA(R.string.provider_preset_region_china),
+    GLOBAL(R.string.provider_preset_region_global),
+    CUSTOM_LOCAL(R.string.provider_preset_region_custom_local),
+}
+
+enum class ProviderBadgeTone { PRIMARY, SUCCESS, NEUTRAL }
+
+/** 紧跟提供商名称的紧凑权益小徽章（一键登录 / 免费额度 / 含免费模型 / 每日免费 / 新客试用等）。 */
+enum class ProviderPresetBadge(@param:StringRes val labelRes: Int, val tone: ProviderBadgeTone) {
+    ONE_CLICK_OAUTH(R.string.provider_badge_one_click, ProviderBadgeTone.PRIMARY),
+    FREE_MODELS(R.string.provider_badge_free_models, ProviderBadgeTone.SUCCESS),
+    FREE_TIER(R.string.provider_badge_free_tier, ProviderBadgeTone.SUCCESS),
+    FREE_DAILY(R.string.provider_badge_free_daily, ProviderBadgeTone.SUCCESS),
+    NEW_USER_TRIAL(R.string.provider_badge_free_trial, ProviderBadgeTone.SUCCESS),
+    STARTER_CREDIT(R.string.provider_badge_starter_credit, ProviderBadgeTone.SUCCESS),
+    DIRECT_PAYG(R.string.provider_badge_payg, ProviderBadgeTone.NEUTRAL),
 }
 
 /** 同一平台下的端点地域或协议变体（如 OpenAI Compat vs Anthropic Messages）。 */
@@ -139,7 +175,7 @@ data class ProviderPresetVariant(
     val label: String,
     val protocolType: ProtocolType,
     val baseUrl: String,
-    @StringRes val labelRes: Int? = null,
+    @param:StringRes val labelRes: Int? = null,
 )
 
 @Composable
@@ -152,9 +188,14 @@ data class ProviderPreset(
     val defaultBaseUrl: String,
     val iconRes: Int? = null,
     /** 需要翻译的预设名；为空时品牌名 [name] 直接显示。 */
-    @StringRes val labelRes: Int? = null,
+    @param:StringRes val labelRes: Int? = null,
     val category: ProviderPresetCategory = ProviderPresetCategory.OFFICIAL_CLOUD,
     val variants: List<ProviderPresetVariant> = emptyList(),
+    val region: ProviderPresetRegion = ProviderPresetRegion.GLOBAL,
+    val badges: List<ProviderPresetBadge> = emptyList(),
+    val consoleKeyUrl: String? = null,
+    val supportsOAuth: Boolean = false,
+    val needsProxyInChinaMainland: Boolean = false,
 )
 
 fun ProviderPreset.label(resources: Resources): String = labelRes?.let(resources::getString) ?: name
@@ -196,6 +237,7 @@ internal data class ProviderFormUiState(
     val tailnetInfo: ProviderTailnetInfo = ProviderTailnetInfo(),
     val useBuiltInProxy: Boolean = false,
     val builtInProxyInfo: ProviderBuiltInProxyInfo = ProviderBuiltInProxyInfo(),
+    val openRouterOAuthState: OpenRouterOAuthUiState = OpenRouterOAuthUiState.Idle,
     /** “删除提供商”行：已保存的提供商可删，内置默认灰显并说明原因，新建时不出现。 */
     val deleteEntry: UnavailableReasons.ProviderDeleteEntry = UnavailableReasons.ProviderDeleteEntry.HIDDEN,
 )
@@ -222,6 +264,10 @@ internal data class ProviderFormActions(
     val onTailnetPeerSelected: (com.promenar.infinity.data.tailnet.TailnetPeer) -> Unit = {},
     val onOpenTailscaleSettings: () -> Unit = {},
     val onOpenBuiltInProxySettings: () -> Unit = {},
+    val onStartOpenRouterOAuth: () -> Unit = {},
+    val onReopenOpenRouterOAuth: () -> Unit = {},
+    val onCancelOpenRouterOAuth: () -> Unit = {},
+    val onOpenConsoleKeyUrl: (String) -> Unit = {},
     val onDelete: () -> Unit = {},
 )
 
@@ -258,16 +304,58 @@ internal fun requiresLegacyCredentialMigration(
 ): Boolean = legacyProtocol && hasStoredCredential && credentialUpdate is CredentialUpdate.Preserve
 
 val PROVIDER_PRESETS = listOf(
-    ProviderPreset("OpenAI", ProtocolType.OpenAI_ChatCompletions, "https://api.openai.com", R.drawable.ic_provider_openai),
-    ProviderPreset("DeepSeek", ProtocolType.DeepSeek, "https://api.deepseek.com", R.drawable.ic_provider_deepseek),
-    ProviderPreset("Anthropic", ProtocolType.Anthropic_Messages, "https://api.anthropic.com", R.drawable.ic_provider_anthropic),
-    ProviderPreset("Gemini", ProtocolType.Google_Gemini, "https://generativelanguage.googleapis.com", R.drawable.ic_provider_gemini),
-    ProviderPreset("Vertex AI", ProtocolType.Google_VertexAI, "https://us-central1-aiplatform.googleapis.com", R.drawable.ic_provider_gemini),
+    ProviderPreset(
+        name = "OpenAI",
+        protocolType = ProtocolType.OpenAI_ChatCompletions,
+        defaultBaseUrl = "https://api.openai.com",
+        iconRes = R.drawable.ic_provider_openai,
+        region = ProviderPresetRegion.GLOBAL,
+        consoleKeyUrl = "https://platform.openai.com/api-keys",
+        needsProxyInChinaMainland = true,
+    ),
+    ProviderPreset(
+        name = "DeepSeek",
+        protocolType = ProtocolType.DeepSeek,
+        defaultBaseUrl = "https://api.deepseek.com",
+        iconRes = R.drawable.ic_provider_deepseek,
+        region = ProviderPresetRegion.CHINA,
+        badges = listOf(ProviderPresetBadge.DIRECT_PAYG),
+        consoleKeyUrl = "https://platform.deepseek.com/api_keys",
+    ),
+    ProviderPreset(
+        name = "Anthropic",
+        protocolType = ProtocolType.Anthropic_Messages,
+        defaultBaseUrl = "https://api.anthropic.com",
+        iconRes = R.drawable.ic_provider_anthropic,
+        region = ProviderPresetRegion.GLOBAL,
+        consoleKeyUrl = "https://console.anthropic.com/settings/keys",
+        needsProxyInChinaMainland = true,
+    ),
+    ProviderPreset(
+        name = "Gemini",
+        protocolType = ProtocolType.Google_Gemini,
+        defaultBaseUrl = "https://generativelanguage.googleapis.com",
+        iconRes = R.drawable.ic_provider_gemini,
+        region = ProviderPresetRegion.GLOBAL,
+        badges = listOf(ProviderPresetBadge.FREE_TIER),
+        consoleKeyUrl = "https://aistudio.google.com/apikey",
+        needsProxyInChinaMainland = true,
+    ),
+    ProviderPreset(
+        name = "Vertex AI",
+        protocolType = ProtocolType.Google_VertexAI,
+        defaultBaseUrl = "https://us-central1-aiplatform.googleapis.com",
+        iconRes = R.drawable.ic_provider_gemini,
+        region = ProviderPresetRegion.GLOBAL,
+        needsProxyInChinaMainland = true,
+    ),
     ProviderPreset(
         name = "Kimi",
         protocolType = ProtocolType.Moonshot_Kimi,
         defaultBaseUrl = "https://api.moonshot.cn",
         iconRes = R.drawable.ic_provider_kimi,
+        region = ProviderPresetRegion.CHINA,
+        consoleKeyUrl = "https://platform.moonshot.cn/console/api-keys",
         variants = listOf(
             ProviderPresetVariant("CN (.cn)", ProtocolType.Moonshot_Kimi, "https://api.moonshot.cn", R.string.provider_variant_cn),
             ProviderPresetVariant("International (.ai)", ProtocolType.Generic_OpenAI_Compat, "https://api.moonshot.ai/v1", R.string.provider_variant_global),
@@ -279,6 +367,9 @@ val PROVIDER_PRESETS = listOf(
         defaultBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode",
         iconRes = R.drawable.ic_provider_qwen,
         labelRes = R.string.provider_preset_qwen,
+        region = ProviderPresetRegion.CHINA,
+        badges = listOf(ProviderPresetBadge.NEW_USER_TRIAL),
+        consoleKeyUrl = "https://bailian.console.aliyun.com/?apiKey=1",
         variants = listOf(
             ProviderPresetVariant("Beijing", ProtocolType.Qwen_DashScope, "https://dashscope.aliyuncs.com/compatible-mode", R.string.provider_variant_beijing),
             ProviderPresetVariant("Singapore", ProtocolType.Qwen_DashScope, "https://dashscope-intl.aliyuncs.com/compatible-mode", R.string.provider_variant_singapore),
@@ -290,6 +381,9 @@ val PROVIDER_PRESETS = listOf(
         defaultBaseUrl = "https://open.bigmodel.cn/api/paas",
         iconRes = R.drawable.ic_provider_zhipu,
         labelRes = R.string.provider_preset_zhipu,
+        region = ProviderPresetRegion.CHINA,
+        badges = listOf(ProviderPresetBadge.NEW_USER_TRIAL),
+        consoleKeyUrl = "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys",
         variants = listOf(
             ProviderPresetVariant("CN Standard", ProtocolType.Zhipu_GLM, "https://open.bigmodel.cn/api/paas", R.string.provider_variant_cn_standard),
             ProviderPresetVariant("CN Coding", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_cn_coding),
@@ -297,12 +391,23 @@ val PROVIDER_PRESETS = listOf(
             ProviderPresetVariant("International Coding (Z.AI)", ProtocolType.Generic_OpenAI_Compat, "https://api.z.ai/api/coding/paas/v4", R.string.provider_variant_intl_coding),
         ),
     ),
-    ProviderPreset("豆包", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.drawable.ic_provider_doubao, R.string.provider_preset_ark_media),
+    ProviderPreset(
+        name = "豆包",
+        protocolType = ProtocolType.Doubao_ByteDance,
+        defaultBaseUrl = "https://ark.cn-beijing.volces.com/api",
+        iconRes = R.drawable.ic_provider_doubao,
+        labelRes = R.string.provider_preset_ark_media,
+        region = ProviderPresetRegion.CHINA,
+        badges = listOf(ProviderPresetBadge.NEW_USER_TRIAL),
+        consoleKeyUrl = "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+    ),
     ProviderPreset(
         name = "MiniMax",
         protocolType = ProtocolType.Generic_OpenAI_Compat,
         defaultBaseUrl = "https://api.minimax.cn/v1",
         iconRes = R.drawable.ic_provider_minimax,
+        region = ProviderPresetRegion.CHINA,
+        consoleKeyUrl = "https://platform.minimaxi.com/user-center/basic-information/interface-key",
         variants = listOf(
             ProviderPresetVariant("CN OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.cn/v1", R.string.provider_variant_cn_openai),
             ProviderPresetVariant("CN Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimax.cn/anthropic", R.string.provider_variant_cn_anthropic),
@@ -310,9 +415,32 @@ val PROVIDER_PRESETS = listOf(
             ProviderPresetVariant("International Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimax.io/anthropic", R.string.provider_variant_intl_anthropic),
         ),
     ),
-    ProviderPreset("xAI", ProtocolType.Generic_OpenAI_Compat, "https://api.x.ai/v1", R.drawable.ic_provider_xai),
-    ProviderPreset("百川", ProtocolType.Baichuan, "https://api.baichuan-ai.com", R.drawable.ic_provider_baichuan, R.string.provider_preset_baichuan),
-    ProviderPreset("Mistral", ProtocolType.Mistral_Chat, "https://api.mistral.ai", R.drawable.ic_provider_mistral),
+    ProviderPreset(
+        name = "xAI",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://api.x.ai/v1",
+        iconRes = R.drawable.ic_provider_xai,
+        region = ProviderPresetRegion.GLOBAL,
+        consoleKeyUrl = "https://console.x.ai/",
+        needsProxyInChinaMainland = true,
+    ),
+    ProviderPreset(
+        name = "百川",
+        protocolType = ProtocolType.Baichuan,
+        defaultBaseUrl = "https://api.baichuan-ai.com",
+        iconRes = R.drawable.ic_provider_baichuan,
+        labelRes = R.string.provider_preset_baichuan,
+        region = ProviderPresetRegion.CHINA,
+    ),
+    ProviderPreset(
+        name = "Mistral",
+        protocolType = ProtocolType.Mistral_Chat,
+        defaultBaseUrl = "https://api.mistral.ai",
+        iconRes = R.drawable.ic_provider_mistral,
+        region = ProviderPresetRegion.GLOBAL,
+        consoleKeyUrl = "https://console.mistral.ai/api-keys",
+        needsProxyInChinaMainland = true,
+    ),
     // 订阅计划与聚合网关
     ProviderPreset(
         name = "OpenCode Go",
@@ -320,6 +448,8 @@ val PROVIDER_PRESETS = listOf(
         defaultBaseUrl = "https://opencode.ai/zen/go/v1",
         iconRes = R.drawable.ic_provider_opencode,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.GLOBAL,
+        needsProxyInChinaMainland = true,
         variants = listOf(
             ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://opencode.ai/zen/go/v1", R.string.provider_variant_openai_compat),
             ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://opencode.ai/zen/go", R.string.provider_variant_anthropic),
@@ -331,6 +461,8 @@ val PROVIDER_PRESETS = listOf(
         defaultBaseUrl = "https://opencode.ai/zen/v1",
         iconRes = R.drawable.ic_provider_opencode,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.GLOBAL,
+        needsProxyInChinaMainland = true,
         variants = listOf(
             ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://opencode.ai/zen/v1", R.string.provider_variant_openai_compat),
             ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://opencode.ai/zen", R.string.provider_variant_anthropic),
@@ -343,6 +475,7 @@ val PROVIDER_PRESETS = listOf(
         iconRes = R.drawable.ic_provider_qwen,
         labelRes = R.string.provider_preset_bailian_coding,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.CHINA,
         variants = listOf(
             ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://coding.dashscope.aliyuncs.com/v1", R.string.provider_variant_openai_compat),
             ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://coding.dashscope.aliyuncs.com/apps/anthropic", R.string.provider_variant_anthropic),
@@ -355,6 +488,7 @@ val PROVIDER_PRESETS = listOf(
         iconRes = R.drawable.ic_provider_zhipu,
         labelRes = R.string.provider_preset_zhipu_coding,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.CHINA,
         variants = listOf(
             ProviderPresetVariant("CN OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://open.bigmodel.cn/api/coding/paas/v4", R.string.provider_variant_cn_openai),
             ProviderPresetVariant("CN Anthropic", ProtocolType.Anthropic_Messages, "https://open.bigmodel.cn/api/anthropic", R.string.provider_variant_cn_anthropic),
@@ -369,6 +503,7 @@ val PROVIDER_PRESETS = listOf(
         iconRes = R.drawable.ic_provider_minimax,
         labelRes = R.string.provider_preset_minimax_token_plan,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.CHINA,
         variants = listOf(
             ProviderPresetVariant("CN Anthropic", ProtocolType.Anthropic_Messages, "https://api.minimax.cn/anthropic", R.string.provider_variant_cn_anthropic),
             ProviderPresetVariant("CN OpenAI", ProtocolType.Generic_OpenAI_Compat, "https://api.minimax.cn/v1", R.string.provider_variant_cn_openai),
@@ -383,6 +518,7 @@ val PROVIDER_PRESETS = listOf(
         iconRes = R.drawable.ic_provider_kimi,
         labelRes = R.string.provider_preset_kimi_coding,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.CHINA,
         variants = listOf(
             ProviderPresetVariant("Anthropic", ProtocolType.Anthropic_Messages, "https://api.kimi.com/coding", R.string.provider_variant_anthropic),
             ProviderPresetVariant("OpenAI Compat", ProtocolType.Generic_OpenAI_Compat, "https://api.kimi.com/coding/v1", R.string.provider_variant_openai_compat),
@@ -395,6 +531,7 @@ val PROVIDER_PRESETS = listOf(
         iconRes = R.drawable.ic_provider_doubao,
         labelRes = R.string.provider_preset_ark_coding,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.CHINA,
         variants = listOf(
             ProviderPresetVariant("Coding Plan", ProtocolType.Generic_OpenAI_Compat, "https://ark.cn-beijing.volces.com/api/coding/v3", R.string.provider_variant_coding),
             ProviderPresetVariant("Standard API", ProtocolType.Doubao_ByteDance, "https://ark.cn-beijing.volces.com/api", R.string.provider_variant_standard),
@@ -406,21 +543,41 @@ val PROVIDER_PRESETS = listOf(
         defaultBaseUrl = "https://openrouter.ai/api/v1",
         iconRes = R.drawable.ic_provider_openrouter,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.OAUTH_ONE_CLICK,
+        badges = listOf(ProviderPresetBadge.ONE_CLICK_OAUTH, ProviderPresetBadge.FREE_MODELS),
+        consoleKeyUrl = "https://openrouter.ai/settings/keys",
+        supportsOAuth = true,
+        needsProxyInChinaMainland = true,
     ),
     ProviderPreset(
         name = "SiliconFlow",
         protocolType = ProtocolType.Generic_OpenAI_Compat,
         defaultBaseUrl = "https://api.siliconflow.cn/v1",
         iconRes = R.drawable.ic_provider_siliconflow,
+        labelRes = R.string.provider_preset_siliconflow,
         category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.CHINA,
+        badges = listOf(ProviderPresetBadge.STARTER_CREDIT, ProviderPresetBadge.FREE_MODELS),
+        consoleKeyUrl = "https://cloud.siliconflow.cn/account/ak",
         variants = listOf(
             ProviderPresetVariant("CN (.cn)", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.cn/v1", R.string.provider_variant_cn),
             ProviderPresetVariant("International", ProtocolType.Generic_OpenAI_Compat, "https://api.siliconflow.com/v1", R.string.provider_variant_global),
         ),
     ),
+    ProviderPreset(
+        name = "ModelScope",
+        protocolType = ProtocolType.Generic_OpenAI_Compat,
+        defaultBaseUrl = "https://api-inference.modelscope.cn/v1",
+        iconRes = R.drawable.ic_provider_qwen,
+        labelRes = R.string.provider_preset_modelscope,
+        category = ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
+        region = ProviderPresetRegion.CHINA,
+        badges = listOf(ProviderPresetBadge.FREE_DAILY),
+        consoleKeyUrl = "https://modelscope.cn/my/myaccesstoken",
+    ),
     // 本地与自定义
-    ProviderPreset("Local", ProtocolType.Local, "", R.drawable.ic_provider_local, R.string.provider_preset_local, ProviderPresetCategory.LOCAL_CUSTOM),
-    ProviderPreset("Custom", ProtocolType.Generic_OpenAI_Compat, "", R.drawable.ic_provider_custom, R.string.provider_preset_custom, ProviderPresetCategory.LOCAL_CUSTOM),
+    ProviderPreset("Local", ProtocolType.Local, "", R.drawable.ic_provider_local, R.string.provider_preset_local, ProviderPresetCategory.LOCAL_CUSTOM, region = ProviderPresetRegion.CUSTOM_LOCAL),
+    ProviderPreset("Custom", ProtocolType.Generic_OpenAI_Compat, "", R.drawable.ic_provider_custom, R.string.provider_preset_custom, ProviderPresetCategory.LOCAL_CUSTOM, region = ProviderPresetRegion.CUSTOM_LOCAL),
 )
 
 /** 通用协议按主机与路径精准匹配预设，保留自定义提供商的协议选择入口。 */
@@ -547,6 +704,16 @@ fun ProviderFormScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val tailnetState by app.tailnetManager.state.collectAsStateWithLifecycle()
     val proxyState by app.builtInProxyManager.state.collectAsStateWithLifecycle()
+    val noticeController = LocalInfinityNoticeController.current
+    val oauthFilledMsg = stringResource(R.string.oauth_openrouter_success_filled)
+    val openRouterOAuth = rememberOpenRouterOAuthController { apiKey ->
+        secretInput = apiKey
+        credentialUpdate = CredentialUpdate.Replace(apiKey)
+        connectionTestState = ProviderConnectionTestState.Idle
+        connectionTestFailureMessage = null
+        if (proxyState.running) useBuiltInProxy = true
+        noticeController?.show(severity = InfinityNoticeSeverity.SUCCESS, message = oauthFilledMsg)
+    }
     val connectionProbe = ProviderConnectionProbe.processScoped
     val scope = rememberCoroutineScope()
 
@@ -871,6 +1038,7 @@ fun ProviderFormScreen(
                 running = proxyState.running,
                 activeNodeName = activeProxyNodeName,
             ),
+            openRouterOAuthState = openRouterOAuth.uiState,
             deleteEntry = UnavailableReasons.providerDeleteEntry(providerId),
         ),
         actions = ProviderFormActions(
@@ -879,6 +1047,7 @@ fun ProviderFormScreen(
             onPresetSelected = { preset ->
                 selectedPreset = preset
                 variantProtocol = null
+                openRouterOAuth.cancel()
                 if (preset.name != "Custom" && preset.name != "Local") {
                     name = preset.label(resources)
                     baseUrl = preset.defaultBaseUrl
@@ -949,6 +1118,10 @@ fun ProviderFormScreen(
             },
             onOpenTailscaleSettings = onOpenTailscaleSettings,
             onOpenBuiltInProxySettings = onOpenBuiltInProxySettings,
+            onStartOpenRouterOAuth = openRouterOAuth::start,
+            onReopenOpenRouterOAuth = openRouterOAuth::reopenBrowser,
+            onCancelOpenRouterOAuth = openRouterOAuth::cancel,
+            onOpenConsoleKeyUrl = { url -> openExternalBrowserUrl(context, url) },
             onDelete = { showDeleteConfirm = true },
         ),
     )
@@ -1167,13 +1340,15 @@ private fun ProviderProtocolSelector(state: ProviderFormUiState, actions: Provid
     }
 }
 
-/** 预设提供商：与协议类型一致，点按打开带搜索与统一品牌圆角底托的底部面板（宽窗口下贴着本行弹出）选择。 */
+/** 预设提供商：点按打开带搜索、中立地域分组与权益小徽章的底部面板（宽窗口下贴着本行弹出）选择。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProviderPresetSelector(state: ProviderFormUiState, actions: ProviderFormActions) {
     val anchor = rememberInfinityPopoverAnchor()
     val resources = androidx.compose.ui.platform.LocalResources.current
     val title = stringResource(R.string.provider_form_preset_title)
     val selectedLabel = state.selectedPreset.label()
+    val hostOnly = providerHostLabel(state.selectedPreset.defaultBaseUrl).takeIf { it.isNotEmpty() }
     var presetQuery by remember(state.presetMenuExpanded) { mutableStateOf("") }
     val scheme = MaterialTheme.colorScheme
     Row(
@@ -1190,23 +1365,41 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ProviderPresetIcon(state.selectedPreset, selected = false, tileSize = 34.dp)
+        ProviderPresetIcon(state.selectedPreset, selected = false, tileSize = 36.dp)
         Spacer(Modifier.width(12.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = scheme.onSurface,
-            maxLines = 1,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = selectedLabel,
-            style = MaterialTheme.typography.bodyMedium,
-            color = scheme.primary,
-            maxLines = 1,
-            softWrap = false,
-        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = selectedLabel,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                    color = scheme.onSurface,
+                    maxLines = 1,
+                )
+                state.selectedPreset.badges.forEach { badge ->
+                    ProviderPresetBadgeChip(badge)
+                }
+            }
+            if (hostOnly != null) {
+                Text(
+                    text = hostOnly,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Spacer(Modifier.width(6.dp))
         Icon(
             Icons.Rounded.ChevronRight,
             contentDescription = null,
@@ -1231,14 +1424,15 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
                 .testTag("provider_preset_search"),
         )
         val trimmedQuery = presetQuery.trim()
-        val grouped = listOf(
-            ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
-            ProviderPresetCategory.OFFICIAL_CLOUD,
-            ProviderPresetCategory.LOCAL_CUSTOM,
+        val regions = listOf(
+            ProviderPresetRegion.OAUTH_ONE_CLICK,
+            ProviderPresetRegion.CHINA,
+            ProviderPresetRegion.GLOBAL,
+            ProviderPresetRegion.CUSTOM_LOCAL,
         )
-        grouped.forEach { category ->
+        regions.forEach { region ->
             val items = state.availablePresets.filter { preset ->
-                preset.category == category && (
+                preset.region == region && (
                     trimmedQuery.isEmpty() ||
                         preset.name.contains(trimmedQuery, ignoreCase = true) ||
                         preset.label(resources).contains(trimmedQuery, ignoreCase = true) ||
@@ -1246,7 +1440,7 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
                     )
             }
             if (items.isNotEmpty()) {
-                InfinityOptionSectionHeader(title = stringResource(category.titleRes))
+                InfinityOptionSectionHeader(title = stringResource(region.titleRes))
                 BettboxListGroup(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1255,13 +1449,13 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
                     items.forEachIndexed { idx, preset ->
                         if (idx > 0) InfinityGroupDivider(startInset = 60.dp)
                         val selected = preset == state.selectedPreset
-                        val hostOnly = providerHostLabel(preset.defaultBaseUrl).takeIf { it.isNotEmpty() }
+                        val itemHost = providerHostLabel(preset.defaultBaseUrl).takeIf { it.isNotEmpty() }
                         val subtitle = when {
-                            hostOnly != null && preset.variants.size > 1 -> {
+                            itemHost != null && preset.variants.size > 1 -> {
                                 val countLabel = stringResource(R.string.provider_preset_variants_count, preset.variants.size)
-                                "$hostOnly · $countLabel" // wrap-check: allow 预设主机与变体数摘要
+                                "$itemHost · $countLabel" // wrap-check: allow 预设主机与变体数摘要
                             }
-                            hostOnly != null -> hostOnly
+                            itemHost != null -> itemHost
                             else -> null
                         }
                         Row(
@@ -1280,14 +1474,22 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
                         ) {
                             ProviderPresetIcon(preset, selected, tileSize = 36.dp)
                             Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = preset.label(),
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                                    color = scheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                )
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    itemVerticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = preset.label(),
+                                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                                        color = scheme.onSurface,
+                                        maxLines = 1,
+                                    )
+                                    preset.badges.forEach { badge ->
+                                        ProviderPresetBadgeChip(badge)
+                                    }
+                                }
                                 if (subtitle != null) {
                                     Text(
                                         text = subtitle,
@@ -1316,7 +1518,7 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
 }
 
 @Composable
-private fun ProviderPresetIcon(preset: ProviderPreset, selected: Boolean, tileSize: Dp = 34.dp) {
+internal fun ProviderPresetIcon(preset: ProviderPreset, selected: Boolean, tileSize: Dp = 34.dp) {
     val scheme = MaterialTheme.colorScheme
     val brand = remember(preset.name, preset.defaultBaseUrl) {
         ModelBrandResolver.brandKey(preset.name, preset.defaultBaseUrl)
@@ -1460,14 +1662,59 @@ private fun ProviderInterfaceSection(
     }
 }
 
-/** 凭证：无框密钥行；去框化排印脚注说明本机加密存储。 */
+/** 凭证与授权：支持 OpenRouter 一键 OAuth 复用、控制台快捷领 Key 与无框密钥行。 */
 @Composable
 private fun CloudProviderSection(state: ProviderFormUiState, actions: ProviderFormActions) {
+    val scheme = MaterialTheme.colorScheme
+    val supportsOAuth = state.selectedPreset.supportsOAuth
+    val consoleUrl = state.selectedPreset.consoleKeyUrl?.takeUnless { state.usesVertexCredential }
     InfinitySettingsSection(
         title = stringResource(R.string.provider_form_group_credentials),
         footer = stringResource(R.string.provider_form_credentials_footer),
         typographicFooter = true,
     ) {
+        if (supportsOAuth) {
+            ProviderFormOpenRouterOAuthBanner(
+                oauthState = state.openRouterOAuthState,
+                onStart = actions.onStartOpenRouterOAuth,
+                onReopen = actions.onReopenOpenRouterOAuth,
+                onCancel = actions.onCancelOpenRouterOAuth,
+                onOpenBuiltInProxy = actions.onOpenBuiltInProxySettings,
+            )
+            InfinityGroupDivider()
+        }
+        if (consoleUrl != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = InfinitySpacing.RowHorizontal, end = InfinitySpacing.RowHorizontal, top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        if (supportsOAuth) R.string.provider_form_manual_key_hint
+                        else R.string.provider_form_console_helper_label,
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                FilledTonalButton(
+                    onClick = { actions.onOpenConsoleKeyUrl(consoleUrl) },
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    modifier = Modifier.heightIn(min = 26.dp).testTag("provider_form_open_console"),
+                ) {
+                    Text(
+                        text = stringResource(R.string.provider_form_get_key_console),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(12.dp))
+                }
+            }
+        }
         SecretField(
             value = state.secretInput,
             onValueChange = actions.onSecretChange,
@@ -1497,6 +1744,185 @@ private fun CloudProviderSection(state: ProviderFormUiState, actions: ProviderFo
             isError = state.credentialKindMismatch,
             frameless = true,
         )
+    }
+}
+
+@Composable
+private fun ProviderFormOpenRouterOAuthBanner(
+    oauthState: OpenRouterOAuthUiState,
+    onStart: () -> Unit,
+    onReopen: () -> Unit,
+    onCancel: () -> Unit,
+    onOpenBuiltInProxy: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val domain = MaterialTheme.infinityDomainColors
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        when (oauthState) {
+            OpenRouterOAuthUiState.Idle -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(scheme.primary.copy(alpha = 0.11f))
+                        .border(0.8.dp, scheme.primary.copy(alpha = 0.28f), RoundedCornerShape(14.dp))
+                        .padding(12.dp)
+                        .testTag("provider_form_openrouter_oauth_card"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Login,
+                        contentDescription = null,
+                        tint = scheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = stringResource(R.string.oauth_openrouter_card_title),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = scheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.oauth_openrouter_card_subtitle),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = onStart,
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier.height(32.dp).testTag("provider_form_openrouter_oauth_btn"),
+                    ) {
+                        Text(stringResource(R.string.oauth_openrouter_btn_signin), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            is OpenRouterOAuthUiState.WaitingBrowser, OpenRouterOAuthUiState.Exchanging -> {
+                val exchanging = oauthState is OpenRouterOAuthUiState.Exchanging
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(scheme.surfaceContainerHigh)
+                        .border(0.8.dp, scheme.primary.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = stringResource(
+                                    if (exchanging) R.string.oauth_openrouter_exchanging_title
+                                    else R.string.oauth_openrouter_waiting_title,
+                                ),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = scheme.onSurface,
+                            )
+                            Text(
+                                text = stringResource(R.string.oauth_openrouter_waiting_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (!exchanging) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = onCancel,
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                modifier = Modifier.weight(1f).height(34.dp),
+                            ) {
+                                Text(stringResource(R.string.common_cancel), style = MaterialTheme.typography.labelMedium)
+                            }
+                            FilledTonalButton(
+                                onClick = onReopen,
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                modifier = Modifier.weight(1f).height(34.dp),
+                            ) {
+                                Text(stringResource(R.string.oauth_openrouter_btn_reopen), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+            }
+
+            is OpenRouterOAuthUiState.Failed -> {
+                val isNetwork = oauthState.kind == OpenRouterOAuthFailureKind.NETWORK_OR_BLOCKED
+                val tint = if (isNetwork) domain.warning else scheme.error
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(tint.copy(alpha = 0.10f))
+                        .border(0.8.dp, tint.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.WifiOff,
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = stringResource(
+                                when (oauthState.kind) {
+                                    OpenRouterOAuthFailureKind.NETWORK_OR_BLOCKED -> R.string.oauth_openrouter_err_network_title
+                                    OpenRouterOAuthFailureKind.REJECTED -> R.string.oauth_openrouter_err_rejected
+                                    OpenRouterOAuthFailureKind.STATE_MISMATCH -> R.string.oauth_openrouter_err_state
+                                    OpenRouterOAuthFailureKind.BROWSER_UNAVAILABLE -> R.string.oauth_openrouter_err_browser
+                                },
+                            ),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = scheme.onSurface,
+                        )
+                    }
+                    if (isNetwork) {
+                        Text(
+                            text = stringResource(R.string.oauth_openrouter_err_network_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (isNetwork) {
+                            OutlinedButton(
+                                onClick = onOpenBuiltInProxy,
+                                shape = CircleShape,
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                modifier = Modifier.weight(1f).height(34.dp),
+                            ) {
+                                Text(stringResource(R.string.oauth_openrouter_proxy_action), style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                        FilledTonalButton(
+                            onClick = onStart,
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier.weight(1f).height(34.dp),
+                        ) {
+                            Text(stringResource(R.string.oauth_openrouter_btn_signin), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

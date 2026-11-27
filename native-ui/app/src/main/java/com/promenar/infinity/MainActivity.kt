@@ -168,6 +168,7 @@ open class MainActivity : ComponentActivity() {
         routeOpenGenerationIntent(intent)
         routeOpenSshRemoteIntent(intent)
         routeOpenLabIntent(intent)
+        routeOpenRouterOAuthIntent(intent)
         val app = application as InfinityApplication
         setContent {
             val themePreferences by app.themePreferenceStore.state.collectAsStateWithLifecycle()
@@ -382,6 +383,7 @@ open class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (routeExternalDocumentIntent(intent, ShareDelivery.Fresh)) return
+        if (routeOpenRouterOAuthIntent(intent)) return
         if (ShareIntentQueue.isShareIntent(intent)) {
             setIntent(intent)
             stageShareIntent(intent, ShareDelivery.of(restoredInstanceState = false, intentFlags = intent.flags))
@@ -403,6 +405,13 @@ open class MainActivity : ComponentActivity() {
 
     @VisibleForTesting
     internal fun onboardingStateStoreForTesting(): OnboardingStateStore = onboardingStore
+
+    private fun routeOpenRouterOAuthIntent(candidate: Intent?): Boolean {
+        if (!com.promenar.infinity.data.remote.oauth.OpenRouterOAuthDeepLinkBus.isOAuthCallbackIntent(candidate)) return false
+        candidate?.data?.let(com.promenar.infinity.data.remote.oauth.OpenRouterOAuthDeepLinkBus::dispatch)
+        setIntent(cleanMainIntent())
+        return true
+    }
 
     private fun stageShareIntent(candidate: Intent?, delivery: ShareDelivery) {
         if (!ShareIntentQueue.isShareIntent(candidate)) return

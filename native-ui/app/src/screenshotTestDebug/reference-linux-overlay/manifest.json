@@ -765,12 +765,12 @@
       "linux_sha256": "94635ae660dd27abf39683242aaceb6f7afcda2dbc4857c8e19b9ce511cd126b"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerFormCustomProtocolProvidersModels_提供商编辑 自定义协议 英文 360_e75d3d8c_0.png": {
-      "base_sha256": "8776675de193ab7795227ffae200019afd6f6c8e1141ce40af6d3ea14b661140",
-      "linux_sha256": "8776675de193ab7795227ffae200019afd6f6c8e1141ce40af6d3ea14b661140"
+      "base_sha256": "cd7c56492936754ef73bd98b621cb05526a70c1668161e1b4408043fcc7cae54",
+      "linux_sha256": "cd7c56492936754ef73bd98b621cb05526a70c1668161e1b4408043fcc7cae54"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerFormCustomProtocolProvidersModels_提供商编辑 自定义协议 英文 大字 360_eeced860_0.png": {
-      "base_sha256": "2dcadc27d4548a5e7b176b5971d4281da2ca05cf2f67ade2a7747736a1dd7ef4",
-      "linux_sha256": "2dcadc27d4548a5e7b176b5971d4281da2ca05cf2f67ade2a7747736a1dd7ef4"
+      "base_sha256": "031450e1a875ee8ea2e4ddc584212dd723cbd4e904fcc3a9b8c6ef46ba3fc9ee",
+      "linux_sha256": "031450e1a875ee8ea2e4ddc584212dd723cbd4e904fcc3a9b8c6ef46ba3fc9ee"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerListProvidersModels_提供商列表 浅色英文 360_5e324ecb_0.png": {
       "base_sha256": "a10ec18d19d9314e73ecb182521e39941b3bab1c39df5e56e83377d8c6593bc1",
@@ -941,20 +941,20 @@
       "linux_sha256": "0585fd6c242bcd18c6cfeee14d01ab268ecd56d8ed8ae3b481e72d30f2fd95ed"
     },
     "com/promenar/infinity/ui/welcome/OnboardingScreenshotTestKt/onboardingProviderFailurePreview_Onboarding provider failure Chinese_4dc554ae_0.png": {
-      "base_sha256": "66562159cc6a41a52091582c5ce49f3a3f0b00a7d19195de743b010db34d51d3",
-      "linux_sha256": "66562159cc6a41a52091582c5ce49f3a3f0b00a7d19195de743b010db34d51d3"
+      "base_sha256": "490d35c4b5bf7a39ecdd3b50e6c7df54858d5b777eeaca118626136c31794535",
+      "linux_sha256": "490d35c4b5bf7a39ecdd3b50e6c7df54858d5b777eeaca118626136c31794535"
     },
     "com/promenar/infinity/ui/welcome/OnboardingScreenshotTestKt/onboardingProviderFoldPreview_Onboarding provider Chinese foldable_b0dbe52b_0.png": {
-      "base_sha256": "19dcc59381adbbb55cd6fb08931bd46c1109da317bba63217a9c670931bb6b92",
-      "linux_sha256": "19dcc59381adbbb55cd6fb08931bd46c1109da317bba63217a9c670931bb6b92"
+      "base_sha256": "962ba2ef670f21d33a9fbf7e3dc4d42df470bfc7bbd5fe8816869fce7392af36",
+      "linux_sha256": "962ba2ef670f21d33a9fbf7e3dc4d42df470bfc7bbd5fe8816869fce7392af36"
     },
     "com/promenar/infinity/ui/welcome/OnboardingScreenshotTestKt/onboardingProviderLargeFontPreview_Onboarding provider English large font_776ed2bd_0.png": {
-      "base_sha256": "9e6ababbcf4f24d7f9913518bee38dc939f65f4e44d9a5c147f724284c5bf0e4",
-      "linux_sha256": "9e6ababbcf4f24d7f9913518bee38dc939f65f4e44d9a5c147f724284c5bf0e4"
+      "base_sha256": "81de27900a7d49b20f5582f1359b9ba78f816268572b7bf6d0fef4e819ea9792",
+      "linux_sha256": "81de27900a7d49b20f5582f1359b9ba78f816268572b7bf6d0fef4e819ea9792"
     },
     "com/promenar/infinity/ui/welcome/OnboardingScreenshotTestKt/onboardingProviderRestoreEntryPreview_Onboarding provider with restore entry Chinese_c142f62d_0.png": {
-      "base_sha256": "a56834dc6f36159f36445a34e214b1677777b812b72b3ef8310d4244ba775e68",
-      "linux_sha256": "a56834dc6f36159f36445a34e214b1677777b812b72b3ef8310d4244ba775e68"
+      "base_sha256": "395b9015b35e6d2bdbd7302b1f7236e260bc0a63d7e21e60640ee4d2b82a25e1",
+      "linux_sha256": "395b9015b35e6d2bdbd7302b1f7236e260bc0a63d7e21e60640ee4d2b82a25e1"
     },
     "com/promenar/infinity/ui/welcome/OnboardingScreenshotTestKt/onboardingReadyFoldPreview_Onboarding ready Chinese foldable_f67d9160_0.png": {
       "base_sha256": "0a3ceb564704c845d9396a38ff25e81ba53c134c9d4503b8670161e972b17140",

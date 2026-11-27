@@ -25,6 +25,7 @@ internal data class OnboardingUiState(
     val step: OnboardingStep,
     val linux: OnboardingLinuxStatus? = null,
     val localInferenceAvailable: Boolean = false,
+    val builtInProxyRunning: Boolean = false,
     val connect: OnboardingConnectStatus = OnboardingConnectStatus.Idle,
     val models: List<ModelInfo> = emptyList(),
     /** 当前提供商下被过滤掉的非对话模型数量。 */
@@ -52,6 +53,7 @@ internal class OnboardingActions(
     val onConnect: (OnboardingProviderDraft) -> Unit = {},
     val onConnectLocal: () -> Unit = {},
     val onOpenLocalModels: () -> Unit = {},
+    val onOpenBuiltInProxy: () -> Unit = {},
     val onBackToProvider: () -> Unit = {},
     val onUseModel: (String) -> Unit = {},
     val onRefreshModels: () -> Unit = {},

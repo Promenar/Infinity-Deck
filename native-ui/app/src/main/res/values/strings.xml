@@ -1062,6 +1062,22 @@
     <string name="wallpaper_notice_accent_applied">Accent color synced from wallpaper</string>
     <string name="wallpaper_notice_set_success">Set as chat wallpaper</string>
     <string name="wallpaper_notice_import_failed">Unable to load selected image</string>
+    <string name="wallpaper_notice_deleted">Wallpaper photo removed</string>
+    <string name="wallpaper_aspect_outer">Portrait</string>
+    <string name="wallpaper_aspect_inner">Expanded</string>
+    <string name="wallpaper_preview_pure_framing">Frame</string>
+    <string name="wallpaper_preview_show_bubbles">Bubbles</string>
+    <string name="wallpaper_framing_center">Center</string>
+    <string name="wallpaper_framing_hint">Pinch to zoom &amp; drag to frame · Saved per screen</string>
+    <string name="wallpaper_preview_short_user_msg">Previewing a custom photo wallpaper</string>
+    <string name="wallpaper_preview_short_assistant_card_msg">Frosted backdrop keeps text crisp over photos.</string>
+    <string name="wallpaper_preview_short_assistant_plain_msg">Replies float cleanly over ambient tones.</string>
+    <string name="wallpaper_action_delete_current">Remove photo</string>
+    <string name="wallpaper_action_delete_photo_cd">Remove saved wallpaper photo %1$d</string>
+    <string name="wallpaper_saved_photo_label">Photo %1$d</string>
+    <string name="wallpaper_delete_dialog_title">Remove this wallpaper photo?</string>
+    <string name="wallpaper_delete_dialog_message">This removes the photo and its cached blur files from this device. If currently active, chat background resets to Clean.</string>
+    <string name="wallpaper_delete_dialog_confirm">Remove</string>
     <string name="media_lightbox_action_wallpaper">Wallpaper</string>
     <string name="media_action_set_wallpaper">Set as chat wallpaper</string>
 

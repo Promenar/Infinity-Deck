@@ -4,6 +4,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.promenar.infinity.ui.common.pressFeedback
 import com.promenar.infinity.ui.theme.InfinityLightColorScheme
 import com.promenar.infinity.ui.theme.InfinityDarkColorScheme
+import com.promenar.infinity.ui.theme.InfinityObsidianDialogContainer
+import com.promenar.infinity.ui.theme.InfinityPureWhite
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -363,10 +365,10 @@ private fun ThemeWallpaperEntryRow(
                 .clip(RoundedCornerShape(10.dp))
                 .border(
                     width = 0.8.dp,
-                    color = if (dark) Color.White.copy(alpha = 0.16f) else scheme.outlineVariant.copy(alpha = 0.65f),
+                    color = if (dark) InfinityPureWhite.copy(alpha = 0.16f) else scheme.outlineVariant.copy(alpha = 0.65f),
                     shape = RoundedCornerShape(10.dp),
                 )
-                .background(if (dark) Color(0xFF0B0D12) else scheme.surfaceContainerHigh),
+                .background(if (dark) InfinityObsidianDialogContainer else scheme.surfaceContainerHigh),
             contentAlignment = Alignment.Center,
         ) {
             if (config.isActive) {
