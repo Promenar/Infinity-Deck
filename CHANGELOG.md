@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.84.4-beta] - 2026-11-28
+
+- **修复开启聊天壁纸时右侧固定分栏检视器仍为实心黑且透度对齐顶栏与浮岛（[FrostedBackdrop.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/FrostedBackdrop.kt)、[ChatInspector.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatInspector.kt)、[ChatScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/chat/ChatScreen.kt)）**：
+  - 将 `FrostedChromeRole.FLOATING_INSPECTOR` 深浅双色毛玻璃遮罩透度统一由 `0.82` 调整为与输入浮岛、边缘条及浅色顶栏一致的 `0.78`，并在 `ChatInspectorCard` 新增 `frosted` 通道由 `ChatScreen` 传入 `inspectorFloats || wallpaperConfig.isActive`：开启聊天壁纸且处于「毛玻璃」材质时，默认展开的右侧固定分栏检视器实时折射背后壁纸并与顶栏、输入浮岛保持一致通透质感；未开壁纸的纯黑/纯白模式及「环境光」省电档继续保留零模糊实底。
+
 ## [0.84.3-beta] - 2026-11-28
 
 - **修复全局悬浮通知胶囊短文案右侧高光断层与多余留白（[InfinityNoticeHost.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityNoticeHost.kt)）**：

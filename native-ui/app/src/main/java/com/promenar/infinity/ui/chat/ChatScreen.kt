@@ -2068,6 +2068,7 @@ fun ChatScreenContent(
                             onToggleWiden = { inspectorWidened = !inspectorWidened },
                             onCollapse = { actions.onSetInspectorPages(emptyList()) },
                             floating = inspectorFloats,
+                            frosted = inspectorFloats || wallpaperConfig.isActive,
                             backdrop = chatBackdrop,
                             onLockTouch = actions.onLockTouch.takeIf { uiState.isGenerating },
                         ) {

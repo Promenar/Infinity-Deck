@@ -20,7 +20,7 @@ class FrostedChromeMaterialTest {
     fun `深色熏黑毛玻璃实时角色与浮岛材质基准及透明阶梯对齐`() {
         val expectedAlphas = mapOf(
             FrostedChromeRole.TOP_BAR to 0.76f,
-            FrostedChromeRole.FLOATING_INSPECTOR to 0.82f,
+            FrostedChromeRole.FLOATING_INSPECTOR to 0.78f,
             FrostedChromeRole.FLOATING_STRIP to 0.78f,
             FrostedChromeRole.FLOATING_DRAWER to 0.82f,
             FrostedChromeRole.PORTRAIT_DRAWER to 0.84f,
@@ -106,7 +106,7 @@ class FrostedChromeMaterialTest {
     fun `浅色冷白磨砂使用纯白基底并按环境光切换为最低表面实底`() {
         val expectedLightAlphas = mapOf(
             FrostedChromeRole.TOP_BAR to 0.78f,
-            FrostedChromeRole.FLOATING_INSPECTOR to 0.82f,
+            FrostedChromeRole.FLOATING_INSPECTOR to 0.78f,
             FrostedChromeRole.FLOATING_STRIP to 0.78f,
             FrostedChromeRole.FLOATING_DRAWER to 0.82f,
             FrostedChromeRole.PORTRAIT_DRAWER to 0.84f,

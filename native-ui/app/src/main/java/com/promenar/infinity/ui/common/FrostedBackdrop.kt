@@ -250,7 +250,7 @@ internal fun resolveFrostedChromeMaterial(
             FrostedChromeRole.FLOATING_INSPECTOR -> if (dark) {
                 FrostedChromeMaterial(
                     container = Color.Transparent,
-                    frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.82f),
+                    frostedTint = InfinityObsidianGlassTint.copy(alpha = 0.78f),
                     border = hairline(InfinityPureWhite, 0.12f),
                     topHighlight = InfinityPureWhite.copy(alpha = 0.14f),
                     innerCard = InfinityPureWhite.copy(alpha = 0.07f),
@@ -261,7 +261,7 @@ internal fun resolveFrostedChromeMaterial(
             } else {
                 FrostedChromeMaterial(
                     container = Color.Transparent,
-                    frostedTint = InfinityPureWhite.copy(alpha = 0.82f),
+                    frostedTint = InfinityPureWhite.copy(alpha = 0.78f),
                     border = hairline(scheme.outlineVariant, 0.45f),
                     topHighlight = InfinityPureWhite.copy(alpha = 0.92f),
                     innerCard = scheme.onSurface.copy(alpha = 0.05f),

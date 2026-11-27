@@ -146,15 +146,17 @@ internal fun ChatInspectorCard(
     onCollapse: () -> Unit,
     modifier: Modifier = Modifier,
     floating: Boolean = false,
+    frosted: Boolean = floating,
     backdrop: BackdropSource? = null,
     onLockTouch: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val paneLabel = stringResource(R.string.chat_inspector_label)
     val haptics = LocalInfinityHaptics.current
-    // 固定分栏采用零模糊熏黑实底（DOCKED_INSPECTOR），扩大/覆盖态启用实时熏黑毛玻璃（FLOATING_INSPECTOR）。
+    val useFrosted = floating || frosted
+    // 扩大/覆盖态或开启聊天壁纸时启用与顶栏、浮岛同透度的实时毛玻璃（FLOATING_INSPECTOR）；无壁纸固定分栏保留零模糊实底。
     val chrome: FrostedChromeMaterial? = rememberFrostedChromeMaterial(
-        if (floating) FrostedChromeRole.FLOATING_INSPECTOR else FrostedChromeRole.DOCKED_INSPECTOR,
+        if (useFrosted) FrostedChromeRole.FLOATING_INSPECTOR else FrostedChromeRole.DOCKED_INSPECTOR,
     )
     Surface(
         modifier = modifier.semantics { paneTitle = paneLabel }.testTag(InfinityPaneTags.INSPECTOR),
@@ -172,7 +174,7 @@ internal fun ChatInspectorCard(
         Box(Modifier.fillMaxSize()) {
             if (chrome != null) {
                 FrostedChromeBackdropLayer(
-                    source = if (floating) backdrop else null,
+                    source = if (useFrosted) backdrop else null,
                     material = chrome,
                     highlightHeight = 56.dp,
                     cornerRadius = InspectorCornerRadius,
