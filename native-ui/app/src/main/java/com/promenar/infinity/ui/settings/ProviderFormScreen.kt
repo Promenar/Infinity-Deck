@@ -1941,6 +1941,7 @@ private fun ProviderFormActionsSection(
         ProviderConnectionTestState.Unavailable -> stringResource(R.string.provider_form_connection_unavailable)
         ProviderConnectionTestState.Error -> stringResource(R.string.common_cd_failed)
     }
+    val globalNotice = LocalInfinityNoticeController.current
     val strip: Pair<InfinityStatusKind, String>? = when {
         state.saveFailed -> InfinityStatusKind.Error to stringResource(R.string.provider_form_save_failed)
         else -> when (state.connectionTestState) {
@@ -1953,15 +1954,30 @@ private fun ProviderFormActionsSection(
                 (state.connectionTestFailureMessage ?: stringResource(R.string.common_cd_failed))
         }
     }
+    // 进行中状态由“测试”按钮自带加载圈承担；终态结果与保存失败改走顶部悬浮胶囊，避免底栏高度跳动。
+    val terminalNotice: Pair<InfinityStatusKind, String>? =
+        strip?.takeUnless { !state.saveFailed && state.connectionTestState == ProviderConnectionTestState.Testing }
+    val currentNoticeKey = Triple(state.saveFailed, state.connectionTestState, state.connectionTestFailureMessage)
+    var lastNoticeKey by remember { mutableStateOf<Triple<Boolean, ProviderConnectionTestState, String?>?>(null) }
+    LaunchedEffect(currentNoticeKey, globalNotice) {
+        val previous = lastNoticeKey
+        lastNoticeKey = currentNoticeKey
+        val host = globalNotice ?: return@LaunchedEffect
+        if (previous == currentNoticeKey) return@LaunchedEffect
+        val (kind, message) = terminalNotice ?: return@LaunchedEffect
+        host.showStatus(kind, message)
+    }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(InfinitySpacing.Small)) {
-        AnimatedVisibility(visible = strip != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-            strip?.let { (kind, message) ->
-                InfinityStatusStrip(
-                    kind = kind,
-                    message = message,
-                    busy = testing,
-                    modifier = Modifier.testTag(UiTags.PROVIDER_FORM_STATUS_STRIP),
-                )
+        if (globalNotice == null) {
+            AnimatedVisibility(visible = strip != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
+                strip?.let { (kind, message) ->
+                    InfinityStatusStrip(
+                        kind = kind,
+                        message = message,
+                        busy = testing,
+                        modifier = Modifier.testTag(UiTags.PROVIDER_FORM_STATUS_STRIP),
+                    )
+                }
             }
         }
         // 文字单行；窄屏大字号并排放不下时整组竖排，保存在上；去除旧软盘图标，改用⚡测试 + ✓保存。

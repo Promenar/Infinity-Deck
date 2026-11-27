@@ -16,7 +16,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
@@ -31,6 +35,7 @@ import com.promenar.infinity.navigation.concreteRoute
 import com.promenar.infinity.navigation.isPaneRootEntry
 import com.promenar.infinity.navigation.trackSettingsPaneStack
 import com.promenar.infinity.ui.MainTabsState
+import com.promenar.infinity.ui.common.ReportInfinityNoticeHorizontalClearance
 import com.promenar.infinity.ui.hub.UserSettingsHomeScreen
 
 /** 双列时左列（设置目录）宽度。 */
@@ -88,6 +93,12 @@ internal fun SettingsTwoPane(
         }
     }
     val isPaneRoot: (NavBackStackEntry) -> Boolean = { entry -> isPaneRootEntry(paneEntries, entry.id) }
+    val density = LocalDensity.current
+    var detailStartOffset by remember { mutableStateOf<Dp?>(null) }
+    ReportInfinityNoticeHorizontalClearance(
+        startOffset = detailStartOffset,
+        enabled = detailStartOffset != null,
+    )
 
     Row(modifier = Modifier.fillMaxSize().testTag(SettingsTwoPaneTags.ROOT)) {
         Box(modifier = Modifier.width(SettingsListPaneWidth).fillMaxHeight().testTag(SettingsTwoPaneTags.LIST)) {
@@ -103,7 +114,18 @@ internal fun SettingsTwoPane(
         InfinityPageNavHost(
             navController = paneNav,
             startDestination = initialStack.first(),
-            modifier = Modifier.weight(1f).fillMaxHeight().testTag(SettingsTwoPaneTags.DETAIL),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .onGloballyPositioned { coordinates ->
+                    if (coordinates.size.width > 0) {
+                        val startX = coordinates.positionInRoot().x
+                        if (startX >= 0f) {
+                            detailStartOffset = with(density) { startX.toDp() }
+                        }
+                    }
+                }
+                .testTag(SettingsTwoPaneTags.DETAIL),
             isSameLevel = isPaneRoot,
         ) {
             paneGraph(navigator)

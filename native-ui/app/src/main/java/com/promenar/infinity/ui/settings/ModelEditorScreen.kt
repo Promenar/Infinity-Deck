@@ -46,6 +46,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -187,6 +188,21 @@ internal fun ModelEditorScreen(
     val matchedCloudPreset = remember(effectiveMedia) { matchCloudMediaPreset(effectiveMedia) }
     val isMediaModel = selectedType.lowercase() in setOf("video", "audio", "speech", "music", "realtime", "image") || effectiveMedia != null
     val isTesting = testState == ModelTestState.Testing
+    val statusText = modelTestStatus(testState, isMediaModel)
+    val latestStatusText by rememberUpdatedState(statusText)
+    var lastObservedTestState by remember(model.id) { mutableStateOf(testState) }
+    LaunchedEffect(model.id, testState, noticeHost) {
+        val previous = lastObservedTestState
+        lastObservedTestState = testState
+        val host = noticeHost ?: return@LaunchedEffect
+        if (previous == testState) return@LaunchedEffect
+        val text = latestStatusText ?: return@LaunchedEffect
+        when (testState) {
+            is ModelTestState.Success -> host.show(InfinityNoticeSeverity.SUCCESS, text)
+            is ModelTestState.Error -> host.show(InfinityNoticeSeverity.ERROR, text)
+            ModelTestState.Idle, ModelTestState.Testing -> Unit
+        }
+    }
     val heroSubtitle = model.canonicalModelId?.takeIf { it.isNotBlank() }
         ?: editRemoteModelId.ifBlank { model.id.substringAfter("::", model.id) }
     val copyIdLabel = stringResource(R.string.model_editor_copy_id)
@@ -257,30 +273,31 @@ internal fun ModelEditorScreen(
             contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            item("test-feedback") {
-                val statusText = modelTestStatus(testState, isMediaModel)
-                AnimatedVisibility(
-                    visible = statusText != null,
-                    enter = InfinityMotion.expandIn,
-                    exit = InfinityMotion.shrinkOut,
-                ) {
-                    statusText?.let { text ->
-                        val kind = when (testState) {
-                            is ModelTestState.Success -> InfinityStatusKind.Success
-                            is ModelTestState.Error -> InfinityStatusKind.Error
-                            else -> InfinityStatusKind.Info
+            if (noticeHost == null) {
+                item("test-feedback") {
+                    AnimatedVisibility(
+                        visible = statusText != null,
+                        enter = InfinityMotion.expandIn,
+                        exit = InfinityMotion.shrinkOut,
+                    ) {
+                        statusText?.let { text ->
+                            val kind = when (testState) {
+                                is ModelTestState.Success -> InfinityStatusKind.Success
+                                is ModelTestState.Error -> InfinityStatusKind.Error
+                                else -> InfinityStatusKind.Info
+                            }
+                            InfinityStatusStrip(
+                                kind = kind,
+                                message = text,
+                                busy = isTesting,
+                                modifier = Modifier
+                                    .padding(bottom = InfinitySpacing.Medium)
+                                    .semantics {
+                                        liveRegion = LiveRegionMode.Polite
+                                        stateDescription = text
+                                    },
+                            )
                         }
-                        InfinityStatusStrip(
-                            kind = kind,
-                            message = text,
-                            busy = isTesting,
-                            modifier = Modifier
-                                .padding(bottom = InfinitySpacing.Medium)
-                                .semantics {
-                                    liveRegion = LiveRegionMode.Polite
-                                    stateDescription = text
-                                },
-                        )
                     }
                 }
             }

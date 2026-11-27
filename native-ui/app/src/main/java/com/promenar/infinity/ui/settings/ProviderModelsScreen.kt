@@ -111,6 +111,7 @@ import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityModalSheet
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
 import com.promenar.infinity.ui.common.InfinityPillTone
@@ -123,6 +124,7 @@ import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
 import com.promenar.infinity.ui.common.InfinitySwitch
 import com.promenar.infinity.ui.common.InfinityTypographicFootnote
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.ModelBrandIcon
 import com.promenar.infinity.ui.common.ModelBrandResolver
 import com.promenar.infinity.ui.common.ModelBrandTile
@@ -276,15 +278,20 @@ internal fun ProviderModelsScreenContent(
     var backProgress by remember { mutableFloatStateOf(0f) }
     // 列表滚动位置提到切换容器之外，从编辑页返回时停在原处。
     val listState = rememberLazyListState()
+    val globalNotice = LocalInfinityNoticeController.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var completion by remember { mutableStateOf<SpecLibraryCompletion?>(null) }
     val specLibrary = rememberSpecLibraryUi(state.catalogStatus) { completion = it }
     completion?.let { done ->
         val message = specLibraryCompletionText(done)
-        LaunchedEffect(done) {
+        LaunchedEffect(done, globalNotice) {
             completion = null
-            scope.launch { snackbarHostState.showSnackbar(message) }
+            if (globalNotice != null) {
+                globalNotice.show(InfinityNoticeSeverity.SUCCESS, message)
+            } else {
+                scope.launch { snackbarHostState.showSnackbar(message) }
+            }
         }
     }
 
@@ -381,12 +388,14 @@ internal fun ProviderModelsScreenContent(
                 )
             }
         }
-        // 规格库更新完成的提示放在切换容器之外，编辑页打开时同样可见。
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
-        ) { data ->
-            InfinitySnackbar(InfinitySnackbarData(data.visuals.message, SnackbarType.SUCCESS))
+        if (globalNotice == null) {
+            // 无全局悬浮通知宿主（独立预览/测试）时保留底部提示兜底。
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+            ) { data ->
+                InfinitySnackbar(InfinitySnackbarData(data.visuals.message, SnackbarType.SUCCESS))
+            }
         }
     }
 
@@ -523,7 +532,20 @@ private fun ProviderModelsListPage(
                 notice = state.syncNotice,
             )
             // 同步反馈：据 severity 着色，据 code+args 经 stringResource 双语格式化；列表已表达的状态不重复提示。
+            val globalNotice = LocalInfinityNoticeController.current
             val effectiveSyncNotice = visibleSyncNotice(state.syncNotice, reducedState)
+            val syncFallback = stringResource(R.string.provider_models_sync_failed)
+            val syncNoticeMessage = effectiveSyncNotice?.formatSyncMessage(unknownFallback = syncFallback)
+            LaunchedEffect(effectiveSyncNotice, globalNotice) {
+                val active = effectiveSyncNotice ?: return@LaunchedEffect
+                val host = globalNotice ?: return@LaunchedEffect
+                val message = syncNoticeMessage ?: return@LaunchedEffect
+                host.showStatus(active.severity.statusKind(), message)
+                // 空列表错误态依赖 syncNotice 维持页面错误占位；其余场景消费后立即清理，避免返回或切页重复弹出。
+                if (!state.isFetching && reducedState != ProviderModelsListState.Error) {
+                    actions.onClearNotice()
+                }
+            }
             LazyColumn(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(0.dp),
@@ -533,7 +555,7 @@ private fun ProviderModelsListPage(
                     .verticalFadingEdges(top = listState.canScrollBackward)
                     .testTag(UiTags.PROVIDER_MODELS_LIST),
             ) {
-                if (effectiveSyncNotice != null) {
+                if (globalNotice == null && effectiveSyncNotice != null) {
                     item("notice") {
                         Box(modifier = Modifier.animateItem().padding(bottom = 12.dp).testTag(UiTags.PROVIDER_MODELS_NOTICE)) {
                             ModelSyncNoticeBanner(

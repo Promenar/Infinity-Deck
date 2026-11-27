@@ -116,6 +116,8 @@ import com.promenar.infinity.ui.workspace.WorkspaceNameDialog
 import kotlinx.coroutines.delay
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinityMetaLine
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
 import com.promenar.infinity.ui.common.ProvideGroupedPress
 
 private const val OUTCOME_VISIBLE_MS = 4_000L
@@ -312,7 +314,8 @@ internal fun LinuxFilesContent(
                 return@Column
             }
             LinuxPathRow(state, actions)
-            LinuxFilesMessages(state, actions)
+            // 目录选择器运行在独立全屏弹窗窗口内，避免主窗口悬浮胶囊被遮挡；常规文件页统一走顶部悬浮胶囊。
+            LinuxFilesMessages(state, actions, allowGlobalNotice = picker == null)
             LinuxEntriesList(state, actions, Modifier.weight(1f))
             AnimatedVisibility(visible = state.operating, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = InfinitySpacing.Large))
@@ -513,17 +516,43 @@ private fun LinuxMoreMenu(state: LinuxFilesUiState, actions: LinuxFilesActions) 
 }
 
 @Composable
-private fun LinuxFilesMessages(state: LinuxFilesUiState, actions: LinuxFilesActions) {
+private fun LinuxFilesMessages(
+    state: LinuxFilesUiState,
+    actions: LinuxFilesActions,
+    allowGlobalNotice: Boolean = true,
+) {
+    val globalNotice = if (allowGlobalNotice) LocalInfinityNoticeController.current else null
     val notice = state.notice
+    val noticeText = when (notice) {
+        is LinuxFilesNotice.RuntimeBinding -> stringResource(R.string.linux_files_binding_notice, notice.linkName, notice.target)
+        is LinuxFilesNotice.Failure -> linuxErrorText(notice.code)
+        null -> ""
+    }
+    val outcome = state.outcome
+    val outcomeSegments = outcome?.let { linuxOutcomeSegments(it) }
+    LaunchedEffect(notice, globalNotice) {
+        val active = notice ?: return@LaunchedEffect
+        val host = globalNotice ?: return@LaunchedEffect
+        val severity = if (active is LinuxFilesNotice.Failure) InfinityNoticeSeverity.ERROR else InfinityNoticeSeverity.INFO
+        host.show(severity, noticeText)
+        actions.onDismissNotice()
+    }
+    LaunchedEffect(outcome, globalNotice) {
+        val active = outcome ?: return@LaunchedEffect
+        val host = globalNotice ?: return@LaunchedEffect
+        val segments = outcomeSegments.orEmpty()
+        val headline = segments.firstOrNull().orEmpty()
+        if (headline.isNotEmpty()) {
+            val severity = if (active.failed > 0) InfinityNoticeSeverity.ERROR else InfinityNoticeSeverity.SUCCESS
+            host.show(severity = severity, message = headline, subtitle = segments.getOrNull(1))
+        }
+        actions.onDismissOutcome()
+    }
+    if (globalNotice != null) return
     AnimatedVisibility(visible = notice != null, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
         // 退出动画期间提示已清空，保留空文本让区域平滑收起。
-        val text = when (notice) {
-            is LinuxFilesNotice.RuntimeBinding -> stringResource(R.string.linux_files_binding_notice, notice.linkName, notice.target)
-            is LinuxFilesNotice.Failure -> linuxErrorText(notice.code)
-            null -> ""
-        }
         LinuxNoticeBar(
-            text = text,
+            text = noticeText,
             onDismiss = actions.onDismissNotice,
             error = notice is LinuxFilesNotice.Failure,
             modifier = Modifier
@@ -531,18 +560,18 @@ private fun LinuxFilesMessages(state: LinuxFilesUiState, actions: LinuxFilesActi
                 .testTag(UiTags.LINUX_FILES_NOTICE),
         )
     }
-    state.outcome?.let { outcome ->
+    outcome?.let {
         InfinityMetaLine(
-            linuxOutcomeSegments(outcome),
+            outcomeSegments ?: emptyList(),
             style = MaterialTheme.typography.bodySmall,
-            color = if (outcome.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (it.failed > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = InfinitySpacing.Large, vertical = InfinitySpacing.XSmall)
                 .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
                 .testTag(UiTags.LINUX_FILES_OUTCOME),
         )
-        LaunchedEffect(outcome) {
+        LaunchedEffect(it) {
             delay(OUTCOME_VISIBLE_MS)
             actions.onDismissOutcome()
         }

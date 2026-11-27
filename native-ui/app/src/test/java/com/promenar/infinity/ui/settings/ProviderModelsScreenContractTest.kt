@@ -186,7 +186,8 @@ class ProviderModelsScreenContractTest {
     fun `route still wires real settings viewmodel with provider filters and callbacks`() {
         val source = readProviderModelsSource()
 
-        assertThat(source).contains("SettingsViewModel.factory(context.applicationContext as android.app.Application)")
+        assertThat(source).contains("val app = context.applicationContext as InfinityApplication")
+        assertThat(source).contains("SettingsViewModel.factory(app)")
         assertThat(source).contains("providers.find { it.id == providerId }")
         assertThat(source).contains("models.filter { it.providerId == providerId }")
         assertThat(source).contains("onRefresh = { viewModel.refreshProviderModels(providerId) }")

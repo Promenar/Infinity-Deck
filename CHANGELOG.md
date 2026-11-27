@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.84.2-beta] - 2026-11-28
+
+- **全站五处一次性内联通知统一迁入顶部悬浮胶囊，消除页面高度跳动（[ProviderModelsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderModelsScreen.kt)、[ModelEditorScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ModelEditorScreen.kt)、[ProviderFormScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderFormScreen.kt)、[ProductionPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPanel.kt)、[LinuxFilesScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/linux/files/LinuxFilesScreen.kt)、[SettingsTwoPane.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/SettingsTwoPane.kt)）**：
+  - 将模型管理页同步完成/失败提示及同页规格库更新完成私有 `SnackbarHost`、模型编辑页测速终态反馈（仅状态跃迁触发，不重复弹出历史结果）、提供商编辑页底栏连接测试与保存失败终态（测试进行中由按钮加载圈承担，底栏高度固定不跳动）、空制作面板错误条与 Linux 文件页操作提示/结果行统一接入全站 `LocalInfinityNoticeController` / `InfinityNoticeHost` 顶部悬浮胶囊；各处均保留无宿主预览/测试兜底（Linux 目录选择全屏弹窗窗口内保留内联提示避免被弹窗遮挡），全部 7 处持久阻塞、冲突决策与风险校验条保留在上下文原位。
+  - 在 `SettingsTwoPane` 宽屏设置双栏上报右列起始水平避让（`ReportInfinityNoticeHorizontalClearance`），使折叠屏内屏与平板下的悬浮通知胶囊精确居中于右侧详情页上方，不再骑跨中轴分割线；同步修复 `ProviderModelsScreenContractTest` 视图模型工厂契约漂移并补充 `TransientNoticeCapsuleRoutingContractTest` 与 `InfinityNoticeControllerTest` 双栏居中回归测试。
+
 ## [0.84.1-beta] - 2026-11-27
 
 - **修复 OpenRouter `/api/v1/models` 模型清单拉取与测连返回空列表（[GenericModelsEnvelopeParser.kt](native-ui/app/src/main/java/com/promenar/infinity/data/remote/protocol/GenericModelsEnvelopeParser.kt)、[GenericModelsEnvelopeTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/remote/protocol/GenericModelsEnvelopeTest.kt)、[ProviderConnectionProbeTest.kt](native-ui/app/src/test/java/com/promenar/infinity/data/remote/provider/ProviderConnectionProbeTest.kt)）**：

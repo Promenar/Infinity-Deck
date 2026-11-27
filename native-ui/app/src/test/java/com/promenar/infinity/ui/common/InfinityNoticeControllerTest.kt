@@ -90,5 +90,15 @@ class InfinityNoticeControllerTest {
         )
         assertThat(phone.endInset).isEqualTo(0.dp)
         assertThat(phone.maxCapsuleWidth).isEqualTo(358.dp)
+
+        // 840dp 折叠屏设置双栏（左轨 80dp + 目录列 320dp => startInset = 400dp）：胶囊在右侧 440dp 详情列居中。
+        val settingsRightPane = computeNoticeHorizontalPlacement(
+            maxWidth = 840.dp,
+            startInset = 400.dp,
+            rawEndInset = 0.dp,
+        )
+        assertThat(settingsRightPane.startInset).isEqualTo(400.dp)
+        assertThat(settingsRightPane.endInset).isEqualTo(0.dp)
+        assertThat(settingsRightPane.maxCapsuleWidth).isEqualTo(408.dp)
     }
 }

@@ -356,12 +356,19 @@ fun ProductionPanelEmpty(
 ) {
     val scheme = MaterialTheme.colorScheme
     val busy = attachingPath != null || creating
+    val globalNotice = LocalInfinityNoticeController.current
+    LaunchedEffect(error, globalNotice) {
+        val active = error?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val host = globalNotice ?: return@LaunchedEffect
+        host.show(InfinityNoticeSeverity.ERROR, active)
+        onDismissError()
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag(ProductionUiTags.EMPTY),
         contentPadding = PaddingValues(horizontal = InfinitySpacing.ScreenHorizontal, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(ProductionSectionGap),
     ) {
-        if (!error.isNullOrBlank()) {
+        if (globalNotice == null && !error.isNullOrBlank()) {
             item("error") {
                 InfinityStatusStrip(
                     kind = InfinityStatusKind.Error,
