@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.84.3-beta] - 2026-11-28
+
+- **修复全局悬浮通知胶囊短文案右侧高光断层与多余留白（[InfinityNoticeHost.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/common/InfinityNoticeHost.kt)）**：
+  - 将 `InfinityNoticeCapsule` 的径向微光与顶缘高光层改为 `matchParentSize()` 独立铺底并去除短文案强制 `180dp` 拉伸，使「连接正常」「模型已是最新」等短提示按内容紧凑收束、左右边距均衡且全幅无接缝。
+
 ## [0.84.2-beta] - 2026-11-28
 
 - **全站五处一次性内联通知统一迁入顶部悬浮胶囊，消除页面高度跳动（[ProviderModelsScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderModelsScreen.kt)、[ModelEditorScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ModelEditorScreen.kt)、[ProviderFormScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/ProviderFormScreen.kt)、[ProductionPanel.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/production/ProductionPanel.kt)、[LinuxFilesScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/linux/files/LinuxFilesScreen.kt)、[SettingsTwoPane.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/settings/SettingsTwoPane.kt)）**：

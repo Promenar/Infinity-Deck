@@ -80,4 +80,12 @@ class TransientNoticeCapsuleRoutingContractTest {
         assertThat(twoPane).contains("ReportInfinityNoticeHorizontalClearance(")
         assertThat(twoPane).contains("coordinates.positionInRoot().x")
     }
+
+    @Test
+    fun `悬浮胶囊按内容紧凑收束且光晕高光层铺满整个胶囊不留右缘暗缝`() {
+        val host = readSource("common/InfinityNoticeHost.kt")
+        val capsule = host.substringAfter("private fun InfinityNoticeCapsule(")
+        assertThat(host).contains("modifier = Modifier.widthIn(max = maxCapsuleWidth)")
+        assertThat(capsule).contains(".matchParentSize()\n                    .drawWithCache")
+    }
 }

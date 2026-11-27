@@ -465,12 +465,11 @@ fun InfinityNoticeHost(
                 label = "infinity_notice_capsule",
             ) {
                 renderedMessage?.let { active ->
-                    val minWidth = 180.dp.coerceAtMost(maxCapsuleWidth)
                     InfinityNoticeCapsule(
                         message = active,
                         backdrop = backdrop,
                         onDismiss = { controller.dismiss(active.id) },
-                        modifier = Modifier.widthIn(min = minWidth, max = maxCapsuleWidth),
+                        modifier = Modifier.widthIn(max = maxCapsuleWidth),
                     )
                 }
             }
@@ -578,6 +577,7 @@ private fun InfinityNoticeCapsule(
             }
             Box(
                 Modifier
+                    .matchParentSize()
                     .drawWithCache {
                         val hiPx = 18.dp.toPx().coerceAtMost(size.height)
                         val hiBrush = Brush.verticalGradient(
@@ -600,79 +600,78 @@ private fun InfinityNoticeCapsule(
                             drawRect(brush = hiBrush, size = Size(size.width, hiPx))
                         }
                     },
+            )
+            Row(
+                modifier = Modifier
+                    .heightIn(min = 44.dp)
+                    .padding(
+                        start = 10.dp,
+                        end = if (message.action != null) 8.dp else 16.dp,
+                        top = 7.dp,
+                        bottom = 7.dp,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Row(
+                Box(
                     modifier = Modifier
-                        .heightIn(min = 44.dp)
-                        .padding(
-                            start = 10.dp,
-                            end = if (message.action != null) 8.dp else 14.dp,
-                            top = 7.dp,
-                            bottom = 7.dp,
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = if (dark) 0.18f else 0.12f))
+                        .border(0.5.dp, accent.copy(alpha = if (dark) 0.30f else 0.24f), CircleShape),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(accent.copy(alpha = if (dark) 0.18f else 0.12f))
-                            .border(0.5.dp, accent.copy(alpha = if (dark) 0.30f else 0.24f), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f, fill = false),
-                        verticalArrangement = Arrangement.spacedBy(1.dp),
-                    ) {
+                    Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
+                }
+                Column(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Text(
+                        text = message.message.keepCjkTailTogether(),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.5.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        color = scheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    message.subtitle?.let { sub ->
                         Text(
-                            text = message.message.keepCjkTailTogether(),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 13.5.sp,
-                                lineHeight = 18.sp,
-                                fontWeight = FontWeight.Medium,
-                            ),
-                            color = scheme.onSurface,
-                            maxLines = 2,
+                            text = sub,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        message.subtitle?.let { sub ->
+                    }
+                }
+                message.action?.let { action ->
+                    Surface(
+                        onClick = {
+                            action.onClick()
+                            onDismiss()
+                        },
+                        shape = CircleShape,
+                        color = scheme.onSurface.copy(alpha = if (dark) 0.10f else 0.07f),
+                        border = BorderStroke(0.5.dp, borderColor),
+                        modifier = Modifier.heightIn(min = 30.dp).testTag(InfinityNoticeTags.ACTION),
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Text(
-                                text = sub,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = scheme.onSurfaceVariant,
+                                text = action.label,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = accent,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                        }
-                    }
-                    message.action?.let { action ->
-                        Surface(
-                            onClick = {
-                                action.onClick()
-                                onDismiss()
-                            },
-                            shape = CircleShape,
-                            color = scheme.onSurface.copy(alpha = if (dark) 0.10f else 0.07f),
-                            border = BorderStroke(0.5.dp, borderColor),
-                            modifier = Modifier.heightIn(min = 30.dp).testTag(InfinityNoticeTags.ACTION),
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = action.label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = accent,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
                         }
                     }
                 }
