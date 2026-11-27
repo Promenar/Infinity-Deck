@@ -101,8 +101,8 @@
       "linux_sha256": "72cc53634db7383455d27b1e52eecfcdaab4f11df226ca26a608642b38a609b7"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/providerListChineseNarrowReleasePreview_Provider list Chinese narrow_342492e5_0.png": {
-      "base_sha256": "d20f0599ab1e8b29f651a8c3beb07e213f737ff8876c7d6c623d164e75eadac4",
-      "linux_sha256": "d20f0599ab1e8b29f651a8c3beb07e213f737ff8876c7d6c623d164e75eadac4"
+      "base_sha256": "317fb4e9add73c3d8e037f2d05217e139b7330563dc5125d0b61395e3f4444cc",
+      "linux_sha256": "317fb4e9add73c3d8e037f2d05217e139b7330563dc5125d0b61395e3f4444cc"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/ragDetailsKgLongLandscapeReleasePreview_RAG details KG long landscape_a7916274_0.png": {
       "base_sha256": "4f5d27ea06fec10a60780157f9f1df0b00c034a188b4b7c59542909109929f14",
@@ -145,8 +145,8 @@
       "linux_sha256": "141c8fe16af3fcebb793e8317e71576cbcac3cb8a9f89512e0e6b126db1087c8"
     },
     "com/promenar/infinity/ui/ReleasePreviewScreenshotTestKt/userSettingsProviderLargeFontReleasePreview_User settings provider English large font_e804a4ab_0.png": {
-      "base_sha256": "989d9897732966347f50cae0a95bd7d51fdc6e9b63c23721aa969cd9a16dcb3a",
-      "linux_sha256": "989d9897732966347f50cae0a95bd7d51fdc6e9b63c23721aa969cd9a16dcb3a"
+      "base_sha256": "a2db149abb33fdedfefc076bcb30d7a1f66f295080dde4f2ba53713ac7027cdc",
+      "linux_sha256": "a2db149abb33fdedfefc076bcb30d7a1f66f295080dde4f2ba53713ac7027cdc"
     },
     "com/promenar/infinity/ui/avatar/AvatarEditorScreenshotTestKt/avatarEditorLightEnglishPreview_Avatar editor light EN 411_a68d18fb_0.png": {
       "base_sha256": "91416bb0818239bccccfcf0b84c0ae4da26ce62e79091cf711453416a0b03978",
@@ -765,20 +765,20 @@
       "linux_sha256": "94635ae660dd27abf39683242aaceb6f7afcda2dbc4857c8e19b9ce511cd126b"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerFormCustomProtocolProvidersModels_提供商编辑 自定义协议 英文 360_e75d3d8c_0.png": {
-      "base_sha256": "c9034d7717a2760c6983ddbb73a48b431861b1966af5ff657a675ef1775cbe55",
-      "linux_sha256": "c9034d7717a2760c6983ddbb73a48b431861b1966af5ff657a675ef1775cbe55"
+      "base_sha256": "8776675de193ab7795227ffae200019afd6f6c8e1141ce40af6d3ea14b661140",
+      "linux_sha256": "8776675de193ab7795227ffae200019afd6f6c8e1141ce40af6d3ea14b661140"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerFormCustomProtocolProvidersModels_提供商编辑 自定义协议 英文 大字 360_eeced860_0.png": {
-      "base_sha256": "19e12730a792beb907813aba6c1f9cfb2d4e32ff7bb4bd0ac51e70625b1a7ee3",
-      "linux_sha256": "19e12730a792beb907813aba6c1f9cfb2d4e32ff7bb4bd0ac51e70625b1a7ee3"
+      "base_sha256": "2dcadc27d4548a5e7b176b5971d4281da2ca05cf2f67ade2a7747736a1dd7ef4",
+      "linux_sha256": "2dcadc27d4548a5e7b176b5971d4281da2ca05cf2f67ade2a7747736a1dd7ef4"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerListProvidersModels_提供商列表 浅色英文 360_5e324ecb_0.png": {
-      "base_sha256": "ef2e6ac6fb7873c0fa2d6011a968a14c45263f6fefa4bfc5f3e0e72eb886c43e",
-      "linux_sha256": "ef2e6ac6fb7873c0fa2d6011a968a14c45263f6fefa4bfc5f3e0e72eb886c43e"
+      "base_sha256": "a10ec18d19d9314e73ecb182521e39941b3bab1c39df5e56e83377d8c6593bc1",
+      "linux_sha256": "a10ec18d19d9314e73ecb182521e39941b3bab1c39df5e56e83377d8c6593bc1"
     },
     "com/promenar/infinity/ui/settings/ProvidersModelsScreenshotTestKt/providerListProvidersModels_提供商列表 深色中文 411_4d282964_0.png": {
-      "base_sha256": "9e84db0bc30203146cb4d4aed765290b57d0b271e0f697a965b087782bdd1c26",
-      "linux_sha256": "9e84db0bc30203146cb4d4aed765290b57d0b271e0f697a965b087782bdd1c26"
+      "base_sha256": "663f3cdf66f223afbb08795e28e8e44a6b0a1b6091fb4315d7fccfe852c21872",
+      "linux_sha256": "663f3cdf66f223afbb08795e28e8e44a6b0a1b6091fb4315d7fccfe852c21872"
     },
     "com/promenar/infinity/ui/settings/RemoteAdditionsScreenshotTestKt/remoteAgentJobsEntryPreview_远程 SSH 智能体后台命令计数入口 浅色英文 字号130_36049f2b_0.png": {
       "base_sha256": "760c69783c152c718e6d0cafd0a279c990b2fa17f03b62f905dcb972b907722b",

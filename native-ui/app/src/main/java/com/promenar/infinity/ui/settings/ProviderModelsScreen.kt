@@ -9,8 +9,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,6 +34,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -49,9 +53,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -78,23 +80,30 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.ModelInfo
+import com.promenar.infinity.data.model.catalog.ResolvedModelMetadata
+import com.promenar.infinity.data.model.toLegacyType
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
+import com.promenar.infinity.ui.common.InfinityFieldRow
 import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuItem
-import com.promenar.infinity.ui.common.InfinityMetaLine
 import com.promenar.infinity.ui.common.InfinityModalSheet
 import com.promenar.infinity.ui.common.InfinityPillButton
 import com.promenar.infinity.ui.common.InfinityPillRow
@@ -107,11 +116,14 @@ import com.promenar.infinity.ui.common.InfinitySnackbarData
 import com.promenar.infinity.ui.common.InfinityStatusKind
 import com.promenar.infinity.ui.common.InfinityStatusStrip
 import com.promenar.infinity.ui.common.InfinitySwitch
-import com.promenar.infinity.ui.common.ModelBrandIcon
+import com.promenar.infinity.ui.common.InfinityTypographicFootnote
 import com.promenar.infinity.ui.common.ModelBrandTile
 import com.promenar.infinity.ui.common.ModelCapabilityBadges
+import com.promenar.infinity.ui.common.ProvideGroupedPress
 import com.promenar.infinity.ui.common.SnackbarType
 import com.promenar.infinity.ui.common.bettboxListGroupItem
+import com.promenar.infinity.ui.common.infinityHorizontalWheelScroll
+import com.promenar.infinity.ui.common.infinityPointerHand
 import com.promenar.infinity.ui.common.status.NoticeSeverity
 import com.promenar.infinity.ui.common.status.UiStatusNotice
 import com.promenar.infinity.ui.common.verticalFadingEdges
@@ -119,10 +131,8 @@ import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
-import com.promenar.infinity.ui.theme.forInput
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.launch
-import com.promenar.infinity.ui.common.ProvideGroupedPress
 
 internal data class ProviderModelsScreenState(
     val providerName: String,
@@ -151,6 +161,7 @@ internal data class ProviderModelsScreenActions(
     val onEditProvider: () -> Unit = {},
     val onOpenMediaModel: ((String) -> Unit)? = null,
     val onSetMediaSettings: ((String, com.promenar.infinity.data.model.MediaModelSettings?) -> Unit)? = null,
+    val onPreviewCatalogMatch: (String) -> ResolvedModelMetadata? = { null },
 )
 
 @Composable
@@ -216,6 +227,7 @@ fun ProviderModelsScreen(
         onEditProvider = { onNavigateToSecondary(NavDestinations.providerForm(providerId)) },
         onOpenMediaModel = { onNavigateToSecondary(MediaSettingsRoutes.model(it)) },
         onSetMediaSettings = { modelId, settings -> viewModel.setMediaModelSettings(modelId, settings) },
+        onPreviewCatalogMatch = { remoteId -> viewModel.previewModelCatalogMatch(providerId, remoteId) },
     )
 
     ProviderModelsScreenContent(
@@ -238,6 +250,7 @@ internal fun ProviderModelsScreenContent(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var searchQuery by rememberSaveable(state.providerId) { mutableStateOf("") }
+    var selectedFilterKey by rememberSaveable(state.providerId) { mutableStateOf(ProviderModelFilter.All.key) }
     var selectedModelId by rememberSaveable(state.providerId) { mutableStateOf<String?>(null) }
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -276,13 +289,22 @@ internal fun ProviderModelsScreenContent(
         }
     }
 
-    val filteredModels = remember(state.models, searchQuery) {
-        if (searchQuery.isBlank()) state.models
+    val filterOptions = remember(state.models) { buildModelFilterOptions(state.models) }
+    val activeFilter = remember(filterOptions, selectedFilterKey) {
+        filterOptions.firstOrNull { it.filter.key == selectedFilterKey }?.filter ?: ProviderModelFilter.All
+    }
+    LaunchedEffect(activeFilter.key) {
+        if (selectedFilterKey != activeFilter.key) selectedFilterKey = activeFilter.key
+    }
+
+    val filteredModels = remember(state.models, searchQuery, activeFilter) {
+        val bySearch = if (searchQuery.isBlank()) state.models
         else state.models.filter {
             it.name.contains(searchQuery, ignoreCase = true) ||
-            it.remoteModelId.contains(searchQuery, ignoreCase = true) ||
-            it.id.contains(searchQuery, ignoreCase = true)
+                it.remoteModelId.contains(searchQuery, ignoreCase = true) ||
+                it.id.contains(searchQuery, ignoreCase = true)
         }
+        applyProviderModelFilter(bySearch, activeFilter)
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -299,6 +321,7 @@ internal fun ProviderModelsScreenContent(
                     model = editing,
                     testState = state.modelTestStates[editing.id] ?: ModelTestState.Idle,
                     onClose = { selectedModelId = null },
+                    onToggle = { actions.onToggle(editing.id) },
                     onOpenMediaSettings = actions.onOpenMediaModel?.let { open -> { open(editing.id) } },
                     onSetMediaSettings = actions.onSetMediaSettings?.let { set -> { settings -> set(editing.id, settings) } },
                     onUpdate = actions.onUpdate,
@@ -321,6 +344,9 @@ internal fun ProviderModelsScreenContent(
                     state = state,
                     actions = actions,
                     filteredModels = filteredModels,
+                    filterOptions = filterOptions,
+                    activeFilter = activeFilter,
+                    onSelectFilter = { selectedFilterKey = it.key },
                     searchQuery = searchQuery,
                     onSearchQuery = { searchQuery = it },
                     listState = listState,
@@ -373,6 +399,7 @@ internal fun ProviderModelsScreenContent(
                 added
             },
             onAdded = { showAddDialog = false },
+            onPreviewCatalogMatch = actions.onPreviewCatalogMatch,
         )
     }
 }
@@ -382,6 +409,9 @@ private fun ProviderModelsListPage(
     state: ProviderModelsScreenState,
     actions: ProviderModelsScreenActions,
     filteredModels: List<ModelInfo>,
+    filterOptions: List<ProviderModelFilterOption>,
+    activeFilter: ProviderModelFilter,
+    onSelectFilter: (ProviderModelFilter) -> Unit,
     searchQuery: String,
     onSearchQuery: (String) -> Unit,
     listState: androidx.compose.foundation.lazy.LazyListState,
@@ -406,7 +436,7 @@ private fun ProviderModelsListPage(
             )
         },
     ) { contentPadding ->
-        // 固定搜索栏、同步栏与规格库失败提示；状态条与模型随同一列表滚动，列表底部延伸到系统导航栏后方。
+        // 两层精简顶区：无硬描边搜索框 + 无外框单行同步状态条 + 动态分类筛选胶囊；失败条按需滑出。
         val layoutDirection = LocalLayoutDirection.current
         Column(
             modifier = Modifier
@@ -422,6 +452,7 @@ private fun ProviderModelsListPage(
                 value = searchQuery,
                 onValueChange = onSearchQuery,
                 placeholder = stringResource(R.string.provider_models_search),
+                borderless = true,
                 modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_SEARCH_FIELD),
             )
             ProviderModelsSyncBar(
@@ -430,7 +461,19 @@ private fun ProviderModelsListPage(
                 isFetching = state.isFetching,
                 lastSyncAtMillis = state.lastSyncAtMillis,
                 onRefresh = actions.onRefresh,
+                specVersionLabel = specLibrary?.current?.date,
             )
+            AnimatedVisibility(
+                visible = filterOptions.size > 1,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                ProviderModelsFilterRow(
+                    options = filterOptions,
+                    active = activeFilter,
+                    onSelect = onSelectFilter,
+                )
+            }
             val failure = specLibrary?.failure
             AnimatedVisibility(visible = failure != null) {
                 // 收起动画期间沿用最后一次的失败内容。
@@ -450,7 +493,7 @@ private fun ProviderModelsListPage(
                 isLoading = state.isFetching,
                 modelCount = state.models.size,
                 filteredCount = filteredModels.size,
-                searchQuery = searchQuery,
+                searchQuery = if (searchQuery.isBlank() && activeFilter != ProviderModelFilter.All) activeFilter.key else searchQuery,
                 notice = state.syncNotice,
             )
             // 同步反馈：据 severity 着色，据 code+args 经 stringResource 双语格式化；列表已表达的状态不重复提示。
@@ -509,29 +552,96 @@ private fun ProviderModelsListPage(
                     ProviderModelsListState.SearchEmpty -> item("search-empty") {
                         Box(Modifier.animateItem()) {
                             ProviderModelsListMessage(
-                                message = stringResource(R.string.provider_models_search_empty, searchQuery),
+                                message = if (searchQuery.isNotBlank()) {
+                                    stringResource(R.string.provider_models_search_empty, searchQuery)
+                                } else {
+                                    stringResource(R.string.provider_models_filter_empty)
+                                },
                                 tag = UiTags.PROVIDER_MODELS_STATE_SEARCH_EMPTY,
                             )
                         }
                     }
 
-                    ProviderModelsListState.Content -> itemsIndexed(
-                        filteredModels,
-                        key = { _, model -> model.id },
-                    ) { index, model ->
-                        // 搜索过滤、启用全部、删除时模型行平滑补位。
-                        Box(Modifier.animateItem()) {
-                            ProviderModelsModelRow(
-                                model = model,
-                                groupIndex = index,
-                                groupSize = filteredModels.size,
-                                onRowClick = { onRowClick(model) },
-                                onToggle = { actions.onToggle(model.id) },
+                    ProviderModelsListState.Content -> {
+                        itemsIndexed(
+                            filteredModels,
+                            key = { _, model -> model.id },
+                        ) { index, model ->
+                            // 搜索过滤、启用全部、删除时模型行平滑补位。
+                            Box(Modifier.animateItem()) {
+                                ProviderModelsModelRow(
+                                    model = model,
+                                    groupIndex = index,
+                                    groupSize = filteredModels.size,
+                                    onRowClick = { onRowClick(model) },
+                                    onToggle = { actions.onToggle(model.id) },
+                                )
+                            }
+                        }
+                        item("models-footnote") {
+                            InfinityTypographicFootnote(
+                                text = stringResource(R.string.provider_models_footnote),
+                                modifier = Modifier.animateItem().padding(top = 6.dp),
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
 
+@Composable
+private fun ProviderModelsFilterRow(
+    options: List<ProviderModelFilterOption>,
+    active: ProviderModelFilter,
+    onSelect: (ProviderModelFilter) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val scrollState = rememberScrollState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .infinityHorizontalWheelScroll(scrollState)
+            .horizontalScroll(scrollState)
+            .padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        options.forEach { option ->
+            val isSelected = option.filter == active
+            val label = when (val f = option.filter) {
+                ProviderModelFilter.All -> stringResource(R.string.provider_models_filter_all, option.count)
+                ProviderModelFilter.Enabled -> stringResource(R.string.provider_models_filter_enabled, option.count)
+                is ProviderModelFilter.Type -> stringResource(
+                    R.string.provider_models_filter_type_count,
+                    stringResource(modelTypeLabelRes(f.typeKey)),
+                    option.count,
+                )
+            }
+            Surface(
+                shape = CircleShape,
+                color = if (isSelected) scheme.primary else scheme.surfaceContainerHigh.copy(alpha = 0.72f),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(role = Role.Tab) { onSelect(option.filter) }
+                    .infinityPointerHand()
+                    .semantics {
+                        role = Role.Tab
+                        selected = isSelected
+                    }
+                    .testTag("provider_models_filter:${option.filter.key}"),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = 12.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    ),
+                    color = if (isSelected) scheme.onPrimary else scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+                )
             }
         }
     }
@@ -543,6 +653,7 @@ private fun ProviderModelsAddSheet(
     onDismiss: () -> Unit,
     onSubmit: (id: String, name: String) -> Boolean,
     onAdded: () -> Unit,
+    onPreviewCatalogMatch: (String) -> ResolvedModelMetadata? = { null },
 ) {
     InfinityModalSheet(
         onDismissRequest = onDismiss,
@@ -551,11 +662,15 @@ private fun ProviderModelsAddSheet(
     ) {
         Text(
             text = stringResource(R.string.provider_models_add_custom),
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
-        AddCustomModelForm(onSubmit = onSubmit, onAdded = onAdded)
+        AddCustomModelForm(
+            onSubmit = onSubmit,
+            onAdded = onAdded,
+            onPreviewCatalogMatch = onPreviewCatalogMatch,
+        )
     }
 }
 
@@ -563,50 +678,114 @@ private fun ProviderModelsAddSheet(
 internal fun AddCustomModelForm(
     onSubmit: (id: String, name: String) -> Boolean,
     onAdded: () -> Unit,
+    onPreviewCatalogMatch: (String) -> ResolvedModelMetadata? = { null },
 ) {
     var modelId by remember { mutableStateOf("") }
     var modelName by remember { mutableStateOf("") }
     var submissionFailed by remember { mutableStateOf(false) }
+    val matchedCatalog = remember(modelId, onPreviewCatalogMatch) {
+        modelId.trim().takeIf { it.isNotEmpty() }?.let(onPreviewCatalogMatch)
+    }
+    val scheme = MaterialTheme.colorScheme
 
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
             .testTag(UiTags.PROVIDER_MODELS_ADD_FORM_LIST),
-        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item("model-id") {
-            OutlinedTextField(
-                textStyle = LocalTextStyle.current.forInput(),
-                value = modelId,
-                onValueChange = {
-                    modelId = it
-                    submissionFailed = false
-                },
-                label = { Text(stringResource(R.string.provider_models_field_model_id)) },
-                placeholder = { Text(stringResource(R.string.provider_models_placeholder_model_id)) },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(UiTags.PROVIDER_MODELS_ADD_ID_FIELD),
-            )
+        item("fields-group") {
+            BettboxListGroup(Modifier.fillMaxWidth()) {
+                InfinityFieldRow(
+                    label = stringResource(R.string.provider_models_field_model_id),
+                    value = modelId,
+                    onValueChange = {
+                        modelId = it
+                        submissionFailed = false
+                    },
+                    placeholder = stringResource(R.string.provider_models_placeholder_model_id),
+                    monospace = true,
+                    fieldModifier = Modifier.testTag(UiTags.PROVIDER_MODELS_ADD_ID_FIELD),
+                )
+                InfinityGroupDivider(startInset = 16.dp)
+                InfinityFieldRow(
+                    label = stringResource(R.string.provider_models_field_display_name),
+                    value = modelName,
+                    onValueChange = {
+                        modelName = it
+                        submissionFailed = false
+                    },
+                    placeholder = matchedCatalog?.let {
+                        stringResource(R.string.provider_models_add_auto_name, it.displayName)
+                    } ?: stringResource(R.string.provider_models_placeholder_optional),
+                    fieldModifier = Modifier.testTag(UiTags.PROVIDER_MODELS_ADD_NAME_FIELD),
+                )
+            }
         }
-        item("model-name") {
-            OutlinedTextField(
-                textStyle = LocalTextStyle.current.forInput(),
-                value = modelName,
-                onValueChange = {
-                    modelName = it
-                    submissionFailed = false
-                },
-                label = { Text(stringResource(R.string.provider_models_field_display_name)) },
-                placeholder = { Text(stringResource(R.string.provider_models_placeholder_optional)) },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(UiTags.PROVIDER_MODELS_ADD_NAME_FIELD),
-            )
+        item("catalog-preview") {
+            AnimatedVisibility(
+                visible = matchedCatalog != null,
+                enter = InfinityMotion.expandIn,
+                exit = InfinityMotion.shrinkOut,
+            ) {
+                matchedCatalog?.let { match ->
+                    val typeText = stringResource(modelTypeLabelRes(match.toLegacyType()))
+                    val summaryParts = listOfNotNull(
+                        typeText,
+                        match.contextTokens?.takeIf { it > 0 }?.let {
+                            stringResource(R.string.provider_models_add_catalog_ctx, formatTokenShort(it))
+                        },
+                        match.outputTokens?.takeIf { it > 0 }?.let {
+                            stringResource(R.string.provider_models_add_catalog_out, formatTokenShort(it))
+                        },
+                        match.knowledgeCutoff?.takeIf { it.isNotBlank() }?.let {
+                            stringResource(R.string.provider_models_add_catalog_cutoff, it)
+                        } ?: match.releaseDate?.takeIf { it.isNotBlank() }?.let {
+                            stringResource(R.string.provider_models_add_catalog_release, it)
+                        },
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = scheme.primaryContainer.copy(alpha = 0.36f),
+                        border = BorderStroke(0.5.dp, scheme.primary.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("provider_models_add_catalog_preview"),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            ModelBrandTile(
+                                modelId = match.canonicalModelId ?: modelId,
+                                size = 34.dp,
+                                shape = RoundedCornerShape(9.dp),
+                                fallbackIcon = modelTypeIcon(match.toLegacyType()),
+                                withHairlineBorder = true,
+                            )
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = stringResource(R.string.provider_models_add_catalog_matched, match.displayName),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = scheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = summaryParts.joinToString(" · "), // wrap-check: allow 规格库匹配摘要，短词组允许自然折行
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = scheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
         if (submissionFailed) {
             item("submission-error") {
@@ -633,12 +812,18 @@ internal fun AddCustomModelForm(
                         }
                     }
                 },
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .sizeIn(minHeight = 48.dp)
                     .testTag(UiTags.PROVIDER_MODELS_ADD_SUBMIT_BUTTON),
             ) {
-                Text(stringResource(R.string.shared_btn_add))
+                Text(
+                    text = stringResource(R.string.provider_models_add_submit_label),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         }
     }
@@ -744,7 +929,7 @@ internal fun ModelSpecLibraryMenuItem(specLibrary: SpecLibraryUi, onUpdate: () -
     )
 }
 
-/** 搜索栏下一行：左侧“x / y 个已启用”与上次同步时间，右侧同步按钮（同步中按钮内转圈）。 */
+/** 搜索栏下一行：无冗余外框单行状态同步条，左侧“已启用 x / y · 规格库版本”与上次同步时间，右侧同步胶囊按钮。 */
 @Composable
 internal fun ProviderModelsSyncBar(
     enabledCount: Int,
@@ -752,61 +937,72 @@ internal fun ProviderModelsSyncBar(
     isFetching: Boolean,
     lastSyncAtMillis: Long?,
     onRefresh: () -> Unit,
+    specVersionLabel: String? = null,
 ) {
     val now = rememberMinuteClock()
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    val enabledText = stringResource(R.string.provider_models_enabled_count, enabledCount, totalCount)
+    val headlineText = if (!specVersionLabel.isNullOrBlank()) {
+        val specPart = stringResource(R.string.provider_models_spec_version_inline, specVersionLabel)
+        "$enabledText · $specPart" // wrap-check: allow 单行省略汇总，含短日期与计数
+    } else {
+        enabledText
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = headlineText,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_ENABLED_COUNT),
+            )
+            Text(
+                text = lastSyncAtMillis?.let {
+                    stringResource(R.string.provider_models_last_sync, relativeTimeLabel(it, now))
+                } ?: stringResource(R.string.provider_models_never_synced),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_LAST_SYNC),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        FilledTonalButton(
+            onClick = onRefresh,
+            enabled = !isFetching,
+            shape = CircleShape,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+            modifier = Modifier
+                .sizeIn(minWidth = 48.dp, minHeight = 44.dp)
+                .height(44.dp)
+                .testTag(UiTags.PROVIDER_MODELS_ACTION_SYNC),
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = stringResource(R.string.provider_models_enabled_count, enabledCount, totalCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_ENABLED_COUNT),
-                )
-                Text(
-                    text = lastSyncAtMillis?.let {
-                        stringResource(R.string.provider_models_last_sync, relativeTimeLabel(it, now))
-                    } ?: stringResource(R.string.provider_models_never_synced),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.testTag(UiTags.PROVIDER_MODELS_LAST_SYNC),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            FilledTonalButton(
-                onClick = onRefresh,
-                enabled = !isFetching,
-                contentPadding = PaddingValues(horizontal = 14.dp),
-                modifier = Modifier
-                    .sizeIn(minWidth = 48.dp, minHeight = 44.dp)
-                    .height(44.dp)
-                    .testTag(UiTags.PROVIDER_MODELS_ACTION_SYNC),
-            ) {
-                AnimatedContent(
-                    targetState = isFetching,
-                    transitionSpec = { InfinityMotion.fadeThrough() },
-                    contentAlignment = Alignment.Center,
-                    label = "provider_models_sync_icon",
-                ) { fetching ->
-                    if (fetching) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                    }
+            AnimatedContent(
+                targetState = isFetching,
+                transitionSpec = { InfinityMotion.fadeThrough() },
+                contentAlignment = Alignment.Center,
+                label = "provider_models_sync_icon",
+            ) { fetching ->
+                if (fetching) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Rounded.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    stringResource(if (isFetching) R.string.provider_models_syncing else R.string.provider_models_sync_action),
-                    maxLines = 1,
-                )
             }
+            Spacer(Modifier.width(5.dp))
+            Text(
+                stringResource(if (isFetching) R.string.provider_models_syncing else R.string.provider_models_sync_action),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     }
 }
@@ -820,8 +1016,12 @@ internal fun ProviderModelsModelRow(
     groupIndex: Int = 0,
     groupSize: Int = 1,
 ) {
+    val scheme = MaterialTheme.colorScheme
     val remoteModelId = remember(model.id, model.remoteModelId) {
         model.remoteModelId.ifBlank { model.id.substringAfter("::", model.id) }
+    }
+    val showRemoteId = remember(model.name, remoteModelId) {
+        shouldShowModelRemoteId(model.name, remoteModelId)
     }
     val badges = modelCapabilityBadges(model)
     val capabilitiesDescription = if (badges.isEmpty()) {
@@ -833,6 +1033,11 @@ internal fun ProviderModelsModelRow(
         )
     }
     val contextShort = formatTokenShort(model.contextLength)
+    val (typeBg, typeFg) = when (normalizedModelFilterType(model.type)) {
+        "reasoning" -> scheme.primaryContainer.copy(alpha = 0.65f) to scheme.onPrimaryContainer
+        "speech", "realtime" -> scheme.tertiaryContainer.copy(alpha = 0.72f) to scheme.onTertiaryContainer
+        else -> scheme.secondaryContainer.copy(alpha = 0.80f) to scheme.onSecondaryContainer
+    }
 
     // 全部模型拼成一个连续分组；行间细线从正文起点开始。
     ProvideGroupedPress {
@@ -842,33 +1047,37 @@ internal fun ProviderModelsModelRow(
                     .fillMaxWidth()
                     .clickable(onClick = onRowClick)
                     .testTag(UiTags.providerModelsModelCard(model.id))
-                    .padding(start = InfinitySpacing.RowHorizontal, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                    .padding(start = 14.dp, end = 8.dp, top = 11.dp, bottom = 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ModelBrandTile(
                     modelId = remoteModelId,
                     size = ModelTileSize,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(11.dp),
+                    fallbackIcon = modelTypeIcon(model.type),
+                    withHairlineBorder = true,
                 )
                 Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         model.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                        color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        remoteModelId,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .testTag(UiTags.providerModelsRemoteId(model.id))
-                            .semantics { contentDescription = remoteModelId },
-                    )
+                    if (showRemoteId) {
+                        Text(
+                            remoteModelId,
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 11.5.sp),
+                            color = scheme.onSurfaceVariant.copy(alpha = 0.72f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .testTag(UiTags.providerModelsRemoteId(model.id))
+                                .semantics { contentDescription = remoteModelId },
+                        )
+                    }
                     ModelCapabilityBadges(
                         typeLabel = stringResource(modelTypeLabelRes(model.type)),
                         capabilities = badges,
@@ -877,10 +1086,11 @@ internal fun ProviderModelsModelRow(
                         contextDescription = contextShort.takeIf { it.isNotEmpty() }?.let {
                             stringResource(R.string.provider_models_context_description, it)
                         },
-                        modifier = Modifier.padding(top = 4.dp),
+                        typeContainerColor = typeBg,
+                        typeContentColor = typeFg,
                     )
                 }
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(6.dp))
                 InfinitySwitch(
                     checked = model.enabled,
                     onCheckedChange = { onToggle() },
@@ -888,13 +1098,13 @@ internal fun ProviderModelsModelRow(
                 )
             }
             if (groupIndex < groupSize - 1) {
-                InfinityGroupDivider(startInset = InfinitySpacing.RowHorizontal + ModelTileSize + 12.dp)
+                InfinityGroupDivider(startInset = 14.dp + ModelTileSize + 12.dp)
             }
         }
     }
 }
 
-private val ModelTileSize = 36.dp
+private val ModelTileSize = 38.dp
 
 /** 规格库更新失败的浅色提示：原因、沿用的版本与“重试”。正常与更新中不显示。 */
 @Composable

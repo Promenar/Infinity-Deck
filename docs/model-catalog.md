@@ -12,9 +12,9 @@ App 恢复完成后检查更新，成功检查间隔二十四小时；手动操�
 
 LiteLLM 的 `alias_of` 条目作为目标模型的精确别名发布，沿用目标模型的供应商作用域和元数据。目标必须是同批数据中的普通模型条目，普通模型必须声明有效的 `litellm_provider`。
 
-规范模型来自 models.dev；供应商条目来自 models.dev provider 数据、LiteLLM 和 OpenRouter。记录总量包含供应商销售条目，不等于基础模型数量。每批记录附带来源、抓取时间、原文摘要和许可说明。主流新模型或重排（`RERANK`）模型缺席规范目录时，可加入带官方证据的受控补充（`scripts/model-catalog/official-model-overrides.json`）；普通条目在上游出现同一规范 ID 后自动停用，重排补充条目需待上游完整接管 `RERANK` 工作负载、上下文窗口及全部别名后再自动退让，避免上游仅收录残缺信息时提前覆盖。
+规范模型来自 models.dev；供应商条目来自 models.dev provider 数据、LiteLLM 和 OpenRouter。采集器由一手官方作用域、OpenRouter 与 LiteLLM 对全局记录缺失字段执行安全回填（含跨源共识结构化输出、提示缓存、联网搜索、电脑操控、PDF 输入与废弃日，并对知识截止日期施加一手白名单与发布日一致性校验），将无歧义一手独占模型同步晋升至全局层，且音频模型直接细分为 `SPEECH`、`MUSIC` 与 `REALTIME` 发布。记录总量包含供应商销售条目，不等于基础模型数量。每批记录附带来源、抓取时间、原文摘要和许可说明。主流新模型或重排（`RERANK`）模型缺席规范目录时，可加入带官方证据的受控补充（`scripts/model-catalog/official-model-overrides.json`）；普通条目在上游出现同一规范 ID 后自动停用，重排补充条目需待上游完整接管 `RERANK` 工作负载、上下文窗口及全部别名后再自动退让，避免上游仅收录残缺信息时提前覆盖。
 
-供应商实例 ID、规范模型 ID、目录作用域与请求模型 ID 分别保存。比如 `newapi/deepseek-v4-flash` 只有在列表明确返回对应网关 owned_by 时才允许用后缀查找；SiliconFlow 等网关的 `Pro/<org>/<model>` / `Free/<org>/<model>` 计费层级前缀在后接两段式 `<org>/<model>` 时按大小写不敏感剥离前缀查表，发送时仍保留完整字符串。未知路由前缀与冲突保持未匹配。来源声明的能力和额度不代表当前账号或聚合通道一定支持。
+供应商实例 ID、规范模型 ID、目录作用域与请求模型 ID 分别保存。客户端根据供应商主机自动推断一手目录作用域链（`inferCatalogSourceProviderScopes`），优先匹配对应一手作用域并与全局规范条目合并补齐发布日期、废弃日期与能力位，中转站与自定义兼容网关保持全局视图。比如 `newapi/deepseek-v4-flash` 只有在列表明确返回对应网关 owned_by 时才允许用后缀查找；SiliconFlow 等网关的 `Pro/<org>/<model>` / `Free/<org>/<model>` 计费层级前缀在后接两段式 `<org>/<model>` 时按大小写不敏感剥离前缀查表，发送时仍保留完整字符串。未知路由前缀与冲突保持未匹配。来源声明的能力和额度不代表当前账号或聚合通道一定支持。
 
 ## 信任与发布
 

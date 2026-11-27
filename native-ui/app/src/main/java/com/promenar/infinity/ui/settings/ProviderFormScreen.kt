@@ -5,12 +5,16 @@ import android.content.res.Resources
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,16 +34,28 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Psychology
-import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
+import com.promenar.infinity.ui.common.BettboxListGroup
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
+import com.promenar.infinity.ui.common.InfinitySearchBar
+import com.promenar.infinity.ui.common.infinityPointerHand
 import com.promenar.infinity.ui.common.isDefaultProviderName
 import com.promenar.infinity.ui.common.label
 import com.promenar.infinity.ui.common.InfinityFieldRow
@@ -1031,31 +1047,69 @@ internal fun ProviderFormContent(
                 }
                 if (state.deleteEntry != UnavailableReasons.ProviderDeleteEntry.HIDDEN) {
                     animatedFormItem("delete") {
-                        InfinitySettingsGroup {
-                            InfinitySettingsItem(
-                                title = stringResource(R.string.provider_form_delete),
-                                icon = Icons.Rounded.Delete,
-                                titleColor = MaterialTheme.colorScheme.error,
-                                onClick = actions.onDelete,
-                                modifier = Modifier.testTag(UiTags.PROVIDER_FORM_DELETE),
-                            )
+                        val scheme = MaterialTheme.colorScheme
+                        val deleteLabel = stringResource(R.string.provider_form_delete)
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = scheme.errorContainer.copy(alpha = 0.42f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp, bottom = InfinitySpacing.Large)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable(role = Role.Button, onClickLabel = deleteLabel, onClick = actions.onDelete)
+                                .infinityPointerHand()
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = deleteLabel
+                                }
+                                .testTag(UiTags.PROVIDER_FORM_DELETE),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.DeleteOutline,
+                                    contentDescription = null,
+                                    tint = scheme.error,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = deleteLabel,
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                                    color = scheme.error,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                )
+                            }
                         }
                     }
                 }
             }
             AnimatedVisibility(visible = !state.isLocal, enter = InfinityMotion.expandIn, exit = InfinityMotion.shrinkOut) {
-                ProviderFormActionsSection(
-                    state = state,
-                    actions = actions,
-                    modifier = Modifier.padding(
-                        start = InfinitySpacing.ScreenHorizontal,
-                        top = InfinitySpacing.Small,
-                        end = InfinitySpacing.ScreenHorizontal,
-                        // 键盘弹出时按钮贴近键盘，只留小间距；收起后保持原有手势区留白。
-                        bottom = contentPadding.calculateBottomPadding() -
-                            if (WindowInsets.isImeVisible) ProviderFormActionsImeTrim else 0.dp,
-                    ),
-                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    HorizontalDivider(
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                    )
+                    ProviderFormActionsSection(
+                        state = state,
+                        actions = actions,
+                        modifier = Modifier.padding(
+                            start = InfinitySpacing.ScreenHorizontal,
+                            top = 10.dp,
+                            end = InfinitySpacing.ScreenHorizontal,
+                            // 键盘弹出时按钮贴近键盘，只留小间距；收起后保持原有手势区留白。
+                            bottom = contentPadding.calculateBottomPadding() -
+                                if (WindowInsets.isImeVisible) ProviderFormActionsImeTrim else 0.dp,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -1113,37 +1167,53 @@ private fun ProviderProtocolSelector(state: ProviderFormUiState, actions: Provid
     }
 }
 
-/** 预设提供商：与协议类型一致，点按打开底部面板（宽窗口下贴着本行弹出）选择。 */
+/** 预设提供商：与协议类型一致，点按打开带搜索与统一品牌圆角底托的底部面板（宽窗口下贴着本行弹出）选择。 */
 @Composable
 private fun ProviderPresetSelector(state: ProviderFormUiState, actions: ProviderFormActions) {
     val anchor = rememberInfinityPopoverAnchor()
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val title = stringResource(R.string.provider_form_preset_title)
     val selectedLabel = state.selectedPreset.label()
-    InfinitySettingsItem(
-        title = title,
-        leadingContent = { ProviderPresetIcon(state.selectedPreset, selected = false) },
-        onClick = { if (!anchor.consumeRecentDismiss()) actions.onPresetMenuExpandedChange(true) },
+    var presetQuery by remember(state.presetMenuExpanded) { mutableStateOf("") }
+    val scheme = MaterialTheme.colorScheme
+    Row(
         modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 58.dp)
+            .clickable(role = Role.Button) {
+                if (!anchor.consumeRecentDismiss()) actions.onPresetMenuExpandedChange(true)
+            }
+            .infinityPointerHand()
             .infinityPopoverAnchor(anchor)
             .testTag(UiTags.PROVIDER_FORM_PRESET_PICKER)
-            .semantics { stateDescription = selectedLabel },
-        trailingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    selectedLabel,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-                Icon(
-                    Icons.Rounded.ChevronRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-    )
+            .semantics { stateDescription = selectedLabel }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ProviderPresetIcon(state.selectedPreset, selected = false, tileSize = 34.dp)
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = scheme.onSurface,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = selectedLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.primary,
+            maxLines = 1,
+            softWrap = false,
+        )
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = scheme.onSurfaceVariant,
+        )
+    }
     InfinityBottomSheet(
         show = state.presetMenuExpanded,
         scrollContent = true,
@@ -1151,33 +1221,94 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
         onDismiss = { actions.onPresetMenuExpandedChange(false) },
         popover = InfinityPopoverSpec(anchor, width = ProviderProtocolPopoverWidth),
     ) {
+        InfinitySearchBar(
+            value = presetQuery,
+            onValueChange = { presetQuery = it },
+            placeholder = stringResource(R.string.provider_preset_search_placeholder),
+            borderless = true,
+            modifier = Modifier
+                .padding(bottom = 10.dp)
+                .testTag("provider_preset_search"),
+        )
+        val trimmedQuery = presetQuery.trim()
         val grouped = listOf(
             ProviderPresetCategory.SUBSCRIPTION_GATEWAY,
             ProviderPresetCategory.OFFICIAL_CLOUD,
             ProviderPresetCategory.LOCAL_CUSTOM,
         )
         grouped.forEach { category ->
-            val items = state.availablePresets.filter { it.category == category }
+            val items = state.availablePresets.filter { preset ->
+                preset.category == category && (
+                    trimmedQuery.isEmpty() ||
+                        preset.name.contains(trimmedQuery, ignoreCase = true) ||
+                        preset.label(resources).contains(trimmedQuery, ignoreCase = true) ||
+                        preset.defaultBaseUrl.contains(trimmedQuery, ignoreCase = true)
+                    )
+            }
             if (items.isNotEmpty()) {
                 InfinityOptionSectionHeader(title = stringResource(category.titleRes))
-                items.forEach { preset ->
-                    val selected = preset == state.selectedPreset
-                    val subtitleHost = preset.defaultBaseUrl.removePrefix("https://").removePrefix("http://")
-                        .takeIf { it.isNotEmpty() }
-                    InfinitySettingsItem(
-                        horizontalPadding = 0.dp,
-                        title = preset.label(),
-                        subtitle = subtitleHost,
-                        subtitleIsIdentifier = subtitleHost != null,
-                        leadingContent = { ProviderPresetIcon(preset, selected) },
-                        onClick = { actions.onPresetSelected(preset) },
-                        role = Role.RadioButton,
-                        selected = selected,
-                        modifier = Modifier.testTag("provider_preset:${preset.name}"),
-                        trailingContent = {
-                            if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        },
-                    )
+                BettboxListGroup(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                ) {
+                    items.forEachIndexed { idx, preset ->
+                        if (idx > 0) InfinityGroupDivider(startInset = 60.dp)
+                        val selected = preset == state.selectedPreset
+                        val hostOnly = providerHostLabel(preset.defaultBaseUrl).takeIf { it.isNotEmpty() }
+                        val subtitle = when {
+                            hostOnly != null && preset.variants.size > 1 -> {
+                                val countLabel = stringResource(R.string.provider_preset_variants_count, preset.variants.size)
+                                "$hostOnly · $countLabel" // wrap-check: allow 预设主机与变体数摘要
+                            }
+                            hostOnly != null -> hostOnly
+                            else -> null
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                                .clickable(role = Role.RadioButton) { actions.onPresetSelected(preset) }
+                                .infinityPointerHand()
+                                .semantics {
+                                    role = Role.RadioButton
+                                    this.selected = selected
+                                }
+                                .testTag("provider_preset:${preset.name}")
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ProviderPresetIcon(preset, selected, tileSize = 36.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = preset.label(),
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                                    color = scheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                                if (subtitle != null) {
+                                    Text(
+                                        text = subtitle,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                        color = scheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            if (selected) {
+                                Spacer(Modifier.width(8.dp))
+                                Icon(
+                                    Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = scheme.primary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1185,16 +1316,44 @@ private fun ProviderPresetSelector(state: ProviderFormUiState, actions: Provider
 }
 
 @Composable
-private fun ProviderPresetIcon(preset: ProviderPreset, selected: Boolean) {
+private fun ProviderPresetIcon(preset: ProviderPreset, selected: Boolean, tileSize: Dp = 34.dp) {
+    val scheme = MaterialTheme.colorScheme
     val brand = remember(preset.name, preset.defaultBaseUrl) {
         ModelBrandResolver.brandKey(preset.name, preset.defaultBaseUrl)
     }
-    InfinityOptionIconBadge(
-        icon = if (preset.iconRes == null) Icons.Rounded.Psychology else null,
-        drawableRes = preset.iconRes,
-        selected = selected,
-        accentColor = brandAccentColor(brand),
-    )
+    val accent = brandAccentColor(brand)
+    val bg = when {
+        accent != null -> accent.copy(alpha = if (selected) 0.20f else 0.12f)
+        selected -> scheme.primaryContainer.copy(alpha = 0.72f)
+        else -> scheme.surfaceContainerHighest.copy(alpha = 0.85f)
+    }
+    val rim = if (accent != null) accent.copy(alpha = 0.20f) else scheme.outlineVariant.copy(alpha = 0.35f)
+    val tint = accent ?: if (selected) scheme.primary else scheme.onSurfaceVariant
+    Box(
+        modifier = Modifier
+            .size(tileSize)
+            .clip(RoundedCornerShape(10.dp))
+            .background(bg)
+            .border(0.5.dp, rim, RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val iconRes = preset.iconRes
+        if (iconRes != null) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(tileSize * 0.54f),
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Rounded.Psychology,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(tileSize * 0.54f),
+            )
+        }
+    }
 }
 
 /** 接口：公网 / Tailscale 内网分段与状态行、预设端点变体快切、tailnet 设备、接口地址与地址提示；仅内网时显示脚注。 */
@@ -1214,6 +1373,7 @@ private fun ProviderInterfaceSection(
     InfinitySettingsSection(
         title = stringResource(R.string.provider_form_group_interface),
         footer = if (tailnet) stringResource(R.string.provider_api_source_footer) else null,
+        typographicFooter = true,
     ) {
         state.apiSource?.let { source ->
             ProviderApiSourceRows(
@@ -1300,12 +1460,13 @@ private fun ProviderInterfaceSection(
     }
 }
 
-/** 凭证：无框密钥行；“密钥保存在本机安全存储中”作为脚注。 */
+/** 凭证：无框密钥行；去框化排印脚注说明本机加密存储。 */
 @Composable
 private fun CloudProviderSection(state: ProviderFormUiState, actions: ProviderFormActions) {
     InfinitySettingsSection(
         title = stringResource(R.string.provider_form_group_credentials),
         footer = stringResource(R.string.provider_form_credentials_footer),
+        typographicFooter = true,
     ) {
         SecretField(
             value = state.secretInput,
@@ -1377,13 +1538,14 @@ private fun ProviderFormActionsSection(
                 )
             }
         }
-        // 文字单行；窄屏大字号并排放不下时整组竖排，保存在上。
-        InfinityPillRow(modifier = Modifier.fillMaxWidth(), spacing = 12.dp) {
+        // 文字单行；窄屏大字号并排放不下时整组竖排，保存在上；去除旧软盘图标，改用⚡测试 + ✓保存。
+        InfinityPillRow(modifier = Modifier.fillMaxWidth(), spacing = 10.dp) {
             FilledTonalButton(
                 onClick = actions.onTestConnection,
                 enabled = !testing && !state.isSaving && state.endpointValid &&
                     !state.protocolUnsupported && !state.legacyMigrationBlocked &&
                     !state.credentialKindMismatch && state.sessionHeaderNameValid,
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .heightIn(min = 48.dp)
                     .semantics {
@@ -1391,13 +1553,15 @@ private fun ProviderFormActionsSection(
                     },
             ) {
                 if (testing) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
                 }
                 Text(
                     text = stringResource(
                         if (testing) R.string.provider_form_testing else R.string.provider_form_btn_test,
                     ),
-                    modifier = if (testing) Modifier.padding(start = 8.dp) else Modifier,
+                    modifier = Modifier.padding(start = 6.dp),
                     maxLines = 1,
                     softWrap = false,
                 )
@@ -1407,22 +1571,24 @@ private fun ProviderFormActionsSection(
                 enabled = state.endpointValid && !state.protocolUnsupported &&
                     !state.legacyMigrationBlocked && !state.credentialKindMismatch && state.sessionHeaderNameValid && !state.isSaving &&
                     state.connectionTestState != ProviderConnectionTestState.Testing,
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 if (state.isSaving) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(16.dp),
                         color = MaterialTheme.colorScheme.onPrimary,
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    Icon(Icons.Rounded.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(17.dp))
                 }
                 Text(
                     text = stringResource(
                         if (state.isSaving) R.string.provider_form_saving else R.string.provider_form_btn_save,
                     ),
-                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier.padding(start = 6.dp),
                     maxLines = 1,
                     softWrap = false,
                 )

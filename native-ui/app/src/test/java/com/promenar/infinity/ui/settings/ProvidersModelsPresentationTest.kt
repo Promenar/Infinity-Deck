@@ -175,4 +175,37 @@ class ProvidersModelsPresentationTest {
         assertThat(matchProviderPreset(PROVIDER_PRESETS, ProtocolType.Generic_OpenAI_Compat, "https://gateway.example.com/v1")?.name)
             .isEqualTo("Custom")
     }
+
+    @Test
+    fun `短协议标签、同名 ID 隐藏与动态分类筛选行为符合预期`() {
+        assertThat(providerShortProtocolTag(ProtocolType.Generic_OpenAI_Compat)).isEqualTo("OpenAI")
+        assertThat(providerShortProtocolTag(ProtocolType.Anthropic_Messages)).isEqualTo("Anthropic")
+        assertThat(providerShortProtocolTag(ProtocolType.Google_Gemini)).isEqualTo("Gemini")
+        assertThat(providerShortProtocolTag(ProtocolType.Google_VertexAI)).isEqualTo("Vertex")
+
+        assertThat(shouldShowModelRemoteId("MiniMax-M3", "MiniMax-M3")).isFalse()
+        assertThat(shouldShowModelRemoteId("minimax-m3", "MiniMax-M3")).isFalse()
+        assertThat(shouldShowModelRemoteId("Gemini 3.8 Flash", "gemini-3.8-flash")).isTrue()
+        assertThat(shouldShowModelRemoteId("BGE M3", "BAAI/bge-m3")).isTrue()
+
+        val models = listOf(
+            model("r1", enabled = true).copy(type = "reasoning"),
+            model("r2", enabled = false).copy(type = "reasoning"),
+            model("s1", enabled = true).copy(type = "audio"),
+            model("m1", enabled = false).copy(type = "music"),
+        )
+        val options = buildModelFilterOptions(models)
+        assertThat(options).containsExactly(
+            ProviderModelFilterOption(ProviderModelFilter.All, 4),
+            ProviderModelFilterOption(ProviderModelFilter.Enabled, 2),
+            ProviderModelFilterOption(ProviderModelFilter.Type("reasoning"), 2),
+            ProviderModelFilterOption(ProviderModelFilter.Type("speech"), 1),
+            ProviderModelFilterOption(ProviderModelFilter.Type("music"), 1),
+        ).inOrder()
+
+        assertThat(applyProviderModelFilter(models, ProviderModelFilter.Enabled).map { it.id })
+            .containsExactly("r1", "s1")
+        assertThat(applyProviderModelFilter(models, ProviderModelFilter.Type("speech")).map { it.id })
+            .containsExactly("s1")
+    }
 }

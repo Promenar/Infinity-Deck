@@ -42,7 +42,10 @@ class ProviderModelsScreenContractTest {
             "@Composable\ninternal fun ProviderModelsTopActions(",
         )
         assertThat(addForm).contains("LazyColumn(")
-        assertThat(addForm).contains("OutlinedTextField(")
+        assertThat(addForm).contains("BettboxListGroup(")
+        assertThat(addForm).contains("InfinityFieldRow(")
+        assertThat(addForm).doesNotContain("OutlinedTextField(")
+        assertThat(addForm).contains("onPreviewCatalogMatch")
         assertThat(addForm).contains("imePadding()")
     }
 

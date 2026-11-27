@@ -839,6 +839,8 @@ class ProviderManager private constructor(
             val enabled = enabledSet.contains(id)
             val maxOutput = settingsPrefs.getInt("${prefix}_maxoutput", 0)
             val cutoff = settingsPrefs.getString("${prefix}_cutoff", null)
+            val releaseDate = settingsPrefs.getString("${prefix}_release_date", null)
+            val deprecationDate = settingsPrefs.getString("${prefix}_deprecation_date", null)
             val familyName = settingsPrefs.getString("${prefix}_family", null)
             val canonicalModelId = settingsPrefs.getString("${prefix}_canonical_id", null)
             val chatEndpoint = settingsPrefs.getString("${prefix}_chat_endpoint", null)
@@ -880,6 +882,8 @@ class ProviderManager private constructor(
                 maxOutputTokens = maxOutput,
                 inputTokens = inputTokens,
                 knowledgeCutoff = cutoff,
+                releaseDate = releaseDate,
+                deprecationDate = deprecationDate,
                 familyName = familyName,
                 canonicalModelId = canonicalModelId,
                 chatEndpointCompatible = chatEndpoint,
@@ -1275,6 +1279,8 @@ class ProviderManager private constructor(
                     persistProviderMetadata(prefix, model.providerMetadata)
                     if (model.knowledgeCutoff == null) remove("${prefix}_cutoff")
                     else putString("${prefix}_cutoff", model.knowledgeCutoff)
+                    putNullableString("${prefix}_release_date", model.releaseDate)
+                    putNullableString("${prefix}_deprecation_date", model.deprecationDate)
                     if (model.familyName == null) remove("${prefix}_family")
                     else putString("${prefix}_family", model.familyName)
                     if (model.canonicalModelId == null) remove("${prefix}_canonical_id")
@@ -1286,6 +1292,27 @@ class ProviderManager private constructor(
             beforeModelPersistenceApply(models)
             editor.apply()
         }
+    }
+
+    /**
+     * 为“添加自定义模型”提供无副作用的实时规格库匹配预览；仅在命中规范条目、上下文/输出或明确类型时返回结果。
+     */
+    fun previewModelCatalogMatch(providerId: String, rawRemoteModelId: String): com.promenar.infinity.data.model.catalog.ResolvedModelMetadata? {
+        val remoteId = rawRemoteModelId.trim()
+        if (remoteId.isEmpty()) return null
+        val scopes = inferredSourceProviderScopes(providerId)
+        val resolved = ModelCatalogRuntime.resolver.resolve(
+            remoteModelId = remoteId,
+            providerId = providerId,
+            sourceProviderId = scopes.firstOrNull(),
+            sourceProviderFallbacks = scopes.drop(1),
+        )
+        val hasMatchedCatalogData = resolved.canonicalModelId != null ||
+            resolved.contextTokens != null ||
+            resolved.outputTokens != null ||
+            resolved.knowledgeCutoff != null ||
+            resolved.releaseDate != null
+        return if (hasMatchedCatalogData) resolved else null
     }
 
     private fun SharedPreferences.Editor.putNullableString(key: String, value: String?) {

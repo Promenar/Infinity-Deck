@@ -26,6 +26,8 @@ class TagWrapContractTest {
         // 场头卡片仅含「场号 · 编号」与当前审核状态 2 枚固定徽标，窄屏大字号下自动折行防挤压。
         "production/ProductionManagement.kt",
         "settings/AgentSkillsSection.kt",
+        // 模型编辑页仅含 9 项固定枚举类型（两行全可见防横向裁切）与至多 9 项固定能力微标摘要。
+        "settings/ModelEditorScreen.kt",
         "settings/TailscalePeerPath.kt",
         "settings/ThemeScreen.kt",
         "workspace/AgentReachSheet.kt",

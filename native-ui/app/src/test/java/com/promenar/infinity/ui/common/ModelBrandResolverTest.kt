@@ -79,4 +79,14 @@ class ModelBrandResolverTest {
             localBrandDrawableRes("google", "Vertex AI"),
         )
     }
+
+    @Test
+    fun `anthropic compatible urls keep vendor host brand instead of anthropic path`() {
+        assertEquals("minimax", ModelBrandResolver.brandKey("https://api.minimax.cn/anthropic"))
+        assertEquals("minimax", ModelBrandResolver.brandKey("https://api.minimax.io/anthropic"))
+        assertEquals("zhipu", ModelBrandResolver.brandKey("https://open.bigmodel.cn/api/anthropic"))
+        assertEquals("zhipu", ModelBrandResolver.brandKey("https://api.z.ai/api/anthropic"))
+        assertEquals("qwen", ModelBrandResolver.brandKey("https://coding.dashscope.aliyuncs.com/apps/anthropic"))
+        assertEquals("anthropic", ModelBrandResolver.brandKey("https://api.anthropic.com"))
+    }
 }

@@ -949,6 +949,9 @@ class SettingsViewModel(
     fun addCustomModel(providerId: String, id: String, name: String): Boolean =
         pm.addCustomModel(providerId, id, name)
 
+    fun previewModelCatalogMatch(providerId: String, remoteModelId: String) =
+        pm.previewModelCatalogMatch(providerId, remoteModelId)
+
     fun toggleSkill(id: String) {
         if (id.startsWith("user_")) {
             viewModelScope.launch {

@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
@@ -56,12 +58,15 @@ fun InfinitySearchBar(
     onEscape: (() -> Unit)? = null,
     // 作用于输入框本身，供调用方挂接焦点请求等。
     fieldModifier: Modifier = Modifier,
+    /** 为 true 时采用无硬描边浅底胶囊风格，聚焦时才轻显主色轮廓。 */
+    borderless: Boolean = false,
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     // 聚焦时亮边渐亮（强调减速），失焦时按标准曲线渐暗，避免亮边瞬间亮灭。
+    val unfocusedBorder = if (borderless) Color.Transparent else MaterialTheme.colorScheme.outlineVariant
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        targetValue = if (isFocused) MaterialTheme.colorScheme.primary else unfocusedBorder,
         animationSpec = tween(
             durationMillis = InfinityMotion.DurationMedium,
             easing = if (isFocused) InfinityMotion.EmphasizedDecelerate else InfinityMotion.Standard,
@@ -72,9 +77,13 @@ fun InfinitySearchBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(InfinitySpacing.MinimumTouchTarget),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            .height(if (borderless) 44.dp else InfinitySpacing.MinimumTouchTarget),
+        shape = if (borderless) CircleShape else MaterialTheme.shapes.extraLarge,
+        color = if (borderless) {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
         border = BorderStroke(1.dp, borderColor),
     ) {
         Row(

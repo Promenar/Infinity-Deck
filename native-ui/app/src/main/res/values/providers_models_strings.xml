@@ -37,22 +37,42 @@
         <item quantity="other">%1$d/%2$d models</item>
     </plurals>
     <string name="provider_list_tailnet_tag">Tailnet</string>
+    <string name="provider_list_proxy_tag">Proxy</string>
+    <string name="provider_list_missing_key_tag">No key</string>
+    <string name="provider_list_add_short">Add</string>
+    <string name="provider_list_footnote">Tap a provider to manage models; configured keys stay quiet and only missing keys or disabled providers are highlighted.</string>
+    <string name="provider_list_models_summary">%1$d providers · %2$d enabled models</string>
     <string name="provider_list_unsupported_hint">Open to migrate or delete</string>
     <string name="provider_list_empty_title">No providers yet</string>
 
     <!-- 提供商编辑 -->
     <string name="provider_form_group_provider">Provider</string>
-    <string name="provider_form_group_interface">Interface</string>
+    <string name="provider_form_group_interface">Interface &amp; Channel</string>
     <string name="provider_form_group_credentials">Credentials</string>
-    <string name="provider_form_credentials_footer">The key is encrypted on this device</string>
+    <string name="provider_form_credentials_footer">Keys are encrypted locally with Android Keystore and never uploaded.</string>
     <string name="provider_form_group_advanced">Advanced</string>
-    <string name="provider_form_session_header_description">Send the session ID with each request</string>
-    <string name="provider_form_session_header_footer">Lets the provider reuse prompt caching</string>
+    <string name="provider_form_session_header_description">Attach session ID for upstream prompt caching</string>
+    <string name="provider_form_session_header_footer">Sent only with chat requests to hit upstream prompt caching.</string>
     <string name="provider_form_connection_ok">Connection OK</string>
     <string name="provider_form_delete">Delete provider</string>
+    <string name="provider_preset_search_placeholder">Search presets or vendors…</string>
+    <string name="provider_preset_variants_count">%1$d regions/protocols</string>
 
     <!-- 模型列表 -->
     <string name="provider_models_enabled_count">%1$d / %2$d enabled</string>
+    <string name="provider_models_spec_version_inline">Specs %1$s</string>
+    <string name="provider_models_filter_all">All %1$d</string>
+    <string name="provider_models_filter_enabled">Enabled %1$d</string>
+    <string name="provider_models_filter_type_count">%1$s %2$d</string>
+    <string name="provider_models_filter_empty">No models in this filter</string>
+    <string name="provider_models_footnote">Tap any model to edit specs, capabilities, or run a connection test; filter quickly by type or enabled state.</string>
+    <string name="provider_models_add_auto_name">Auto-use %1$s</string>
+    <string name="provider_models_add_catalog_matched">Matched spec library · %1$s</string>
+    <string name="provider_models_add_catalog_ctx">%1$s ctx</string>
+    <string name="provider_models_add_catalog_out">%1$s out</string>
+    <string name="provider_models_add_catalog_cutoff">Cutoff %1$s</string>
+    <string name="provider_models_add_catalog_release">Released %1$s</string>
+    <string name="provider_models_add_submit_label">Add model</string>
     <string name="provider_models_last_sync">Synced from provider %s</string>
     <string name="provider_models_never_synced">Not synced from provider</string>
     <string name="provider_models_syncing">Syncing…</string>
@@ -121,6 +141,12 @@
     <string name="model_spec_source_inferred">Inferred</string>
     <string name="model_spec_done">Done</string>
     <string name="model_spec_unknown">Unknown</string>
-    <string name="model_spec_input_label">Input</string>
+    <string name="model_spec_context_label">Context window</string>
+    <string name="model_spec_input_label">Input limit</string>
     <string name="model_spec_cutoff_label">Knowledge cutoff</string>
+    <string name="model_spec_release_label">Released</string>
+    <string name="model_editor_specs_footer_merged">Tap context or output limit to override the spec library; input limit merges automatically when equal to context.</string>
+    <string name="model_editor_capabilities_tap_hint">%1$d selected · Tap to edit</string>
+    <string name="model_editor_copy_id">Copy model ID</string>
+    <string name="model_editor_id_copied">Copied %1$s</string>
 </resources>

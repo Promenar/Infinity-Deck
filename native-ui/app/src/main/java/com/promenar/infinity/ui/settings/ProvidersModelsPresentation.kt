@@ -3,6 +3,7 @@ package com.promenar.infinity.ui.settings
 import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.ProviderListItem
 import com.promenar.infinity.data.model.catalog.MetadataSource
+import com.promenar.infinity.data.remote.protocol.ProtocolType
 import java.net.URI
 import java.util.Locale
 
@@ -134,3 +135,97 @@ internal fun capabilitiesForTypeChange(current: Set<String>, newType: String): S
 /** 页内模型编辑页的选择状态：打开、关闭，以及同步后模型已不存在时自动退出。 */
 internal fun reconcileEditingModelId(editingId: String?, models: List<ModelInfo>): String? =
     editingId?.takeIf { id -> models.any { it.id == id } }
+
+/** 提供商卡片短协议标签（2 行卡片精简展示，保持高可读性与零截断）。 */
+internal fun providerShortProtocolTag(protocolType: ProtocolType): String = when (protocolType) {
+    ProtocolType.OpenAI_ChatCompletions,
+    ProtocolType.OpenAI_Responses,
+    ProtocolType.Generic_OpenAI_Compat,
+    -> "OpenAI"
+    ProtocolType.Anthropic_Messages -> "Anthropic"
+    ProtocolType.Google_Gemini -> "Gemini"
+    ProtocolType.Google_VertexAI -> "Vertex"
+    ProtocolType.DeepSeek -> "DeepSeek"
+    ProtocolType.Qwen_DashScope -> "DashScope"
+    ProtocolType.Zhipu_GLM -> "GLM"
+    ProtocolType.Moonshot_Kimi -> "Kimi"
+    ProtocolType.Doubao_ByteDance -> "Ark"
+    ProtocolType.Mistral_Chat -> "Mistral"
+    ProtocolType.Baichuan -> "Baichuan"
+    ProtocolType.Cohere_Chat -> "Cohere"
+    ProtocolType.Yi_ZeroOne -> "Yi"
+    ProtocolType.Local -> "Local"
+}
+
+/** 列表行中显示名与远端 ID 大小写忽略完全一致时隐藏重复副行，避免视觉噪声。 */
+internal fun shouldShowModelRemoteId(displayName: String, remoteModelId: String): Boolean {
+    val cleanName = displayName.trim()
+    val cleanId = remoteModelId.trim()
+    if (cleanId.isEmpty()) return false
+    return !cleanName.equals(cleanId, ignoreCase = true)
+}
+
+/** 模型管理页筛选维度：全部 / 已启用 / 按模型类型。 */
+internal sealed interface ProviderModelFilter {
+    val key: String
+
+    data object All : ProviderModelFilter {
+        override val key: String = "all"
+    }
+
+    data object Enabled : ProviderModelFilter {
+        override val key: String = "enabled"
+    }
+
+    data class Type(val typeKey: String) : ProviderModelFilter {
+        override val key: String = "type:$typeKey"
+    }
+}
+
+internal data class ProviderModelFilterOption(
+    val filter: ProviderModelFilter,
+    val count: Int,
+)
+
+private val ModelFilterTypeOrder = listOf(
+    "reasoning",
+    "chat",
+    "speech",
+    "music",
+    "image",
+    "video",
+    "realtime",
+    "embedding",
+    "rerank",
+)
+
+internal fun normalizedModelFilterType(rawType: String): String = when (val lower = rawType.lowercase()) {
+    "audio" -> "speech"
+    else -> lower
+}
+
+/** 根据当前提供商实际模型列表动态生成筛选胶囊选项：全部 → 已启用（若有）→ 按预设顺序出现过的各类型。 */
+internal fun buildModelFilterOptions(models: List<ModelInfo>): List<ProviderModelFilterOption> {
+    if (models.isEmpty()) return emptyList()
+    val options = mutableListOf<ProviderModelFilterOption>()
+    options += ProviderModelFilterOption(ProviderModelFilter.All, models.size)
+    val enabledCount = models.count { it.enabled }
+    if (enabledCount in 1 until models.size) {
+        options += ProviderModelFilterOption(ProviderModelFilter.Enabled, enabledCount)
+    }
+    val countsByType = models.groupingBy { normalizedModelFilterType(it.type) }.eachCount()
+    val presentKnownTypes = ModelFilterTypeOrder.filter { (countsByType[it] ?: 0) > 0 }
+    if (presentKnownTypes.size > 1) {
+        presentKnownTypes.forEach { typeKey ->
+            options += ProviderModelFilterOption(ProviderModelFilter.Type(typeKey), countsByType.getValue(typeKey))
+        }
+    }
+    return options
+}
+
+internal fun applyProviderModelFilter(models: List<ModelInfo>, filter: ProviderModelFilter): List<ModelInfo> =
+    when (filter) {
+        ProviderModelFilter.All -> models
+        ProviderModelFilter.Enabled -> models.filter { it.enabled }
+        is ProviderModelFilter.Type -> models.filter { normalizedModelFilterType(it.type) == filter.typeKey }
+    }

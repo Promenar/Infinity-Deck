@@ -2,6 +2,7 @@ package com.promenar.infinity.ui.common
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -89,10 +91,19 @@ object ModelBrandResolver {
 
     val knownBrands: Set<String> = rules.map { it.second }.toSet()
 
-    /** 依次在给定的来源字符串（模型 ID、family、提供商名称、地址等）中查找品牌键；找不到返回 null。 */
+    /** 依次在给定的来源字符串（模型 ID、family、提供商名称、地址等）中查找品牌键；URL 先按主机名匹配再退回完整串，避免路径中的 `/anthropic` 劫持 MiniMax/智谱/百炼。 */
     fun brandKey(vararg sources: String?): String? {
         for (raw in sources) {
-            val source = raw?.lowercase() ?: continue
+            val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            if ("://" in trimmed) {
+                val host = runCatching { java.net.URI(trimmed).host }.getOrNull()?.lowercase()
+                if (!host.isNullOrBlank()) {
+                    for ((needle, brand) in rules) {
+                        if (needle in host) return brand
+                    }
+                }
+            }
+            val source = trimmed.lowercase()
             for ((needle, brand) in rules) {
                 if (needle in source) return brand
             }
@@ -149,8 +160,10 @@ fun ModelBrandIcon(
     contentDescription: String? = null,
     fallbackTint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     tintOverride: Color? = null,
+    brandOverride: String? = null,
+    fallbackIcon: ImageVector = Icons.Rounded.Memory,
 ) {
-    val brand = ModelBrandResolver.brandKey(modelId)
+    val brand = brandOverride ?: ModelBrandResolver.brandKey(modelId)
     val localRes = brand?.let { localBrandDrawableRes(it, modelId) }
     if (localRes != null) {
         val tint = tintOverride ?: brandAccentColor(brand) ?: fallbackTint
@@ -165,7 +178,7 @@ fun ModelBrandIcon(
     if (brand == null) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             Icon(
-                Icons.Rounded.Memory,
+                fallbackIcon,
                 contentDescription = contentDescription,
                 tint = fallbackTint,
             )
@@ -179,7 +192,7 @@ fun ModelBrandIcon(
         error = {
             Box(modifier = Modifier, contentAlignment = Alignment.Center) {
                 Icon(
-                    Icons.Rounded.Memory,
+                    fallbackIcon,
                     contentDescription = contentDescription,
                     tint = fallbackTint,
                 )
@@ -196,22 +209,30 @@ fun ModelBrandTile(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     shape: Shape = CircleShape,
+    brandOverride: String? = null,
+    fallbackIcon: ImageVector = Icons.Rounded.Memory,
+    withHairlineBorder: Boolean = false,
 ) {
-    val brand = ModelBrandResolver.brandKey(modelId)
+    val scheme = MaterialTheme.colorScheme
+    val brand = brandOverride ?: ModelBrandResolver.brandKey(modelId)
     val accent = brandAccentColor(brand)
-    val container = accent?.copy(alpha = 0.14f)
-        ?: MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f)
+    val container = accent?.copy(alpha = if (withHairlineBorder) 0.12f else 0.14f)
+        ?: scheme.surfaceContainerHighest.copy(alpha = if (withHairlineBorder) 0.85f else 0.65f)
+    val rim = if (accent != null) accent.copy(alpha = 0.20f) else scheme.outlineVariant.copy(alpha = 0.35f)
     Box(
         modifier = modifier
             .size(size)
-            .background(container, shape),
+            .background(container, shape)
+            .then(if (withHairlineBorder) Modifier.border(0.5.dp, rim, shape) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         ModelBrandIcon(
             modelId = modelId,
             modifier = Modifier.size(size * 0.56f),
             contentDescription = contentDescription,
-            fallbackTint = accent ?: MaterialTheme.colorScheme.onSurfaceVariant,
+            fallbackTint = accent ?: scheme.onSurfaceVariant,
+            brandOverride = brand,
+            fallbackIcon = fallbackIcon,
         )
     }
 }

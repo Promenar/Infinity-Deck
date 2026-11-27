@@ -1,23 +1,34 @@
 package com.promenar.infinity.ui.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
@@ -29,6 +40,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -40,51 +52,64 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.promenar.infinity.R
 import com.promenar.infinity.data.model.CloudMediaPreset
 import com.promenar.infinity.data.model.MediaModelSettings
+import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.cloudMediaPresetsFor
 import com.promenar.infinity.data.model.effectiveMediaSettings
 import com.promenar.infinity.data.model.matchCloudMediaPreset
 import com.promenar.infinity.data.model.mediaPresetSettings
-import com.promenar.infinity.data.model.ModelInfo
 import com.promenar.infinity.data.model.withRecordedUserEdits
 import com.promenar.infinity.domain.generation.GenerationFailureCode
 import com.promenar.infinity.domain.mediagen.MediaGroup
-import com.promenar.infinity.ui.common.InfinityChoice
-import com.promenar.infinity.ui.common.InfinityHeaderTitle
 import com.promenar.infinity.ui.common.InfinityBackButton
-import com.promenar.infinity.ui.common.InfinityMultiChoiceSheet
-import com.promenar.infinity.ui.common.InfinitySegmentedControl
-import com.promenar.infinity.ui.common.InfinitySingleChoiceSheet
-import com.promenar.infinity.ui.common.selectedChoiceSummary
+import com.promenar.infinity.ui.common.InfinityChoice
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityFieldRow
 import com.promenar.infinity.ui.common.InfinityGroupDivider
+import com.promenar.infinity.ui.common.InfinityHeaderTitle
+import com.promenar.infinity.ui.common.InfinityMultiChoiceSheet
+import com.promenar.infinity.ui.common.InfinityNoticeSeverity
 import com.promenar.infinity.ui.common.InfinitySettingsGroup
 import com.promenar.infinity.ui.common.InfinitySettingsItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
 import com.promenar.infinity.ui.common.InfinitySettingsSection
+import com.promenar.infinity.ui.common.InfinitySingleChoiceSheet
+import com.promenar.infinity.ui.common.InfinityStatusKind
+import com.promenar.infinity.ui.common.InfinityStatusStrip
+import com.promenar.infinity.ui.common.InfinitySwitch
+import com.promenar.infinity.ui.common.LocalInfinityNoticeController
+import com.promenar.infinity.ui.common.ModelBrandTile
+import com.promenar.infinity.ui.common.infinityPointerHand
 import com.promenar.infinity.ui.testing.UiTags
+import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
-import com.promenar.infinity.ui.theme.infinityDomainColors
 
 /**
- * 模型编辑整页（与模型列表同屏切换）：身份、2×2 规格、类型单选、能力多选、会话请求头、连接测试与删除。
+ * 模型编辑整页（与模型列表同屏切换）：顶栏一键测速、品牌身份头卡、自适应规格与时间线、
+ * 两行均衡零裁切类型选择器、可视化能力胶囊、会话请求头与统一语义红删除操作。
  * 修改即时保存；返回由宿主页的系统返回与预测性返回处理，本页左上角返回按钮调用 [onClose]。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ModelEditorScreen(
     model: ModelInfo,
@@ -95,9 +120,14 @@ internal fun ModelEditorScreen(
     onCancel: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    onToggle: (() -> Unit)? = null,
     onOpenMediaSettings: (() -> Unit)? = null,
     onSetMediaSettings: ((MediaModelSettings?) -> Unit)? = null,
 ) {
+    val context = LocalContext.current
+    val noticeHost = LocalInfinityNoticeController.current
+    val scheme = MaterialTheme.colorScheme
+
     var showDeleteConfirmation by remember(model.id) { mutableStateOf(false) }
     var selectedType by remember(model.id) { mutableStateOf(model.type) }
     var editName by remember(model.id) { mutableStateOf(model.name) }
@@ -156,6 +186,11 @@ internal fun ModelEditorScreen(
     }
     val matchedCloudPreset = remember(effectiveMedia) { matchCloudMediaPreset(effectiveMedia) }
     val isMediaModel = selectedType.lowercase() in setOf("video", "audio", "speech", "music", "realtime", "image") || effectiveMedia != null
+    val isTesting = testState == ModelTestState.Testing
+    val heroSubtitle = model.canonicalModelId?.takeIf { it.isNotBlank() }
+        ?: editRemoteModelId.ifBlank { model.id.substringAfter("::", model.id) }
+    val copyIdLabel = stringResource(R.string.model_editor_copy_id)
+    val copiedTemplate = stringResource(R.string.model_editor_id_copied, heroSubtitle)
 
     InfinitySettingsPageLayout(
         title = stringResource(R.string.provider_models_editor_title),
@@ -175,11 +210,41 @@ internal fun ModelEditorScreen(
                         modifier = Modifier.testTag(UiTags.providerModelsEditorCloseAction(model.id)),
                     )
                 },
+                actions = {
+                    FilledTonalButton(
+                        onClick = if (isTesting) onCancel else onTest,
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .height(34.dp)
+                            .testTag(UiTags.providerModelsEditorTestAction(model.id)),
+                    ) {
+                        if (isTesting) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(
+                                when {
+                                    isTesting -> R.string.settings_btn_cancel
+                                    isMediaModel -> R.string.model_editor_media_test_action
+                                    else -> R.string.model_editor_test_action
+                                },
+                            ),
+                            style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    titleContentColor = scheme.onBackground,
+                    navigationIconContentColor = scheme.onSurfaceVariant,
                 ),
             )
         },
@@ -192,19 +257,106 @@ internal fun ModelEditorScreen(
             contentPadding = contentPadding,
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
+            item("test-feedback") {
+                val statusText = modelTestStatus(testState, isMediaModel)
+                AnimatedVisibility(
+                    visible = statusText != null,
+                    enter = InfinityMotion.expandIn,
+                    exit = InfinityMotion.shrinkOut,
+                ) {
+                    statusText?.let { text ->
+                        val kind = when (testState) {
+                            is ModelTestState.Success -> InfinityStatusKind.Success
+                            is ModelTestState.Error -> InfinityStatusKind.Error
+                            else -> InfinityStatusKind.Info
+                        }
+                        InfinityStatusStrip(
+                            kind = kind,
+                            message = text,
+                            busy = isTesting,
+                            modifier = Modifier
+                                .padding(bottom = InfinitySpacing.Medium)
+                                .semantics {
+                                    liveRegion = LiveRegionMode.Polite
+                                    stateDescription = text
+                                },
+                        )
+                    }
+                }
+            }
             item("identity") {
-                InfinitySettingsSection(
-                    title = stringResource(R.string.model_editor_group_identity),
+                InfinitySettingsGroup(
                     footer = identityFooter,
                     footerModifier = Modifier.testTag(UiTags.providerModelsEditorSource(model.id)),
+                    typographicFooter = true,
                 ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ModelBrandTile(
+                            modelId = model.canonicalModelId ?: editRemoteModelId,
+                            size = 44.dp,
+                            shape = RoundedCornerShape(13.dp),
+                            fallbackIcon = modelTypeIcon(selectedType),
+                            withHairlineBorder = true,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = editName.ifBlank { heroSubtitle },
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.5.sp, fontWeight = FontWeight.SemiBold),
+                                color = scheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable(role = Role.Button, onClickLabel = copyIdLabel) {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        clipboard?.setPrimaryClip(ClipData.newPlainText(copyIdLabel, heroSubtitle))
+                                        noticeHost?.show(InfinityNoticeSeverity.INFO, copiedTemplate)
+                                    }
+                                    .infinityPointerHand()
+                                    .padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = heroSubtitle,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 11.5.sp),
+                                    color = scheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                Icon(
+                                    imageVector = Icons.Rounded.ContentCopy,
+                                    contentDescription = copyIdLabel,
+                                    tint = scheme.onSurfaceVariant.copy(alpha = 0.65f),
+                                    modifier = Modifier.size(12.dp),
+                                )
+                            }
+                        }
+                        if (onToggle != null) {
+                            Spacer(Modifier.width(8.dp))
+                            InfinitySwitch(
+                                checked = model.enabled,
+                                onCheckedChange = { onToggle() },
+                            )
+                        }
+                    }
+                    InfinityGroupDivider(startInset = 16.dp)
                     InfinityFieldRow(
                         label = stringResource(R.string.provider_models_field_display_name),
                         value = editName,
                         onValueChange = { editName = it },
                         fieldModifier = Modifier.testTag(UiTags.providerModelsNameField(model.id)),
                     )
-                    InfinityGroupDivider()
+                    InfinityGroupDivider(startInset = 16.dp)
                     InfinityFieldRow(
                         label = stringResource(R.string.provider_models_field_model_id),
                         value = editRemoteModelId,
@@ -225,58 +377,118 @@ internal fun ModelEditorScreen(
                     onClick = onClick,
                     tag = UiTags.providerModelsSpecCell(model.id, field.name),
                 )
-                val cells = listOf(
-                    tokenCell(ModelSpecField.Context, stringResource(R.string.provider_models_context_label), contextTokens) {
-                        editingLimit = ModelSpecField.Context
-                    },
-                    tokenCell(ModelSpecField.Input, stringResource(R.string.model_spec_input_label), model.inputTokens, null),
-                    tokenCell(ModelSpecField.Output, stringResource(R.string.provider_models_editor_output_limit), editOutput) {
-                        editingLimit = ModelSpecField.Output
-                    },
-                    ModelSpecCell(
-                        field = ModelSpecField.KnowledgeCutoff,
-                        label = stringResource(R.string.model_spec_cutoff_label),
-                        shortValue = model.knowledgeCutoff?.takeIf { it.isNotBlank() } ?: unknown,
-                        exactValue = null,
-                        source = modelSpecSource(model, ModelSpecField.KnowledgeCutoff),
-                        tag = UiTags.providerModelsSpecCell(model.id, ModelSpecField.KnowledgeCutoff.name),
-                    ),
-                )
+                val primaryCells = buildList {
+                    add(
+                        tokenCell(
+                            ModelSpecField.Context,
+                            stringResource(R.string.model_spec_context_label),
+                            contextTokens,
+                        ) { editingLimit = ModelSpecField.Context },
+                    )
+                    add(
+                        tokenCell(
+                            ModelSpecField.Output,
+                            stringResource(R.string.provider_models_editor_output_limit),
+                            editOutput,
+                        ) { editingLimit = ModelSpecField.Output },
+                    )
+                    if (model.inputTokens > 0 && model.inputTokens != contextTokens) {
+                        add(
+                            tokenCell(
+                                ModelSpecField.Input,
+                                stringResource(R.string.model_spec_input_label),
+                                model.inputTokens,
+                                null,
+                            ),
+                        )
+                    }
+                }
                 InfinitySettingsSection(
                     title = stringResource(R.string.model_editor_group_specs),
-                    footer = stringResource(R.string.model_editor_specs_footer),
+                    trailingHeader = stringResource(R.string.model_editor_autosave_hint),
+                    footer = stringResource(R.string.model_editor_specs_footer_merged),
+                    typographicFooter = true,
                 ) {
-                    ModelSpecGrid(cells)
+                    ModelSpecGrid(primaryCells)
+                    InfinityGroupDivider(startInset = 0.dp)
+                    ModelSpecTimelineRow(
+                        knowledgeCutoff = model.knowledgeCutoff,
+                        releaseDate = model.releaseDate,
+                        cutoffTag = UiTags.providerModelsSpecCell(model.id, ModelSpecField.KnowledgeCutoff.name),
+                    )
                 }
             }
             item("type") {
-                InfinitySettingsSection(title = stringResource(R.string.provider_models_editor_type)) {
-                    InfinitySegmentedControl(
-                        segments = modelTypeSegments(model.id),
-                        selected = selectedType,
-                        onSelect = { type ->
-                            if (type != selectedType) {
-                                activeCaps = capabilitiesForTypeChange(activeCaps, type)
-                                selectedType = type
-                                val existingMediaGroup = model.mediaSettings?.group
-                                val nextMediaGroup = when (type.lowercase()) {
-                                    "video" -> MediaGroup.VIDEO
-                                    "speech", "audio" -> MediaGroup.SPEECH
-                                    "music" -> MediaGroup.MUSIC
-                                    "image" -> MediaGroup.IMAGE
-                                    else -> null
-                                }
-                                if (existingMediaGroup != null && existingMediaGroup != nextMediaGroup) {
-                                    onSetMediaSettings?.invoke(null)
+                InfinitySettingsSection(
+                    title = stringResource(R.string.provider_models_editor_type),
+                    typographicFooter = true,
+                ) {
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("model_editor_type_picker"),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        ModelTypeSpecs.forEach { spec ->
+                            val isSelected = normalizedModelFilterType(selectedType) == spec.key
+                            val label = stringResource(spec.labelRes)
+                            Surface(
+                                shape = RoundedCornerShape(9.dp),
+                                color = if (isSelected) scheme.primaryContainer else scheme.surfaceContainerHighest.copy(alpha = 0.55f),
+                                border = if (isSelected) BorderStroke(1.dp, scheme.primary.copy(alpha = 0.45f)) else null,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .clickable(role = Role.RadioButton) {
+                                        if (spec.key != selectedType) {
+                                            activeCaps = capabilitiesForTypeChange(activeCaps, spec.key)
+                                            selectedType = spec.key
+                                            val existingMediaGroup = model.mediaSettings?.group
+                                            val nextMediaGroup = when (spec.key.lowercase()) {
+                                                "video" -> MediaGroup.VIDEO
+                                                "speech", "audio" -> MediaGroup.SPEECH
+                                                "music" -> MediaGroup.MUSIC
+                                                "image" -> MediaGroup.IMAGE
+                                                else -> null
+                                            }
+                                            if (existingMediaGroup != null && existingMediaGroup != nextMediaGroup) {
+                                                onSetMediaSettings?.invoke(null)
+                                            }
+                                        }
+                                    }
+                                    .infinityPointerHand()
+                                    .semantics {
+                                        role = Role.RadioButton
+                                        selected = isSelected
+                                    }
+                                    .testTag(UiTags.providerModelsTypeAction(model.id, spec.key)),
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = spec.icon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+                                        modifier = Modifier.size(13.dp),
+                                    )
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        ),
+                                        color = if (isSelected) scheme.onPrimaryContainer else scheme.onSurface,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                    )
                                 }
                             }
-                        },
-                        compact = true,
-                        contentPadding = PaddingValues(horizontal = InfinitySpacing.Small),
-                        modifier = Modifier
-                            .padding(vertical = InfinitySpacing.Small)
-                            .testTag("model_editor_type_picker"),
-                    )
+                        }
+                    }
                 }
             }
             item("cloud-media") {
@@ -298,6 +510,7 @@ internal fun ModelEditorScreen(
                         InfinitySettingsSection(
                             title = stringResource(R.string.model_editor_group_cloud_media),
                             footer = stringResource(R.string.model_editor_media_preset_footer),
+                            typographicFooter = true,
                         ) {
                             InfinitySettingsItem(
                                 title = stringResource(R.string.model_editor_media_preset),
@@ -326,7 +539,10 @@ internal fun ModelEditorScreen(
                             }
                         }
                     } else if (onOpenMediaSettings != null && effectiveMedia != null) {
-                        InfinitySettingsSection(title = stringResource(R.string.media_settings_title)) {
+                        InfinitySettingsSection(
+                            title = stringResource(R.string.media_settings_title),
+                            typographicFooter = true,
+                        ) {
                             InfinitySettingsItem(
                                 title = stringResource(R.string.model_editor_media_settings_item),
                                 subtitle = stringResource(R.string.model_editor_media_settings_image_subtitle),
@@ -339,79 +555,135 @@ internal fun ModelEditorScreen(
                 }
             }
             item("capabilities") {
-                val capabilityKeys = ModelCapabilitySpecs.mapTo(mutableSetOf()) { it.key }
-                val selectedCount = activeCaps.count { it in capabilityKeys }
-                Column {
+                val activeLower = activeCaps.mapTo(mutableSetOf()) { it.lowercase() }
+                val selectedSpecs = ModelCapabilitySpecs.filter { it.key in activeLower }
+                val capabilityChoices = modelCapabilityChoices(model.id)
+                val capabilitiesTitle = stringResource(R.string.provider_models_editor_capabilities)
+                InfinitySettingsSection(
+                    title = capabilitiesTitle,
+                    trailingHeader = stringResource(R.string.model_editor_capabilities_tap_hint, selectedSpecs.size),
+                    typographicFooter = true,
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = InfinitySpacing.RowHorizontal)
-                            .padding(bottom = InfinitySpacing.SectionHeaderBottom),
+                            .heightIn(min = 52.dp)
+                            .clickable(role = Role.Button) { showCapabilities = true }
+                            .infinityPointerHand()
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                            .testTag(UiTags.providerModelsCapabilityPicker(model.id)),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            stringResource(R.string.provider_models_editor_capabilities),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            stringResource(R.string.model_editor_capabilities_selected, selectedCount),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (selectedSpecs.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.model_editor_capabilities_none),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = scheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                        } else {
+                            FlowRow(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                selectedSpecs.forEach { spec ->
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = scheme.surfaceContainerHighest.copy(alpha = 0.65f),
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = spec.icon,
+                                                contentDescription = null,
+                                                tint = scheme.onSurfaceVariant,
+                                                modifier = Modifier.size(13.dp),
+                                            )
+                                            Text(
+                                                text = stringResource(spec.labelRes),
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp),
+                                                color = scheme.onSurface,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = scheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
                         )
                     }
-                    val capabilityChoices = modelCapabilityChoices(model.id)
-                    val capabilitiesTitle = stringResource(R.string.provider_models_editor_capabilities)
-                    InfinitySettingsGroup {
-                        InfinitySettingsItem(
-                            title = selectedChoiceSummary(capabilityChoices, activeCaps, stringResource(R.string.params_list_separator))
-                                ?: stringResource(R.string.model_editor_capabilities_none),
-                            onClick = { showCapabilities = true },
-                            showChevron = true,
-                            modifier = Modifier.testTag(UiTags.providerModelsCapabilityPicker(model.id)),
-                        )
-                    }
-                    InfinityMultiChoiceSheet(
-                        show = showCapabilities,
-                        title = capabilitiesTitle,
-                        choices = capabilityChoices,
-                        selected = activeCaps,
-                        onToggle = { key -> activeCaps = if (key in activeCaps) activeCaps - key else activeCaps + key },
-                        onDismiss = { showCapabilities = false },
-                    )
                 }
+                InfinityMultiChoiceSheet(
+                    show = showCapabilities,
+                    title = capabilitiesTitle,
+                    choices = capabilityChoices,
+                    selected = activeCaps,
+                    onToggle = { key -> activeCaps = if (key in activeCaps) activeCaps - key else activeCaps + key },
+                    onDismiss = { showCapabilities = false },
+                )
             }
             item("session-headers") {
                 ModelSessionHeaderSetting(mode = sessionHeaderMode, onMode = { sessionHeaderMode = it })
             }
-            item("test") {
-                ModelEditorTestRow(model.id, testState, isMediaModel, onTest, onCancel)
-            }
             item("delete") {
-                InfinitySettingsGroup(modifier = Modifier.padding(bottom = 0.dp)) {
-                    InfinitySettingsItem(
-                        title = stringResource(R.string.model_editor_delete),
-                        icon = Icons.Rounded.Delete,
-                        titleColor = MaterialTheme.colorScheme.error,
-                        onClick = { showDeleteConfirmation = true },
-                        modifier = Modifier.testTag(UiTags.providerModelsEditorDeleteAction(model.id)),
-                    )
+                val deleteLabel = stringResource(R.string.model_editor_delete)
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = scheme.errorContainer.copy(alpha = 0.42f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = InfinitySpacing.Large)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(role = Role.Button, onClickLabel = deleteLabel) { showDeleteConfirmation = true }
+                        .infinityPointerHand()
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = deleteLabel
+                        }
+                        .testTag(UiTags.providerModelsEditorDeleteAction(model.id)),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = null,
+                            tint = scheme.error,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = deleteLabel,
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                            color = scheme.error,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
-                Text(
-                    stringResource(R.string.model_editor_autosave_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = InfinitySpacing.Small, bottom = InfinitySpacing.Large),
-                )
             }
         }
     }
 
     ModelTokenLimitSheet(
         show = editingLimit == ModelSpecField.Context,
-        title = stringResource(R.string.provider_models_context_label),
+        title = stringResource(R.string.model_spec_context_label),
         value = contextTokens,
         quickValues = ContextQuickValues,
         onValueChange = { editContext = it.toString() },
@@ -482,7 +754,7 @@ internal fun ModelEditorScreen(
     }
 }
 
-/** 身份组脚注：规范 ID 与用户手动改过的字段（取自 [ModelInfo.userEditedFields]）。 */
+/** 身份组脚注：用户手动改过的字段（规范 ID 已提升至顶部品牌头卡可一键复制）。 */
 @Composable
 private fun modelIdentityFooter(model: ModelInfo): String? {
     val edited = model.userEditedFields
@@ -491,15 +763,12 @@ private fun modelIdentityFooter(model: ModelInfo): String? {
         if ("name" in edited) stringResource(R.string.provider_models_field_display_name) else null,
         if ("type" in edited) stringResource(R.string.provider_models_editor_type) else null,
         if ("capabilities" in edited) stringResource(R.string.provider_models_editor_capabilities) else null,
-        if ("contextLength" in edited) stringResource(R.string.provider_models_context_label) else null,
+        if ("contextLength" in edited) stringResource(R.string.model_spec_context_label) else null,
         if ("maxOutputTokens" in edited) stringResource(R.string.provider_models_editor_output_limit) else null,
     )
-    return listOfNotNull(
-        model.canonicalModelId?.let { stringResource(R.string.provider_models_editor_canonical_id, it) },
-        editedLabels.takeIf { it.isNotEmpty() }?.let {
-            stringResource(R.string.provider_models_editor_user_overrides, it.joinToString(stringResource(R.string.model_editor_list_separator)))
-        },
-    ).takeIf { it.isNotEmpty() }?.joinToString(" · ")  // wrap-check: allow 分区脚注，两项均为可能很长的完整说明
+    return editedLabels.takeIf { it.isNotEmpty() }?.let {
+        stringResource(R.string.provider_models_editor_user_overrides, it.joinToString(stringResource(R.string.model_editor_list_separator)))
+    }
 }
 
 @StringRes
@@ -525,69 +794,6 @@ internal fun cloudMediaPresetLabelRes(preset: CloudMediaPreset): Int = when (pre
     CloudMediaPreset.GEMINI_LYRIA_3_5 -> R.string.media_preset_gemini_lyria_3_5
     CloudMediaPreset.GEMINI_LYRIA_3_PRO -> R.string.media_preset_gemini_lyria_3_pro
     CloudMediaPreset.GEMINI_LYRIA_3_CLIP -> R.string.media_preset_gemini_lyria_3_clip
-}
-
-@Composable
-private fun ModelEditorTestRow(
-    modelId: String,
-    testState: ModelTestState,
-    isMediaModel: Boolean,
-    onTest: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val isTesting = testState == ModelTestState.Testing
-    val status = modelTestStatus(testState, isMediaModel) ?: stringResource(
-        if (isMediaModel) R.string.model_editor_media_test_idle else R.string.model_editor_test_idle,
-    )
-    val statusColor = when (testState) {
-        is ModelTestState.Success -> MaterialTheme.infinityDomainColors.success
-        is ModelTestState.Error -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    InfinitySettingsSection(title = stringResource(R.string.model_editor_group_test)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .padding(start = InfinitySpacing.RowHorizontal, end = InfinitySpacing.Medium, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = status,
-                style = MaterialTheme.typography.bodyMedium,
-                color = statusColor,
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics {
-                        liveRegion = LiveRegionMode.Polite
-                        stateDescription = status
-                    },
-            )
-            Spacer(Modifier.width(InfinitySpacing.Medium))
-            FilledTonalButton(
-                onClick = if (isTesting) onCancel else onTest,
-                modifier = Modifier
-                    .heightIn(min = InfinitySpacing.MinimumTouchTarget)
-                    .testTag(UiTags.providerModelsEditorTestAction(modelId)),
-            ) {
-                if (isTesting) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    stringResource(
-                        when {
-                            isTesting -> R.string.settings_btn_cancel
-                            isMediaModel -> R.string.model_editor_media_test_action
-                            else -> R.string.model_editor_test_action
-                        },
-                    ),
-                )
-            }
-        }
-    }
 }
 
 @Composable

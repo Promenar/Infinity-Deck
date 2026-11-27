@@ -24,6 +24,7 @@ internal fun ProviderSessionHeaderFields(enabled: Boolean, name: String, onEnabl
     InfinitySettingsSection(
         title = stringResource(R.string.provider_form_group_advanced),
         footer = stringResource(R.string.provider_form_session_header_footer),
+        typographicFooter = true,
     ) {
         SettingsToggle(
             title = stringResource(R.string.session_header_title),
@@ -50,6 +51,7 @@ internal fun ModelSessionHeaderSetting(mode: SessionHeaderMode, onMode: (Session
     InfinitySettingsSection(
         title = stringResource(R.string.session_header_title),
         footer = stringResource(R.string.session_header_model_help),
+        typographicFooter = true,
         modifier = modifier,
     ) {
         InfinitySegmentedControl(

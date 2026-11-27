@@ -69,7 +69,7 @@ internal object BackupPreferencePolicy {
         "settings" to listOf(
             Regex("extra_provider_[0-9]+_(id|name|protocol|type|base_url|model|enabled|use_built_in_proxy)"),
             Regex(
-                "model_info_.+_(name|type|context|provider|provider_id|remote_model_id|maxoutput|cutoff|caps|" +
+                "model_info_.+_(name|type|context|provider|provider_id|remote_model_id|maxoutput|cutoff|release_date|deprecation_date|caps|" +
                     "input|family|canonical_id|chat_endpoint|auto_fingerprint|user_edited_fields|" +
                     "metadata_sources|metadata_diagnostics|provider_owned_by|source_provider_id|" +
                     "provider_display_name|provider_workload|provider_context|provider_input|provider_output|" +

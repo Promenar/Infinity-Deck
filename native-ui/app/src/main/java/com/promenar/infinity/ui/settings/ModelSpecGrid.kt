@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -119,7 +121,12 @@ private fun ModelSpecGridCell(cell: ModelSpecCell, modifier: Modifier) {
             )
             if (cell.onClick != null) {
                 Spacer(Modifier.width(6.dp))
-                Icon(Icons.Rounded.Edit, contentDescription = null, Modifier.size(14.dp), scheme.onSurfaceVariant)
+                Icon(
+                    Icons.Rounded.Edit,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = scheme.primary.copy(alpha = 0.78f),
+                )
             }
         }
         Row(
@@ -128,9 +135,10 @@ private fun ModelSpecGridCell(cell: ModelSpecCell, modifier: Modifier) {
         ) {
             Text(
                 cell.shortValue,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.Medium),
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 21.sp, fontWeight = FontWeight.SemiBold),
                 color = scheme.onSurface,
                 maxLines = 1,
+                softWrap = false,
             )
             if (sourceLabel != null) {
                 ModelSpecSourceChip(sourceLabel, cell.source == ModelSpecSource.Manual)
@@ -139,8 +147,89 @@ private fun ModelSpecGridCell(cell: ModelSpecCell, modifier: Modifier) {
         cell.exactValue?.let {
             Text(
                 it,
-                style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace),
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = InfinityMonospace, fontSize = 11.5.sp),
+                color = scheme.onSurfaceVariant.copy(alpha = 0.8f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** 规格卡底行时间线：并列展示知识截止与发布日期，无数据时以轻量未知占位保持对称。 */
+@Composable
+internal fun ModelSpecTimelineRow(
+    knowledgeCutoff: String?,
+    releaseDate: String?,
+    cutoffTag: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val unknown = stringResource(R.string.model_spec_unknown)
+    val cutoffLabel = stringResource(R.string.model_spec_cutoff_label)
+    val releaseLabel = stringResource(R.string.model_spec_release_label)
+    val cutoffText = knowledgeCutoff?.takeIf { it.isNotBlank() } ?: unknown
+    val releaseText = releaseDate?.takeIf { it.isNotBlank() } ?: unknown
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = InfinitySpacing.RowHorizontal, vertical = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .then(cutoffTag?.let { Modifier.testTag(it) } ?: Modifier)
+                .semantics(mergeDescendants = true) { contentDescription = "$cutoffLabel，$cutoffText" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.History,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp),
+            )
+            Text(
+                text = cutoffLabel,
+                style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
+            Text(
+                text = cutoffText,
+                style = MaterialTheme.typography.labelLarge.copy(fontFamily = InfinityMonospace, fontSize = 12.5.sp),
+                color = if (knowledgeCutoff.isNullOrBlank()) scheme.onSurfaceVariant.copy(alpha = 0.7f) else scheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .semantics(mergeDescendants = true) { contentDescription = "$releaseLabel，$releaseText" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.CalendarMonth,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp),
+            )
+            Text(
+                text = releaseLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
+            Text(
+                text = releaseText,
+                style = MaterialTheme.typography.labelLarge.copy(fontFamily = InfinityMonospace, fontSize = 12.5.sp),
+                color = if (releaseDate.isNullOrBlank()) scheme.onSurfaceVariant.copy(alpha = 0.7f) else scheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -153,12 +242,13 @@ private fun ModelSpecSourceChip(label: String, manual: Boolean) {
     val scheme = MaterialTheme.colorScheme
     Text(
         label,
-        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
         color = if (manual) scheme.onTertiaryContainer else scheme.onSurfaceVariant,
         maxLines = 1,
+        softWrap = false,
         modifier = Modifier
             .background(
-                if (manual) scheme.tertiaryContainer else scheme.surfaceContainerHighest,
+                if (manual) scheme.tertiaryContainer else scheme.surfaceContainerHighest.copy(alpha = 0.85f),
                 RoundedCornerShape(5.dp),
             )
             .padding(horizontal = 5.dp, vertical = 1.dp),

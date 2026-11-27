@@ -32,22 +32,42 @@
         <item quantity="other">%1$d/%2$d 个模型</item>
     </plurals>
     <string name="provider_list_tailnet_tag">内网</string>
+    <string name="provider_list_proxy_tag">代理</string>
+    <string name="provider_list_missing_key_tag">缺密钥</string>
+    <string name="provider_list_add_short">添加</string>
+    <string name="provider_list_footnote">点按提供商管理可用模型；密钥正常配置时自动静默，仅缺密钥或停用时提示。</string>
+    <string name="provider_list_models_summary">%1$d 个提供商 · %2$d 个已启用模型</string>
     <string name="provider_list_unsupported_hint">打开以迁移或删除</string>
     <string name="provider_list_empty_title">还没有提供商</string>
 
     <!-- 提供商编辑 -->
     <string name="provider_form_group_provider">提供商</string>
-    <string name="provider_form_group_interface">接口</string>
+    <string name="provider_form_group_interface">接口与通道</string>
     <string name="provider_form_group_credentials">凭证</string>
-    <string name="provider_form_credentials_footer">密钥加密保存在本机</string>
+    <string name="provider_form_credentials_footer">密钥使用 Android Keystore 加密存储于本机，不上传云端。</string>
     <string name="provider_form_group_advanced">高级</string>
-    <string name="provider_form_session_header_description">每次请求附带会话 ID</string>
-    <string name="provider_form_session_header_footer">供提供商复用提示词缓存</string>
+    <string name="provider_form_session_header_description">附带会话 ID 供上游复用提示词缓存</string>
+    <string name="provider_form_session_header_footer">仅随会话请求发送，用于命中上游提示词缓存。</string>
     <string name="provider_form_connection_ok">连接正常</string>
     <string name="provider_form_delete">删除提供商</string>
+    <string name="provider_preset_search_placeholder">搜索预设或厂商名…</string>
+    <string name="provider_preset_variants_count">%1$d 个区域/协议</string>
 
     <!-- 模型列表 -->
     <string name="provider_models_enabled_count">已启用 %1$d / %2$d</string>
+    <string name="provider_models_spec_version_inline">规格库 %1$s 版</string>
+    <string name="provider_models_filter_all">全部 %1$d</string>
+    <string name="provider_models_filter_enabled">已启用 %1$d</string>
+    <string name="provider_models_filter_type_count">%1$s %2$d</string>
+    <string name="provider_models_filter_empty">当前筛选下没有模型</string>
+    <string name="provider_models_footnote">点按任意模型行可编辑规格、能力与测速；支持按类型或已启用状态快速筛选。</string>
+    <string name="provider_models_add_auto_name">自动使用 %1$s</string>
+    <string name="provider_models_add_catalog_matched">已匹配规格库 · %1$s</string>
+    <string name="provider_models_add_catalog_ctx">%1$s 上下文</string>
+    <string name="provider_models_add_catalog_out">%1$s 输出</string>
+    <string name="provider_models_add_catalog_cutoff">截止 %1$s</string>
+    <string name="provider_models_add_catalog_release">发布 %1$s</string>
+    <string name="provider_models_add_submit_label">添加模型</string>
     <string name="provider_models_last_sync">%s从提供商同步</string>
     <string name="provider_models_never_synced">未从提供商同步</string>
     <string name="provider_models_syncing">正在同步…</string>
@@ -116,6 +136,12 @@
     <string name="model_spec_source_inferred">推断</string>
     <string name="model_spec_done">完成</string>
     <string name="model_spec_unknown">未知</string>
-    <string name="model_spec_input_label">输入</string>
+    <string name="model_spec_context_label">上下文窗口</string>
+    <string name="model_spec_input_label">输入上限</string>
     <string name="model_spec_cutoff_label">知识截止</string>
+    <string name="model_spec_release_label">发布</string>
+    <string name="model_editor_specs_footer_merged">点按上下文或输出上限可手动覆盖，优先于规格库；输入上限与上下文一致时自动合并。</string>
+    <string name="model_editor_capabilities_tap_hint">已选 %1$d 项 · 点按调整</string>
+    <string name="model_editor_copy_id">复制模型 ID</string>
+    <string name="model_editor_id_copied">已复制 %1$s</string>
 </resources>

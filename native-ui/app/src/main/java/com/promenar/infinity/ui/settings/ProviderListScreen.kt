@@ -3,28 +3,37 @@ package com.promenar.infinity.ui.settings
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.automirrored.rounded.ListAlt
+import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Lan
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,21 +52,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.promenar.infinity.InfinityApplication
@@ -66,26 +75,25 @@ import com.promenar.infinity.data.local.ProviderStatus
 import com.promenar.infinity.data.model.ProviderListItem
 import com.promenar.infinity.data.model.UnsupportedProviderListItem
 import com.promenar.infinity.data.remote.protocol.ProtocolType
-import com.promenar.infinity.ui.common.label
-import com.promenar.infinity.ui.common.providerDisplayName
 import com.promenar.infinity.data.tailnet.TailnetEndpoints
 import com.promenar.infinity.navigation.NavDestinations
 import com.promenar.infinity.ui.common.BettboxListGroup
-import com.promenar.infinity.ui.common.ModelBrandIcon
-import com.promenar.infinity.ui.common.ModelBrandResolver
-import com.promenar.infinity.ui.common.brandAccentColor
 import com.promenar.infinity.ui.common.InfinityConfirmDialog
 import com.promenar.infinity.ui.common.InfinityDropdownMenu
 import com.promenar.infinity.ui.common.InfinityGroupDivider
 import com.promenar.infinity.ui.common.InfinityMenuDivider
 import com.promenar.infinity.ui.common.InfinityMenuItem
 import com.promenar.infinity.ui.common.InfinitySettingsPageLayout
+import com.promenar.infinity.ui.common.InfinityTypographicFootnote
+import com.promenar.infinity.ui.common.ModelBrandIcon
+import com.promenar.infinity.ui.common.ModelBrandResolver
+import com.promenar.infinity.ui.common.brandAccentColor
+import com.promenar.infinity.ui.common.providerDisplayName
 import com.promenar.infinity.ui.testing.UiTags
 import com.promenar.infinity.ui.theme.InfinityMonospace
 import com.promenar.infinity.ui.theme.InfinityMotion
 import com.promenar.infinity.ui.theme.InfinitySpacing
 import com.promenar.infinity.ui.theme.infinityDomainColors
-import com.promenar.infinity.ui.common.InfinityMetaLine
 
 @Composable
 fun ProviderListScreen(
@@ -181,18 +189,28 @@ internal fun ProviderListScreenContent(
         horizontalContentPadding = 0.dp,
         modifier = Modifier.testTag(UiTags.SETTINGS_PROVIDER_LIST),
         actions = {
-            IconButton(
+            val addProviderDesc = stringResource(R.string.settings_add_provider)
+            FilledTonalButton(
                 onClick = actions.onAddProvider,
+                shape = CircleShape,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                 modifier = Modifier
-                    .sizeIn(
-                        minWidth = InfinitySpacing.MinimumTouchTarget,
-                        minHeight = InfinitySpacing.MinimumTouchTarget,
-                    )
+                    .padding(end = 8.dp)
+                    .height(34.dp)
+                    .semantics { contentDescription = addProviderDesc }
                     .testTag(UiTags.SETTINGS_ADD_PROVIDER),
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Add,
-                    contentDescription = stringResource(R.string.settings_add_provider),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = stringResource(R.string.provider_list_add_short),
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
         }
@@ -213,9 +231,12 @@ internal fun ProviderListScreenContent(
             } else {
                 item("provider-summary") {
                     val summary = providerListSummary(state.providers, state.unsupportedProviders.size)
+                    val enabledModelTotal = remember(state.modelCounts) {
+                        state.modelCounts.values.sumOf { it.enabled }
+                    }
                     Text(
-                        text = pluralStringResource(R.plurals.provider_list_summary, summary.total, summary.total, summary.enabled),
-                        style = MaterialTheme.typography.bodySmall,
+                        text = stringResource(R.string.provider_list_models_summary, summary.total, enabledModelTotal),
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .animateItem()
@@ -238,7 +259,6 @@ internal fun ProviderListScreenContent(
                                 ProviderCard(
                                     provider = provider,
                                     counts = state.modelCounts[provider.id] ?: ProviderModelCount(0, 0),
-                                    mediaCounts = state.mediaCounts[provider.id] ?: ProviderMediaCount(),
                                     onTailnet = provider.id in state.tailnetProviderIds,
                                     onClick = { actions.onProviderModels(provider.id) },
                                     onEdit = { actions.onEditProvider(provider.id) },
@@ -261,13 +281,21 @@ internal fun ProviderListScreenContent(
                         }
                     }
                 }
+                item("provider-footnote") {
+                    InfinityTypographicFootnote(
+                        text = stringResource(R.string.provider_list_footnote),
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
     }
 }
 
-private val ProviderAvatarSize = 40.dp
-private val ProviderDividerInset = InfinitySpacing.RowHorizontal + ProviderAvatarSize + 12.dp
+private val ProviderAvatarSize = 42.dp
+private val ProviderDividerInset = 14.dp + ProviderAvatarSize + 12.dp
 
 /** 协议不受支持：整行减淡，标签提示，点按进入编辑选择受支持的协议；⋮ 只有删除。 */
 @Composable
@@ -421,14 +449,13 @@ private fun ProviderEmptyIcon(size: androidx.compose.ui.unit.Dp) {
 }
 
 /**
- * 提供商行：名称与状态标签 / 协议与主机名 / 内网、凭证与模型数。
- * 点按进入模型列表，⋮ 菜单为编辑、管理模型、删除。
+ * 提供商精炼两行卡片：名称与语义微标（内网/代理/缺密钥/停用，常态密钥静默） / 协议短标与主机名；
+ * 右侧展示等宽已启用/总模型数胶囊、右箭头与 ⋮ 动作菜单。
  */
 @Composable
 private fun ProviderCard(
     provider: ProviderListItem,
     counts: ProviderModelCount,
-    mediaCounts: ProviderMediaCount? = null,
     onTailnet: Boolean,
     onClick: () -> Unit,
     onEdit: () -> Unit,
@@ -453,24 +480,11 @@ private fun ProviderCard(
         enabledStatus,
         credentialStatus,
     )
-    val protocolLabel = provider.protocolType.label()
-    val duplicateProtocolTitle = protocolLabel.equals(providerName, ignoreCase = true) ||
-        protocolLabel.startsWith("$providerName (", ignoreCase = true)
+    val protocolShort = remember(provider.protocolType) { providerShortProtocolTag(provider.protocolType) }
     val host = remember(provider.baseUrl) { providerHostLabel(provider.baseUrl) }
     val missingCredential = providerCredentialMissing(provider)
     val scheme = MaterialTheme.colorScheme
     val domain = MaterialTheme.infinityDomainColors
-    val secondary = scheme.onSurfaceVariant
-    val separator = " · "  // wrap-check: allow 凭据状态需单独着色的富文本行
-    val metaLine = buildAnnotatedString {
-        if (onTailnet) {
-            append(stringResource(R.string.provider_list_tailnet_tag))
-            append(separator)
-        }
-        withStyle(SpanStyle(color = if (missingCredential) domain.warning else secondary)) { append(credentialStatus) }
-        append(separator)
-        append(pluralStringResource(R.plurals.provider_list_model_count, counts.total, counts.enabled, counts.total))
-    }
 
     ProviderRowFrame(
         modifier = Modifier
@@ -479,115 +493,175 @@ private fun ProviderCard(
         onClick = onClick,
         onClickLabel = manageDescription,
         leading = {
-            Box(Modifier.alpha(if (provider.enabled) 1f else 0.55f)) { ProviderAvatar(providerName, provider.baseUrl) }
+            Box(Modifier.alpha(if (provider.enabled) 1f else 0.55f)) {
+                ProviderAvatar(
+                    name = providerName,
+                    baseUrl = provider.baseUrl,
+                    onTailnet = onTailnet,
+                )
+            }
         },
         trailing = {
-            Box {
-                IconButton(
-                    onClick = { menuExpanded = true },
-                    modifier = Modifier
-                        .testTag(UiTags.settingsProviderActions(provider.id))
-                        .size(InfinitySpacing.MinimumTouchTarget),
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val countActive = counts.enabled > 0
+                Surface(
+                    shape = CircleShape,
+                    color = if (countActive) {
+                        scheme.primaryContainer.copy(alpha = 0.72f)
+                    } else {
+                        scheme.surfaceContainerHighest.copy(alpha = 0.75f)
+                    },
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.MoreVert,
-                        contentDescription = actionsDescription,
-                        tint = scheme.onSurfaceVariant,
+                    Text(
+                        text = "${counts.enabled}/${counts.total}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = InfinityMonospace,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.5.sp,
+                        ),
+                        color = if (countActive) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                     )
                 }
-                InfinityDropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                ) {
-                    InfinityMenuItem(
-                        leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        text = { Text(editDescription) },
-                        onClick = {
-                            menuExpanded = false
-                            onEdit()
-                        },
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = scheme.onSurfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.size(18.dp),
+                )
+                Box {
+                    IconButton(
+                        onClick = { menuExpanded = true },
                         modifier = Modifier
-                            .testTag("${UiTags.settingsProviderActions(provider.id)}:edit")
-                            .semantics { role = Role.Button },
-                    )
-                    InfinityMenuItem(
-                        leadingIcon = { Icon(Icons.AutoMirrored.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                        text = { Text(manageDescription) },
-                        onClick = {
-                            menuExpanded = false
-                            onClick()
-                        },
-                        modifier = Modifier
-                            .testTag("${UiTags.settingsProviderActions(provider.id)}:models")
-                            .semantics { role = Role.Button },
-                    )
-                    if (onDelete != null) {
-                        InfinityMenuDivider()
+                            .testTag(UiTags.settingsProviderActions(provider.id))
+                            .size(InfinitySpacing.MinimumTouchTarget),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MoreVert,
+                            contentDescription = actionsDescription,
+                            tint = scheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    InfinityDropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
                         InfinityMenuItem(
-                            leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(20.dp)) },
-                            text = { Text(deleteDescription) },
-                            destructive = true,
+                            leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                            text = { Text(editDescription) },
                             onClick = {
                                 menuExpanded = false
-                                onDelete()
+                                onEdit()
                             },
                             modifier = Modifier
-                                .testTag("${UiTags.settingsProviderActions(provider.id)}:delete")
+                                .testTag("${UiTags.settingsProviderActions(provider.id)}:edit")
                                 .semantics { role = Role.Button },
                         )
+                        InfinityMenuItem(
+                            leadingIcon = { Icon(Icons.AutoMirrored.Rounded.ListAlt, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                            text = { Text(manageDescription) },
+                            onClick = {
+                                menuExpanded = false
+                                onClick()
+                            },
+                            modifier = Modifier
+                                .testTag("${UiTags.settingsProviderActions(provider.id)}:models")
+                                .semantics { role = Role.Button },
+                        )
+                        if (onDelete != null) {
+                            InfinityMenuDivider()
+                            InfinityMenuItem(
+                                leadingIcon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                                text = { Text(deleteDescription) },
+                                destructive = true,
+                                onClick = {
+                                    menuExpanded = false
+                                    onDelete()
+                                },
+                                modifier = Modifier
+                                    .testTag("${UiTags.settingsProviderActions(provider.id)}:delete")
+                                    .semantics { role = Role.Button },
+                            )
+                        }
                     }
                 }
             }
         },
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Text(
                 providerName,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold),
                 color = if (provider.enabled) scheme.onSurface else scheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
+            if (onTailnet) {
+                ProviderMicroBadge(
+                    label = stringResource(R.string.provider_list_tailnet_tag),
+                    containerColor = scheme.secondaryContainer,
+                    contentColor = scheme.onSecondaryContainer,
+                    icon = Icons.Rounded.Lan,
+                )
+            } else if (provider.useBuiltInProxy) {
+                ProviderMicroBadge(
+                    label = stringResource(R.string.provider_list_proxy_tag),
+                    containerColor = scheme.primaryContainer.copy(alpha = 0.7f),
+                    contentColor = scheme.onPrimaryContainer,
+                    icon = Icons.Rounded.Shield,
+                )
+            }
             if (!provider.enabled) {
-                Spacer(Modifier.width(6.dp))
-                ProviderStateChip(enabledStatus, warning = false)
+                ProviderMicroBadge(
+                    label = enabledStatus,
+                    containerColor = scheme.surfaceContainerHighest,
+                    contentColor = scheme.onSurfaceVariant,
+                )
+            } else if (missingCredential) {
+                ProviderMicroBadge(
+                    label = stringResource(R.string.provider_list_missing_key_tag),
+                    containerColor = domain.warningContainer,
+                    contentColor = domain.warning,
+                    icon = Icons.Rounded.WarningAmber,
+                )
             }
         }
-        val protocolOrHostText = buildAnnotatedString {
-            val showProtocol = !duplicateProtocolTitle || host.isEmpty()
-            if (showProtocol) {
-                append(protocolLabel)
-            }
-            if (host.isNotEmpty()) {
-                if (showProtocol) append(separator)
-                withStyle(SpanStyle(fontFamily = InfinityMonospace)) { append(host) }
-            }
-        }
-        Text(
-            text = protocolOrHostText,
-            style = MaterialTheme.typography.bodySmall,
-            color = secondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(metaLine, style = MaterialTheme.typography.bodySmall, color = secondary)
-        mediaCounts?.let { countsByType ->
-            val segments = listOfNotNull(
-                "${stringResource(R.string.media_settings_chat)} ${countsByType.chat}".takeIf { countsByType.chat > 0 },
-                "${stringResource(R.string.media_settings_video)} ${countsByType.video}".takeIf { countsByType.video > 0 },
-                "${stringResource(R.string.media_settings_speech)} ${countsByType.speech}".takeIf { countsByType.speech > 0 },
-                "${stringResource(R.string.media_settings_music)} ${countsByType.music}".takeIf { countsByType.music > 0 },
-                "${stringResource(R.string.media_settings_image)} ${countsByType.image}".takeIf { countsByType.image > 0 },
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                text = protocolShort,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                color = scheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(scheme.surfaceContainerHighest.copy(alpha = 0.75f))
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
             )
-            if (segments.isNotEmpty()) {
-                InfinityMetaLine(segments, style = MaterialTheme.typography.bodySmall, color = secondary)
+            if (host.isNotEmpty()) {
+                Text(
+                    text = host,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = scheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
 }
 
-/** 提供商行骨架：40dp 头像、三到四行正文、尾部 48dp 动作。 */
+/** 提供商行骨架：42dp 品牌底托、精炼两行正文、尾部模型数胶囊与动作菜单。 */
 @Composable
 private fun ProviderRowFrame(
     modifier: Modifier,
@@ -602,13 +676,42 @@ private fun ProviderRowFrame(
             .fillMaxWidth()
             .clickable(role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
             .then(modifier)
-            .padding(start = InfinitySpacing.RowHorizontal, end = 4.dp, top = 12.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.Top,
+            .padding(start = 14.dp, end = 4.dp, top = 11.dp, bottom = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         leading()
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) { content() }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) { content() }
+        Spacer(Modifier.width(6.dp))
         trailing()
+    }
+}
+
+@Composable
+private fun ProviderMicroBadge(
+    label: String,
+    containerColor: Color,
+    contentColor: Color,
+    icon: ImageVector? = null,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(containerColor)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(11.dp))
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Medium),
+            color = contentColor,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
 }
 
@@ -627,35 +730,40 @@ private fun ProviderStateChip(text: String, warning: Boolean) {
     )
 }
 
-/** 提供商头像：40dp 圆角方块，能识别品牌时显示品牌柔色底与同步矢量标志，否则显示名称首字。 */
+/** 提供商头像：42dp 圆角方块，按名称与主机精准解析品牌（不被 URL 路径 `/anthropic` 误判），未命中时显示网关/内网矢量图标。 */
 @Composable
-private fun ProviderAvatar(name: String, baseUrl: String?) {
+private fun ProviderAvatar(
+    name: String,
+    baseUrl: String?,
+    onTailnet: Boolean = false,
+) {
+    val scheme = MaterialTheme.colorScheme
     val brand = remember(name, baseUrl) { ModelBrandResolver.brandKey(name, baseUrl) }
     val accent = brandAccentColor(brand)
-    val container = when {
-        accent != null -> accent.copy(alpha = 0.14f)
-        brand != null -> MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)
-        else -> MaterialTheme.colorScheme.secondaryContainer
-    }
+    val bg = accent?.copy(alpha = 0.12f) ?: scheme.surfaceContainerHighest.copy(alpha = 0.85f)
+    val rim = accent?.copy(alpha = 0.20f) ?: scheme.outlineVariant.copy(alpha = 0.35f)
     Box(
         modifier = Modifier
             .size(ProviderAvatarSize)
             .clip(RoundedCornerShape(12.dp))
-            .background(container),
+            .background(bg)
+            .border(0.5.dp, rim, RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center,
     ) {
         if (brand != null) {
             ModelBrandIcon(
-                modelId = "$name ${baseUrl.orEmpty()}",
+                modelId = name.ifBlank { baseUrl },
                 modifier = Modifier.size(22.dp),
                 contentDescription = null,
-                fallbackTint = accent ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                fallbackTint = accent ?: scheme.onSurfaceVariant,
+                brandOverride = brand,
             )
         } else {
-            Text(
-                text = name.trim().take(1).uppercase().ifEmpty { "?" },
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            Icon(
+                imageVector = if (onTailnet) Icons.Rounded.Lan else Icons.Rounded.Hub,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
             )
         }
     }
