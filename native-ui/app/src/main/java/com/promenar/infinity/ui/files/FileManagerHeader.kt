@@ -204,9 +204,21 @@ private fun FileBrowseBar(state: FileManagerUiState, actions: FileManagerUiActio
             if (!inInspector || hasLeading) {
                 FileManagerLeadingButton(host.leading)
             }
-            FileHeaderTitle(state, actions, Modifier.weight(1f), inInspector = inInspector)
-            // 内屏的合集信息在标题下的信息行里，外屏用小标签。
-            host.folderBadge?.takeUnless { host.leading.isInnerScreen || inInspector }?.let { HostBadge(it) }
+            val badgeInMeta = shouldPlaceFolderBadgeInTitleMeta(
+                badge = host.folderBadge,
+                isInnerScreen = host.leading.isInnerScreen,
+                inInspector = inInspector,
+                hasHeaderActions = host.headerActions != null,
+            )
+            FileHeaderTitle(
+                state = state,
+                actions = actions,
+                modifier = Modifier.weight(1f),
+                inInspector = inInspector,
+                badgeInMeta = badgeInMeta,
+            )
+            // 仅在外屏无额外宿主页头按钮且标签可点（如知识图谱短计数）时放横向短胶囊；其余收进标题下信息行，防止窄屏挤压重叠。
+            host.folderBadge?.takeUnless { badgeInMeta }?.let { HostBadge(it) }
             host.headerActions?.invoke(this)
             IconButton(onClick = actions.controller::startSearch, modifier = Modifier.testTag(UiTags.FM_SEARCH)) {
                 Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.fm_search))
@@ -380,12 +392,21 @@ private fun ExplorerGitMetaRow(branch: String, changes: Int?) {
  *   - 非 Git 普通文件夹：上行文件夹/工作区名（多位置带 ▾），下行展示目录属性/来源（避免与标题同名重复）。
  * - 非检视器普通页头保留原有单/双行与位置切换行为。
  */
+/** 决定页头小标签是收进标题下方信息行，还是以横向短胶囊放在外屏操作区前。 */
+internal fun shouldPlaceFolderBadgeInTitleMeta(
+    badge: FileHeaderBadge?,
+    isInnerScreen: Boolean,
+    inInspector: Boolean,
+    hasHeaderActions: Boolean,
+): Boolean = badge != null && (isInnerScreen || inInspector || badge.onClick == null || hasHeaderActions)
+
 @Composable
 private fun FileHeaderTitle(
     state: FileManagerUiState,
     actions: FileManagerUiActions,
     modifier: Modifier,
     inInspector: Boolean = false,
+    badgeInMeta: Boolean = false,
 ) {
     val host = actions.host
     val gitBranch = state.gitHeaderBranch(host)
@@ -418,7 +439,8 @@ private fun FileHeaderTitle(
     }
     var open by remember { mutableStateOf(false) }
     val inner = host.leading.isInnerScreen || inInspector || hasGitHeader
-    val badge = host.folderBadge?.takeIf { inner && !hasGitHeader }
+    val usePaneMetaTitle = inner || (badgeInMeta && !hasGitHeader)
+    val badge = host.folderBadge?.takeIf { badgeInMeta && !hasGitHeader }
     val badgeClick = badge?.onClick
     val scheme = MaterialTheme.colorScheme
     Box(modifier) {
@@ -490,7 +512,7 @@ private fun FileHeaderTitle(
                     .then(if (!hasGitHeader) Modifier.testTag(UiTags.FM_TITLE) else Modifier),
                 verticalArrangement = Arrangement.Center,
             ) {
-                if (inner) {
+                if (usePaneMetaTitle) {
                     when {
                         hasGitHeader -> {
                             InfinityPaneHeaderTitle(
@@ -571,7 +593,7 @@ private fun FileHeaderTitle(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                if (subtitle != null && !inner) {
+                if (subtitle != null && !usePaneMetaTitle) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = subtitle,

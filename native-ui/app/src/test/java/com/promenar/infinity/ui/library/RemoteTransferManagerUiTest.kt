@@ -7,6 +7,8 @@ import com.promenar.infinity.domain.storage.RemoteTransferState
 import com.promenar.infinity.domain.storage.RemoteTransferTask
 import com.promenar.infinity.ui.chat.RemoteMountApprovalAction
 import com.promenar.infinity.ui.chat.remoteMountApprovalPreview
+import com.promenar.infinity.ui.files.FileHeaderBadge
+import com.promenar.infinity.ui.files.shouldPlaceFolderBadgeInTitleMeta
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Test
@@ -105,5 +107,27 @@ class RemoteTransferManagerUiTest {
         assertThat(formatRemoteChecksumMethod("ssh_exec_python3")).isEqualTo("python3")
         assertThat(formatRemoteChecksumMethod("ssh_exec_shasum")).isEqualTo("shasum")
         assertThat(formatRemoteChecksumMethod("sha256sum")).isEqualTo("sha256sum")
+    }
+
+    @Test
+    fun `外屏窄栏 SFTP 非可点信息徽章或带宿主页头按钮时统一收进标题下方信息行避免重叠`() {
+        val sftpBadge = FileHeaderBadge(text = "SFTP · 可归档", description = "fnos:/vol2/assets · SFTP · 可归档")
+        val kgBadge = FileHeaderBadge(text = "2/4", description = "已抽取 2/4", onClick = {})
+
+        assertThat(
+            shouldPlaceFolderBadgeInTitleMeta(sftpBadge, isInnerScreen = false, inInspector = false, hasHeaderActions = false),
+        ).isTrue()
+        assertThat(
+            shouldPlaceFolderBadgeInTitleMeta(sftpBadge, isInnerScreen = false, inInspector = false, hasHeaderActions = true),
+        ).isTrue()
+        assertThat(
+            shouldPlaceFolderBadgeInTitleMeta(kgBadge, isInnerScreen = false, inInspector = false, hasHeaderActions = true),
+        ).isTrue()
+        assertThat(
+            shouldPlaceFolderBadgeInTitleMeta(kgBadge, isInnerScreen = false, inInspector = false, hasHeaderActions = false),
+        ).isFalse()
+        assertThat(
+            shouldPlaceFolderBadgeInTitleMeta(kgBadge, isInnerScreen = true, inInspector = false, hasHeaderActions = false),
+        ).isTrue()
     }
 }

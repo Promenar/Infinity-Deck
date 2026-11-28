@@ -14,6 +14,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.85.2-beta] - 2026-11-28
+
+- **修复 SFTP 远程挂载目录在外屏竖屏窄栏下页头横向挤压重叠（[FileManagerHeader.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/files/FileManagerHeader.kt)、[LibraryFilesHost.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryFilesHost.kt)）**：
+  - 新增 `shouldPlaceFolderBadgeInTitleMeta` 策略：外屏竖屏浏览 SFTP 远程目录（非可点元信息徽章或携带宿主页头动作按钮）时，不再向单行页头塞入横向宽胶囊，改为与内屏一致的 `InfinityPaneHeaderTitle` 双行轻页头（上行目录名、下行渐隐横滑显示主机路径与读写状态）；
+  - 移除可写 SFTP 挂载页头冗余的「上传」图标按钮（保留于「更多」菜单与「＋」入口），外屏页头收口为「返回 + 双行标题 + 传输管理 + 搜索 + 更多」共 4 图标，在 `360dp–380dp` 窄屏与大字号下为标题留出充裕空间并彻底消除重叠。
+
 ## [0.85.1-beta] - 2026-11-28
 
 - **SFTP 远程挂载与资料库三域真机实测视觉与交互精修（[FileManagerPreview.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/files/FileManagerPreview.kt)、[SftpMountSheet.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/SftpMountSheet.kt)、[LibraryScreen.kt](native-ui/app/src/main/java/com/promenar/infinity/ui/library/LibraryScreen.kt)）**：

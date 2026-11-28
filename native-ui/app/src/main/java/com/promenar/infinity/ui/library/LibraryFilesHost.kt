@@ -13,8 +13,6 @@ import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.UploadFile
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -298,11 +296,6 @@ internal fun LibraryBrowsePage(ref: FileRef, host: LibraryPageHost, leading: Lib
                             activeCount = transferSummary?.activeCount ?: 0,
                             onClick = { host.navigator.openSection(LibraryPageKeys.TRANSFERS) },
                         )
-                        if (currentLocation?.capabilities?.writable == true && uploadArchiveLauncher != null) {
-                            IconButton(onClick = { uploadArchiveLauncher.launch(arrayOf("*/*")) }) {
-                                Icon(Icons.Rounded.UploadFile, contentDescription = sftpUploadLabel)
-                            }
-                        }
                     }
                 } else {
                     null
